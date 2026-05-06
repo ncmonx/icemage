@@ -1,6 +1,9 @@
 #include "dispatcher.hpp"
 #include "base_command.hpp"
 #include "../core/registry.hpp"
+#include "../core/config.hpp"
+#include "../core/global_db.hpp"
+#include "../core/project_context.hpp"
 #include <iostream>
 #include <unordered_map>
 #include <string>
@@ -54,8 +57,35 @@ int Dispatcher::run(const std::vector<std::string>& args) {
         return 0;
     }
 
-    std::string cmd = args[0];
-    std::vector<std::string> rest(args.begin() + 1, args.end());
+    // Parse --project <name> from args (can appear anywhere before command)
+    std::string project_flag;
+    std::vector<std::string> cleaned;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--project" && i + 1 < args.size()) {
+            project_flag = args[++i];
+        } else {
+            cleaned.push_back(args[i]);
+        }
+    }
+
+    // Resolve project context + set override on Config
+    if (!project_flag.empty()) {
+        try {
+            auto ctx = core::ProjectContext::resolve(project_flag);
+            // A2: cross-project warning
+            std::cerr << "⚠  Cross-project read: " << ctx.name()
+                      << " (" << ctx.rootPath() << ")\n"
+                      << "   No authentication — any local user can read this data.\n";
+            core::Config::instance().setProjectDbOverride(ctx.dbPath());
+        } catch (const std::exception& e) {
+            std::cerr << "icmg: " << e.what() << "\n";
+            return 1;
+        }
+    }
+
+    std::string cmd = cleaned.empty() ? "" : cleaned[0];
+    if (cmd.empty()) { printHelp(); return 0; }
+    std::vector<std::string> rest(cleaned.begin() + 1, cleaned.end());
 
     // Check registry first (real implementations from later phases)
     auto& reg = icmg::core::Registry<icmg::cli::BaseCommand>::instance();
