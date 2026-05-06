@@ -44,6 +44,8 @@ public:
     // import_list: vector of (src_node_id, src_path, import_name_string)
     void resolveAndInsertEdges(
         const std::vector<std::tuple<int64_t,std::string,std::string>>& import_list);
+    // Strategy 4: class cross-reference (Graphify-style) — always run after scan
+    void buildXRefEdges();
     // Legacy incremental resolver (still used when calling graph-update on partial data)
     void resolveEdges();
 

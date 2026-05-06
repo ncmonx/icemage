@@ -225,6 +225,12 @@ int Scanner::scan(const std::string& root, const Options& opts) {
         store_.resolveAndInsertEdges(pending);
     }
 
+    // Strategy 4: class cross-reference — always run after scan, even if no
+    // explicit imports were found (same-namespace C# files have no `using`).
+    if (opts.resolve_edges) {
+        store_.buildXRefEdges();
+    }
+
     // A8: record scan run
     store_.recordScanRun(root, store_.nodeCount(), store_.edgeCount());
 
