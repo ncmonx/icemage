@@ -1,0 +1,9 @@
+{
+  "enabledPlugins": {
+    "auto-memory@claude-community": false,
+    "caveman@claude-community": true
+  },
+  "env": {
+    "CAVEMAN_DEFAULT_MODE": "ultra"
+  }
+}
