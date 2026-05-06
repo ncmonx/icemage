@@ -231,6 +231,12 @@ int Scanner::scan(const std::string& root, const Options& opts) {
         store_.buildXRefEdges();
     }
 
+    // VS designer file grouping: detect .cs/.Designer.cs/.resx triples and
+    // assign same group_id + insert companion edges.
+    if (opts.resolve_edges) {
+        store_.groupDesignerTriples();
+    }
+
     // A8: record scan run
     store_.recordScanRun(root, store_.nodeCount(), store_.edgeCount());
 
