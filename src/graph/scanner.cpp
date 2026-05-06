@@ -98,9 +98,13 @@ bool Scanner::GitIgnore::matches(const std::string& relpath) const {
                     relpath.substr(relpath.size() - suffix.size()) == suffix) return true;
             }
         } else {
-            // Literal: match as path component
+            // Literal: match as path component.
+            // Guard against unsigned underflow: relpath.size() - p.size() - 1 wraps
+            // when p.size() >= relpath.size(), producing a false npos==npos match.
+            bool tail_match = (p.size() < relpath.size()) &&
+                              (relpath.rfind("/" + p) == relpath.size() - p.size() - 1);
             if (relpath == p || relpath.find(p + "/") != std::string::npos ||
-                relpath.rfind("/" + p) == relpath.size() - p.size() - 1) return true;
+                relpath.find(p + "\\") != std::string::npos || tail_match) return true;
         }
     }
     return false;
@@ -141,27 +145,34 @@ int Scanner::scan(const std::string& root, const Options& opts) {
     // Recursive walk
     std::function<void(const fs::path&, int)> walk = [&](const fs::path& dir, int depth) {
         if (depth > opts.max_depth) return;
-        std::error_code ec;
-        for (auto& entry : fs::directory_iterator(dir, ec)) {
-            if (ec) continue;
+        std::error_code iter_ec;
+        for (auto& entry : fs::directory_iterator(dir, iter_ec)) {
+            if (iter_ec) { iter_ec.clear(); continue; }
             std::string name = entry.path().filename().string();
 
-            if (entry.is_directory(ec)) {
-                // Check ignore_dirs
-                bool skip = false;
-                for (auto& ig : opts.ignore_dirs) {
-                    if (name == ig) { skip = true; break; }
+            {
+                std::error_code is_dir_ec;
+                if (entry.is_directory(is_dir_ec)) {
+                    // Check ignore_dirs
+                    bool skip = false;
+                    for (auto& ig : opts.ignore_dirs) {
+                        if (name == ig) { skip = true; break; }
+                    }
+                    // Check gitignore
+                    if (!skip && opts.gitignore) {
+                        std::error_code rel_ec;
+                        std::string rel = fs::relative(entry.path(), root_path, rel_ec).string();
+                        if (!rel_ec && gi.matches(rel)) skip = true;
+                    }
+                    if (!skip) walk(entry.path(), depth + 1);
+                    continue;
                 }
-                // Check gitignore
-                if (!skip && opts.gitignore) {
-                    std::string rel = fs::relative(entry.path(), root_path, ec).string();
-                    if (gi.matches(rel)) skip = true;
-                }
-                if (!skip) walk(entry.path(), depth + 1);
-                continue;
             }
 
-            if (!entry.is_regular_file(ec)) continue;
+            {
+                std::error_code is_reg_ec;
+                if (!entry.is_regular_file(is_reg_ec)) continue;
+            }
 
             std::string ext = entry.path().extension().string();
             std::string lang = detectLang(ext);
@@ -174,10 +185,15 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             }
 
             // File size guard
-            auto fsz = entry.file_size(ec);
-            if (ec || fsz > (uintmax_t)max_file_size) continue;
+            std::error_code fsz_ec;
+            auto fsz = entry.file_size(fsz_ec);
+            if (fsz_ec || fsz > (uintmax_t)max_file_size) continue;
 
-            std::string fpath = entry.path().string();
+            // Normalize to canonical absolute path to prevent duplicate nodes
+            // when scanning from different working directories (e.g. "." vs "src").
+            std::error_code canon_ec;
+            auto canon_path = fs::weakly_canonical(entry.path(), canon_ec);
+            std::string fpath = canon_ec ? entry.path().string() : canon_path.string();
             std::string hash  = hashFile(fpath);
 
             // Skip if not stale

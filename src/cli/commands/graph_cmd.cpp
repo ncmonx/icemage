@@ -6,6 +6,7 @@
 #include "../../graph/scanner.hpp"
 #include "../../graph/daemon.hpp"
 #include "../../data/data_store.hpp"
+#include "../../icm/memory_store.hpp"
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
@@ -47,6 +48,62 @@ static void printNodeJson(std::ostream& o, const graph::GraphNode& n) {
       << "}";
 }
 
+// Sync graph nodes → memory store so `icmg recall` can surface file context.
+// Only syncs nodes with non-empty context. Uses force=true so rescan updates
+// existing memory nodes rather than creating duplicates.
+static int syncGraphToMemory(core::Db& db, graph::GraphStore& store,
+                              bool verbose = false) {
+    icm::MemoryStore mem(db);
+
+    // Migrate old-format topics ("graph:<path>" with no spaces after "graph:")
+    // to new space-separated format. Hard-delete old nodes so re-insert works.
+    db.run("DELETE FROM memory_nodes WHERE topic LIKE 'graph:%' AND topic NOT LIKE 'graph %'", {});
+
+    auto nodes = store.all();
+    int synced = 0;
+    for (auto& n : nodes) {
+        // Build searchable metadata
+        namespace fs = std::filesystem;
+        fs::path fp(n.path);
+        std::string basename = fp.filename().string();       // "scanner.cpp"
+        std::string stem     = fp.stem().string();           // "scanner"
+
+        // Space-separated keywords so BM25 tokenizer finds individual terms.
+        // Include stem, lang, basename, and "graph" tag.
+        std::string keywords = stem + " " + n.lang + " graph " + basename;
+
+        // Content: basename + context (fallback to path if context empty)
+        // + compact symbols so class/function names are findable
+        std::string content = basename + " " + (n.context.empty() ? n.path : n.context);
+        if (!n.symbols.empty() && n.symbols != "{}") {
+            // Extract just the values from symbols JSON (skip keys)
+            // Simple approach: replace punctuation with spaces for indexing
+            std::string sym = n.symbols.substr(0, 200);
+            for (char& c : sym) if (c == '"' || c == '[' || c == ']' || c == '{' || c == '}' || c == ':' || c == ',') c = ' ';
+            content += " " + sym;
+        }
+
+        // topic = "graph <basename> <path>" — searchable AND unique
+        icm::MemoryNode mn;
+        mn.topic      = "graph " + basename + " " + n.path;
+        mn.content    = content.substr(0, 600);
+        mn.keywords   = keywords;
+        mn.importance = 1;  // med — file context is useful but not critical
+
+        // Upsert: update if topic already exists, insert if new
+        // Topic format: "graph <basename> <full-path>" — match by full path suffix
+        auto existing = mem.recallByTopic("graph " + basename + " " + n.path, 1);
+        if (!existing.empty()) {
+            mem.update(existing[0].id, mn.content, mn.keywords);
+        } else {
+            try { mem.store(mn, /*force=*/false); } catch (...) {}
+        }
+        ++synced;
+    }
+    if (verbose) std::cout << "Synced " << synced << " file(s) to memory\n";
+    return synced;
+}
+
 // ---- graph scan ----
 class GraphScanCommand : public BaseCommand {
 public:
@@ -74,14 +131,17 @@ public:
         graph::Scanner scanner(store);
 
         int count = scanner.scan(path, opts);
+        int mem_synced = syncGraphToMemory(db, store);
         if (json_out) {
             std::cout << "{\"scanned\":" << count
                       << ",\"nodes\":" << store.nodeCount()
-                      << ",\"edges\":" << store.edgeCount() << "}\n";
+                      << ",\"edges\":" << store.edgeCount()
+                      << ",\"memory_synced\":" << mem_synced << "}\n";
         } else {
             std::cout << "Scanned " << count << " file(s)"
                       << " | nodes=" << store.nodeCount()
-                      << " edges=" << store.edgeCount() << "\n";
+                      << " edges=" << store.edgeCount()
+                      << " | memory+" << mem_synced << "\n";
         }
         return 0;
     }
@@ -561,15 +621,18 @@ public:
 
         if (!json_out) std::cout << "Updating graph for: " << path << "\n";
         int count = scanner.scan(path, opts);
+        int mem_synced = syncGraphToMemory(db, store);
 
         if (json_out) {
             std::cout << "{\"updated\":" << count
                       << ",\"nodes\":" << store.nodeCount()
-                      << ",\"edges\":" << store.edgeCount() << "}\n";
+                      << ",\"edges\":" << store.edgeCount()
+                      << ",\"memory_synced\":" << mem_synced << "}\n";
         } else {
             std::cout << "Updated " << count << " file(s)"
                       << " | total nodes=" << store.nodeCount()
-                      << " edges=" << store.edgeCount() << "\n";
+                      << " edges=" << store.edgeCount()
+                      << " | memory+" << mem_synced << "\n";
         }
         return 0;
     }
