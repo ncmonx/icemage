@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <fstream>
 #include <filesystem>
+#include <algorithm>
 #include <chrono>
 
 namespace icmg::cli {

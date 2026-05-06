@@ -22,7 +22,8 @@ public:
     explicit Scanner(GraphStore& store);
 
     // Returns number of files scanned/updated
-    int scan(const std::string& root, const Options& opts = {});
+    int scan(const std::string& root);
+    int scan(const std::string& root, const Options& opts);
 
 private:
     GraphStore& store_;

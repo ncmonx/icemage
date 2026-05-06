@@ -46,9 +46,11 @@ TEST("parseArgv: empty string") {
 
 TEST("parseArgv: flags preserved") {
     auto argv = icmg::rtk::parseArgv("git log --oneline --graph");
-    ASSERT_EQ(argv.size(), 3u);
-    ASSERT_EQ(argv[1], std::string("--oneline"));
-    ASSERT_EQ(argv[2], std::string("--graph"));
+    ASSERT_EQ(argv.size(), 4u);
+    ASSERT_EQ(argv[0], std::string("git"));
+    ASSERT_EQ(argv[1], std::string("log"));
+    ASSERT_EQ(argv[2], std::string("--oneline"));
+    ASSERT_EQ(argv[3], std::string("--graph"));
 }
 
 int main() {

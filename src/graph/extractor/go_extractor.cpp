@@ -16,7 +16,7 @@ public:
         std::istringstream ss(content);
         std::string line;
 
-        static const std::regex re_import(R"(^\s*"([\w./]+)")");
+        static const std::regex re_import(R"re(^\s*"([\w./]+)")re");
         static const std::regex re_struct(R"(^type\s+(\w+)\s+struct)");
         static const std::regex re_iface (R"(^type\s+(\w+)\s+interface)");
         static const std::regex re_func1 (R"(^func\s+(\w+)\s*\()");

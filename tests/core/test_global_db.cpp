@@ -1,5 +1,6 @@
 #include "../test_main.hpp"
 #include "../../src/core/db.hpp"
+#include "../../src/core/config.hpp"
 
 // Test GlobalDb logic in isolation using an in-memory Db.
 // We don't test GlobalDb singleton (needs filesystem) — test the SQL behavior.

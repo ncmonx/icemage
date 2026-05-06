@@ -12,8 +12,8 @@ ExtractResult CppExtractor::extract(const std::string& /*path*/,
     std::istringstream ss(content);
     std::string line;
 
-    static const std::regex re_include_local(R"(#include\s+"([^"]+)")");
-    static const std::regex re_include_sys  (R"(#include\s+<([^>]+)>)");
+    static const std::regex re_include_local(R"re(#include\s+"([^"]+)")re");
+    static const std::regex re_include_sys  (R"re(#include\s+<([^>]+)>)re");
     static const std::regex re_class        (R"((?:template\s*<[^>]*>\s*)?(?:class|struct)\s+(\w+))");
     static const std::regex re_func         (R"((?:^|\s)(?:static\s+|virtual\s+|inline\s+|explicit\s+)*(?:\w[\w:<>*&\s]+\s+)?(\w+)\s*\([^;{]*\)\s*(?:const\s*)?(?:override\s*)?(?:noexcept\s*)?\{?)");
     static const std::regex re_func_simple  (R"((?:^|\s)(\w+)\s*\([^;]*\)\s*\{)");

@@ -8,6 +8,7 @@
 #include "../../data/data_store.hpp"
 #include <iostream>
 #include <iomanip>
+#include <algorithm>
 #include <chrono>
 #include <sstream>
 #include <filesystem>
