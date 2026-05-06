@@ -10,6 +10,20 @@ Plus: per-folder rules, structured data store, abbreviation engine, stored proce
 
 ---
 
+## ⚠️ Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| `icmg` not found after build | Add `build/` to PATH or copy binary to `/usr/local/bin` |
+| `icmg` works in terminal but NOT in Claude | MCP not configured — see [MCP Setup](#mcp-server-claude-integration) |
+| Claude doesn't use `icmg_recall` / `icmg_store` | `.claude/mcp.json` missing in project root — create it |
+| MCP configured but tools not appearing | Restart Claude Code after creating `mcp.json` |
+| `graph scan` shows 0 nodes | Run from project root, not from `.icmg/` subdirectory |
+| `recall` returns nothing | Run `icmg store` first — DB starts empty per project |
+| Different project has no memory | Each project has its own `.icmg/data.db` — memory is not shared |
+
+---
+
 ## Requirements
 
 | Platform | Requirement |
@@ -63,11 +77,64 @@ icmg --version   # icmg 0.1.0
 icmg --help
 ```
 
-No configuration required — `icmg` auto-initializes its database on first use.
+### 5. Test in a project
+
+```bash
+cd /path/to/any-project
+icmg store "test" "hello world"
+icmg recall "hello"             # should return the stored node
+icmg run git status             # RTK filter working
+icmg doctor                     # full health check
+```
+
+> **Note:** `icmg` auto-creates `.icmg/data.db` in the current directory on first use. No extra setup needed for CLI use.
 
 ---
 
-## Storage Layout
+## Activating icmg in Claude Code (MCP)
+
+> **This step is required** if you want Claude to use `icmg_recall`, `icmg_store`, and other tools automatically during a session.
+> Without this step, `icmg` only works from the terminal — Claude won't use it.
+
+### Step 1 — Create `.claude/mcp.json` in your project
+
+```bash
+mkdir -p .claude
+cat > .claude/mcp.json << 'EOF'
+{
+  "mcpServers": {
+    "icmg": {
+      "command": "icmg",
+      "args": ["--mcp-server"]
+    }
+  }
+}
+EOF
+```
+
+> One `mcp.json` per project. Repeat for every project where you want Claude to use `icmg`.
+
+### Step 2 — Restart Claude Code
+
+Close and reopen Claude Code in that project directory.
+
+### Step 3 — Verify MCP is active
+
+Type `/mcp` in Claude Code. You should see `icmg` listed with 14 tools:
+
+```
+icmg — connected
+  icmg_recall, icmg_store, icmg_graph_context, icmg_graph_related,
+  icmg_rule_apply, icmg_data_get, icmg_abbr_expand, icmg_abbr_list,
+  icmg_sp_search, icmg_sp_context, icmg_sp_deps, icmg_cmd_suggest,
+  icmg_project_switch, icmg_stats
+```
+
+If `icmg` does not appear: check that `icmg` is in your PATH (`icmg --version` must work), then restart Claude Code again.
+
+---
+
+## Storage Layout (per-project isolation)
 
 ```
 ~/.icmg/
@@ -82,6 +149,8 @@ No configuration required — `icmg` auto-initializes its database on first use.
 ```
 
 `icmg` auto-creates `.icmg/data.db` in your current working directory on first use.
+
+> **Each project has its own isolated database.** Memory, graph nodes, rules, and abbreviations stored in project A are not visible in project B. To share data across projects, use `icmg --project <name>` or `icmg import/export`.
 
 ---
 
@@ -272,30 +341,7 @@ icmg doctor
 
 ## MCP Server (Claude Integration)
 
-`icmg` can run as an MCP server, giving Claude direct access to memory, graph, and SP tools.
-
-### Setup
-
-Add to your Claude Code `.claude/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "icmg": {
-      "command": "icmg",
-      "args": ["--mcp-server"],
-      "description": "ICM-Graph unified memory + graph + SP + abbreviation server"
-    }
-  }
-}
-```
-
-Or use the pre-generated config in this repo:
-
-```bash
-# Already exists at .claude/mcp.json — copy to your project
-cp .claude/mcp.json /path/to/your/project/.claude/mcp.json
-```
+> **Setup instructions are at the top of this README** — see [Activating icmg in Claude Code](#activating-icmg-in-claude-code-mcp).
 
 ### Available MCP Tools (14)
 
