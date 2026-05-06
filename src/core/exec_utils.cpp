@@ -31,18 +31,48 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
     ExecResult result;
     if (argv.empty()) { result.exit_code = -1; return result; }
 
-    // Build command line with proper quoting
+    // Build command line using Windows CommandLineToArgvW-compatible quoting.
+    //
+    // Rules (from Raymond Chen / MSDN):
+    //   - Backslashes are literal UNLESS followed by a double-quote.
+    //   - 2N backslashes before a literal " → N backslashes + escaped "
+    //   - 2N+1 backslashes before a literal " → N backslashes + opening/closing "
+    //   - Trailing backslashes in a quoted arg must be doubled.
     std::string cmd;
     for (size_t i = 0; i < argv.size(); ++i) {
         if (i) cmd += ' ';
-        // Quote args containing spaces or special chars
-        bool needs_quote = argv[i].find_first_of(" \t\"") != std::string::npos;
-        if (needs_quote) cmd += '"';
-        for (char c : argv[i]) {
-            if (c == '"') cmd += "\\\"";
-            else cmd += c;
+
+        const std::string& arg = argv[i];
+        bool needs_quote = arg.empty() ||
+                           arg.find_first_of(" \t\"") != std::string::npos;
+
+        if (!needs_quote) {
+            cmd += arg;
+            continue;
         }
-        if (needs_quote) cmd += '"';
+
+        cmd += '"';
+        size_t j = 0;
+        while (j < arg.size()) {
+            // Count consecutive backslashes
+            size_t bs_count = 0;
+            while (j < arg.size() && arg[j] == '\\') { ++j; ++bs_count; }
+
+            if (j == arg.size()) {
+                // Trailing backslashes — double them before closing quote
+                for (size_t k = 0; k < bs_count * 2; ++k) cmd += '\\';
+            } else if (arg[j] == '"') {
+                // Backslashes before a quote — double them + escape the quote
+                for (size_t k = 0; k < bs_count * 2 + 1; ++k) cmd += '\\';
+                cmd += '"';
+                ++j;
+            } else {
+                // Ordinary backslashes — literal
+                for (size_t k = 0; k < bs_count; ++k) cmd += '\\';
+                cmd += arg[j++];
+            }
+        }
+        cmd += '"';
     }
 
     SECURITY_ATTRIBUTES sa{};
