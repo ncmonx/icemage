@@ -21,9 +21,9 @@
 | # | Phase | Status | Mulai | Selesai | Commit | Catatan |
 |---|-------|--------|-------|---------|--------|---------|
 | 01 | Core Foundation (db, config, registry, hooks, migrator, CLI) | [x] | 2026-05-06 | 2026-05-06 | 0f40a43 | |
-| 02 | ICM Memory + BM25 Scorer | [ ] | — | — | — | Depends on: 01 |
-| 03 | Graph CRUD + Scanner + Language Extractors | [ ] | — | — | — | Depends on: 01 |
-| 04 | File Watcher (cross-platform daemon) | [ ] | — | — | — | Depends on: 03 |
+| 02 | ICM Memory + BM25 Scorer | [x] | 2026-05-06 | 2026-05-06 | 360420d | |
+| 03 | Graph CRUD + Scanner + Language Extractors | [x] | 2026-05-06 | 2026-05-06 | c4564ee | C#+PHP added (051e2f9) |
+| 04 | File Watcher (cross-platform daemon) | [x] | 2026-05-06 | 2026-05-06 | — | |
 | 05 | RTK Filter + Runner | [ ] | — | — | — | Depends on: 01 |
 | 06 | Per-folder Rules + Inheritance | [ ] | — | — | — | Depends on: 01 |
 | 07 | Structured Data (model/view/behavior/schema) | [ ] | — | — | — | Depends on: 01, 02 |
@@ -68,6 +68,9 @@ Catat setiap sesi kerja di sini.
 |---------|------|-------|-----------------|-------|
 | 2026-05-06 | 0 | — | Design, review, phase files, git init | 15 plan files dibuat, review 91 issues |
 | 2026-05-06 | 1 | 01 | Core Foundation implementation | CMakeLists, db/config/registry/hook_bus/migrator/logger/dispatcher, schema SQL, sqlite3+nlohmann download, commit 0f40a43 |
+| 2026-05-06 | 2 | 02 | ICM Memory + BM25 Scorer | MemoryNode/Store/Scorer, store/recall/forget/restore CLI, PRE_STORE abbr hook, scorer invalidate hook, 360420d |
+| 2026-05-06 | 3 | 03 | Graph CRUD + Scanner + 9 extractors | GraphNode/Store/Scanner, C++/Python/JS/Go/Rust/Java/C#/PHP/Generic extractors, graph-* CLI, migration 0002, c4564ee+051e2f9 |
+| 2026-05-06 | 4 | 04 | File Watcher daemon | Win/Linux/Mac watchers, Debouncer, Daemon fork/PID, graph-watch/stop/watch-status CLI |
 
 ---
 
