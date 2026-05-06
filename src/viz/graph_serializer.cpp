@@ -214,10 +214,21 @@ std::string GraphSerializer::toJson(const VizData& data) const {
     for (size_t i = 0; i < data.nodes.size(); ++i) {
         const auto& n = data.nodes[i];
         if (i) ss << ",\n";
+        // Extract parent directory (normalize separators to forward slash)
+        std::string dir;
+        {
+            std::string p = n.path;
+            std::replace(p.begin(), p.end(), '\\', '/');
+            // Strip leading "./"
+            if (p.size() >= 2 && p[0] == '.' && p[1] == '/') p = p.substr(2);
+            auto pos = p.find_last_of('/');
+            dir = (pos == std::string::npos) ? "" : p.substr(0, pos);
+        }
         ss << "{\"id\":" << n.id
            << ",\"path\":\"" << escJson(n.path) << "\""
            << ",\"label\":\"" << escJson(n.label) << "\""
            << ",\"lang\":\"" << escJson(n.lang) << "\""
+           << ",\"dir\":\"" << escJson(dir) << "\""
            << ",\"context\":\"" << escJson(n.context) << "\""
            << ",\"size_bytes\":" << n.size_bytes
            << ",\"degree\":" << n.degree
