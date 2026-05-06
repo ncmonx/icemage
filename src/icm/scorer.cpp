@@ -101,7 +101,8 @@ Scorer::ScoreDetail Scorer::scoreDetailed(const std::string& query,
     ScoreDetail d;
     d.bm25           = bm25(query, node);
     d.recency        = recencyDecay(node.last_used);
-    d.freq           = std::log(1.0 + node.frequency);
+    // log(2 + freq): floor at log(2)≈0.69 so unvisited nodes (freq=0) are still rankable.
+    d.freq           = std::log(2.0 + node.frequency);
 
     static const double mult[4] = {0.5, 1.0, 1.5, 2.0};
     int imp = std::max(0, std::min(3, node.importance));
