@@ -40,7 +40,11 @@ public:
     // SCC via Tarjan (A6)
     std::vector<std::vector<std::string>> scc() const;
 
-    // Edge resolution pass (A7)
+    // Edge resolution pass (A7): 2-pass — resolve collected imports to node IDs
+    // import_list: vector of (src_node_id, src_path, import_name_string)
+    void resolveAndInsertEdges(
+        const std::vector<std::tuple<int64_t,std::string,std::string>>& import_list);
+    // Legacy incremental resolver (still used when calling graph-update on partial data)
     void resolveEdges();
 
     // Diff / scan history (A8)

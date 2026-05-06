@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <tuple>
 #include <nlohmann/json.hpp>
 
 // MD5 via simple streaming (enough for staleness check)
@@ -108,10 +109,11 @@ bool Scanner::GitIgnore::matches(const std::string& relpath) const {
 // Build JSON symbols string from ExtractResult
 static std::string buildSymbols(const ExtractResult& r) {
     nlohmann::json j;
-    j["imports"]   = r.imports;
-    j["classes"]   = r.classes;
-    j["functions"] = r.functions;
-    if (!r.tables.empty()) j["tables"] = r.tables;
+    j["imports"]    = r.imports;
+    j["classes"]    = r.classes;
+    j["functions"]  = r.functions;
+    if (!r.tables.empty())      j["tables"]     = r.tables;
+    if (!r.namespaces.empty())  j["namespaces"] = r.namespaces;
     return j.dump();
 }
 
@@ -131,6 +133,10 @@ int Scanner::scan(const std::string& root, const Options& opts) {
     int max_file_size = 2 * 1024 * 1024; // skip files > 2MB
 
     auto* generic = makeGenericExtractor();
+
+    // Pass 1: upsert all nodes, collect (src_id, src_path, import_name) for Pass 2 resolution
+    // Tuple: (src_node_id, src_file_path, import_name_string)
+    std::vector<std::tuple<int64_t,std::string,std::string>> pending;
 
     // Recursive walk
     std::function<void(const fs::path&, int)> walk = [&](const fs::path& dir, int depth) {
@@ -203,14 +209,9 @@ int Scanner::scan(const std::string& root, const Options& opts) {
 
             int64_t nodeId = store_.upsertNode(node);
 
-            // Insert import edges (unresolved initially)
+            // Collect imports for Pass 2 resolution (don't insert edges yet)
             for (auto& imp : result.imports) {
-                GraphEdge edge;
-                edge.src       = nodeId;
-                edge.dst       = -1;  // unresolved
-                edge.edge_type = "imports:" + imp;
-                edge.weight    = 1.0;
-                store_.upsertEdge(edge);
+                pending.emplace_back(nodeId, fpath, imp);
             }
 
             ++updated;
@@ -219,8 +220,10 @@ int Scanner::scan(const std::string& root, const Options& opts) {
 
     walk(root_path, 0);
 
-    // A7: resolve edges after scan
-    if (opts.resolve_edges) store_.resolveEdges();
+    // Pass 2: A7 — resolve imports to node IDs and insert edges
+    if (opts.resolve_edges && !pending.empty()) {
+        store_.resolveAndInsertEdges(pending);
+    }
 
     // A8: record scan run
     store_.recordScanRun(root, store_.nodeCount(), store_.edgeCount());

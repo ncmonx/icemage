@@ -5,6 +5,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <filesystem>
+#include <tuple>
+#include <sstream>
+#include <nlohmann/json.hpp>
 
 namespace fs = std::filesystem;
 namespace icmg::graph {
@@ -363,7 +366,188 @@ std::vector<std::vector<std::string>> GraphStore::scc() const {
     return result;
 }
 
-// A7: edge resolution pass — match unresolved edges by path fragment
+// Helper: build lowercase normalized path segments for a file path
+// Used for namespace-to-path fuzzy matching
+static std::vector<std::string> pathSegs(const std::string& raw_path) {
+    std::string norm = raw_path;
+    std::replace(norm.begin(), norm.end(), '\\', '/');
+    // Strip extension of the last segment
+    auto dot = norm.rfind('.');
+    auto slash = norm.rfind('/');
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+        norm = norm.substr(0, dot);
+    std::vector<std::string> segs;
+    std::istringstream ss(norm);
+    std::string seg;
+    while (std::getline(ss, seg, '/')) {
+        if (!seg.empty()) {
+            std::transform(seg.begin(), seg.end(), seg.begin(), ::tolower);
+            segs.push_back(seg);
+        }
+    }
+    return segs;
+}
+
+// A7 (2-pass): resolve collected import strings to dst node IDs, insert resolved edges.
+// import_list: (src_node_id, src_file_path, import_name_string)
+//
+// Resolution strategies (in priority order):
+//   1. Exact namespace match   — symbols JSON "namespaces" field (C#/Java)
+//   2. Path suffix match       — import string is a path fragment (#include "x/y.h")
+//   3. Dotted namespace suffix — last segment(s) of "A.B.C" appear in file path
+void GraphStore::resolveAndInsertEdges(
+    const std::vector<std::tuple<int64_t,std::string,std::string>>& import_list)
+{
+    if (import_list.empty()) return;
+
+    // Build id → (path, normalized_path, path_segs) map from all nodes
+    struct NodeInfo {
+        int64_t id;
+        std::string path;
+        std::string norm;   // lowercase with forward slashes, no extension on leaf
+        std::vector<std::string> segs;
+    };
+    std::vector<NodeInfo> nodes;
+    std::unordered_map<std::string, int64_t> path2id;                    // raw path → id
+    std::unordered_map<std::string, int64_t> norm2id;                    // normalized → id
+    std::unordered_map<std::string, std::vector<int64_t>> ns2ids;        // namespace → all files declaring it
+
+    db_.query("SELECT id,path,symbols FROM graph_nodes", {},
+        [&](const core::Row& r) {
+            if (r.size() < 2) return;
+            NodeInfo ni;
+            ni.id   = std::stoll(r[0]);
+            ni.path = r[1];
+            // Build normalized version: lowercase, forward slashes
+            ni.norm = ni.path;
+            std::replace(ni.norm.begin(), ni.norm.end(), '\\', '/');
+            std::transform(ni.norm.begin(), ni.norm.end(), ni.norm.begin(), ::tolower);
+            ni.segs = pathSegs(ni.path);
+            path2id[ni.path] = ni.id;
+            norm2id[ni.norm] = ni.id;
+            // Also add slash-normalized original
+            std::string fwd = ni.path;
+            std::replace(fwd.begin(), fwd.end(), '\\', '/');
+            path2id[fwd] = ni.id;
+
+            // Parse symbols JSON for declared namespaces (multiple files can share a namespace)
+            if (r.size() >= 3 && !r[2].empty()) {
+                try {
+                    auto j = nlohmann::json::parse(r[2]);
+                    if (j.contains("namespaces")) {
+                        for (auto& ns : j["namespaces"]) {
+                            std::string nsstr = ns.get<std::string>();
+                            if (!nsstr.empty())
+                                ns2ids[nsstr].push_back(ni.id);  // all files per namespace
+                        }
+                    }
+                } catch (...) {}
+            }
+            nodes.push_back(std::move(ni));
+        });
+
+    // Resolve each import and insert edges
+    for (auto& [src_id, src_path, import_name] : import_list) {
+        if (import_name.empty()) continue;
+
+        // Collect all resolved destination node IDs for this import
+        std::unordered_set<int64_t> resolved;
+
+        // --- Strategy 1: Exact namespace declaration match ---
+        // All files declaring the matched namespace get an edge (same namespace = same module)
+        {
+            auto it = ns2ids.find(import_name);
+            if (it != ns2ids.end()) {
+                for (int64_t nid : it->second)
+                    if (nid != src_id) resolved.insert(nid);
+            }
+        }
+
+        // --- Strategy 2: Exact path / path suffix match ---
+        // Handles C++ #include "relative/path.hpp", JS import './module'
+        // Always runs (union with strategy 1)
+        {
+            std::string imp_lower = import_name;
+            std::replace(imp_lower.begin(), imp_lower.end(), '\\', '/');
+            std::transform(imp_lower.begin(), imp_lower.end(), imp_lower.begin(), ::tolower);
+
+            // Exact path match
+            {
+                auto it = path2id.find(import_name);
+                if (it != path2id.end() && it->second != src_id)
+                    resolved.insert(it->second);
+            }
+            // Suffix match: stored path ends with "/import_name"
+            for (auto& ni : nodes) {
+                if (ni.id == src_id) continue;
+                if (ni.norm.size() >= imp_lower.size()) {
+                    size_t offset = ni.norm.size() - imp_lower.size();
+                    if (ni.norm.substr(offset) == imp_lower &&
+                        (offset == 0 || ni.norm[offset-1] == '/')) {
+                        resolved.insert(ni.id);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // --- Strategy 3: Dotted namespace → path segment matching ---
+        // For C# "using A.B.C", the last segment (C) MUST appear as a path
+        // segment (directory or filename-without-ext) in the candidate file.
+        // Always runs (union with strategies 1&2). Links to ALL matching files (cap=20).
+        if (import_name.find('.') != std::string::npos) {
+            std::vector<std::string> ns_parts;
+            {
+                std::istringstream iss(import_name);
+                std::string part;
+                while (std::getline(iss, part, '.')) {
+                    if (!part.empty()) {
+                        std::transform(part.begin(), part.end(), part.begin(), ::tolower);
+                        ns_parts.push_back(part);
+                    }
+                }
+            }
+            if (!ns_parts.empty()) {
+                std::string last_seg = ns_parts.back();
+                int cap = 0;
+                for (auto& ni : nodes) {
+                    if (ni.id == src_id) continue;
+                    if (cap >= 20) break;  // safety cap per import
+                    // The last namespace segment MUST match a path segment
+                    bool last_ok = std::find(ni.segs.begin(), ni.segs.end(), last_seg)
+                                   != ni.segs.end();
+                    if (!last_ok) continue;
+
+                    // Count how many ns_parts appear ANYWHERE in path segs
+                    int score = 0;
+                    for (auto& nsp : ns_parts) {
+                        if (std::find(ni.segs.begin(), ni.segs.end(), nsp) != ni.segs.end())
+                            ++score;
+                    }
+                    // Accept if at least the last segment matched (score >= 1)
+                    if (score >= 1) {
+                        resolved.insert(ni.id);
+                        ++cap;
+                    }
+                }
+            }
+        }
+
+        // Insert one edge per resolved destination
+        for (int64_t dst_id : resolved) {
+            GraphEdge edge;
+            edge.src       = src_id;
+            edge.dst       = dst_id;
+            edge.edge_type = "imports";
+            edge.weight    = 1.0;
+            upsertEdge(edge);
+        }
+    }
+}
+
+// A7: legacy incremental edge resolution pass.
+// Used when new nodes are added without a full 2-pass scan.
+// Queries stored edges where dst=-1 and tries to resolve them.
 void GraphStore::resolveEdges() {
     // Get all nodes as path lookup
     std::unordered_map<std::string, int64_t> path2id;

@@ -51,6 +51,7 @@ public:
             }
 
             if (std::regex_search(line, m, re_using)) res.imports.push_back(m[1].str());
+            if (std::regex_search(line, m, re_ns))    res.namespaces.push_back(m[1].str());
             if (std::regex_search(line, m, re_class)) res.classes.push_back(m[1].str());
 
             // Methods: look for definitions (have { or => body)
@@ -70,7 +71,7 @@ public:
             std::sort(v.begin(), v.end());
             v.erase(std::unique(v.begin(), v.end()), v.end());
         };
-        dedup(res.imports); dedup(res.classes); dedup(res.functions);
+        dedup(res.imports); dedup(res.namespaces); dedup(res.classes); dedup(res.functions);
         return res;
     }
 };
