@@ -20,7 +20,7 @@
 
 | # | Phase | Status | Mulai | Selesai | Commit | Catatan |
 |---|-------|--------|-------|---------|--------|---------|
-| 01 | Core Foundation (db, config, registry, hooks, migrator, CLI) | [ ] | — | — | — | |
+| 01 | Core Foundation (db, config, registry, hooks, migrator, CLI) | [x] | 2026-05-06 | 2026-05-06 | 0f40a43 | |
 | 02 | ICM Memory + BM25 Scorer | [ ] | — | — | — | Depends on: 01 |
 | 03 | Graph CRUD + Scanner + Language Extractors | [ ] | — | — | — | Depends on: 01 |
 | 04 | File Watcher (cross-platform daemon) | [ ] | — | — | — | Depends on: 03 |
@@ -67,6 +67,7 @@ Catat setiap sesi kerja di sini.
 | Tanggal | Sesi | Phase | Yang Dikerjakan | Hasil |
 |---------|------|-------|-----------------|-------|
 | 2026-05-06 | 0 | — | Design, review, phase files, git init | 15 plan files dibuat, review 91 issues |
+| 2026-05-06 | 1 | 01 | Core Foundation implementation | CMakeLists, db/config/registry/hook_bus/migrator/logger/dispatcher, schema SQL, sqlite3+nlohmann download, commit 0f40a43 |
 
 ---
 
