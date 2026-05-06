@@ -575,6 +575,53 @@ public:
     }
 };
 
+// ---- graph (root) — dispatches subcommands or shows help ----
+class GraphRootCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph"; }
+    std::string description() const override { return "Knowledge graph commands"; }
+
+    int run(const std::vector<std::string>& args) override {
+        // Dispatch to graph-<sub> if a subcommand was given
+        if (!args.empty() && args[0][0] != '-') {
+            std::string compound = "graph-" + args[0];
+            auto& reg = core::Registry<BaseCommand>::instance();
+            if (reg.has(compound)) {
+                auto handler = reg.create(compound);
+                return handler->run(std::vector<std::string>(args.begin() + 1, args.end()));
+            }
+            std::cerr << "icmg graph: unknown subcommand: " << args[0] << "\n";
+            std::cerr << "Run 'icmg graph' for available subcommands.\n";
+            return 1;
+        }
+
+        std::cout <<
+            "icmg graph — knowledge graph management\n\n"
+            "Usage: icmg graph <subcommand> [options]\n\n"
+            "Subcommands:\n"
+            "  scan <dir>            Scan directory into graph\n"
+            "  update [dir]          Re-scan current project\n"
+            "  context <file>        Show graph context for a file\n"
+            "  related <file>        Show related files\n"
+            "  impact <file>         Show files impacted by changing a file\n"
+            "  search <query>        Search graph nodes by query\n"
+            "  list                  List all graph nodes\n"
+            "  stats                 Graph statistics\n"
+            "  orphans               Find orphan files (no inbound edges)\n"
+            "  cycles                Detect circular dependencies\n"
+            "  hot                   Show most accessed files\n"
+            "  watch [dir]           Start file watcher daemon\n"
+            "  stop [dir]            Stop file watcher daemon\n"
+            "  watch-status [dir]    Show watcher daemon status\n"
+            "\nOptions (scan/update):\n"
+            "  --depth N             Max directory depth (default: 20)\n"
+            "  --lang L1,L2          Filter by language\n"
+            "  --json                JSON output\n";
+        return 0;
+    }
+};
+
+ICMG_REGISTER_COMMAND("graph",              GraphRootCommand);
 ICMG_REGISTER_COMMAND("graph-scan",         GraphScanCommand);
 ICMG_REGISTER_COMMAND("graph-context",      GraphContextCommand);
 ICMG_REGISTER_COMMAND("graph-related",      GraphRelatedCommand);
