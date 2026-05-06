@@ -29,7 +29,7 @@
 | 07 | Structured Data (model/view/behavior/schema) | [x] | 2026-05-06 | 2026-05-06 | 960b648 | |
 | 08 | Multi-project Registry | [x] | 2026-05-06 | 2026-05-06 | fe7f150 | |
 | 09 | Abbreviation Engine | [x] | 2026-05-06 | 2026-05-06 | f3746d4 | |
-| 10 | Stored Procedure Engine + SQL Parser | [ ] | — | — | — | Depends on: 01, 03 |
+| 10 | Stored Procedure Engine + SQL Parser | [x] | 2026-05-06 | 2026-05-06 | d9fb7da | |
 | 11 | Import (ICM/Graphify/JSON/CSV) + Export | [ ] | — | — | — | Depends on: 02,03,09,10 |
 | 12 | Visual Graph (HTML + Cytoscape.js) | [ ] | — | — | — | Depends on: 03 |
 | 13 | MCP Server (stdio transport) | [ ] | — | — | — | Depends on: 01-10 |
@@ -76,6 +76,7 @@ Catat setiap sesi kerja di sini.
 | 2026-05-06 | 7 | 07 | Structured Data | StructuredData/DataStore (CRUD+versioning+search+revert), data CLI, graph-context integration, 11 tests |
 | 2026-05-06 | 8 | 08 | Multi-project Registry | GlobalDb+migrations, ProjectContext, --project flag dispatcher, project CLI, 5 tests |
 | 2026-05-06 | 9 | 09 | Abbreviation Engine | AbbrStore CRUD+expand+priority, PRE_STORE auto-detect, PRE_RECALL expand, abbr CLI, 9 tests. Fixed GCC compat (raw strings, TEST macro, whole-archive) |
+| 2026-05-06 | 10 | 10 | Stored Procedure Engine | SqlParser A6 state-machine, SpStore CRUD+history+search, sp CLI (add/show/deps/lint/diff/template/impact-table), 15 tests |
 
 ---
 
