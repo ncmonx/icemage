@@ -1,0 +1,32 @@
+# Build
+build/
+cmake-build-*/
+*.o
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+icmg
+icmg.exe
+compile_commands.json
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# Runtime
+.icmg/
+*.pid
+
+# Third-party (large generated files)
+third_party/sqlite3/sqlite3.c
+third_party/sqlite3/sqlite3.h
+third_party/nlohmann/json.hpp
+
+# AI assistant artifacts
+context-snapshot.json
+
+# Claude project settings (local only)
+.claude/settings.local.json
