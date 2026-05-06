@@ -68,6 +68,24 @@ TEST("parseArgv: flags preserved") {
     ASSERT_EQ(argv[3], std::string("--graph"));
 }
 
+// Regression: `icmg run grep -n "EnsureStockRegistered" "d:/Data Kerja/file.cs"`
+// run_cmd.cpp must re-quote args with spaces so parseArgv recovers the path
+// as a single token. Before fix: "d:/Data Kerja/file.cs" → 3 tokens → grep fail.
+TEST("parseArgv: quoted Windows path with spaces stays one token") {
+    auto argv = icmg::rtk::parseArgv("grep -n \"foo\" \"d:/Data Kerja/Sync/SyncOrder.cs\"");
+    ASSERT_EQ(argv.size(), 4u);
+    ASSERT_EQ(argv[0], std::string("grep"));
+    ASSERT_EQ(argv[1], std::string("-n"));
+    ASSERT_EQ(argv[2], std::string("foo"));
+    ASSERT_EQ(argv[3], std::string("d:/Data Kerja/Sync/SyncOrder.cs"));
+}
+
+TEST("parseArgv: backslash Windows path with spaces stays one token") {
+    auto argv = icmg::rtk::parseArgv("git add \"D:\\Data Kerja\\my file.cs\"");
+    ASSERT_EQ(argv.size(), 3u);
+    ASSERT_EQ(argv[2], std::string("D:\\Data Kerja\\my file.cs"));
+}
+
 int main() {
     std::cout << "=== parseArgv tests ===\n";
     return icmg::test::run_all();
