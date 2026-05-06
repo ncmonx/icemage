@@ -33,7 +33,7 @@
 | 11 | Import (ICM/Graphify/JSON/CSV) + Export | [x] | 2026-05-06 | 2026-05-06 | 585145b | |
 | 12 | Visual Graph (HTML + Cytoscape.js) | [x] | 2026-05-06 | 2026-05-06 | 945fc98 | |
 | 13 | MCP Server (stdio transport) | [x] | 2026-05-06 | 2026-05-06 | 1b440f8 | 14 tools, stdio JSON-RPC 2.0, audit log |
-| 14 | Integration Testing + Bug Fix | [ ] | — | — | — | Depends on: semua |
+| 14 | Integration Testing + Bug Fix | [x] | 2026-05-06 | 2026-05-06 | 6afe58a | 7 suites (ICM/Graph/RTK/Features/MCP/Security/Perf), 14 unit tests, 44 integration tests — all pass |
 
 ---
 
@@ -80,6 +80,7 @@ Catat setiap sesi kerja di sini.
 | 2026-05-06 | 11 | 11 | Import/Export | BaseImporter (txn+A3+A4+A7), IcmImporter, GraphifyImporter, JsonImporter (A5), CsvImporter, StreamingExporter (A6), import+export CLI, 9 tests, 585145b |
 | 2026-05-06 | 12 | 12 | Visual Graph | GraphSerializer+BFS community, HTML/Cytoscape.js+search+filters+theme, DOT/GEXF/GraphML exporters, browser opener, viz CLI, 13 tests, 945fc98 |
 | 2026-05-06 | 13 | 13 | MCP Server | McpServer stdio JSON-RPC 2.0, 14 tools (recall/store/graph_context/graph_related/rule_apply/data_get/abbr_expand/abbr_list/sp_search/sp_context/sp_deps/cmd_suggest/project_switch/stats), audit log, .claude/mcp.json, 13 tests |
+| 2026-05-06 | 14 | 14 | Integration Testing + Bug Fix | 7 integration suites (44 tests total), 14 unit tests — all pass. Bugs fixed: embedded migrations (binary works from any CWD), compound command routing (graph scan→graph-scan), unresolved graph edges skip, rule path normalization, nested txn in migrator |
 
 ---
 
