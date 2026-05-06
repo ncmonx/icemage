@@ -28,10 +28,25 @@ TEST("parseArgv: single-quoted argument") {
     ASSERT_EQ(argv[1], std::string("it works"));
 }
 
-TEST("parseArgv: backslash escape") {
-    auto argv = icmg::rtk::parseArgv("cmd a\\ b");
+TEST("parseArgv: backslash is literal on Windows paths") {
+    // Windows paths with backslashes MUST NOT be consumed as escape sequences
+    auto argv = icmg::rtk::parseArgv("git add D:\\Data\\file.cpp");
+    ASSERT_EQ(argv.size(), 3u);
+    ASSERT_EQ(argv[2], std::string("D:\\Data\\file.cpp"));
+}
+
+TEST("parseArgv: quoted Windows path with spaces") {
+    // Paths with spaces must be quoted; backslashes inside quotes are literal
+    auto argv = icmg::rtk::parseArgv("git add \"D:\\Data Kerja\\file.cpp\"");
+    ASSERT_EQ(argv.size(), 3u);
+    ASSERT_EQ(argv[2], std::string("D:\\Data Kerja\\file.cpp"));
+}
+
+TEST("parseArgv: escaped double-quote only escape") {
+    // \\\" → literal " character
+    auto argv = icmg::rtk::parseArgv("echo \\\"hello\\\"");
     ASSERT_EQ(argv.size(), 2u);
-    ASSERT_EQ(argv[1], std::string("a b"));
+    ASSERT_EQ(argv[1], std::string("\"hello\""));
 }
 
 TEST("parseArgv: multiple spaces collapsed") {
