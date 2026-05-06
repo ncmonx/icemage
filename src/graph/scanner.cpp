@@ -42,6 +42,8 @@ static const struct { const char* ext; const char* lang; } EXT_MAP[] = {
     {".go","go"},
     {".rs","rust"},
     {".java","java"}, {".kt","java"}, {".kts","java"},
+    {".cs","csharp"}, {".csx","csharp"},
+    {".php","php"}, {".php5","php"}, {".phtml","php"},
 };
 
 Scanner::Scanner(GraphStore& store) : store_(store) {}
