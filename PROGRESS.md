@@ -31,7 +31,7 @@
 | 09 | Abbreviation Engine | [x] | 2026-05-06 | 2026-05-06 | f3746d4 | |
 | 10 | Stored Procedure Engine + SQL Parser | [x] | 2026-05-06 | 2026-05-06 | d9fb7da | |
 | 11 | Import (ICM/Graphify/JSON/CSV) + Export | [x] | 2026-05-06 | 2026-05-06 | 585145b | |
-| 12 | Visual Graph (HTML + Cytoscape.js) | [ ] | — | — | — | Depends on: 03 |
+| 12 | Visual Graph (HTML + Cytoscape.js) | [x] | 2026-05-06 | 2026-05-06 | 945fc98 | |
 | 13 | MCP Server (stdio transport) | [ ] | — | — | — | Depends on: 01-10 |
 | 14 | Integration Testing + Bug Fix | [ ] | — | — | — | Depends on: semua |
 
@@ -78,6 +78,7 @@ Catat setiap sesi kerja di sini.
 | 2026-05-06 | 9 | 09 | Abbreviation Engine | AbbrStore CRUD+expand+priority, PRE_STORE auto-detect, PRE_RECALL expand, abbr CLI, 9 tests. Fixed GCC compat (raw strings, TEST macro, whole-archive) |
 | 2026-05-06 | 10 | 10 | Stored Procedure Engine | SqlParser A6 state-machine, SpStore CRUD+history+search, sp CLI (add/show/deps/lint/diff/template/impact-table), 15 tests |
 | 2026-05-06 | 11 | 11 | Import/Export | BaseImporter (txn+A3+A4+A7), IcmImporter, GraphifyImporter, JsonImporter (A5), CsvImporter, StreamingExporter (A6), import+export CLI, 9 tests, 585145b |
+| 2026-05-06 | 12 | 12 | Visual Graph | GraphSerializer+BFS community, HTML/Cytoscape.js+search+filters+theme, DOT/GEXF/GraphML exporters, browser opener, viz CLI, 13 tests, 945fc98 |
 
 ---
 
