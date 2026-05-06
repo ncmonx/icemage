@@ -35,6 +35,7 @@ struct StubCommand : BaseCommand {
 static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"store",    "Store a memory node"},
     {"recall",   "Recall memory nodes by query"},
+    {"memory",   "Memory management (list, show, search, stats, purge)"},
     {"graph",    "Manage knowledge graph (scan, query, visualize)"},
     {"run",      "Run command through RTK filter"},
     {"sp",       "Stored procedure management"},
@@ -118,7 +119,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.1.8 — unified memory, graph, and RTK tool\n\n"
+        "icmg 0.1.9 — unified memory, graph, and RTK tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -134,7 +135,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.1.8\n";
+    std::cout << "icmg 0.1.9\n";
 }
 
 } // namespace icmg::cli
