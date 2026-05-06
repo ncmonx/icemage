@@ -23,8 +23,8 @@
 | 01 | Core Foundation (db, config, registry, hooks, migrator, CLI) | [x] | 2026-05-06 | 2026-05-06 | 0f40a43 | |
 | 02 | ICM Memory + BM25 Scorer | [x] | 2026-05-06 | 2026-05-06 | 360420d | |
 | 03 | Graph CRUD + Scanner + Language Extractors | [x] | 2026-05-06 | 2026-05-06 | c4564ee | C#+PHP added (051e2f9) |
-| 04 | File Watcher (cross-platform daemon) | [x] | 2026-05-06 | 2026-05-06 | — | |
-| 05 | RTK Filter + Runner | [ ] | — | — | — | Depends on: 01 |
+| 04 | File Watcher (cross-platform daemon) | [x] | 2026-05-06 | 2026-05-06 | bbddc9b | |
+| 05 | RTK Filter + Runner | [x] | 2026-05-06 | 2026-05-06 | — | |
 | 06 | Per-folder Rules + Inheritance | [ ] | — | — | — | Depends on: 01 |
 | 07 | Structured Data (model/view/behavior/schema) | [ ] | — | — | — | Depends on: 01, 02 |
 | 08 | Multi-project Registry | [ ] | — | — | — | Depends on: 01 |
@@ -70,7 +70,8 @@ Catat setiap sesi kerja di sini.
 | 2026-05-06 | 1 | 01 | Core Foundation implementation | CMakeLists, db/config/registry/hook_bus/migrator/logger/dispatcher, schema SQL, sqlite3+nlohmann download, commit 0f40a43 |
 | 2026-05-06 | 2 | 02 | ICM Memory + BM25 Scorer | MemoryNode/Store/Scorer, store/recall/forget/restore CLI, PRE_STORE abbr hook, scorer invalidate hook, 360420d |
 | 2026-05-06 | 3 | 03 | Graph CRUD + Scanner + 9 extractors | GraphNode/Store/Scanner, C++/Python/JS/Go/Rust/Java/C#/PHP/Generic extractors, graph-* CLI, migration 0002, c4564ee+051e2f9 |
-| 2026-05-06 | 4 | 04 | File Watcher daemon | Win/Linux/Mac watchers, Debouncer, Daemon fork/PID, graph-watch/stop/watch-status CLI |
+| 2026-05-06 | 4 | 04 | File Watcher daemon | Win/Linux/Mac watchers, Debouncer, Daemon fork/PID, graph-watch/stop/watch-status CLI, bbddc9b |
+| 2026-05-06 | 5 | 05 | RTK Filter + Runner | Detector, BaseFilter, git/build/test/search/default/package filters, runner (parseArgv+safeExec), RTK class, run+cmd CLI, migration 0003 |
 
 ---
 
