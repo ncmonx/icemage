@@ -27,7 +27,7 @@
 | 05 | RTK Filter + Runner | [x] | 2026-05-06 | 2026-05-06 | 1780b30 | |
 | 06 | Per-folder Rules + Inheritance | [x] | 2026-05-06 | 2026-05-06 | dbc005c | |
 | 07 | Structured Data (model/view/behavior/schema) | [x] | 2026-05-06 | 2026-05-06 | 960b648 | |
-| 08 | Multi-project Registry | [x] | 2026-05-06 | 2026-05-06 | — | |
+| 08 | Multi-project Registry | [x] | 2026-05-06 | 2026-05-06 | fe7f150 | |
 | 09 | Abbreviation Engine | [ ] | — | — | — | Depends on: 01, 02 |
 | 10 | Stored Procedure Engine + SQL Parser | [ ] | — | — | — | Depends on: 01, 03 |
 | 11 | Import (ICM/Graphify/JSON/CSV) + Export | [ ] | — | — | — | Depends on: 02,03,09,10 |
