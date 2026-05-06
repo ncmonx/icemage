@@ -6,6 +6,10 @@
 #include <string>
 #include <vector>
 
+// Pull in all registered commands (each file registers via ICMG_REGISTER_COMMAND)
+// The linker needs to see these TUs to trigger static-init registration.
+// We rely on GLOB_RECURSE in CMakeLists.txt to include all src/*.cpp files.
+
 namespace icmg::cli {
 
 // Inline stub commands for phase-01 skeleton.
@@ -53,11 +57,11 @@ int Dispatcher::run(const std::vector<std::string>& args) {
     std::string cmd = args[0];
     std::vector<std::string> rest(args.begin() + 1, args.end());
 
-    // Check registry first (for later phases)
-    auto& reg = icmg::core::Registry<icmg::BaseCommand>::instance();
+    // Check registry first (real implementations from later phases)
+    auto& reg = icmg::core::Registry<icmg::cli::BaseCommand>::instance();
     if (reg.has(cmd)) {
         auto handler = reg.create(cmd);
-        return static_cast<BaseCommand*>(handler.get())->run(rest);
+        return handler->run(rest);
     }
 
     // Fall back to stubs
