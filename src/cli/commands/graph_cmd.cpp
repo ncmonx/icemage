@@ -5,6 +5,7 @@
 #include "../../graph/graph_store.hpp"
 #include "../../graph/scanner.hpp"
 #include "../../graph/daemon.hpp"
+#include "../../data/data_store.hpp"
 #include <iostream>
 #include <iomanip>
 #include <chrono>
@@ -108,6 +109,10 @@ public:
         auto edges_from = store.edgesFrom(node->id);
         auto edges_to   = store.edgesTo(node->id);
 
+        // Task 3: structured data scoped to this file
+        data::DataStore data_store(db);
+        auto related_data = data_store.forFile(node->path);
+
         if (json_out) {
             std::cout << "{";
             std::cout << "\"id\":" << node->id;
@@ -118,6 +123,16 @@ public:
             std::cout << ",\"symbols\":" << node->symbols;
             std::cout << ",\"deps_count\":" << edges_from.size();
             std::cout << ",\"used_by_count\":" << edges_to.size();
+            // Related structured data
+            std::cout << ",\"related_data\":[";
+            for (size_t i = 0; i < related_data.size(); ++i) {
+                auto& d = related_data[i];
+                std::cout << "{\"type\":\"" << d.data_type << "\",\"name\":\"";
+                escapeJson(std::cout, d.name);
+                std::cout << "\"}";
+                if (i + 1 < related_data.size()) std::cout << ",";
+            }
+            std::cout << "]";
             std::cout << "}\n";
         } else {
             double kb = node->size_bytes / 1024.0;
@@ -130,6 +145,12 @@ public:
             std::cout << "Symbols: " << node->symbols << "\n";
             std::cout << "Depends on (" << edges_from.size() << " edges)\n";
             std::cout << "Used by   (" << edges_to.size()   << " edges)\n";
+            if (!related_data.empty()) {
+                std::cout << "Related models:";
+                for (auto& d : related_data)
+                    std::cout << " " << d.name << " [" << d.data_type << "]";
+                std::cout << "\n";
+            }
         }
         return 0;
     }
