@@ -26,6 +26,11 @@ public:
     std::string projectDbPath(const std::string& root) const;
     std::string logPath()    const;
 
+    // --project override: set before dispatch, commands pick it up transparently.
+    void        setProjectDbOverride(const std::string& db_path) { project_db_override_ = db_path; }
+    void        clearProjectDbOverride() { project_db_override_.clear(); }
+    std::string projectDbOverride() const { return project_db_override_; }
+
     void log(const std::string& msg) const; // print if verbose
 
 private:
@@ -37,6 +42,8 @@ private:
 
     void parseJson(const std::string& json);
     std::string toJson() const;
+
+    std::string project_db_override_;
 };
 
 } // namespace icmg::core

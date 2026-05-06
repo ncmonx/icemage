@@ -27,7 +27,7 @@
 | 05 | RTK Filter + Runner | [x] | 2026-05-06 | 2026-05-06 | 1780b30 | |
 | 06 | Per-folder Rules + Inheritance | [x] | 2026-05-06 | 2026-05-06 | dbc005c | |
 | 07 | Structured Data (model/view/behavior/schema) | [x] | 2026-05-06 | 2026-05-06 | 960b648 | |
-| 08 | Multi-project Registry | [ ] | — | — | — | Depends on: 01 |
+| 08 | Multi-project Registry | [x] | 2026-05-06 | 2026-05-06 | — | |
 | 09 | Abbreviation Engine | [ ] | — | — | — | Depends on: 01, 02 |
 | 10 | Stored Procedure Engine + SQL Parser | [ ] | — | — | — | Depends on: 01, 03 |
 | 11 | Import (ICM/Graphify/JSON/CSV) + Export | [ ] | — | — | — | Depends on: 02,03,09,10 |
@@ -74,6 +74,7 @@ Catat setiap sesi kerja di sini.
 | 2026-05-06 | 5 | 05 | RTK Filter + Runner | Detector, BaseFilter, git/build/test/search/default/package filters, runner (parseArgv+safeExec), RTK class, run+cmd CLI, migration 0003 |
 | 2026-05-06 | 6 | 06 | Per-folder Rules + Inheritance | Rule/RuleStore/RuleResolver, rule CLI, PRE_STORE hook, migration 0004, 12 tests |
 | 2026-05-06 | 7 | 07 | Structured Data | StructuredData/DataStore (CRUD+versioning+search+revert), data CLI, graph-context integration, 11 tests |
+| 2026-05-06 | 8 | 08 | Multi-project Registry | GlobalDb+migrations, ProjectContext, --project flag dispatcher, project CLI, 5 tests |
 
 ---
 
