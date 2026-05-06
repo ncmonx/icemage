@@ -63,9 +63,16 @@ endif()
 enable_testing()
 
 # Helper macro: add_icmg_test(name source_file)
+# --whole-archive ensures static-init registrations (ICMG_REGISTER_*) are not
+# dead-stripped by the linker when building test binaries.
 macro(add_icmg_test name source_file)
     add_executable(${name} ${source_file})
-    target_link_libraries(${name} PRIVATE icmg_lib)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_link_libraries(${name} PRIVATE
+            -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+    else()
+        target_link_libraries(${name} PRIVATE icmg_lib)
+    endif()
     target_include_directories(${name} PRIVATE tests src third_party)
     add_test(NAME ${name} COMMAND ${name})
 endmacro()
@@ -79,3 +86,4 @@ add_icmg_test(test_scorer       tests/icm/test_scorer.cpp)
 add_icmg_test(test_rules        tests/rules/test_rules.cpp)
 add_icmg_test(test_data_store   tests/data/test_data_store.cpp)
 add_icmg_test(test_global_db    tests/core/test_global_db.cpp)
+add_icmg_test(test_abbr         tests/abbr/test_abbr.cpp)

@@ -27,7 +27,7 @@ BaseFilter* RTK::getFilter(CmdType type) const {
         {CmdType::PackageManager, "npm"},
         {CmdType::Default,        "default"},
     };
-    auto& reg = core::Registry<icmg::BaseFilter>::instance();
+    auto& reg = core::Registry<icmg::rtk::BaseFilter>::instance();
     auto it = type2key.find(type);
     std::string key = (it != type2key.end()) ? it->second : "default";
     if (reg.has(key)) {

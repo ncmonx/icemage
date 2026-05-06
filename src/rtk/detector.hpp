@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <ostream>
 
 namespace icmg::rtk {
 
@@ -26,5 +27,18 @@ private:
     };
     std::vector<Pattern> patterns_;
 };
+
+inline std::ostream& operator<<(std::ostream& os, CmdType t) {
+    switch (t) {
+        case CmdType::GitLog:         return os << "GitLog";
+        case CmdType::Build:          return os << "Build";
+        case CmdType::Test:           return os << "Test";
+        case CmdType::Search:         return os << "Search";
+        case CmdType::Docker:         return os << "Docker";
+        case CmdType::PackageManager: return os << "PackageManager";
+        case CmdType::Default:        return os << "Default";
+    }
+    return os << "Unknown";
+}
 
 } // namespace icmg::rtk

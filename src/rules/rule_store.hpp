@@ -1,6 +1,7 @@
 #pragma once
 #include "rule.hpp"
 #include "../core/db.hpp"
+#include <optional>
 #include <vector>
 #include <string>
 

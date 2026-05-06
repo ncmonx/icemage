@@ -6,7 +6,7 @@
 // Access them through the Registry.
 
 using icmg::rtk::BaseFilter;
-using Reg = icmg::core::Registry<icmg::BaseFilter>;
+using Reg = icmg::core::Registry<icmg::rtk::BaseFilter>;
 
 static BaseFilter* getFilter(const std::string& key) {
     static std::unordered_map<std::string, std::unique_ptr<BaseFilter>> cache;

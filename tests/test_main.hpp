@@ -90,10 +90,16 @@ inline void assert_not_contains(const std::string& haystack, const std::string& 
 } // namespace icmg::test
 
 // ---- Macros ----------------------------------------------------------------
+// Double-indirection required so __LINE__ expands before token-paste (##).
+#define ICMG_TEST_CONCAT_(a, b) a##b
+#define ICMG_TEST_CONCAT(a, b)  ICMG_TEST_CONCAT_(a, b)
+#define ICMG_TEST_FN(line)      ICMG_TEST_CONCAT(_test_fn_, line)
+#define ICMG_TEST_REG(line)     ICMG_TEST_CONCAT(_reg_, line)
+
 #define TEST(name) \
-    static void _test_fn_##__LINE__(); \
-    static ::icmg::test::Registrar _reg_##__LINE__(name, _test_fn_##__LINE__); \
-    static void _test_fn_##__LINE__()
+    static void ICMG_TEST_FN(__LINE__)(); \
+    static ::icmg::test::Registrar ICMG_TEST_REG(__LINE__)(name, ICMG_TEST_FN(__LINE__)); \
+    static void ICMG_TEST_FN(__LINE__)()
 
 #define ASSERT_TRUE(cond) \
     ::icmg::test::assert_true(!!(cond), #cond, __FILE__, __LINE__)

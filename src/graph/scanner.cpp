@@ -117,6 +117,10 @@ static std::string buildSymbols(const ExtractResult& r) {
 
 extern BaseExtractor* makeGenericExtractor();
 
+int Scanner::scan(const std::string& root) {
+    return scan(root, Options{});
+}
+
 int Scanner::scan(const std::string& root, const Options& opts) {
     // A9: load gitignore
     GitIgnore gi;
