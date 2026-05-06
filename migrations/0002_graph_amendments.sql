@@ -1,9 +1,5 @@
--- Phase 03 amendments: access_count column + scan_runs table
-
-BEGIN;
-
--- A10: access counter per graph node
-ALTER TABLE graph_nodes ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0;
+-- Phase 03 amendments: scan_runs table
+-- Note: access_count column already in initial schema (0001); no ALTER needed.
 
 -- A8: scan run history for graph diff
 CREATE TABLE IF NOT EXISTS scan_runs (

@@ -92,6 +92,10 @@ std::vector<Rule> RuleStore::all() const {
 }
 
 std::vector<Rule> RuleStore::forPath(const std::string& path) const {
+    // Normalize query path: add trailing "/" so "." matches "./" scope
+    std::string norm = path;
+    if (!norm.empty() && norm.back() != '/') norm += '/';
+
     // Load all active rules; filter + sort in C++ (A3 trie optimises later)
     std::vector<Rule> result;
     db_.query(
@@ -101,7 +105,7 @@ std::vector<Rule> RuleStore::forPath(const std::string& path) const {
         [&](const core::Row& r) {
             Rule rule = fromRow(r);
             // Match: file_path starts_with scope_path, or scope="/"
-            if (rule.scope_path == "/" || path.find(rule.scope_path) == 0)
+            if (rule.scope_path == "/" || norm.find(rule.scope_path) == 0)
                 result.push_back(rule);
         });
     return result;
