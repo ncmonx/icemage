@@ -538,6 +538,43 @@ public:
     }
 };
 
+// ---- graph update ---- (re-scan current project, alias for graph scan .)
+class GraphUpdateCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-update"; }
+    std::string description() const override { return "Re-scan current project and update graph"; }
+
+    int run(const std::vector<std::string>& args) override {
+        // Default to "." but allow explicit path override
+        std::string path = ".";
+        for (auto& a : args) { if (!a.empty() && a[0] != '-') { path = a; break; } }
+
+        graph::Scanner::Options opts;
+        std::string depth_str = flagValue(args, "--depth", "20");
+        try { opts.max_depth = std::stoi(depth_str); } catch (...) {}
+        bool json_out = hasFlag(args, "--json");
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        graph::Scanner scanner(store);
+
+        if (!json_out) std::cout << "Updating graph for: " << path << "\n";
+        int count = scanner.scan(path, opts);
+
+        if (json_out) {
+            std::cout << "{\"updated\":" << count
+                      << ",\"nodes\":" << store.nodeCount()
+                      << ",\"edges\":" << store.edgeCount() << "}\n";
+        } else {
+            std::cout << "Updated " << count << " file(s)"
+                      << " | total nodes=" << store.nodeCount()
+                      << " edges=" << store.edgeCount() << "\n";
+        }
+        return 0;
+    }
+};
+
 ICMG_REGISTER_COMMAND("graph-scan",         GraphScanCommand);
 ICMG_REGISTER_COMMAND("graph-context",      GraphContextCommand);
 ICMG_REGISTER_COMMAND("graph-related",      GraphRelatedCommand);
@@ -551,5 +588,6 @@ ICMG_REGISTER_COMMAND("graph-search",       GraphSearchCommand);
 ICMG_REGISTER_COMMAND("graph-watch",        GraphWatchCommand);
 ICMG_REGISTER_COMMAND("graph-stop",         GraphStopCommand);
 ICMG_REGISTER_COMMAND("graph-watch-status", GraphWatchStatusCommand);
+ICMG_REGISTER_COMMAND("graph-update",       GraphUpdateCommand);
 
 } // namespace icmg::cli
