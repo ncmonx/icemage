@@ -180,6 +180,13 @@ CREATE INDEX IF NOT EXISTS idx_rules_scope_active
     WHERE active = 1;
 CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(rule_type);
 )SQL"},
+        {5, R"SQL(
+-- 0005_graph_group_id
+-- VS designer file triples (.cs + .Designer.cs + .resx) share group_id.
+ALTER TABLE graph_nodes ADD COLUMN group_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_graph_nodes_group ON graph_nodes(group_id)
+    WHERE group_id IS NOT NULL;
+)SQL"},
     };
 }
 
