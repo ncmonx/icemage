@@ -48,13 +48,13 @@ private:
 
 } // namespace icmg::core
 
-// ---- Base classes for each registry ----
+// ---- Forward declarations for real base types (defined in their own headers) ----
+namespace icmg::graph { class BaseExtractor; }
+namespace icmg::cli   { class BaseCommand;   }
 namespace icmg {
-    struct BaseExtractor  {};
-    struct BaseFilter     {};
-    struct BaseImporter   {};
-    struct BaseCommand    {};
-    struct BaseMcpTool    {};
+    struct BaseFilter     {};  // defined in phase-05
+    struct BaseImporter   {};  // defined in phase-11
+    struct BaseMcpTool    {};  // defined in phase-13
 }
 
 // ---- Registration macros ----
@@ -62,7 +62,7 @@ namespace icmg {
 // ICMG_REGISTER_EXTRACTOR("cpp", MyCppExtractor)
 #define ICMG_REGISTER_EXTRACTOR(lang, Class) \
     static bool _reg_ext_##Class = []() { \
-        ::icmg::core::Registry<::icmg::BaseExtractor>::instance() \
+        ::icmg::core::Registry<::icmg::graph::BaseExtractor>::instance() \
             .reg(lang, []() { return std::make_unique<Class>(); }); \
         return true; \
     }()
@@ -86,7 +86,7 @@ namespace icmg {
 // ICMG_REGISTER_COMMAND("store", StoreCommand)
 #define ICMG_REGISTER_COMMAND(name, Class) \
     static bool _reg_cmd_##Class = []() { \
-        ::icmg::core::Registry<::icmg::BaseCommand>::instance() \
+        ::icmg::core::Registry<::icmg::cli::BaseCommand>::instance() \
             .reg(name, []() { return std::make_unique<Class>(); }); \
         return true; \
     }()
