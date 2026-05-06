@@ -28,7 +28,7 @@
 | 06 | Per-folder Rules + Inheritance | [x] | 2026-05-06 | 2026-05-06 | dbc005c | |
 | 07 | Structured Data (model/view/behavior/schema) | [x] | 2026-05-06 | 2026-05-06 | 960b648 | |
 | 08 | Multi-project Registry | [x] | 2026-05-06 | 2026-05-06 | fe7f150 | |
-| 09 | Abbreviation Engine | [ ] | — | — | — | Depends on: 01, 02 |
+| 09 | Abbreviation Engine | [x] | 2026-05-06 | 2026-05-06 | f3746d4 | |
 | 10 | Stored Procedure Engine + SQL Parser | [ ] | — | — | — | Depends on: 01, 03 |
 | 11 | Import (ICM/Graphify/JSON/CSV) + Export | [ ] | — | — | — | Depends on: 02,03,09,10 |
 | 12 | Visual Graph (HTML + Cytoscape.js) | [ ] | — | — | — | Depends on: 03 |
@@ -75,6 +75,7 @@ Catat setiap sesi kerja di sini.
 | 2026-05-06 | 6 | 06 | Per-folder Rules + Inheritance | Rule/RuleStore/RuleResolver, rule CLI, PRE_STORE hook, migration 0004, 12 tests |
 | 2026-05-06 | 7 | 07 | Structured Data | StructuredData/DataStore (CRUD+versioning+search+revert), data CLI, graph-context integration, 11 tests |
 | 2026-05-06 | 8 | 08 | Multi-project Registry | GlobalDb+migrations, ProjectContext, --project flag dispatcher, project CLI, 5 tests |
+| 2026-05-06 | 9 | 09 | Abbreviation Engine | AbbrStore CRUD+expand+priority, PRE_STORE auto-detect, PRE_RECALL expand, abbr CLI, 9 tests. Fixed GCC compat (raw strings, TEST macro, whole-archive) |
 
 ---
 
