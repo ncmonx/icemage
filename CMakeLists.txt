@@ -47,9 +47,16 @@ endif()
 
 # ---------------------------------------------------------------------------
 # icmg executable
+# --whole-archive: ensures static-init ICMG_REGISTER_* macros are not
+# dead-stripped (same pattern as test binaries).
 # ---------------------------------------------------------------------------
 add_executable(icmg src/main.cpp)
-target_link_libraries(icmg PRIVATE icmg_lib)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_link_libraries(icmg PRIVATE
+        -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+else()
+    target_link_libraries(icmg PRIVATE icmg_lib)
+endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     if(UNIX AND NOT APPLE)

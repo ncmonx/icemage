@@ -1,4 +1,5 @@
 #include "migrator.hpp"
+#include "embedded_migrations.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -41,12 +42,41 @@ int Migrator::latestVersion() const {
     return migs.back().version;
 }
 
+// Strip standalone BEGIN/COMMIT/ROLLBACK lines from SQL so migration files
+// can optionally include them for readability without breaking nested-txn.
+static std::string stripTransactionStatements(const std::string& sql) {
+    std::istringstream in(sql);
+    std::ostringstream out;
+    std::string line;
+    while (std::getline(in, line)) {
+        // Trim leading whitespace for comparison
+        std::string trimmed = line;
+        auto it = trimmed.find_first_not_of(" \t\r");
+        if (it != std::string::npos) trimmed = trimmed.substr(it);
+        // Convert to uppercase for comparison
+        std::string upper = trimmed;
+        for (auto& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        // Strip BEGIN[;] COMMIT[;] ROLLBACK[;] lines
+        if (upper == "BEGIN" || upper == "BEGIN;" ||
+            upper == "BEGIN TRANSACTION" || upper == "BEGIN TRANSACTION;" ||
+            upper == "COMMIT" || upper == "COMMIT;" ||
+            upper == "ROLLBACK" || upper == "ROLLBACK;") {
+            continue; // skip this line
+        }
+        out << line << '\n';
+    }
+    return out.str();
+}
+
 void Migrator::apply(Db& db, const Migration& m) {
     // Read SQL file
     std::ifstream f(m.path);
     if (!f) throw std::runtime_error("Migration file not found: " + m.path);
-    std::string sql((std::istreambuf_iterator<char>(f)),
+    std::string raw((std::istreambuf_iterator<char>(f)),
                      std::istreambuf_iterator<char>());
+
+    // Strip BEGIN/COMMIT from file — migrator owns the transaction
+    std::string sql = stripTransactionStatements(raw);
 
     db.run("BEGIN TRANSACTION");
     try {
@@ -65,9 +95,26 @@ void Migrator::runAll(Db& db) {
     int current = db.userVersion();
     auto migs   = discover();
 
-    for (auto& m : migs) {
-        if (m.version <= current) continue;
-        apply(db, m);
+    if (!migs.empty()) {
+        // File-based migrations (dev mode, running from repo root)
+        for (auto& m : migs) {
+            if (m.version <= current) continue;
+            apply(db, m);
+        }
+    } else {
+        // Embedded migrations fallback (binary deployed away from repo)
+        for (auto& [ver, sql] : embeddedMigrations()) {
+            if (ver <= current) continue;
+            db.run("BEGIN TRANSACTION");
+            try {
+                db.run(stripTransactionStatements(sql));
+                db.run("COMMIT");
+                db.setUserVersion(ver);
+            } catch (...) {
+                db.run("ROLLBACK");
+                throw;
+            }
+        }
     }
 }
 

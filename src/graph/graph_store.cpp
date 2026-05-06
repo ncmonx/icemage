@@ -96,6 +96,8 @@ bool GraphStore::isStale(const std::string& path, const std::string& hash) const
 }
 
 void GraphStore::upsertEdge(const GraphEdge& edge) {
+    // Skip unresolved edges (dst == -1) — FK requires valid node id
+    if (edge.dst < 0) return;
     db_.run(
         "INSERT OR REPLACE INTO graph_edges(src,dst,edge_type,weight) VALUES(?,?,?,?)",
         {std::to_string(edge.src), std::to_string(edge.dst),

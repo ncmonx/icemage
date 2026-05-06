@@ -94,6 +94,15 @@ int Dispatcher::run(const std::vector<std::string>& args) {
         return handler->run(rest);
     }
 
+    // Try compound command: "graph scan" → look up "graph-scan" in registry
+    if (!rest.empty()) {
+        std::string compound = cmd + "-" + rest[0];
+        if (reg.has(compound)) {
+            auto handler = reg.create(compound);
+            return handler->run(std::vector<std::string>(rest.begin() + 1, rest.end()));
+        }
+    }
+
     // Fall back to stubs
     for (auto& [name, desc] : CMDS) {
         if (name == cmd) {

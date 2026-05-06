@@ -88,3 +88,50 @@ BM25: k1=1.5, b=0.75, smoothed IDF
 
 Progress tracker: `@PROGRESS.md`
 <!-- END AUTO-MANAGED -->
+
+## Build Instructions (Windows/MSYS2)
+
+```bash
+# Must set PATH before cmake — use dangerouslyDisableSandbox=true in Bash tool
+export PATH="/c/msys64/mingw64/bin:/c/Program Files/CMake/bin:$PATH"
+cmake -B build          # configure (first time or after CMakeLists change)
+cmake --build build     # build all
+cd build && ctest --output-on-failure  # run unit tests
+```
+
+## Coding Conventions
+
+- Registry: `ICMG_REGISTER_*(name, Class)` macros for static-init (new subsystem → new tool file)
+- Stores accept `core::Db&` — no global state in subsystems
+- SQL: parameterized queries only (`db.run(sql, {params...})`)
+- New CLI command: subclass `BaseCommand`, `ICMG_REGISTER_COMMAND`
+- New MCP tool: subclass `BaseMcpTool`, `ICMG_REGISTER_MCP_TOOL`
+- New DB column: add migration `migrations/NNNN_*.sql`
+- Tests: `tests/test_main.hpp` harness with `TEST()` + `ASSERT_*` macros
+
+## DB Schema Key Notes (prevent future bugs)
+
+- `graph_edges` uses `src`/`dst` columns (INTEGER FK) — NOT `src_id`/`dst_id`
+- `rules` has `rule_type, name, content, priority, active` — NOT `rule_body`
+- `memory_nodes` has NO `updated_at` column
+- `stored_procedures` UNIQUE on `(name, database_name)`
+
+## Integration Tests
+
+```bash
+# Full suite (from project root, MSYS2 bash)
+bash tests/run_all.sh
+
+# Individual suites
+bash tests/test_icm.sh && bash tests/test_graph.sh && bash tests/test_rtk.sh
+bash tests/test_features.sh && bash tests/test_mcp.sh
+bash tests/test_security.sh && bash tests/test_performance.sh
+```
+
+## MCP Config
+
+`.claude/mcp.json` configured to run `icmg --mcp-server`. 14 tools available:
+`icmg_recall`, `icmg_store`, `icmg_graph_context`, `icmg_graph_related`,
+`icmg_rule_apply`, `icmg_data_get`, `icmg_abbr_expand`, `icmg_abbr_list`,
+`icmg_sp_search`, `icmg_sp_context`, `icmg_sp_deps`, `icmg_cmd_suggest`,
+`icmg_project_switch`, `icmg_stats`
