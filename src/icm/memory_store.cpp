@@ -100,12 +100,19 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     core::HookContext ctx;
     ctx.set<std::string>("topic",   node.topic);
     ctx.set<std::string>("content", node.content);
+    ctx.set<std::string>("keywords", node.keywords);
     core::HookBus::instance().emit(core::HookEvent::PRE_STORE, ctx);
     if (ctx.cancelled) return -1;
 
+    // Hooks may modify topic/content/keywords
+    MemoryNode effective = node;
+    effective.topic    = ctx.get<std::string>("topic",    node.topic);
+    effective.content  = ctx.get<std::string>("content",  node.content);
+    effective.keywords = ctx.get<std::string>("keywords", node.keywords);
+
     // Deduplication check
     if (!force) {
-        auto similar = findSimilar(node.topic, node.content, 0.85);
+        auto similar = findSimilar(effective.topic, effective.content, 0.85);
         if (!similar.empty()) {
             DuplicateError err("Similar to existing node #" +
                                std::to_string(similar[0].id) +
@@ -116,19 +123,19 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     }
 
     int64_t now = nowEpoch();
-    std::string expires = node.expires_at > 0 ? std::to_string(node.expires_at) : "";
+    std::string expires = effective.expires_at > 0 ? std::to_string(effective.expires_at) : "";
 
     db_.run(
         "INSERT INTO memory_nodes(topic,content,keywords,importance,frequency,"
         "last_used,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)",
-        {node.topic, node.content, node.keywords,
-         std::to_string(node.importance),
-         std::to_string(node.frequency),
+        {effective.topic, effective.content, effective.keywords,
+         std::to_string(effective.importance),
+         std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
          expires});
 
     int64_t id = db_.lastInsertId();
-    if (!node.keywords.empty()) syncKeywords(id, node.keywords);
+    if (!effective.keywords.empty()) syncKeywords(id, effective.keywords);
 
     // Fire POST_STORE hook
     ctx.set<int64_t>("id", id);

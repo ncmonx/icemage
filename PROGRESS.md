@@ -25,7 +25,7 @@
 | 03 | Graph CRUD + Scanner + Language Extractors | [x] | 2026-05-06 | 2026-05-06 | c4564ee | C#+PHP added (051e2f9) |
 | 04 | File Watcher (cross-platform daemon) | [x] | 2026-05-06 | 2026-05-06 | bbddc9b | |
 | 05 | RTK Filter + Runner | [x] | 2026-05-06 | 2026-05-06 | 1780b30 | |
-| 06 | Per-folder Rules + Inheritance | [ ] | — | — | — | Depends on: 01 |
+| 06 | Per-folder Rules + Inheritance | [x] | 2026-05-06 | 2026-05-06 | — | |
 | 07 | Structured Data (model/view/behavior/schema) | [ ] | — | — | — | Depends on: 01, 02 |
 | 08 | Multi-project Registry | [ ] | — | — | — | Depends on: 01 |
 | 09 | Abbreviation Engine | [ ] | — | — | — | Depends on: 01, 02 |
@@ -72,6 +72,7 @@ Catat setiap sesi kerja di sini.
 | 2026-05-06 | 3 | 03 | Graph CRUD + Scanner + 9 extractors | GraphNode/Store/Scanner, C++/Python/JS/Go/Rust/Java/C#/PHP/Generic extractors, graph-* CLI, migration 0002, c4564ee+051e2f9 |
 | 2026-05-06 | 4 | 04 | File Watcher daemon | Win/Linux/Mac watchers, Debouncer, Daemon fork/PID, graph-watch/stop/watch-status CLI, bbddc9b |
 | 2026-05-06 | 5 | 05 | RTK Filter + Runner | Detector, BaseFilter, git/build/test/search/default/package filters, runner (parseArgv+safeExec), RTK class, run+cmd CLI, migration 0003 |
+| 2026-05-06 | 6 | 06 | Per-folder Rules + Inheritance | Rule/RuleStore/RuleResolver, rule CLI, PRE_STORE hook, migration 0004, 12 tests |
 
 ---
 
