@@ -60,24 +60,31 @@ BM25: k1=1.5, b=0.75, smoothed IDF
 <!-- END AUTO-MANAGED -->
 
 <!-- AUTO-MANAGED: git-insights -->
-## Phase Plan
+## Phase Plan & Status
 
-14 phases, ~15-16 sessions total:
+14 phases, ~15-16 sessions total. All phases currently **Pending** (as of 2026-05-06).
 
-| Phase | Component |
-|-------|-----------|
-| 01 | Core Foundation (db, config, registry, hooks, migrator) |
-| 02 | ICM Memory + BM25 Scorer |
-| 03 | Graph CRUD + Scanner + Language Extractors |
-| 04 | File Watcher (cross-platform daemon) |
-| 05 | RTK Filter + Runner |
-| 06 | Per-folder Rules + Inheritance |
-| 07 | Structured Data (model/view/behavior/schema) |
-| 08 | Multi-project Registry |
-| 09 | Abbreviation Engine |
-| 10 | Stored Procedure Engine + SQL Parser |
-| 11 | Import (ICM/Graphify/JSON/CSV) + Export |
-| 12 | Visual Graph (HTML + Cytoscape.js) |
-| 13 | MCP Server (stdio transport) |
-| 14 | Integration Testing + Bug Fix |
+| Phase | Component | Status |
+|-------|-----------|--------|
+| 01 | Core Foundation (db, config, registry, hooks, migrator) | [ ] |
+| 02 | ICM Memory + BM25 Scorer | [ ] |
+| 03 | Graph CRUD + Scanner + Language Extractors | [ ] |
+| 04 | File Watcher (cross-platform daemon) | [ ] |
+| 05 | RTK Filter + Runner | [ ] |
+| 06 | Per-folder Rules + Inheritance | [ ] |
+| 07 | Structured Data (model/view/behavior/schema) | [ ] |
+| 08 | Multi-project Registry | [ ] |
+| 09 | Abbreviation Engine | [ ] |
+| 10 | Stored Procedure Engine + SQL Parser | [ ] |
+| 11 | Import (ICM/Graphify/JSON/CSV) + Export | [ ] |
+| 12 | Visual Graph (HTML + Cytoscape.js) | [ ] |
+| 13 | MCP Server (stdio transport) — depends on 01-10 | [ ] |
+| 14 | Integration Testing + Bug Fix — depends on all | [ ] |
+
+**Planned future phases:** Phase 15 (shell completions, REPL, unified search, memory consolidation, git SHA tagging, token analytics), Phase 16 (remote sync S3/git, VS Code extension).
+
+**Session log:**
+- 2026-05-06 Session 0: Design, review, phase files, git init — 15 plan files created, 91 issues reviewed (CRITICAL 6, HIGH 18, MEDIUM 15, LOW 11, Missing Features 46 → 35 incorporated, 11 deferred to Phase 15-16)
+
+Progress tracker: `@PROGRESS.md`
 <!-- END AUTO-MANAGED -->
