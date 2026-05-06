@@ -42,6 +42,10 @@ CPP_COUNT=$("$ICMG" graph list --lang cpp --json 2>/dev/null | grep -c '"path"' 
 RELATED=$("$ICMG" graph related "$ROOT/src/core/db.cpp" --limit 3 --json 2>/dev/null || echo "{}")
 echo "$RELATED" | grep -q "related\|nodes\|path\|\[\]" && pass "graph related" || fail "graph related" "$RELATED"
 
+# ---- graph update (re-scan, skip_stale=true) --------------------------------
+UPDATE=$("$ICMG" graph update "$ROOT/src/" 2>/dev/null || echo "")
+echo "$UPDATE" | grep -q "Updated\|updated" && pass "graph update" || fail "graph update" "$UPDATE"
+
 popd >/dev/null
 
 echo ""
