@@ -25,7 +25,7 @@
 | 03 | Graph CRUD + Scanner + Language Extractors | [x] | 2026-05-06 | 2026-05-06 | c4564ee | C#+PHP added (051e2f9) |
 | 04 | File Watcher (cross-platform daemon) | [x] | 2026-05-06 | 2026-05-06 | bbddc9b | |
 | 05 | RTK Filter + Runner | [x] | 2026-05-06 | 2026-05-06 | 1780b30 | |
-| 06 | Per-folder Rules + Inheritance | [x] | 2026-05-06 | 2026-05-06 | — | |
+| 06 | Per-folder Rules + Inheritance | [x] | 2026-05-06 | 2026-05-06 | dbc005c | |
 | 07 | Structured Data (model/view/behavior/schema) | [ ] | — | — | — | Depends on: 01, 02 |
 | 08 | Multi-project Registry | [ ] | — | — | — | Depends on: 01 |
 | 09 | Abbreviation Engine | [ ] | — | — | — | Depends on: 01, 02 |
