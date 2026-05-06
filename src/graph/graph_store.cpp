@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <filesystem>
+#include <fstream>
 #include <tuple>
 #include <sstream>
 #include <nlohmann/json.hpp>
@@ -541,6 +542,84 @@ void GraphStore::resolveAndInsertEdges(
             edge.edge_type = "imports";
             edge.weight    = 1.0;
             upsertEdge(edge);
+        }
+    }
+
+    // --- Strategy 4: Cross-reference by class/type usage ---
+    // Mirrors Graphify behavior: if file A's content mentions a class/type
+    // defined in file B (different file), create a "uses" edge A→B.
+    // This catches same-namespace dependencies (no `using` needed in C#).
+    //
+    // Algorithm:
+    //   - Build class_name → [file_id] map from symbols JSON
+    //   - For each source file, re-read content from disk
+    //   - For each class name from OTHER files, check if it appears as a word
+    //     token in the content (word-boundary match to avoid false substrings)
+    //   - Insert "uses" edges for matches
+
+    // Build class → [declaring_node_ids] map
+    std::unordered_map<std::string, std::vector<int64_t>> class2nodes;
+    for (auto& ni : nodes) {
+        if (ni.id < 0) continue;
+        // Find this node's symbols in original query results (re-query for symbols)
+        db_.query("SELECT symbols FROM graph_nodes WHERE id=?",
+                  {std::to_string(ni.id)},
+                  [&](const core::Row& r) {
+                      if (r.empty() || r[0].empty()) return;
+                      try {
+                          auto j = nlohmann::json::parse(r[0]);
+                          if (j.contains("classes")) {
+                              for (auto& cls : j["classes"]) {
+                                  std::string cn = cls.get<std::string>();
+                                  if (cn.size() >= 2)   // skip single-char names
+                                      class2nodes[cn].push_back(ni.id);
+                              }
+                          }
+                      } catch (...) {}
+                  });
+    }
+
+    // Helper: check if word `name` appears as a token in `content`
+    // Uses simple char-boundary check (non-alnum/_ before and after)
+    auto isWordPresent = [](const std::string& content, const std::string& name) -> bool {
+        size_t pos = 0;
+        while ((pos = content.find(name, pos)) != std::string::npos) {
+            bool pre_ok  = (pos == 0) || (!std::isalnum((unsigned char)content[pos-1])
+                                          && content[pos-1] != '_');
+            bool post_ok = (pos + name.size() >= content.size())
+                        || (!std::isalnum((unsigned char)content[pos + name.size()])
+                            && content[pos + name.size()] != '_');
+            if (pre_ok && post_ok) return true;
+            pos += name.size();
+        }
+        return false;
+    };
+
+    // For each node that has a source file, scan for cross-references
+    for (auto& ni : nodes) {
+        // Read file content
+        std::ifstream f(ni.path, std::ios::binary);
+        if (!f) continue;
+        std::ostringstream buf;
+        buf << f.rdbuf();
+        std::string content = buf.str();
+        if (content.empty()) continue;
+
+        // Check each class from OTHER files
+        for (auto& [cls_name, declaring_ids] : class2nodes) {
+            for (int64_t dec_id : declaring_ids) {
+                if (dec_id == ni.id) continue;  // skip self-references
+
+                // Check if this class name appears as a word in our content
+                if (isWordPresent(content, cls_name)) {
+                    GraphEdge edge;
+                    edge.src       = ni.id;
+                    edge.dst       = dec_id;
+                    edge.edge_type = "uses";
+                    edge.weight    = 1.5;  // slightly higher weight — actual usage
+                    upsertEdge(edge);
+                }
+            }
         }
     }
 }
