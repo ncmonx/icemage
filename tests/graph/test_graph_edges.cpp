@@ -36,7 +36,8 @@ static core::Db makeGraphDb() {
         " size_bytes INTEGER,"
         " file_hash TEXT,"
         " access_count INTEGER NOT NULL DEFAULT 0,"
-        " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+        " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+        " group_id TEXT"
         ")"
     );
     db.run(
@@ -282,6 +283,83 @@ TEST("edge resolution: no self-edges created") {
     db.query("SELECT COUNT(*) FROM graph_edges WHERE src=dst", {},
              [&](const core::Row& r) { if (!r.empty()) try { self_edges = std::stoi(r[0]); } catch (...) {} });
     ASSERT_EQ(self_edges, 0);
+
+    fs::remove_all(tmp);
+}
+
+// ---------------------------------------------------------------------------
+// VS designer file grouping
+// ---------------------------------------------------------------------------
+
+static std::string groupIdOf(core::Db& db, const std::string& path) {
+    std::string gid;
+    db.query("SELECT group_id FROM graph_nodes WHERE path=?", {path},
+             [&](const core::Row& r) { if (!r.empty()) gid = r[0]; });
+    return gid;
+}
+
+TEST("designer grouping: trio gets same group_id and companion edges") {
+    auto db = makeGraphDb();
+
+    fs::path tmp = fs::temp_directory_path() / "icmg_test_designer";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp);
+
+    std::string cs_p   = writeFile(tmp, "Form1.cs",
+        "namespace App { public partial class Form1 {} }");
+    std::string des_p  = writeFile(tmp, "Form1.Designer.cs",
+        "namespace App { partial class Form1 { private void InitializeComponent() {} } }");
+    std::string resx_p = writeFile(tmp, "Form1.resx",
+        "<?xml version=\"1.0\"?><root></root>");
+
+    graph::GraphStore store(db);
+    graph::Scanner scanner(store);
+    graph::Scanner::Options opts;
+    opts.skip_stale    = false;
+    opts.resolve_edges = true;
+
+    scanner.scan(tmp.string(), opts);
+
+    // All three share the same group_id (= canonical .cs path)
+    std::string gid_cs  = groupIdOf(db, cs_p);
+    std::string gid_des = groupIdOf(db, des_p);
+    std::string gid_res = groupIdOf(db, resx_p);
+
+    ASSERT_FALSE(gid_cs.empty());
+    ASSERT_EQ(gid_cs, gid_des);
+    ASSERT_EQ(gid_cs, gid_res);
+
+    // Companion edges exist between all three (bidirectional)
+    ASSERT_TRUE(hasEdgeBetween(db, cs_p, des_p));
+    ASSERT_TRUE(hasEdgeBetween(db, des_p, cs_p));
+    ASSERT_TRUE(hasEdgeBetween(db, cs_p, resx_p));
+    ASSERT_TRUE(hasEdgeBetween(db, resx_p, cs_p));
+    ASSERT_TRUE(hasEdgeBetween(db, des_p, resx_p));
+    ASSERT_TRUE(hasEdgeBetween(db, resx_p, des_p));
+
+    fs::remove_all(tmp);
+}
+
+TEST("designer grouping: standalone cs with no companions gets no group_id") {
+    auto db = makeGraphDb();
+
+    fs::path tmp = fs::temp_directory_path() / "icmg_test_no_designer";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp);
+
+    std::string cs_p = writeFile(tmp, "Standalone.cs",
+        "namespace App { public class Standalone {} }");
+
+    graph::GraphStore store(db);
+    graph::Scanner scanner(store);
+    graph::Scanner::Options opts;
+    opts.skip_stale    = false;
+    opts.resolve_edges = true;
+
+    scanner.scan(tmp.string(), opts);
+
+    // No companions → group_id stays NULL
+    ASSERT_TRUE(groupIdOf(db, cs_p).empty());
 
     fs::remove_all(tmp);
 }

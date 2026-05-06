@@ -625,6 +625,96 @@ void GraphStore::buildXRefEdges() {
     }
 }
 
+// Visual Studio designer file grouping.
+//
+// For each .cs file that is NOT itself a .Designer.cs, look for:
+//   <basename>.Designer.cs  — code-behind generated file
+//   <basename>.resx         — resource file
+// in the same directory.  If both companions exist in graph_nodes, assign all
+// three the same group_id (= canonical .cs path) and insert bidirectional
+// "companion" edges so traversal algorithms treat them as one unit.
+void GraphStore::groupDesignerTriples() {
+    // Build path → id map for fast lookups
+    std::unordered_map<std::string, int64_t> path2id;
+    // Also collect all .cs paths (only non-Designer ones)
+    std::vector<std::pair<std::string, int64_t>> cs_nodes;   // (path, id)
+
+    db_.query("SELECT id,path FROM graph_nodes", {},
+        [&](const core::Row& r) {
+            if (r.size() < 2) return;
+            int64_t nid = std::stoll(r[0]);
+            const std::string& p = r[1];
+
+            // Normalize separators for key lookup
+            std::string norm = p;
+            std::replace(norm.begin(), norm.end(), '\\', '/');
+            path2id[norm] = nid;
+            path2id[p]    = nid;   // also store original for exact match
+
+            // .cs but NOT .Designer.cs
+            std::string lower = norm;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            if (lower.size() > 3 && lower.substr(lower.size() - 3) == ".cs"
+                && !(lower.size() > 12
+                     && lower.substr(lower.size() - 12) == ".designer.cs")) {
+                cs_nodes.emplace_back(p, nid);
+            }
+        });
+
+    if (cs_nodes.empty()) return;
+
+    namespace fs = std::filesystem;
+
+    for (auto& [cs_path, cs_id] : cs_nodes) {
+        // Derive base (strip .cs extension)
+        fs::path p(cs_path);
+        std::string stem = p.stem().string();          // e.g. "Form1"
+        fs::path dir     = p.parent_path();
+
+        // Build companion paths — try both separators
+        auto findNode = [&](const std::string& filename) -> int64_t {
+            fs::path full = dir / filename;
+            std::string s1 = full.string();
+            std::string s2 = s1;
+            std::replace(s2.begin(), s2.end(), '\\', '/');
+            auto it = path2id.find(s1);
+            if (it != path2id.end()) return it->second;
+            it = path2id.find(s2);
+            if (it != path2id.end()) return it->second;
+            return -1;
+        };
+
+        int64_t designer_id = findNode(stem + ".Designer.cs");
+        int64_t resx_id     = findNode(stem + ".resx");
+
+        // Need at least one companion to form a group
+        if (designer_id < 0 && resx_id < 0) continue;
+
+        // Assign group_id = canonical .cs path to all trio members
+        db_.run("UPDATE graph_nodes SET group_id=? WHERE id=?",
+                {cs_path, std::to_string(cs_id)});
+        if (designer_id >= 0)
+            db_.run("UPDATE graph_nodes SET group_id=? WHERE id=?",
+                    {cs_path, std::to_string(designer_id)});
+        if (resx_id >= 0)
+            db_.run("UPDATE graph_nodes SET group_id=? WHERE id=?",
+                    {cs_path, std::to_string(resx_id)});
+
+        // Insert companion edges (bidirectional: canonical ↔ each companion)
+        auto addCompanion = [&](int64_t a, int64_t b) {
+            GraphEdge e;
+            e.edge_type = "companion";
+            e.weight    = 2.0;   // highest weight — tightly coupled
+            e.src = a; e.dst = b; upsertEdge(e);
+            e.src = b; e.dst = a; upsertEdge(e);
+        };
+        if (designer_id >= 0) addCompanion(cs_id, designer_id);
+        if (resx_id >= 0)     addCompanion(cs_id, resx_id);
+        if (designer_id >= 0 && resx_id >= 0)
+            addCompanion(designer_id, resx_id);
+    }
+}
+
 // A7: legacy incremental edge resolution pass.
 // Used when new nodes are added without a full 2-pass scan.
 // Queries stored edges where dst=-1 and tries to resolve them.

@@ -46,6 +46,10 @@ public:
         const std::vector<std::tuple<int64_t,std::string,std::string>>& import_list);
     // Strategy 4: class cross-reference (Graphify-style) — always run after scan
     void buildXRefEdges();
+    // Visual Studio designer file grouping: treats .cs + .Designer.cs + .resx
+    // as one logical entity by assigning them the same group_id.
+    // Also inserts "companion" edges between the trio.
+    void groupDesignerTriples();
     // Legacy incremental resolver (still used when calling graph-update on partial data)
     void resolveEdges();
 
