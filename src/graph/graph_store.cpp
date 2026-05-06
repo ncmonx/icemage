@@ -4,8 +4,37 @@
 #include <stack>
 #include <unordered_map>
 #include <unordered_set>
+#include <filesystem>
 
+namespace fs = std::filesystem;
 namespace icmg::graph {
+
+// Normalize path for DB lookup: try canonical abs path, then stored relative variants
+static std::vector<std::string> pathVariants(const std::string& path) {
+    std::vector<std::string> v;
+    v.push_back(path);
+    // Replace forward slashes with backslashes and vice versa
+    std::string fwd = path, bwd = path;
+    std::replace(fwd.begin(), fwd.end(), '\\', '/');
+    std::replace(bwd.begin(), bwd.end(), '/', '\\');
+    v.push_back(fwd);
+    v.push_back(bwd);
+    // Add ./ and .\ prefixes if not present
+    if (path.size() < 2 || (path[0] != '.' && path[0] != '/')) {
+        v.push_back("./" + fwd);
+        v.push_back(".\\" + bwd);
+    }
+    // Try absolute path
+    std::error_code ec;
+    auto abs = fs::weakly_canonical(path, ec);
+    if (!ec) {
+        v.push_back(abs.string());
+        std::string a = abs.string();
+        std::replace(a.begin(), a.end(), '\\', '/');
+        v.push_back(a);
+    }
+    return v;
+}
 
 static int64_t nowEpoch() {
     return std::chrono::duration_cast<std::chrono::seconds>(
@@ -56,12 +85,32 @@ int64_t GraphStore::upsertNode(const GraphNode& node) {
 }
 
 std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
+    // Try exact match first, then normalized variants
+    for (auto& v : pathVariants(path)) {
+        std::optional<GraphNode> result;
+        db_.query(
+            "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+            " FROM graph_nodes WHERE path=?",
+            {v},
+            [&](const core::Row& r) { result = rowToNode(r); });
+        if (result) return result;
+    }
+    // Last resort: match by filename suffix
     std::optional<GraphNode> result;
-    db_.query(
-        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
-        " FROM graph_nodes WHERE path=?",
-        {path},
-        [&](const core::Row& r) { result = rowToNode(r); });
+    std::string norm = path;
+    std::replace(norm.begin(), norm.end(), '\\', '/');
+    // Extract basename
+    auto pos = norm.rfind('/');
+    std::string base = (pos != std::string::npos) ? norm.substr(pos + 1) : norm;
+    if (!base.empty()) {
+        db_.query(
+            "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+            " FROM graph_nodes WHERE path LIKE ? OR path LIKE ?",
+            {"%" + base, "%" + base},
+            [&](const core::Row& r) {
+                if (!result) result = rowToNode(r); // take first match
+            });
+    }
     return result;
 }
 

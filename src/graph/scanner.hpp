@@ -11,9 +11,24 @@ public:
     struct Options {
         int                      max_depth    = 20;
         std::vector<std::string> include_langs;      // empty = all
-        std::vector<std::string> ignore_dirs  = {".git", "node_modules", "build",
-                                                  ".icmg", "dist", "__pycache__",
-                                                  "target", ".cache"};
+        std::vector<std::string> ignore_dirs  = {
+            // VCS
+            ".git", ".svn", ".hg",
+            // JS/TS
+            "node_modules", "dist", ".cache", ".next", ".nuxt",
+            // Python
+            "__pycache__", ".venv", "venv", ".pytest_cache",
+            // Rust
+            "target",
+            // C/C++/C#
+            "build", "out", "bin", "obj",
+            // .NET / Visual Studio
+            ".vs", ".idea",
+            // icmg own data
+            ".icmg",
+            // Misc
+            "coverage", ".nyc_output", "vendor"
+        };
         bool                     skip_stale   = true; // skip if hash unchanged
         bool                     resolve_edges = true; // run edge resolution after scan
         bool                     gitignore    = true;  // A9: respect .gitignore
