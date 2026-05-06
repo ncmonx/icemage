@@ -32,7 +32,7 @@
 | 10 | Stored Procedure Engine + SQL Parser | [x] | 2026-05-06 | 2026-05-06 | d9fb7da | |
 | 11 | Import (ICM/Graphify/JSON/CSV) + Export | [x] | 2026-05-06 | 2026-05-06 | 585145b | |
 | 12 | Visual Graph (HTML + Cytoscape.js) | [x] | 2026-05-06 | 2026-05-06 | 945fc98 | |
-| 13 | MCP Server (stdio transport) | [x] | 2026-05-06 | 2026-05-06 | TBD | 14 tools, stdio JSON-RPC 2.0, audit log |
+| 13 | MCP Server (stdio transport) | [x] | 2026-05-06 | 2026-05-06 | 1b440f8 | 14 tools, stdio JSON-RPC 2.0, audit log |
 | 14 | Integration Testing + Bug Fix | [ ] | — | — | — | Depends on: semua |
 
 ---
