@@ -34,14 +34,27 @@ public:
         bool dry_run  = hasFlag(args, "--dry-run");
         bool stream   = hasFlag(args, "--stream");
 
-        // Everything that's not a flag is part of the command
+        // Everything that's not a flag is part of the command.
+        // Re-quote args containing whitespace/quotes so parseArgv can recover
+        // the original tokens — without this, paths with spaces fragment.
+        auto quote_arg = [](const std::string& a) -> std::string {
+            if (a.empty()) return "\"\"";
+            if (a.find_first_of(" \t\"") == std::string::npos) return a;
+            std::string out = "\"";
+            for (char c : a) {
+                if (c == '"') out += "\\\"";
+                else          out += c;
+            }
+            out += "\"";
+            return out;
+        };
         std::string command;
         for (auto& a : args) {
             if (a.empty()) continue;
             if (a[0] == '-' && (a == "--raw" || a == "--json" ||
                                 a == "--dry-run" || a == "--stream")) continue;
             if (!command.empty()) command += " ";
-            command += a;
+            command += quote_arg(a);
         }
         if (command.empty()) { std::cerr << "icmg run: requires <command>\n"; return 1; }
 
