@@ -53,7 +53,7 @@ namespace icmg::graph { class BaseExtractor; }
 namespace icmg::cli   { class BaseCommand;   }
 namespace icmg::rtk   { class BaseFilter;    }
 namespace icmg {
-    struct BaseImporter   {};  // defined in phase-11
+    class  BaseImporter;       // defined in src/import/base_importer.hpp
     struct BaseMcpTool    {};  // defined in phase-13
 }
 
