@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (show_version) {
-        std::cout << "icmg 0.1.3\n";
+        std::cout << "icmg 0.1.4\n";
         return 0;
     }
 
