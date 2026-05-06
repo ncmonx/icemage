@@ -7,6 +7,7 @@ namespace icmg::graph {
 struct ExtractResult {
     std::string              context;    // first doc comment / description
     std::vector<std::string> imports;
+    std::vector<std::string> namespaces; // declared namespaces/packages (C#/Java/Go)
     std::vector<std::string> classes;
     std::vector<std::string> functions;
     std::vector<std::string> tables;    // for SQL files

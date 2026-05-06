@@ -19,6 +19,7 @@ public:
         std::string line;
 
         static const std::regex re_import(R"(^import\s+([\w.]+);?)");
+        static const std::regex re_pkg   (R"(^package\s+([\w.]+);?)");
         static const std::regex re_class (R"((?:public\s+|private\s+|protected\s+|abstract\s+|final\s+)*(?:class|interface|enum)\s+(\w+))");
         static const std::regex re_func  (R"((?:public|private|protected|static|final|abstract|synchronized|\s)+(?:[\w<>\[\]]+\s+)?(\w+)\s*\([^)]*\)\s*(?:throws\s+\w+\s*)?\{)");
         static const std::regex re_func_kt(R"((?:fun|override fun)\s+(\w+)\s*\()");
@@ -46,6 +47,7 @@ public:
             }
 
             if (std::regex_search(line, m, re_import)) res.imports.push_back(m[1].str());
+            if (std::regex_search(line, m, re_pkg))    res.namespaces.push_back(m[1].str());
             if (std::regex_search(line, m, re_class))  res.classes.push_back(m[1].str());
             if (std::regex_search(line, m, re_func_kt)) res.functions.push_back(m[1].str());
             else if (std::regex_search(line, m, re_func)) {
@@ -60,7 +62,7 @@ public:
             std::sort(v.begin(), v.end());
             v.erase(std::unique(v.begin(), v.end()), v.end());
         };
-        dedup(res.imports); dedup(res.classes); dedup(res.functions);
+        dedup(res.imports); dedup(res.namespaces); dedup(res.classes); dedup(res.functions);
         return res;
     }
 };
