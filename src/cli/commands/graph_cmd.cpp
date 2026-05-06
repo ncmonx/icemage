@@ -4,10 +4,12 @@
 #include "../../core/db.hpp"
 #include "../../graph/graph_store.hpp"
 #include "../../graph/scanner.hpp"
+#include "../../graph/daemon.hpp"
 #include <iostream>
 #include <iomanip>
 #include <chrono>
 #include <sstream>
+#include <filesystem>
 
 namespace icmg::cli {
 
@@ -419,15 +421,113 @@ public:
     }
 };
 
-ICMG_REGISTER_COMMAND("graph-scan",    GraphScanCommand);
-ICMG_REGISTER_COMMAND("graph-context", GraphContextCommand);
-ICMG_REGISTER_COMMAND("graph-related", GraphRelatedCommand);
-ICMG_REGISTER_COMMAND("graph-list",    GraphListCommand);
-ICMG_REGISTER_COMMAND("graph-stats",   GraphStatsCommand);
-ICMG_REGISTER_COMMAND("graph-impact",  GraphImpactCommand);
-ICMG_REGISTER_COMMAND("graph-orphans", GraphOrphansCommand);
-ICMG_REGISTER_COMMAND("graph-cycles",  GraphCyclesCommand);
-ICMG_REGISTER_COMMAND("graph-hot",     GraphHotCommand);
-ICMG_REGISTER_COMMAND("graph-search",  GraphSearchCommand);
+// ---- graph-watch ----
+class GraphWatchCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-watch"; }
+    std::string description() const override { return "Start file watcher daemon"; }
+
+    int run(const std::vector<std::string>& args) override {
+        std::string path = ".";
+        for (auto& a : args) { if (!a.empty() && a[0] != '-') { path = a; break; } }
+
+        namespace fs = std::filesystem;
+        std::string root   = fs::absolute(path).string();
+        auto& cfg = core::Config::instance();
+        std::string dbPath  = cfg.projectDbPath(root);
+        std::string pidPath = root + "/.icmg/watcher.pid";
+
+        if (graph::Daemon::isRunning(pidPath)) {
+            auto pid = graph::Daemon::readPid(pidPath);
+            std::cout << "Watcher already running (PID " << pid << ")\n";
+            return 0;
+        }
+
+        try {
+            graph::Daemon::start(root, dbPath, pidPath);
+            auto pid = graph::Daemon::readPid(pidPath);
+            std::cout << "Watching: " << root << " (recursive)\n";
+            std::cout << "PID: " << pid << " saved to " << pidPath << "\n";
+            std::cout << "To stop: icmg graph-stop\n";
+        } catch (const graph::DaemonError& e) {
+            std::cerr << "icmg graph-watch: " << e.what() << "\n";
+            return 1;
+        }
+        return 0;
+    }
+};
+
+// ---- graph-stop ----
+class GraphStopCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-stop"; }
+    std::string description() const override { return "Stop file watcher daemon"; }
+
+    int run(const std::vector<std::string>& args) override {
+        std::string path = ".";
+        for (auto& a : args) { if (!a.empty() && a[0] != '-') { path = a; break; } }
+
+        namespace fs = std::filesystem;
+        std::string root    = fs::absolute(path).string();
+        std::string pidPath = root + "/.icmg/watcher.pid";
+
+        if (!graph::Daemon::isRunning(pidPath)) {
+            std::cout << "No watcher running.\n";
+            return 0;
+        }
+        try {
+            auto pid = graph::Daemon::readPid(pidPath);
+            graph::Daemon::stop(pidPath);
+            std::cout << "Stopped watcher (PID " << pid << ")\n";
+        } catch (const graph::DaemonError& e) {
+            std::cerr << "icmg graph-stop: " << e.what() << "\n";
+            return 1;
+        }
+        return 0;
+    }
+};
+
+// ---- graph-watch-status ----
+class GraphWatchStatusCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-watch-status"; }
+    std::string description() const override { return "Show watcher daemon status"; }
+
+    int run(const std::vector<std::string>& args) override {
+        std::string path = ".";
+        for (auto& a : args) { if (!a.empty() && a[0] != '-') { path = a; break; } }
+        bool json_out = hasFlag(args, "--json");
+
+        namespace fs = std::filesystem;
+        std::string root    = fs::absolute(path).string();
+        std::string pidPath = root + "/.icmg/watcher.pid";
+
+        bool running = graph::Daemon::isRunning(pidPath);
+        auto pid     = graph::Daemon::readPid(pidPath);
+
+        if (json_out) {
+            std::cout << "{\"running\":" << (running ? "true" : "false")
+                      << ",\"pid\":" << pid << "}\n";
+        } else {
+            std::cout << "Watcher: " << (running ? "RUNNING" : "STOPPED")
+                      << " (PID " << (pid > 0 ? std::to_string(pid) : "none") << ")\n";
+        }
+        return 0;
+    }
+};
+
+ICMG_REGISTER_COMMAND("graph-scan",         GraphScanCommand);
+ICMG_REGISTER_COMMAND("graph-context",      GraphContextCommand);
+ICMG_REGISTER_COMMAND("graph-related",      GraphRelatedCommand);
+ICMG_REGISTER_COMMAND("graph-list",         GraphListCommand);
+ICMG_REGISTER_COMMAND("graph-stats",        GraphStatsCommand);
+ICMG_REGISTER_COMMAND("graph-impact",       GraphImpactCommand);
+ICMG_REGISTER_COMMAND("graph-orphans",      GraphOrphansCommand);
+ICMG_REGISTER_COMMAND("graph-cycles",       GraphCyclesCommand);
+ICMG_REGISTER_COMMAND("graph-hot",          GraphHotCommand);
+ICMG_REGISTER_COMMAND("graph-search",       GraphSearchCommand);
+ICMG_REGISTER_COMMAND("graph-watch",        GraphWatchCommand);
+ICMG_REGISTER_COMMAND("graph-stop",         GraphStopCommand);
+ICMG_REGISTER_COMMAND("graph-watch-status", GraphWatchStatusCommand);
 
 } // namespace icmg::cli
