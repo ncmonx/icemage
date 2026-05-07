@@ -37,6 +37,13 @@ public:
                                    int limit    = 10,
                                    bool fuzzy   = false);
 
+    // Zone-scoped recall: corpus restricted to nodes with matching zone before BM25 fit.
+    // Sharper IDF + faster on large stores.
+    std::vector<MemoryNode> recallInZone(const std::string& query,
+                                          const std::string& zone,
+                                          int limit  = 10,
+                                          bool fuzzy = false);
+
     // Recall filtered by topic prefix.
     std::vector<MemoryNode> recallByTopic(const std::string& topic, int limit = 10);
 

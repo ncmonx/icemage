@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.1.9 LANGUAGES CXX C)
+project(icmg VERSION 0.2.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -99,3 +99,4 @@ add_icmg_test(test_import       tests/import/test_import.cpp)
 add_icmg_test(test_viz          tests/viz/test_viz.cpp)
 add_icmg_test(test_mcp          tests/mcp/test_mcp.cpp)
 add_icmg_test(test_graph_edges  tests/graph/test_graph_edges.cpp)
+add_icmg_test(test_zone_resolver tests/core/test_zone_resolver.cpp)

@@ -37,6 +37,7 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"recall",   "Recall memory nodes by query"},
     {"memory",   "Memory management (list, show, search, stats, purge)"},
     {"graph",    "Manage knowledge graph (scan, query, visualize)"},
+    {"zone",     "Zone management (partition graph + memory by subsystem)"},
     {"run",      "Run command through RTK filter"},
     {"sp",       "Stored procedure management"},
     {"abbr",     "Abbreviation management"},
@@ -119,7 +120,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.1.9 — unified memory, graph, and RTK tool\n\n"
+        "icmg 0.2.0 — unified memory, graph, and RTK tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -135,7 +136,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.1.9\n";
+    std::cout << "icmg 0.2.0\n";
 }
 
 } // namespace icmg::cli

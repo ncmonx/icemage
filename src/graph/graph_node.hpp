@@ -14,6 +14,7 @@ struct GraphNode {
     std::string file_hash;   // MD5 for staleness check
     int64_t     updated_at  = 0;
     int64_t     access_count = 0;
+    std::string zone        = "default";  // Phase 17: subsystem partitioning
 };
 
 struct GraphEdge {

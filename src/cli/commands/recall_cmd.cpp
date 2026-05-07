@@ -43,6 +43,7 @@ public:
             "Options:\n"
             "  --limit N       Max results (default: 10)\n"
             "  --topic X       Filter by topic prefix\n"
+            "  --zone Z        Restrict corpus to zone (sharper IDF, faster)\n"
             "  --fuzzy         Fuzzy search fallback\n"
             "  --explain       Show score breakdown\n"
             "  --history       Show recent queries\n"
@@ -59,6 +60,7 @@ public:
         bool explain = hasFlag(args, "--explain");
         bool fuzzy   = hasFlag(args, "--fuzzy");
         std::string topic = flagValue(args, "--topic");
+        std::string zone  = flagValue(args, "--zone");
         int limit = 10;
         try { limit = std::stoi(flagValue(args, "--limit", "10")); } catch (...) {}
 
@@ -97,6 +99,8 @@ public:
         std::vector<icm::MemoryNode> results;
         if (!topic.empty()) {
             results = store.recallByTopic(topic, limit);
+        } else if (!zone.empty()) {
+            results = store.recallInZone(query, zone, limit, fuzzy);
         } else {
             results = store.recall(query, limit, fuzzy);
         }

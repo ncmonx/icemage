@@ -58,6 +58,7 @@ GraphNode GraphStore::rowToNode(const core::Row& row) const {
     if (row.size() > 6) n.file_hash    = row[6];
     if (row.size() > 7) try { n.updated_at   = std::stoll(row[7]); } catch (...) {}
     if (row.size() > 8) try { n.access_count = std::stoll(row[8]); } catch (...) {}
+    if (row.size() > 9 && !row[9].empty()) n.zone = row[9];
     return n;
 }
 
@@ -72,14 +73,16 @@ GraphEdge GraphStore::rowToEdge(const core::Row& row) const {
 
 int64_t GraphStore::upsertNode(const GraphNode& node) {
     int64_t now = nowEpoch();
+    std::string zone = node.zone.empty() ? "default" : node.zone;
     db_.run(
-        "INSERT INTO graph_nodes(path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count)"
-        " VALUES(?,?,?,?,?,?,?,0)"
+        "INSERT INTO graph_nodes(path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone)"
+        " VALUES(?,?,?,?,?,?,?,0,?)"
         " ON CONFLICT(path) DO UPDATE SET"
         " lang=excluded.lang, context=excluded.context, symbols=excluded.symbols,"
-        " size_bytes=excluded.size_bytes, file_hash=excluded.file_hash, updated_at=excluded.updated_at",
+        " size_bytes=excluded.size_bytes, file_hash=excluded.file_hash, updated_at=excluded.updated_at,"
+        " zone=excluded.zone",
         {node.path, node.lang, node.context, node.symbols,
-         std::to_string(node.size_bytes), node.file_hash, std::to_string(now)});
+         std::to_string(node.size_bytes), node.file_hash, std::to_string(now), zone});
 
     // Return existing id (ON CONFLICT doesn't change rowid)
     int64_t id = 0;
@@ -93,7 +96,7 @@ std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
     for (auto& v : pathVariants(path)) {
         std::optional<GraphNode> result;
         db_.query(
-            "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+            "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone"
             " FROM graph_nodes WHERE path=?",
             {v},
             [&](const core::Row& r) { result = rowToNode(r); });
@@ -108,7 +111,7 @@ std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
     std::string base = (pos != std::string::npos) ? norm.substr(pos + 1) : norm;
     if (!base.empty()) {
         db_.query(
-            "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+            "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone"
             " FROM graph_nodes WHERE path LIKE ? OR path LIKE ?",
             {"%" + base, "%" + base},
             [&](const core::Row& r) {
@@ -130,7 +133,7 @@ void GraphStore::removeNode(const std::string& path) {
 std::vector<GraphNode> GraphStore::all() const {
     std::vector<GraphNode> result;
     db_.query(
-        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone"
         " FROM graph_nodes ORDER BY path",
         {},
         [&](const core::Row& r) { result.push_back(rowToNode(r)); });
@@ -196,7 +199,7 @@ std::vector<GraphNode> GraphStore::search(const std::string& query, int limit) {
     std::string pat = "%" + query + "%";
     std::vector<GraphNode> result;
     db_.query(
-        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone"
         " FROM graph_nodes"
         " WHERE path LIKE ? OR context LIKE ? OR symbols LIKE ?"
         " ORDER BY updated_at DESC LIMIT ?",
@@ -225,7 +228,7 @@ std::vector<GraphNode> GraphStore::impact(const std::string& path, int depth) {
             if (visited.count(e.src)) continue;
             visited.insert(e.src);
             db_.query(
-                "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+                "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone"
                 " FROM graph_nodes WHERE id=?",
                 {std::to_string(e.src)},
                 [&](const core::Row& r) { result.push_back(rowToNode(r)); });
@@ -239,7 +242,7 @@ std::vector<GraphNode> GraphStore::impact(const std::string& path, int depth) {
 std::vector<GraphNode> GraphStore::orphans(const std::vector<std::string>& exclude_patterns) const {
     std::vector<GraphNode> result;
     db_.query(
-        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone"
         " FROM graph_nodes"
         " WHERE id NOT IN (SELECT DISTINCT dst FROM graph_edges WHERE dst >= 0)"
         " ORDER BY path",
@@ -764,7 +767,7 @@ std::vector<GraphNode> GraphStore::hot(int days, int limit) const {
     int64_t cutoff = nowEpoch() - (int64_t)days * 86400;
     std::vector<GraphNode> result;
     db_.query(
-        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count"
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone"
         " FROM graph_nodes"
         " WHERE updated_at > ?"
         " ORDER BY access_count DESC LIMIT ?",

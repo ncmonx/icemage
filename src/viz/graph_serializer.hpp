@@ -19,6 +19,7 @@ public:
         int64_t     size_bytes = 0;
         int         degree = 0;  // total in+out edges
         std::string community;   // connected-component id (string)
+        std::string zone;        // Phase 17: subsystem partitioning
     };
 
     struct VizEdge {
@@ -41,7 +42,8 @@ public:
     // If lang_filter non-empty: only include nodes whose lang is in the set.
     // If community_filter non-empty: only include that community.
     VizData serialize(const std::vector<std::string>& lang_filter = {},
-                      const std::string& community_filter = "") const;
+                      const std::string& community_filter = "",
+                      const std::string& zone_filter = "") const;
 
     // Render VizData to JSON string for embedding in HTML.
     std::string toJson(const VizData& data) const;

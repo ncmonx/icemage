@@ -187,6 +187,22 @@ ALTER TABLE graph_nodes ADD COLUMN group_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_graph_nodes_group ON graph_nodes(group_id)
     WHERE group_id IS NOT NULL;
 )SQL"},
+        {6, R"SQL(
+-- 0006_zones
+-- Subsystem/layer/bounded-context partitioning for scoped recall + sharper BM25.
+ALTER TABLE graph_nodes  ADD COLUMN zone TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE memory_nodes ADD COLUMN zone TEXT NOT NULL DEFAULT 'default';
+CREATE INDEX IF NOT EXISTS idx_graph_zone  ON graph_nodes(zone);
+CREATE INDEX IF NOT EXISTS idx_memory_zone ON memory_nodes(zone);
+CREATE TABLE IF NOT EXISTS zone_config (
+    zone        TEXT PRIMARY KEY,
+    description TEXT,
+    path_glob   TEXT,
+    color       TEXT,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+INSERT OR IGNORE INTO zone_config(zone, description) VALUES('default', 'Catch-all zone');
+)SQL"},
     };
 }
 

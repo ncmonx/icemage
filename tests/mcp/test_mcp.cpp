@@ -28,6 +28,7 @@ static core::Db openTestDb() {
         " last_used INTEGER,"
         " expires_at INTEGER,"
         " deleted_at INTEGER,"
+        " zone TEXT NOT NULL DEFAULT 'default',"
         " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')))"
     );
 
@@ -53,7 +54,8 @@ static core::Db openTestDb() {
         " size_bytes INTEGER,"
         " file_hash TEXT,"
         " access_count INTEGER NOT NULL DEFAULT 0,"
-        " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')))"
+        " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+        " zone TEXT NOT NULL DEFAULT 'default')"
     );
 
     // graph_edges
