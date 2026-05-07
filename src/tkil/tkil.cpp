@@ -26,6 +26,10 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
         {CmdType::Docker,         "build"},  // reuse build filter
         {CmdType::PackageManager, "npm"},
         {CmdType::Db,             "db"},
+        {CmdType::Vitest,         "vitest"},
+        {CmdType::Playwright,     "playwright"},
+        {CmdType::Tsc,            "tsc"},
+        {CmdType::Lint,           "lint"},
         {CmdType::Default,        "default"},
     };
     auto& reg = core::Registry<icmg::tkil::BaseFilter>::instance();
