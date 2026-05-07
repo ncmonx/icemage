@@ -89,8 +89,11 @@ BM25: k1=1.5, b=0.75, smoothed IDF
 - **Phase 19: Context bundle commands** — `icmg context <file>`, `icmg pack <task>`, `icmg diff-summary`, `icmg explain <error>`, `icmg session save/restore` (50-70% saving on session start)
 - **Phase 20: Output compression** — `icmg summarize`, Read-shrink hook, output cap, `icmg budget` token tracker (60-80% on large reads)
 - **Phase 21: Advanced** — semantic embeddings, `icmg agent`, MCP resources protocol, `icmg chat` REPL (additional 20-30%)
+- **Phase 22: Workflow integration** — KG transitive impact + GSD lifecycle commands (`icmg phase verify` goal-backward) + Superpowers gates (`icmg known-issue/verify/design/log`). Hook templates bundle. Closes the "fast → rigorous" gap.
 
-Cumulative token-saving target: ~70-85% with no context loss. MVP path: 17 + 19's `context` (5 days, ~50% immediate).
+Cumulative target: ~80-90% token reduction + 90% context retention across resets.
+- MVP path: 17 + 19's `context` (5 days, ~50% immediate).
+- Rigorous path: 17 → 18 → 22 → rest. Adds audit trail + workflow gates.
 
 **Session log:**
 - 2026-05-06 Session 0: Design, review, phase files, git init — 15 plan files created, 91 issues reviewed (CRITICAL 6, HIGH 18, MEDIUM 15, LOW 11, Missing Features 46 → 35 incorporated, 11 deferred to Phase 15-16)
