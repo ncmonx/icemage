@@ -68,13 +68,11 @@ parallel(const std::vector<ParallelTask>& tasks,
                 return;
             }
 
-            // Build argv: shell -c <command> for portable command-string exec
-#ifdef _WIN32
-            std::vector<std::string> argv = { "cmd.exe", "/c", tasks[i].command };
-#else
-            std::vector<std::string> argv = { "/bin/sh", "-c", tasks[i].command };
-#endif
-            ExecResult r = safeExec(argv, /*merge_stderr=*/false, tasks[i].timeout_ms);
+            // Use shell-pass-through so paths-with-spaces and quotes survive.
+            // safeExecShell uses `cmd.exe /s /c "<command>"` on Windows
+            // (preserving internal quotes) and `/bin/sh -c <command>` on POSIX.
+            ExecResult r = safeExecShell(tasks[i].command, /*merge_stderr=*/false,
+                                          tasks[i].timeout_ms);
             results[i].exit_code   = r.exit_code;
             results[i].stdout_str  = std::move(r.out);
             results[i].stderr_str  = std::move(r.err);
