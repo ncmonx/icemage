@@ -81,7 +81,16 @@ BM25: k1=1.5, b=0.75, smoothed IDF
 | 13 | MCP Server (stdio transport) — depends on 01-10 | [ ] |
 | 14 | Integration Testing + Bug Fix — depends on all | [ ] |
 
-**Planned future phases:** Phase 15 (shell completions, REPL, unified search, memory consolidation, git SHA tagging, token analytics), Phase 16 (remote sync S3/git, VS Code extension).
+**Planned future phases:**
+- Phase 15: shell completions, REPL, unified search, memory consolidation, git SHA tagging, token analytics
+- Phase 16: remote sync (S3/git), VS Code extension
+- **Phase 17: Zone partitioning** — scope recall/graph/viz to subsystem zones (5-10× faster recall, sharper BM25)
+- **Phase 18: Function/symbol-level nodes** — two-tier graph (file + child symbols), body-hash staleness, call edges (80%+ token cut on "fix bug X")
+- **Phase 19: Context bundle commands** — `icmg context <file>`, `icmg pack <task>`, `icmg diff-summary`, `icmg explain <error>`, `icmg session save/restore` (50-70% saving on session start)
+- **Phase 20: Output compression** — `icmg summarize`, Read-shrink hook, output cap, `icmg budget` token tracker (60-80% on large reads)
+- **Phase 21: Advanced** — semantic embeddings, `icmg agent`, MCP resources protocol, `icmg chat` REPL (additional 20-30%)
+
+Cumulative token-saving target: ~70-85% with no context loss. MVP path: 17 + 19's `context` (5 days, ~50% immediate).
 
 **Session log:**
 - 2026-05-06 Session 0: Design, review, phase files, git init — 15 plan files created, 91 issues reviewed (CRITICAL 6, HIGH 18, MEDIUM 15, LOW 11, Missing Features 46 → 35 incorporated, 11 deferred to Phase 15-16)
