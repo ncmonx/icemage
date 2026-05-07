@@ -65,6 +65,15 @@ Detector::Detector() {
         {"docker logs",    CmdType::Docker},
         {"docker-compose", CmdType::Docker},
         {"docker compose", CmdType::Docker},
+
+        // DB CLIs (Phase 21 Task 5c). Schema dumps fall through to Default
+        // so the full output is preserved (mysqldump etc. produce DDL the
+        // user usually wants verbatim).
+        {"sqlcmd",   CmdType::Db},
+        {"osql",     CmdType::Db},
+        {"mysql ",   CmdType::Db},
+        {"mariadb ", CmdType::Db},
+        {"psql ",    CmdType::Db},
     };
 }
 

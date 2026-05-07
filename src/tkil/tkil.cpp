@@ -25,6 +25,7 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
         {CmdType::Search,         "search"},
         {CmdType::Docker,         "build"},  // reuse build filter
         {CmdType::PackageManager, "npm"},
+        {CmdType::Db,             "db"},
         {CmdType::Default,        "default"},
     };
     auto& reg = core::Registry<icmg::tkil::BaseFilter>::instance();
@@ -47,9 +48,9 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
     // A7: dry-run mode
     if (dry_run) {
         static const std::string type_names[] = {
-            "GitLog","Build","Test","Search","Docker","PackageManager","Default"};
+            "GitLog","Build","Test","Search","Docker","PackageManager","Db","Default"};
         int idx = (int)type;
-        std::string tname = (idx >= 0 && idx < 7) ? type_names[idx] : "Default";
+        std::string tname = (idx >= 0 && idx < 8) ? type_names[idx] : "Default";
         std::cout << "Command: " << command << "\n"
                   << "Detected type: " << tname << "\n"
                   << "Filter: " << tname << "Filter\n"
