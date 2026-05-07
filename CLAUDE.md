@@ -147,3 +147,21 @@ bash tests/test_security.sh && bash tests/test_performance.sh
 `icmg_rule_apply`, `icmg_data_get`, `icmg_abbr_expand`, `icmg_abbr_list`,
 `icmg_sp_search`, `icmg_sp_context`, `icmg_sp_deps`, `icmg_cmd_suggest`,
 `icmg_project_switch`, `icmg_stats`
+
+## Token-Efficiency Commands (v0.5.0+)
+
+Token-saving commands available — prefer over default Read/Grep/Glob:
+
+| When | Use | Saves |
+|---|---|---|
+| Starting a task | `icmg pack "<task>"` | 50-70% session start |
+| Need file context | `icmg context <file> --max-bytes 4096` | 60-80% per-file read |
+| Need a function | `icmg graph symbol <Name>` | 80%+ vs reading whole file |
+| Who calls X? | `icmg graph callers <Name>` | direct edges |
+| Who breaks if X changes? | `icmg graph reverse-impact <Name> --depth 5` | transitive |
+| Big git diff | `icmg diff-summary --ref HEAD~5` | 90%+ vs raw diff |
+| Errored before? | `icmg explain "<error>"` | instant past-fix |
+| Run noisy command | `icmg run <cmd>` | filter strategy auto-applied |
+| Save mid-task state | `icmg session save <name>` | resume after `/clear` |
+
+Full reference: `@COMMANDS.md`. Agent guide: `@AGENTS.md`.
