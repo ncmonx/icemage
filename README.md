@@ -186,6 +186,25 @@ Claude Code sessions burn 50K+ tokens reading large files, running noisy command
 | `icmg wflog recent [--limit N]` | Newest first |
 | `icmg wflog show <id>` | Full detail |
 
+### Wiki + Memoir + Decay + Dedicated Filters (v0.10.0)
+
+| Command | Purpose |
+|---|---|
+| `icmg wiki build [--out wiki/]` | Generate Markdown + HTML knowledge site |
+| `icmg wiki build --include-memoirs --no-md` | HTML-only, with memoir pages |
+| `icmg wiki serve --port 8000` | Print HTTP-server hint (static files) |
+| `icmg memoir add --title T --content-file F` | Long-form narrative (post-mortem, design rationale) |
+| `icmg memoir list / show <id> / search <q>` | Browse memoirs |
+| `icmg memoir link <id> --to <other-id>` | Cross-reference memoirs |
+| `icmg memory decay --threshold-days 30` | Reduce importance of stale nodes |
+| `icmg memory decay --dry-run` | Preview decay; pinned (importance=3) preserved |
+
+**Dedicated Tkil filters** (auto-routed by detector for npx/pnpm/yarn variants):
+- `vitest` — keep `❯ FAIL` blocks + stack traces + summary
+- `playwright` — `✘` failures + screenshot/video paths + summary
+- `tsc` — TS<code> error lines + "Found N errors" summary
+- `lint` — eslint, clippy, ruff, golangci-lint, dotnet format, prettier, black, flake8, mypy
+
 ### Semantic Recall + Agent + Chat (Phase 23, v0.9.0)
 
 | Command | Purpose |
@@ -345,7 +364,7 @@ icmg ships an MCP (Model Context Protocol) server so Claude Code (and any MCP-aw
 
 ## Token-Efficiency Roadmap
 
-Implemented (v0.9.0):
+Implemented (v0.10.0):
 
 | Phase | Feature | Saving |
 |---|---|---|
@@ -356,8 +375,9 @@ Implemented (v0.9.0):
 | 21 | Advanced — `parallel`, `filter`, db-cli filter, cross-project, sp-link, budget HTML | I/O 3-6× faster + 95-99% on SQL output |
 | 22 | Workflow integration — known-issue, verify, phase, design | Audit + 5-10× context retention |
 | 23 | Semantic recall + agent + MCP resources + chat REPL | Paraphrase 50→85%, MCP cache <10% overhead |
+| 24 | Wiki/HTML viz + memoir/decay + dedicated filters (vitest/playwright/tsc/lint) | Onboarding artifact + long-term memory hygiene |
 
-Deferred to Phase 24+:
+Deferred to Phase 25+:
 
 | Feature | Status | Why deferred |
 |---|---|---|

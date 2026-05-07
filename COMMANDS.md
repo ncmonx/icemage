@@ -46,6 +46,61 @@ Requires `pip install sentence-transformers`. Skips rows whose `body_hash` is un
 
 ---
 
+## init — Bootstrap project for AI agents (v0.9.2)
+
+```
+icmg init [--no-hooks] [--no-agents] [--no-scan] [--force]
+```
+
+Writes `.claude/settings.local.json` with PreToolUse:Bash + Read hooks, drops bundled hook scripts to `.claude/hooks/`, appends/updates `<!-- icmg:start -->` block in `AGENTS.md`. Idempotent — re-run to refresh after icmg upgrades.
+
+---
+
+## ls — Token-friendly directory listing (v0.9.1)
+
+```
+icmg ls [path] [--all / -a] [--tree] [--json]
+                  [--limit N] [--ext E]
+```
+
+Native std::filesystem; path-with-spaces handled, dirs first, human-formatted sizes (B/K/M/G/T), auto-truncate at `--limit 100`. Use over `icmg run ls` for routine listings.
+
+---
+
+## memoir — Long-form narrative memory (v0.10.0)
+
+```
+icmg memoir add --title T (--content TEXT | --content-file F | stdin)
+                [--keywords K] [--zone Z] [--link <other-id>]
+icmg memoir list [--limit N] [--zone Z]
+icmg memoir show <id>
+icmg memoir search <query> [--limit N]
+icmg memoir link <id> --to <other-id>
+```
+
+Stored as `memory_nodes` with topic prefix `memoir:`. Force-stored (no dedup), importance=2 default. Use for post-mortems, design rationales, customer interview synthesis, anything richer than 1-line `icmg store`.
+
+---
+
+## wiki — Markdown + HTML knowledge site (v0.10.0)
+
+```
+icmg wiki build [--out wiki/] [--no-html] [--no-md]
+                [--max-files N] [--include-memoirs]
+icmg wiki serve [--port N]   # prints HTTP-server hint (static files)
+```
+
+Outputs:
+- `wiki/index.{md,html}` — file tree + memoir list + stats
+- `wiki/files/<path>.{md,html}` — per-file: symbols, language, zone
+- `wiki/symbols/<name>.{md,html}` — per-symbol: kind, file link, body excerpt
+- `wiki/memoirs/<title>.{md,html}` — long-form (with `--include-memoirs`)
+- `wiki/style.css` — single self-contained stylesheet, no JS, no CDN
+
+Cross-linked. Host on github pages directly.
+
+---
+
 ## abbr — Abbreviation engine
 
 ```
@@ -171,7 +226,13 @@ icmg forget <id> [--yes]
 <cmd> | icmg filter --as "<original-cmd-string>"
 ```
 
-Types: `git | build | test | search | npm | db | default`. `--as` auto-detects.
+Types: `git | build | test | search | npm | db | vitest | playwright | tsc | lint | default`. `--as` auto-detects from command string.
+
+Dedicated filters added in v0.10.0:
+- `vitest` — keep `❯ FAIL` blocks + stack traces + summary; drop PASS spam
+- `playwright` — `✘` failures + screenshot/video paths + summary
+- `tsc` — TS<code> error lines + "Found N errors" summary
+- `lint` — eslint, clippy, ruff, golangci-lint, dotnet format, prettier, black, flake8, mypy
 
 Examples:
 ```bash
@@ -247,7 +308,11 @@ icmg memory history [--limit N]            # recent recall queries
 icmg memory forget  <id>                   # delegates to `forget`
 icmg memory restore <id>                   # delegates to `restore`
 icmg memory purge   [--days N]             # hard-delete soft-deleted
+icmg memory decay   [--threshold-days N]   # reduce importance of stale nodes (v0.10.0)
+                    [--floor N] [--dry-run] [--no-pinned-keep]
 ```
+
+`decay` walks `memory_nodes` where `last_used < now - N*86400` and `importance > floor` and decrements importance by 1. Preserves importance=3 (pinned/critical) by default. Run as cron / pre-push hook to keep top-of-mind decisions promoted.
 
 ---
 
