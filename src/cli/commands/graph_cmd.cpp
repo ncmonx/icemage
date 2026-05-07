@@ -780,6 +780,103 @@ public:
     }
 };
 
+// ---- graph reverse-impact — who breaks if X changes ----
+class GraphReverseImpactCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-reverse-impact"; }
+    std::string description() const override { return "Transitive reverse impact (who breaks if X changes)"; }
+
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty()) { std::cerr << "icmg graph reverse-impact: requires <symbol|file>\n"; return 1; }
+        std::string target;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') { target = a; break; }
+        int depth = 5;
+        try { depth = std::stoi(flagValue(args, "--depth", "5")); } catch (...) {}
+        std::string types_str = flagValue(args, "--types");
+        std::vector<std::string> types;
+        if (!types_str.empty()) {
+            std::istringstream iss(types_str);
+            std::string t;
+            while (std::getline(iss, t, ',')) if (!t.empty()) types.push_back(t);
+        }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+
+        // Try as symbol first, fall back to file path
+        int64_t start = 0;
+        auto syms = store.findSymbol(target);
+        if (!syms.empty()) start = syms[0].id;
+        else {
+            auto file = store.getNode(target);
+            if (file) start = file->id;
+        }
+        if (start == 0) { std::cerr << "icmg graph reverse-impact: not found: " << target << "\n"; return 1; }
+
+        auto closure = store.closure(start, types, depth, /*reverse=*/true);
+        std::cout << "Reverse impact (depth=" << depth << ") for: " << target << "\n";
+        std::cout << "  " << closure.size() << " node(s) depend on this:\n";
+        for (int64_t id : closure) {
+            std::string path, sym, kind;
+            db.query("SELECT path, COALESCE(symbol_name,''), kind FROM graph_nodes WHERE id=?",
+                     {std::to_string(id)},
+                     [&](const core::Row& r){ if (r.size()>=3){path=r[0];sym=r[1];kind=r[2];} });
+            std::cout << "  ← [" << kind << "] "
+                      << (sym.empty() ? path : sym + "  (" + path + ")") << "\n";
+        }
+        return 0;
+    }
+};
+
+// ---- graph forward-impact — what X transitively touches ----
+class GraphTransitiveImpactCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-transitive-impact"; }
+    std::string description() const override { return "Transitive forward impact (what X reaches)"; }
+
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty()) { std::cerr << "icmg graph transitive-impact: requires <symbol|file>\n"; return 1; }
+        std::string target;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') { target = a; break; }
+        int depth = 5;
+        try { depth = std::stoi(flagValue(args, "--depth", "5")); } catch (...) {}
+        std::string types_str = flagValue(args, "--types");
+        std::vector<std::string> types;
+        if (!types_str.empty()) {
+            std::istringstream iss(types_str);
+            std::string t;
+            while (std::getline(iss, t, ',')) if (!t.empty()) types.push_back(t);
+        }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+
+        int64_t start = 0;
+        auto syms = store.findSymbol(target);
+        if (!syms.empty()) start = syms[0].id;
+        else {
+            auto file = store.getNode(target);
+            if (file) start = file->id;
+        }
+        if (start == 0) { std::cerr << "icmg graph transitive-impact: not found: " << target << "\n"; return 1; }
+
+        auto closure = store.closure(start, types, depth, /*reverse=*/false);
+        std::cout << "Transitive impact (depth=" << depth << ") for: " << target << "\n";
+        std::cout << "  " << closure.size() << " node(s) reachable:\n";
+        for (int64_t id : closure) {
+            std::string path, sym, kind;
+            db.query("SELECT path, COALESCE(symbol_name,''), kind FROM graph_nodes WHERE id=?",
+                     {std::to_string(id)},
+                     [&](const core::Row& r){ if (r.size()>=3){path=r[0];sym=r[1];kind=r[2];} });
+            std::cout << "  → [" << kind << "] "
+                      << (sym.empty() ? path : sym + "  (" + path + ")") << "\n";
+        }
+        return 0;
+    }
+};
+
 // ---- graph (root) — dispatches subcommands or shows help ----
 class GraphRootCommand : public BaseCommand {
 public:
@@ -841,8 +938,10 @@ ICMG_REGISTER_COMMAND("graph-watch",        GraphWatchCommand);
 ICMG_REGISTER_COMMAND("graph-stop",         GraphStopCommand);
 ICMG_REGISTER_COMMAND("graph-watch-status", GraphWatchStatusCommand);
 ICMG_REGISTER_COMMAND("graph-update",       GraphUpdateCommand);
-ICMG_REGISTER_COMMAND("graph-symbol",       GraphSymbolCommand);
-ICMG_REGISTER_COMMAND("graph-callers",      GraphCallersCommand);
-ICMG_REGISTER_COMMAND("graph-callees",      GraphCalleesCommand);
+ICMG_REGISTER_COMMAND("graph-symbol",            GraphSymbolCommand);
+ICMG_REGISTER_COMMAND("graph-callers",           GraphCallersCommand);
+ICMG_REGISTER_COMMAND("graph-callees",           GraphCalleesCommand);
+ICMG_REGISTER_COMMAND("graph-reverse-impact",    GraphReverseImpactCommand);
+ICMG_REGISTER_COMMAND("graph-transitive-impact", GraphTransitiveImpactCommand);
 
 } // namespace icmg::cli

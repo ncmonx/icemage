@@ -2,6 +2,7 @@
 #include <chrono>
 #include <algorithm>
 #include <stack>
+#include <deque>
 #include <unordered_map>
 #include <unordered_set>
 #include <filesystem>
@@ -160,6 +161,56 @@ std::vector<GraphNode> GraphStore::findSymbol(const std::string& name) {
 
 void GraphStore::removeSymbolsOf(int64_t parent_id) {
     db_.run("DELETE FROM graph_nodes WHERE parent_id=?", {std::to_string(parent_id)});
+}
+
+// Phase 22: BFS forward (src→dst) or reverse (dst→src) closure with cycle detection.
+std::vector<int64_t> GraphStore::closure(int64_t start,
+                                          const std::vector<std::string>& edge_types,
+                                          int max_depth,
+                                          bool reverse) {
+    std::unordered_set<int64_t> visited;
+    std::vector<int64_t> order;
+    std::deque<std::pair<int64_t,int>> q;
+    q.push_back({start, 0});
+    visited.insert(start);
+
+    // Build edge-type filter clause (empty → all types)
+    std::string type_clause;
+    std::vector<std::string> params;
+    if (!edge_types.empty()) {
+        type_clause = " AND edge_type IN (";
+        for (size_t i = 0; i < edge_types.size(); ++i) {
+            if (i) type_clause += ",";
+            type_clause += "?";
+            params.push_back(edge_types[i]);
+        }
+        type_clause += ")";
+    }
+    std::string col_pick = reverse ? "src" : "dst";
+    std::string col_where = reverse ? "dst" : "src";
+
+    while (!q.empty()) {
+        auto [cur, d] = q.front(); q.pop_front();
+        if (d >= max_depth) continue;
+
+        // SELECT <other> FROM graph_edges WHERE <pivot>=? [AND edge_type IN (...)]
+        std::string sql = "SELECT " + col_pick + " FROM graph_edges WHERE "
+                        + col_where + "=?" + type_clause;
+        std::vector<std::string> bind = { std::to_string(cur) };
+        bind.insert(bind.end(), params.begin(), params.end());
+
+        std::vector<int64_t> neighbors;
+        db_.query(sql, bind, [&](const core::Row& r){
+            if (!r.empty()) try { neighbors.push_back(std::stoll(r[0])); } catch (...) {}
+        });
+        for (int64_t nb : neighbors) {
+            if (visited.insert(nb).second) {
+                order.push_back(nb);
+                q.push_back({nb, d + 1});
+            }
+        }
+    }
+    return order;
 }
 
 void GraphStore::removeNode(const std::string& path) {

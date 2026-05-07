@@ -26,6 +26,13 @@ public:
     std::vector<GraphNode> findSymbol(const std::string& name);  // by symbol_name
     void removeSymbolsOf(int64_t parent_id);  // delete all symbols under a file (for rescan)
 
+    // Phase 22: transitive impact (BFS forward closure with cycle detection).
+    // edge_types empty → all types. reverse=true walks src←dst (who depends on me).
+    std::vector<int64_t> closure(int64_t start,
+                                  const std::vector<std::string>& edge_types,
+                                  int max_depth,
+                                  bool reverse = false);
+
     // Edge CRUD
     void upsertEdge(const GraphEdge& edge);
     std::vector<GraphEdge> edgesFrom(int64_t nodeId);
