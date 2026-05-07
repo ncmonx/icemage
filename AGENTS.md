@@ -23,6 +23,9 @@ Universal context for **Claude Code, Cursor, Copilot, Aider, Continue, GitHub Co
 | Run multiple cmds in parallel | `icmg parallel --task "..." --task "..."` | Concurrent (cap=cpu_count, max 32) |
 | Pipe existing cmd output | `<cmd> \| icmg filter <type>` | Filter w/o icmg run wrapper |
 | Cross-project recall | `icmg recall "X" --all-projects` | Iterates registered projects |
+| Paraphrase recall (fuzzy intent) | `icmg recall "X" --semantic` | Hybrid BM25+vec; finds "auth issue" → "fix login bug" |
+| Delegate sub-task to LLM | `icmg agent "<task>"` | Pack-bundle + LLM CLI + auto-store decision |
+| Interactive multi-turn | `icmg chat` | REPL: each turn packs context + agent + memorize |
 | Token budget report | `icmg budget` / `icmg budget --html` | Per-tool savings + HTML chart |
 | Outline of large file | `icmg summarize <file>` | Heuristic outline + symbol tree |
 | Save state mid-task | `icmg session save <name>` | Resume after `/clear` |
