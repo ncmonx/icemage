@@ -66,6 +66,7 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"embed",    "Build/refresh embeddings (semantic recall index)"},
     {"agent",    "LLM agent proxy (uses pack + configured CLI)"},
     {"chat",     "Interactive REPL over LLM agent"},
+    {"ls",       "Token-friendly directory listing"},
 };
 
 Dispatcher::Dispatcher() {}
