@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.10.2 LANGUAGES CXX C)
+project(icmg VERSION 0.10.3 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -107,3 +107,4 @@ add_icmg_test(test_graph_dedupe tests/graph/test_graph_dedupe.cpp)
 add_icmg_test(test_mcp_resources tests/mcp/test_mcp_resources.cpp)
 add_icmg_test(test_vec_search tests/embed/test_vec_search.cpp)
 add_icmg_test(test_sp_link tests/sp/test_sp_link.cpp)
+add_icmg_test(test_parity tests/graph/test_parity.cpp)
