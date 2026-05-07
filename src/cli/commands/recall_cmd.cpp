@@ -2,12 +2,14 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/global_db.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/scorer.hpp"
 #include <iostream>
 #include <iomanip>
 #include <string>
 #include <chrono>
+#include <algorithm>
 
 namespace icmg::cli {
 
@@ -44,6 +46,7 @@ public:
             "  --limit N       Max results (default: 10)\n"
             "  --topic X       Filter by topic prefix\n"
             "  --zone Z        Restrict corpus to zone (sharper IDF, faster)\n"
+            "  --all-projects  Cross-project recall (aggregates from registered projects)\n"
             "  --fuzzy         Fuzzy search fallback\n"
             "  --explain       Show score breakdown\n"
             "  --history       Show recent queries\n"
@@ -59,6 +62,7 @@ public:
         bool json    = hasFlag(args, "--json");
         bool explain = hasFlag(args, "--explain");
         bool fuzzy   = hasFlag(args, "--fuzzy");
+        bool all_projects = hasFlag(args, "--all-projects");
         std::string topic = flagValue(args, "--topic");
         std::string zone  = flagValue(args, "--zone");
         int limit = 10;
@@ -97,7 +101,10 @@ public:
         }
 
         std::vector<imem::MemoryNode> results;
-        if (!topic.empty()) {
+        if (all_projects) {
+            // Phase 21 Task 5: aggregate top-K from each registered project DB.
+            results = recallAllProjects(query, limit, fuzzy);
+        } else if (!topic.empty()) {
             results = store.recallByTopic(topic, limit);
         } else if (!zone.empty()) {
             results = store.recallInZone(query, zone, limit, fuzzy);
@@ -117,6 +124,46 @@ public:
     }
 
 private:
+    // Phase 21 Task 5: cross-project recall — iterate registered projects,
+    // recall top-K from each, merge + re-sort by score, return top-K overall.
+    // Each child Db opens read-only via the existing Config override path.
+    std::vector<imem::MemoryNode>
+    recallAllProjects(const std::string& query, int limit, bool fuzzy) {
+        std::vector<imem::MemoryNode> all;
+        try {
+            auto& gdb = core::GlobalDb::instance();
+            gdb.init();
+            auto projects = gdb.listProjects();
+            if (projects.empty()) {
+                std::cerr << "icmg recall: no registered projects (use `icmg project register`)\n";
+                return all;
+            }
+            for (auto& p : projects) {
+                if (p.db_path.empty()) continue;
+                try {
+                    core::Db pdb(p.db_path);
+                    imem::MemoryStore pstore(pdb);
+                    auto sub = pstore.recall(query, limit, fuzzy);
+                    // Tag results with project name in topic prefix for visibility
+                    for (auto& n : sub) {
+                        n.topic = "[" + p.name + "] " + n.topic;
+                        all.push_back(std::move(n));
+                    }
+                } catch (...) { /* skip unreadable project DBs */ }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "icmg recall --all-projects: " << e.what() << "\n";
+            return all;
+        }
+        // Re-sort merged corpus by score desc; truncate to limit.
+        std::sort(all.begin(), all.end(),
+                  [](const imem::MemoryNode& a, const imem::MemoryNode& b){
+                      return a.score > b.score;
+                  });
+        if ((int)all.size() > limit) all.resize(limit);
+        return all;
+    }
+
     void printDefault(const std::vector<imem::MemoryNode>& nodes) const {
         if (nodes.empty()) { std::cout << "No results.\n"; return; }
         for (auto& n : nodes) {
