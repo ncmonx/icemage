@@ -173,64 +173,30 @@ public:
 
     int run(const std::vector<std::string>& args) override {
         bool dry_run = hasFlag(args, "--dry-run");
-
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
 
-        // Group by lower(path); keep the row whose drive-letter is upper-case
-        // (or first id if neither has a drive letter).
-        struct Bucket { std::vector<std::pair<int64_t,std::string>> rows; };
-        std::map<std::string, Bucket> buckets;
-        db.query("SELECT id, path FROM graph_nodes ORDER BY id", {},
-                 [&](const core::Row& r) {
-                     if (r.size() < 2) return;
-                     int64_t id;
-                     try { id = std::stoll(r[0]); } catch (...) { return; }
-                     std::string lower = r[1];
-                     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                     buckets[lower].rows.push_back({id, r[1]});
-                 });
-
-        int merged = 0, kept = 0;
-        for (auto& [lower, b] : buckets) {
-            if (b.rows.size() <= 1) continue;
-            // Pick keeper: prefer upper-case drive (X:\...) else first id
-            int64_t keeper_id = b.rows[0].first;
-            std::string keeper_path = b.rows[0].second;
-            for (auto& [id, path] : b.rows) {
-                if (path.size() >= 2 && path[1] == ':' && path[0] >= 'A' && path[0] <= 'Z') {
-                    keeper_id = id;
-                    keeper_path = path;
-                    break;
-                }
-            }
-            ++kept;
-            for (auto& [id, path] : b.rows) {
-                if (id == keeper_id) continue;
-                ++merged;
-                if (dry_run) {
-                    std::cout << "[dry-run] would merge #" << id << "  " << path
-                              << "  → keeper #" << keeper_id << "  " << keeper_path << "\n";
-                } else {
-                    // Reparent edges to keeper
-                    db.run("UPDATE OR IGNORE graph_edges SET src=? WHERE src=?",
-                           {std::to_string(keeper_id), std::to_string(id)});
-                    db.run("UPDATE OR IGNORE graph_edges SET dst=? WHERE dst=?",
-                           {std::to_string(keeper_id), std::to_string(id)});
-                    // Delete leftover edges that became self-references
-                    db.run("DELETE FROM graph_edges WHERE src=dst", {});
-                    // Delete duplicate row (cascades any remaining child symbols)
-                    db.run("DELETE FROM graph_nodes WHERE id=?", {std::to_string(id)});
-                }
-            }
-        }
         if (dry_run) {
-            std::cout << "[dry-run] would merge " << merged << " duplicate(s) into "
-                      << kept << " keeper(s).\n";
-        } else {
-            std::cout << "Merged " << merged << " duplicate(s) into "
-                      << kept << " keeper(s). Run `icmg graph cycles` to verify.\n";
+            // Count without mutating: same logic as dedupeCaseMixedPaths but read-only.
+            std::map<std::string, int> bucket_count;
+            db.query("SELECT path FROM graph_nodes WHERE kind='file'", {},
+                     [&](const core::Row& r) {
+                         if (r.empty()) return;
+                         std::string lo = r[0];
+                         std::transform(lo.begin(), lo.end(), lo.begin(), ::tolower);
+                         ++bucket_count[lo];
+                     });
+            int dups = 0, keepers = 0;
+            for (auto& [k, c] : bucket_count) if (c > 1) { dups += c - 1; ++keepers; }
+            std::cout << "[dry-run] would merge " << dups << " duplicate(s) into "
+                      << keepers << " keeper(s).\n";
+            return 0;
         }
+
+        graph::GraphStore store(db);
+        int merged = store.dedupeCaseMixedPaths();
+        std::cout << "Merged " << merged
+                  << " duplicate(s). Run `icmg graph cycles` to verify.\n";
         return 0;
     }
 };
