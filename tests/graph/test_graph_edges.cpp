@@ -38,7 +38,14 @@ static core::Db makeGraphDb() {
         " access_count INTEGER NOT NULL DEFAULT 0,"
         " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
         " group_id TEXT,"
-        " zone TEXT NOT NULL DEFAULT 'default'"
+        " zone TEXT NOT NULL DEFAULT 'default',"
+        " parent_id INTEGER REFERENCES graph_nodes(id) ON DELETE CASCADE,"
+        " kind TEXT NOT NULL DEFAULT 'file',"
+        " symbol_name TEXT,"
+        " signature TEXT,"
+        " line_start INTEGER,"
+        " line_end INTEGER,"
+        " body_hash TEXT"
         ")"
     );
     db.run(

@@ -62,6 +62,8 @@ static int syncGraphToMemory(core::Db& db, graph::GraphStore& store,
     auto nodes = store.all();
     int synced = 0;
     for (auto& n : nodes) {
+        // Phase 18: only sync file-kind nodes (skip child symbols)
+        if (n.kind != "file") continue;
         // Build searchable metadata
         namespace fs = std::filesystem;
         fs::path fp(n.path);
@@ -265,6 +267,7 @@ public:
     int run(const std::vector<std::string>& args) override {
         std::string lang_filter = flagValue(args, "--lang");
         std::string zone_filter = flagValue(args, "--zone");
+        std::string kind_filter = flagValue(args, "--kind", "file");  // default file-only
         bool json_out = hasFlag(args, "--json");
 
         auto& cfg = core::Config::instance();
@@ -272,6 +275,11 @@ public:
         graph::GraphStore store(db);
 
         auto nodes = store.all();
+        // Phase 18: hide symbol nodes from default listing (keep file view clean)
+        if (kind_filter != "all") {
+            nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                [&](const graph::GraphNode& n) { return n.kind != kind_filter; }), nodes.end());
+        }
         if (!lang_filter.empty()) {
             nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
                 [&](const graph::GraphNode& n) { return n.lang != lang_filter; }), nodes.end());
@@ -647,6 +655,131 @@ public:
     }
 };
 
+// ============================================================================
+// Phase 18: symbol-level commands
+// ============================================================================
+
+// ---- graph symbol <name> — find symbol by name ----
+class GraphSymbolCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-symbol"; }
+    std::string description() const override { return "Find symbol (class/function/sp) by name"; }
+
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty()) { std::cerr << "icmg graph symbol: requires <name>\n"; return 1; }
+        bool json_out = hasFlag(args, "--json");
+        std::string name;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') { name = a; break; }
+        if (name.empty()) { std::cerr << "icmg graph symbol: requires <name>\n"; return 1; }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        auto syms = store.findSymbol(name);
+        if (json_out) {
+            std::cout << "[";
+            for (size_t i = 0; i < syms.size(); ++i) {
+                if (i) std::cout << ",";
+                printNodeJson(std::cout, syms[i]);
+            }
+            std::cout << "]\n";
+        } else {
+            if (syms.empty()) { std::cout << "No symbol named '" << name << "' found.\n"; return 0; }
+            for (auto& s : syms) {
+                std::cout << "[" << s.kind << "] " << s.symbol_name
+                          << "  L" << s.line_start << "-" << s.line_end
+                          << "  zone=" << s.zone << "\n"
+                          << "  " << s.path << "\n";
+                if (!s.signature.empty()) std::cout << "  " << s.signature.substr(0,120) << "\n";
+            }
+        }
+        return 0;
+    }
+};
+
+// ---- graph callers <symbol> — show symbols that call this one ----
+class GraphCallersCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-callers"; }
+    std::string description() const override { return "Show callers of a symbol"; }
+
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty()) { std::cerr << "icmg graph callers: requires <symbol>\n"; return 1; }
+        std::string name;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') { name = a; break; }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        auto matches = store.findSymbol(name);
+        if (matches.empty()) { std::cout << "Symbol '" << name << "' not found.\n"; return 0; }
+
+        for (auto& sym : matches) {
+            std::cout << "[" << sym.kind << "] " << sym.symbol_name << "  (" << sym.path << ")\n";
+            auto incoming = store.edgesTo(sym.id);
+            int shown = 0;
+            for (auto& e : incoming) {
+                if (e.edge_type != "calls") continue;
+                // src node lookup
+                std::string src_path, src_name, src_kind;
+                db.query(
+                    "SELECT path, COALESCE(symbol_name,''), kind FROM graph_nodes WHERE id=?",
+                    {std::to_string(e.src)},
+                    [&](const core::Row& r){
+                        if (r.size() >= 3) { src_path=r[0]; src_name=r[1]; src_kind=r[2]; }
+                    });
+                std::cout << "  ← [" << src_kind << "] "
+                          << (src_name.empty() ? src_path : src_name)
+                          << "\n";
+                ++shown;
+            }
+            if (shown == 0) std::cout << "  (no recorded callers)\n";
+        }
+        return 0;
+    }
+};
+
+// ---- graph callees <symbol> — show what this symbol calls ----
+class GraphCalleesCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-callees"; }
+    std::string description() const override { return "Show what a symbol calls"; }
+
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty()) { std::cerr << "icmg graph callees: requires <symbol>\n"; return 1; }
+        std::string name;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') { name = a; break; }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        auto matches = store.findSymbol(name);
+        if (matches.empty()) { std::cout << "Symbol '" << name << "' not found.\n"; return 0; }
+
+        for (auto& sym : matches) {
+            std::cout << "[" << sym.kind << "] " << sym.symbol_name << "  (" << sym.path << ")\n";
+            auto outgoing = store.edgesFrom(sym.id);
+            int shown = 0;
+            for (auto& e : outgoing) {
+                if (e.edge_type != "calls") continue;
+                std::string dst_path, dst_name, dst_kind;
+                db.query(
+                    "SELECT path, COALESCE(symbol_name,''), kind FROM graph_nodes WHERE id=?",
+                    {std::to_string(e.dst)},
+                    [&](const core::Row& r){
+                        if (r.size() >= 3) { dst_path=r[0]; dst_name=r[1]; dst_kind=r[2]; }
+                    });
+                std::cout << "  → [" << dst_kind << "] "
+                          << (dst_name.empty() ? dst_path : dst_name)
+                          << "\n";
+                ++shown;
+            }
+            if (shown == 0) std::cout << "  (no recorded callees)\n";
+        }
+        return 0;
+    }
+};
+
 // ---- graph (root) — dispatches subcommands or shows help ----
 class GraphRootCommand : public BaseCommand {
 public:
@@ -708,5 +841,8 @@ ICMG_REGISTER_COMMAND("graph-watch",        GraphWatchCommand);
 ICMG_REGISTER_COMMAND("graph-stop",         GraphStopCommand);
 ICMG_REGISTER_COMMAND("graph-watch-status", GraphWatchStatusCommand);
 ICMG_REGISTER_COMMAND("graph-update",       GraphUpdateCommand);
+ICMG_REGISTER_COMMAND("graph-symbol",       GraphSymbolCommand);
+ICMG_REGISTER_COMMAND("graph-callers",      GraphCallersCommand);
+ICMG_REGISTER_COMMAND("graph-callees",      GraphCalleesCommand);
 
 } // namespace icmg::cli

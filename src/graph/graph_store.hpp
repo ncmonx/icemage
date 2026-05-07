@@ -21,6 +21,11 @@ public:
     std::vector<GraphNode> all() const;
     bool isStale(const std::string& path, const std::string& hash) const;
 
+    // Phase 18: symbol-aware queries
+    std::vector<GraphNode> childrenOf(int64_t parent_id);
+    std::vector<GraphNode> findSymbol(const std::string& name);  // by symbol_name
+    void removeSymbolsOf(int64_t parent_id);  // delete all symbols under a file (for rescan)
+
     // Edge CRUD
     void upsertEdge(const GraphEdge& edge);
     std::vector<GraphEdge> edgesFrom(int64_t nodeId);
