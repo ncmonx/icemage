@@ -80,7 +80,35 @@ public:
         int processed = 0, skipped = 0, errors = 0;
         std::string sql = (kind == "memory")
             ? "SELECT id, topic, content FROM memory_nodes WHERE deleted_at IS NULL"
-            : "SELECT id, path, COALESCE(content,'') FROM graph_nodes";
+            : "SELECT id, path, COALESCE(context,'') FROM graph_nodes";   // graph col is `context`
+
+        // Validate UTF-8: walk bytes, replace any invalid sequence with '?'.
+        // Catches stray cp1252 bytes (0x80-0x9F that aren't valid UTF-8 start),
+        // truncated multi-byte tails, and overlong/illegal sequences. Without
+        // this, JSON serialization in the sidecar protocol breaks (nlohmann
+        // produces an exception, sidecar returns error, caller crashes).
+        auto sanitize = [](const std::string& in) {
+            std::string out; out.reserve(in.size());
+            size_t i = 0;
+            while (i < in.size()) {
+                unsigned char c = (unsigned char)in[i];
+                int need = 0;
+                if      (c < 0x80) { out.push_back((char)c); ++i; continue; }
+                else if ((c & 0xE0) == 0xC0) need = 1;
+                else if ((c & 0xF0) == 0xE0) need = 2;
+                else if ((c & 0xF8) == 0xF0) need = 3;
+                else { out.push_back('?'); ++i; continue; }   // illegal start
+                if (i + need >= in.size()) { out.push_back('?'); ++i; continue; }
+                bool ok = true;
+                for (int k = 1; k <= need; ++k) {
+                    if ((((unsigned char)in[i+k]) & 0xC0) != 0x80) { ok = false; break; }
+                }
+                if (!ok) { out.push_back('?'); ++i; continue; }
+                for (int k = 0; k <= need; ++k) out.push_back(in[i+k]);
+                i += need + 1;
+            }
+            return out;
+        };
 
         struct Row { int64_t id; std::string text; };
         std::vector<Row> rows;
@@ -93,6 +121,7 @@ public:
                 // when caller pipe is non-UTF8.
                 if (kind == "memory") x.text = r[1] + " - " + r[2];
                 else                  x.text = r[1] + "\n" + r[2];
+                x.text = sanitize(x.text);
                 if (x.text.size() > 8192) {
                     x.text.resize(8192);
                     // Avoid splitting UTF-8 multi-byte sequence at boundary.
