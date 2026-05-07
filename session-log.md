@@ -64,3 +64,19 @@ Rejected:
 Open:
 - Phase 20 (output compression) + Phase 21 (advanced/embeddings) not started.
 - 5 new source files lack dedicated unit tests (workflow_cmd, bundle_cmd, graph closure, sql_symbol, output_cap).
+
+## 2026-05-07 19:00 [saved]
+Goal: Ship phases 20 + drive-case hotfix; extend phase 21 plan with parallel primitive.
+Decisions:
+- Phase 20: icmg summarize (heuristic outline + symbol-tree fallback) + icmg budget (auto-recorded by `icmg run` into tool_invocations) + 3 hook templates (shrink-read, cap-output, known-issue-recall).
+- Drive-case fix (v0.6.1): scanner uppercases Windows drive letter post-fs::weakly_canonical to prevent d:\ vs D:\ duplicate nodes producing false cycles.
+- icmg graph dedupe: groups by lower(path), reparents edges via UPDATE OR IGNORE + prunes self-loops, deletes duplicates (cascades children).
+- Phase 21 task 5b NEW: `icmg parallel` subprocess fan-out primitive (pure C++, no API). Retrofits pack/verify/recall/scan via --parallel flag (3-6x speedup on I/O-bound paths).
+- Subagent analysis: helps when work parallelizable + I/O-bound; pure-CPU paths (BM25, regex) already fast.
+Rejected:
+- LLM tree-summarize as P21 priority - replaced with parallel primitive (more universal value).
+- Hard-coding parallelism in each command - one primitive serves all retrofit cases.
+- Lowercasing whole path on Windows - just drive letter; preserves user-readable case.
+Open:
+- Phase 21 not started; Task 5b (parallel) recommended first.
+- Backlog: dedicated unit tests for workflow_cmd, bundle_cmd, summarize_cmd, budget_cmd, graph closure+dedupe, scanner drive-norm, sql_symbol, csharp_symbol, output_cap.
