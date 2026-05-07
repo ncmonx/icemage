@@ -3,7 +3,7 @@
 Single C++17 binary unifying three developer tools:
 
 - **ICM** — persistent memory across AI sessions (BM25 recall, scoring, TTL)
-- **Graphify** — code knowledge graph (file scanner, dependency edges, context)
+- **TGraph** — code knowledge graph (file scanner, dependency edges, context)
 - **Tkil** — token-saving (formerly RTK) CLI proxy (filters noisy build/test/git output)
 
 Plus: per-folder rules, structured data store, abbreviation engine, stored procedure library, import/export, visual graph, MCP server.
