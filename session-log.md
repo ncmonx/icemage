@@ -92,3 +92,17 @@ Rejected:
 - Migration-only case-mix fix — users skip rescan post-upgrade.
 Open:
 - Phase 21 remaining: embeddings, vec recall, agent, MCP, streaming, SP auto-link, chat REPL, analytics.
+
+## 2026-05-07 22:45 [saved]
+Goal: Close Phase 21 — sp link + budget HTML + docs overhaul (v0.8.0).
+Decisions:
+- Phase 21 final = 6/9 tasks; embeddings/agent/MCP-resources/chat-REPL deferred to Phase 23 (need Python sidecar / LLM API / protocol extension / interactive loop).
+- icmg sp link <file>: regex EXEC <name> in any file → resolve symbol_name in graph_nodes(kind='sp') → insert calls edge. Hook-friendly for Edit/Write events.
+- Scanner ext map gained .sql → sql so SP symbol extractor runs (was generic, missed symbols).
+- icmg budget --html: self-contained dashboard from tool_invocations table; per-tool table + daily timeline with proportional bars; no CDN deps.
+Rejected:
+- Bundling embeddings without graceful Python-missing fallback - too fragile for v0.8.0.
+- Closing Phase 21 with 4/9 tasks - sp link + budget HTML are pure C++, ship-ready, leverage existing Phase 18+20 infrastructure.
+Open:
+- Phase 23: embeddings + agent + MCP resources + chat REPL (needs external deps).
+- Test backlog: dedicated unit tests for sp_link, budget_html, parallel-fail-fast.

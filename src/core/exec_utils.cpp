@@ -243,11 +243,49 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     ExecResult result;
     if (cmd_line.empty()) { result.exit_code = -1; return result; }
 
+    // Pattern: command starts with a quoted absolute path → bypass cmd.exe.
+    // cmd.exe's pathname resolver mishandles paths containing dot-prefixed
+    // folders like `C:\Users\X\.local\bin\app.exe` even with /s /c quoting,
+    // emitting "is not recognized as ... command".
+    // Workaround: when first token is a quoted absolute path, call
+    // CreateProcessA with lpApplicationName set explicitly — Windows uses
+    // the path as-is without parsing. Shell features (pipes, &&, redirects)
+    // are NOT supported in this fast path; we detect them and fall through.
+    bool use_direct = false;
+    std::string app_name;
+    std::string cmd_for_direct;
+    if (cmd_line.size() > 4 && cmd_line[0] == '"') {
+        size_t end_quote = cmd_line.find('"', 1);
+        if (end_quote != std::string::npos && end_quote > 3) {
+            std::string candidate = cmd_line.substr(1, end_quote - 1);
+            // Absolute path? "X:\..." or "X:/..."
+            bool absolute = candidate.size() >= 3 && candidate[1] == ':' &&
+                            (candidate[2] == '\\' || candidate[2] == '/');
+            // No shell metacharacters in the rest of the line
+            std::string tail = cmd_line.substr(end_quote + 1);
+            bool has_shell = tail.find('|') != std::string::npos ||
+                             tail.find('>') != std::string::npos ||
+                             tail.find('<') != std::string::npos ||
+                             tail.find('&') != std::string::npos ||
+                             tail.find(';') != std::string::npos;
+            if (absolute && !has_shell) {
+                use_direct = true;
+                app_name = candidate;
+                cmd_for_direct = cmd_line;  // keep quotes — CreateProcessA expects it
+            }
+        }
+    }
+
     // cmd.exe /s /c "<command>" preserves all internal quotes verbatim
     // (the /s flag strips ONLY the first and last char if both are ").
-    std::string full_cmd = "cmd.exe /s /c \"";
-    full_cmd += cmd_line;
-    full_cmd += "\"";
+    std::string full_cmd;
+    if (use_direct) {
+        full_cmd = cmd_for_direct;  // direct exec, no shell wrap
+    } else {
+        full_cmd = "cmd.exe /s /c \"";
+        full_cmd += cmd_line;
+        full_cmd += "\"";
+    }
 
     SECURITY_ATTRIBUTES sa{};
     sa.nLength = sizeof(sa);
@@ -277,7 +315,10 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     std::vector<char> cmdBuf(full_cmd.begin(), full_cmd.end());
     cmdBuf.push_back('\0');
 
-    bool ok = CreateProcessA(nullptr, cmdBuf.data(), nullptr, nullptr,
+    // When use_direct: pass app_name as lpApplicationName so Windows skips
+    // its path-parsing heuristics (which choke on .dotfolder segments).
+    LPCSTR lp_app = use_direct ? app_name.c_str() : nullptr;
+    bool ok = CreateProcessA(lp_app, cmdBuf.data(), nullptr, nullptr,
                               TRUE, CREATE_NO_WINDOW, nullptr, nullptr,
                               &si, &pi);
     CloseHandle(hOutW);
