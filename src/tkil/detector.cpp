@@ -74,6 +74,43 @@ Detector::Detector() {
         {"mysql ",   CmdType::Db},
         {"mariadb ", CmdType::Db},
         {"psql ",    CmdType::Db},
+
+        // Runtime / scripting interpreters — output usually short for trivia
+        // (--version, --help) but long stack traces on error. Use Test filter
+        // strategy (capture failures, summary on success).
+        {"node ",     CmdType::Test},
+        {"node.exe",  CmdType::Test},
+        {"deno ",     CmdType::Test},
+        {"bun ",      CmdType::Test},
+        {"ts-node ",  CmdType::Test},
+        {"tsx ",      CmdType::Test},
+        {"python ",   CmdType::Test},
+        {"python3 ",  CmdType::Test},
+        {"py ",       CmdType::Test},
+        {"ruby ",     CmdType::Test},
+        {"php ",      CmdType::Test},
+        {"java ",     CmdType::Test},
+        {"perl ",     CmdType::Test},
+        {"lua ",      CmdType::Test},
+        {"dotnet run",CmdType::Test},
+        {"go run",    CmdType::Test},
+
+        // Listing / streaming — pass through default (head50 + tail20 cap).
+        {"ls ",       CmdType::Default},
+        {"dir ",      CmdType::Default},
+        {"tree ",     CmdType::Default},
+        {"cat ",      CmdType::Default},
+        {"head ",     CmdType::Default},
+        {"tail ",     CmdType::Default},
+        {"wc ",       CmdType::Default},
+        {"sort ",     CmdType::Default},
+        {"uniq ",     CmdType::Default},
+        {"awk ",      CmdType::Default},
+        {"sed ",      CmdType::Default},
+        {"printf ",   CmdType::Default},
+        {"echo ",     CmdType::Default},
+        {"curl ",     CmdType::Default},
+        {"wget ",     CmdType::Default},
     };
 }
 
