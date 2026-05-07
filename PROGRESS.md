@@ -39,7 +39,7 @@
 | 19 | Context Bundle Commands (context/pack/diff-summary/explain/session) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-19-context-bundles.md — 2-3d. Depends on 17, 18 |
 | 20 | Output Compression & Auto-Summarization | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-20-output-compression.md — 2-4d. Heuristic outline, hooks, budget tracker |
 | 21 | Advanced (embeddings, agent proxy, MCP resources, REPL) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-21-advanced.md — 5-7d. Depends on 17-20 |
-| 22 | Workflow Integration (KG transitive impact + GSD lifecycle + Superpowers gates) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-22-workflow-integration.md — 8-10d. Depends on 17, 18. Closes "fast → rigorous" gap |
+| 22 | Workflow Integration (KG transitive impact + GSD lifecycle + Superpowers gates) | [x] | 2026-05-07 | 2026-05-07 | (pending) | Closure-based impact (forward+reverse), known-issue/verify/phase/design/wflog umbrella commands, migration 0008. End-to-end verified. |
 
 ---
 

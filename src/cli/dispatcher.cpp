@@ -49,6 +49,11 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"import",   "Import from ICM/Graphify/JSON/CSV"},
     {"export",   "Export data"},
     {"doctor",   "Health check (DB integrity, schema version, config)"},
+    {"known-issue", "Recurring error registry (add/match/list/stats)"},
+    {"verify",   "Run + record verification commands (audit trail + gate)"},
+    {"phase",    "Phase lifecycle (start/verify/ship)"},
+    {"design",   "Design doc registry (register/approve/check)"},
+    {"wflog",    "Queryable session log (save/search/recent/show)"},
 };
 
 Dispatcher::Dispatcher() {}
@@ -120,7 +125,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.3.0 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.4.0 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -136,7 +141,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.3.0\n";
+    std::cout << "icmg 0.4.0\n";
 }
 
 } // namespace icmg::cli
