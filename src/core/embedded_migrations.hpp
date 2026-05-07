@@ -286,6 +286,19 @@ CREATE TABLE IF NOT EXISTS embeddings (
 CREATE INDEX IF NOT EXISTS idx_embeddings_kind ON embeddings(kind);
 CREATE INDEX IF NOT EXISTS idx_embeddings_hash ON embeddings(kind, body_hash);
 )SQL"},
+        {11, R"SQL(
+-- 0011_templates (Phase 25): persisted template manifests.
+CREATE TABLE IF NOT EXISTS templates (
+    name          TEXT    PRIMARY KEY,
+    source_path   TEXT    NOT NULL,
+    manifest_json TEXT    NOT NULL,
+    body_hash     TEXT    NOT NULL DEFAULT '',
+    memoir_id     INTEGER,
+    created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_templates_source ON templates(source_path);
+)SQL"},
     };
 }
 
