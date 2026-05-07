@@ -28,9 +28,30 @@ Replaces large-file reads with `icmg summarize` output. Saves 80-90% on accident
 }
 ```
 
-**Threshold:** files >30KB by default. Override with env `ICMG_SHRINK_THRESHOLD=50000`.
+**Threshold:** files >60KB by default (~1000+ lines). Override with `ICMG_SHRINK_THRESHOLD=100000`.
 
-**Behavior:** denies the Read with a `permissionDecisionReason` containing the summary, prompting the agent to use `Read --offset/--limit` or `icmg context` instead.
+**Behavior (default, soft):** appends summary as `additionalContext` — Read still proceeds, agent gets summary alongside content. No confirm prompts.
+
+**Strict mode (`ICMG_SHRINK_STRICT=1`):** denies Read entirely; agent must use `--offset/--limit` or `icmg context`.
+
+**Exclude / include patterns:**
+- `ICMG_SHRINK_EXCLUDE='\.cs$|src/legacy/'` — egrep regex; matching files bypass hook
+- `ICMG_SHRINK_INCLUDE='\.(md|json)$'` — only check matching files
+
+Example install for project that has many large `.cs` files you want full Read on:
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Read",
+      "hooks": [{
+        "type": "command",
+        "command": "ICMG_SHRINK_THRESHOLD=120000 ICMG_SHRINK_EXCLUDE='\\.cs$' /path/to/icmg-shrink-read.sh"
+      }]
+    }]
+  }
+}
+```
 
 ---
 
