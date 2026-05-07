@@ -1,10 +1,13 @@
 #include "memory_store.hpp"
 #include "scorer.hpp"
 #include "../core/hook_bus.hpp"
+#include "../embed/embedder.hpp"
+#include "../embed/embed_store.hpp"
 #include <chrono>
 #include <algorithm>
 #include <sstream>
 #include <cmath>
+#include <unordered_map>
 
 namespace icmg::imem {
 
@@ -269,6 +272,94 @@ std::vector<MemoryNode> MemoryStore::recallByTopic(const std::string& topic, int
               {topic + "%", std::to_string(now), std::to_string(limit)},
               [&](const core::Row& r) { result.push_back(rowToNode(r)); });
     return result;
+}
+
+std::vector<MemoryNode> MemoryStore::recallSemantic(const std::string& query,
+                                                     int limit, double alpha) {
+    if (alpha < 0.0) alpha = 0.0;
+    if (alpha > 1.0) alpha = 1.0;
+
+    // Step 1: BM25 candidate set (top 50, cheap).
+    auto corpus = all();
+    auto& scorer = Scorer::instance();
+    scorer.fit(corpus);
+    int cand_n = std::max(limit * 5, 50);
+    auto cand = scorer.rank(query, corpus, cand_n);
+    if (cand.empty()) return cand;
+
+    // Pure BM25 path (alpha == 1) — skip embed entirely.
+    if (alpha >= 0.999) {
+        if ((int)cand.size() > limit) cand.resize(limit);
+        if (!cand.empty()) bumpFrequency(cand[0].id);
+        logQuery(query + " [semantic alpha=1]", (int)cand.size());
+        return cand;
+    }
+
+    // Step 2: try to embed query.
+    auto embedder = embed::makeEmbedder();
+    if (!embedder) {
+        // Graceful fallback: return BM25 results unchanged.
+        if ((int)cand.size() > limit) cand.resize(limit);
+        if (!cand.empty()) bumpFrequency(cand[0].id);
+        logQuery(query + " [semantic no-embedder]", (int)cand.size());
+        return cand;
+    }
+    auto qvec = embedder->embed(query);
+    int dim = embedder->dim();
+    if (qvec.empty()) {
+        if ((int)cand.size() > limit) cand.resize(limit);
+        return cand;
+    }
+
+    // Step 3: load doc embeddings for candidate ids.
+    embed::EmbedStore es(db_);
+    std::vector<int64_t> ids;
+    ids.reserve(cand.size());
+    for (auto& n : cand) ids.push_back(n.id);
+    auto vecs = es.getMany("memory", ids, dim);
+    std::unordered_map<int64_t, std::vector<float>> by_id;
+    for (auto& kv : vecs) by_id.emplace(kv.first, std::move(kv.second));
+
+    // Step 4: BM25 normalisation (max-score = 1).
+    double max_bm = 0.0;
+    for (auto& n : cand) {
+        // bm25_score lives in n.frequency? No — Scorer doesn't return raw scores publicly.
+        // Use rank-based fallback: position-derived score.
+        // (Scorer ranks already; we rebuild a normalized BM25 by inverse rank.)
+    }
+    // Rank-based BM25 normalization: top doc=1.0 -> bottom near 0.
+    int N = (int)cand.size();
+    auto bm_norm = [&](int idx) {
+        return (N <= 1) ? 1.0 : 1.0 - (double)idx / (double)(N - 1);
+    };
+    (void)max_bm;
+
+    // Step 5: hybrid blend.
+    struct Scored { MemoryNode node; double score; };
+    std::vector<Scored> blended;
+    blended.reserve(cand.size());
+    for (int i = 0; i < N; ++i) {
+        double bm = bm_norm(i);
+        double cs = 0.0;
+        auto it = by_id.find(cand[i].id);
+        if (it != by_id.end()) {
+            cs = (double)embed::cosine(qvec, it->second);
+            if (cs < 0.0) cs = 0.0;
+        }
+        double s = alpha * bm + (1.0 - alpha) * cs;
+        blended.push_back({cand[i], s});
+    }
+    std::sort(blended.begin(), blended.end(),
+              [](const Scored& a, const Scored& b) { return a.score > b.score; });
+
+    std::vector<MemoryNode> out;
+    out.reserve(std::min(limit, (int)blended.size()));
+    for (int i = 0; i < (int)blended.size() && i < limit; ++i)
+        out.push_back(std::move(blended[i].node));
+
+    if (!out.empty()) bumpFrequency(out[0].id);
+    logQuery(query + " [semantic alpha=" + std::to_string(alpha) + "]", (int)out.size());
+    return out;
 }
 
 void MemoryStore::bumpFrequency(int64_t id) {

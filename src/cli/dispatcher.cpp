@@ -63,6 +63,9 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"budget",   "Token-budget tracker (per-tool savings + hot spots)"},
     {"parallel", "Run multiple commands concurrently (subprocess fan-out)"},
     {"filter",   "Apply Tkil filter to stdin (pipe-style)"},
+    {"embed",    "Build/refresh embeddings (semantic recall index)"},
+    {"agent",    "LLM agent proxy (uses pack + configured CLI)"},
+    {"chat",     "Interactive REPL over LLM agent"},
 };
 
 Dispatcher::Dispatcher() {}
@@ -134,7 +137,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.8.1 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.9.0 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -150,7 +153,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.8.1\n";
+    std::cout << "icmg 0.9.0\n";
 }
 
 } // namespace icmg::cli

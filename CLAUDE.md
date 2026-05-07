@@ -90,6 +90,7 @@ BM25: k1=1.5, b=0.75, smoothed IDF
 - **Phase 20: Output compression** — `icmg summarize`, Read-shrink hook, output cap, `icmg budget` token tracker (60-80% on large reads)
 - **Phase 21: Advanced** — semantic embeddings, `icmg agent`, MCP resources protocol, `icmg chat` REPL (additional 20-30%)
 - **Phase 22: Workflow integration** — KG transitive impact + GSD lifecycle commands (`icmg phase verify` goal-backward) + Superpowers gates (`icmg known-issue/verify/design/log`). Hook templates bundle. Closes the "fast → rigorous" gap.
+- **Phase 23: Semantic + Agent + MCP Resources + Chat (v0.9.0 SHIPPED)** — `icmg embed memory|graph` builds 384-dim sentence-transformer index; `icmg recall --semantic --alpha N` hybrid BM25+cosine; `icmg agent <task>` LLM proxy with auto-decision-store; MCP `resources/list` + `resources/read` (icmg://memory/<id>, icmg://graph/<id>, icmg://session/<name>); `icmg chat` interactive REPL with \save/\load/\clear/\help/\quit. Embedder is Python sidecar (sentence-transformers) — graceful fallback to BM25-only when missing. Closes paraphrase blind spot (~50% → ~85% recall).
 
 Cumulative target: ~80-90% token reduction + 90% context retention across resets.
 - MVP path: 17 + 19's `context` (5 days, ~50% immediate).

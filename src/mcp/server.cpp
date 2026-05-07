@@ -70,6 +70,10 @@ void McpServer::handleRequest(const json& req) {
         handleListTools(req);
     } else if (method == "tools/call") {
         handleCallTool(req);
+    } else if (method == "resources/list") {
+        handleListResources(req);
+    } else if (method == "resources/read") {
+        handleReadResource(req);
     } else if (method == "notifications/initialized") {
         // No response needed
     } else {
@@ -89,10 +93,11 @@ void McpServer::handleInitialize(const json& req) {
         {"protocolVersion", "2024-11-05"},
         {"serverInfo", {
             {"name", "icmg"},
-            {"version", "0.8.1"}
+            {"version", "0.9.0"}
         }},
         {"capabilities", {
-            {"tools", {{"listChanged", false}}}
+            {"tools",     {{"listChanged", false}}},
+            {"resources", {{"subscribe", false}, {"listChanged", false}}}
         }}
     });
 }
@@ -204,6 +209,155 @@ void McpServer::sendError(const json& id, int code, const std::string& msg) {
         {"error",   {{"code", code}, {"message", msg}}}
     };
     std::cout << res.dump() << "\n";
+}
+
+// ---------------------------------------------------------------------------
+// Phase 23 Task 4: resources protocol
+// ---------------------------------------------------------------------------
+//
+// URI scheme:
+//   icmg://memory/<id>           → MemoryNode JSON
+//   icmg://graph/<id>            → GraphNode JSON
+//   icmg://summary/<file_path>   → outline (heuristic; sees mode of `icmg summarize`)
+//   icmg://session/<name>        → session snapshot
+//
+// resources/list returns the top-N hot files + recently-stored memory nodes.
+// resources/read parses URI, dispatches.
+
+void McpServer::handleListResources(const json& req) {
+    json id = req.contains("id") ? req["id"] : nullptr;
+
+    json resources = json::array();
+
+    // Top 20 hot files (by frequency * recency proxy via id desc).
+    db_.query("SELECT id, path FROM graph_nodes "
+              "WHERE parent_id IS NULL "
+              "ORDER BY id DESC LIMIT 20",
+              {},
+              [&](const core::Row& r) {
+                  if (r.size() < 2) return;
+                  resources.push_back({
+                      {"uri",      "icmg://graph/" + r[0]},
+                      {"name",     r[1]},
+                      {"mimeType", "application/json"},
+                      {"description", "graph node " + r[0]}
+                  });
+              });
+
+    // Top 20 recent memory nodes.
+    db_.query("SELECT id, topic FROM memory_nodes "
+              "WHERE deleted_at IS NULL "
+              "ORDER BY last_used DESC LIMIT 20",
+              {},
+              [&](const core::Row& r) {
+                  if (r.size() < 2) return;
+                  resources.push_back({
+                      {"uri",      "icmg://memory/" + r[0]},
+                      {"name",     r[1]},
+                      {"mimeType", "application/json"},
+                      {"description", "memory node " + r[0]}
+                  });
+              });
+
+    sendResponse(id, {{"resources", resources}});
+}
+
+json McpServer::readResourceUri(const std::string& uri) {
+    // Expect "icmg://<kind>/<id_or_path>"
+    const std::string scheme = "icmg://";
+    if (uri.compare(0, scheme.size(), scheme) != 0)
+        throw std::runtime_error("invalid uri scheme");
+    std::string rest = uri.substr(scheme.size());
+    auto slash = rest.find('/');
+    if (slash == std::string::npos) throw std::runtime_error("invalid uri (no path)");
+    std::string kind = rest.substr(0, slash);
+    std::string ident = rest.substr(slash + 1);
+
+    json out;
+    if (kind == "memory") {
+        db_.query("SELECT id,topic,content,keywords,importance,frequency,"
+                  "last_used,created_at,zone FROM memory_nodes WHERE id=?",
+                  {ident},
+                  [&](const core::Row& r) {
+                      if (r.size() < 9) return;
+                      out = {
+                          {"id",         r[0]},
+                          {"topic",      r[1]},
+                          {"content",    r[2]},
+                          {"keywords",   r[3]},
+                          {"importance", r[4]},
+                          {"frequency",  r[5]},
+                          {"last_used",  r[6]},
+                          {"created_at", r[7]},
+                          {"zone",       r[8]}
+                      };
+                  });
+        if (out.is_null()) throw std::runtime_error("memory node not found");
+    } else if (kind == "graph") {
+        db_.query("SELECT id,path,language,kind,COALESCE(parent_id,0),"
+                  "COALESCE(symbol_name,''),COALESCE(line_start,0),COALESCE(line_end,0),"
+                  "COALESCE(content,'') FROM graph_nodes WHERE id=?",
+                  {ident},
+                  [&](const core::Row& r) {
+                      if (r.size() < 9) return;
+                      out = {
+                          {"id",          r[0]},
+                          {"path",        r[1]},
+                          {"language",    r[2]},
+                          {"kind",        r[3]},
+                          {"parent_id",   r[4]},
+                          {"symbol_name", r[5]},
+                          {"line_start",  r[6]},
+                          {"line_end",    r[7]},
+                          {"content",     r[8]}
+                      };
+                  });
+        if (out.is_null()) throw std::runtime_error("graph node not found");
+    } else if (kind == "session") {
+        db_.query("SELECT name, snapshot, created_at FROM sessions WHERE name=?",
+                  {ident},
+                  [&](const core::Row& r) {
+                      if (r.size() < 3) return;
+                      out = {
+                          {"name",       r[0]},
+                          {"snapshot",   r[1]},
+                          {"created_at", r[2]}
+                      };
+                  });
+        if (out.is_null()) throw std::runtime_error("session not found");
+    } else if (kind == "summary") {
+        // Lookup graph_nodes by path, then return content excerpt.
+        db_.query("SELECT id, content FROM graph_nodes WHERE path=? AND parent_id IS NULL LIMIT 1",
+                  {ident},
+                  [&](const core::Row& r) {
+                      if (r.size() < 2) return;
+                      out = {{"path", ident}, {"id", r[0]}, {"summary", r[1].substr(0, 2000)}};
+                  });
+        if (out.is_null()) throw std::runtime_error("file not in graph");
+    } else {
+        throw std::runtime_error("unknown resource kind: " + kind);
+    }
+    return out;
+}
+
+void McpServer::handleReadResource(const json& req) {
+    json id = req.contains("id") ? req["id"] : nullptr;
+    if (!req.contains("params") || !req["params"].contains("uri")) {
+        sendError(id, -32602, "Missing params.uri");
+        return;
+    }
+    std::string uri = req["params"]["uri"].get<std::string>();
+    try {
+        json content = readResourceUri(uri);
+        sendResponse(id, {
+            {"contents", json::array({
+                {{"uri", uri}, {"mimeType", "application/json"}, {"text", content.dump()}}
+            })}
+        });
+        logAudit("resource_read", "uri=" + uri.substr(0, 80));
+    } catch (const std::exception& e) {
+        sendError(id, -32603, std::string("resource read failed: ") + e.what());
+    }
 }
 
 void McpServer::logAudit(const std::string& tool_name, const std::string& summary) {
