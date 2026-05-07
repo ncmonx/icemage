@@ -15,17 +15,19 @@ int main(int argc, char* argv[]) {
     bool show_version = false;
     bool mcp_server = false;
 
+    // Stop global-flag parsing once we hit the first subcommand. Otherwise
+    // commands like `icmg run node --version` would eat --version globally
+    // and never reach the subprocess.
+    bool seen_subcommand = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "--verbose" || a == "-v") {
-            verbose = true;
-        } else if (a == "--version") {
-            show_version = true;
-        } else if (a == "--mcp-server") {
-            mcp_server = true;
-        } else {
-            args.push_back(a);
+        if (!seen_subcommand) {
+            if (a == "--verbose" || a == "-v") { verbose = true; continue; }
+            if (a == "--version")              { show_version = true; continue; }
+            if (a == "--mcp-server")           { mcp_server = true; continue; }
+            if (!a.empty() && a[0] != '-')     seen_subcommand = true;
         }
+        args.push_back(a);
     }
 
     if (show_version) {
