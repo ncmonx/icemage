@@ -36,8 +36,8 @@
 | 14 | Integration Testing + Bug Fix | [x] | 2026-05-06 | 2026-05-06 | 6afe58a | 7 suites (ICM/Graph/Tkil/Features/MCP/Security/Perf), 14 unit tests, 44 integration tests — all pass |
 | 17 | Zone Partitioning (subsystem/layer scoping) | [x] | 2026-05-07 | 2026-05-07 | 4164fda | Auto-detected 19 zones, --zone flag on recall/graph/viz, BM25 IDF per zone, 7 unit tests pass |
 | 18 | Function/Symbol-level Nodes | [x] | 2026-05-07 | 2026-05-07 | 8a0b3f6 | C# + SQL extractors, two-tier graph (file→symbols), call edges, graph symbol/callers/callees CLI, 4 unit tests. Verified end-to-end. |
-| 19 | Context Bundle Commands (context/pack/diff-summary/explain/session) | [x] | 2026-05-07 | 2026-05-07 | (pending) | 5 commands + output_cap utility. End-to-end verified on real repo. |
-| 20 | Output Compression & Auto-Summarization | [x] | 2026-05-07 | 2026-05-07 | (pending) | icmg summarize + budget commands, hook templates (shrink-read, cap-output, known-issue-recall), auto-record icmg run into tool_invocations. End-to-end verified. |
+| 19 | Context Bundle Commands (context/pack/diff-summary/explain/session) | [x] | 2026-05-07 | 2026-05-07 | f8330e9 | 5 commands + output_cap utility. End-to-end verified on real repo. |
+| 20 | Output Compression & Auto-Summarization | [x] | 2026-05-07 | 2026-05-07 | 560c85a | icmg summarize + budget commands, hook templates (shrink-read, cap-output, known-issue-recall), auto-record icmg run into tool_invocations. End-to-end verified. Drive-case fix: 58773db (v0.6.1). |
 | 21 | Advanced (embeddings, agent proxy, MCP resources, REPL) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-21-advanced.md — 5-7d. Depends on 17-20 |
 | 22 | Workflow Integration (KG transitive impact + GSD lifecycle + Superpowers gates) | [x] | 2026-05-07 | 2026-05-07 | 063936d | Closure-based impact (forward+reverse), known-issue/verify/phase/design/wflog umbrella commands, migration 0008. End-to-end verified. |
 
