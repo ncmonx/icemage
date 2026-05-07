@@ -26,6 +26,10 @@ public:
     std::vector<GraphNode> findSymbol(const std::string& name);  // by symbol_name
     void removeSymbolsOf(int64_t parent_id);  // delete all symbols under a file (for rescan)
 
+    // Phase 21 hotfix: merge case-mismatched duplicate path nodes (Windows).
+    // Returns count of duplicates merged. Idempotent — safe to call repeatedly.
+    int dedupeCaseMixedPaths();
+
     // Phase 22: transitive impact (BFS forward closure with cycle detection).
     // edge_types empty → all types. reverse=true walks src←dst (who depends on me).
     std::vector<int64_t> closure(int64_t start,

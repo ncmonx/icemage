@@ -163,6 +163,77 @@ void GraphStore::removeSymbolsOf(int64_t parent_id) {
     db_.run("DELETE FROM graph_nodes WHERE parent_id=?", {std::to_string(parent_id)});
 }
 
+// Phase 21 hotfix: groups by lower(path), picks an upper-case-drive variant
+// (or first id) as keeper, reparents edges, deletes duplicates, then
+// uppercases the drive letter on the keeper's path so future scans match.
+// Idempotent: returns 0 when no dups remain.
+int GraphStore::dedupeCaseMixedPaths() {
+    struct Row2 { int64_t id; std::string path; };
+    std::unordered_map<std::string, std::vector<Row2>> buckets;
+    db_.query("SELECT id, path FROM graph_nodes WHERE kind='file' ORDER BY id", {},
+              [&](const core::Row& r) {
+                  if (r.size() < 2) return;
+                  Row2 x;
+                  try { x.id = std::stoll(r[0]); } catch (...) { return; }
+                  x.path = r[1];
+                  std::string lower = x.path;
+                  std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                  buckets[lower].push_back(std::move(x));
+              });
+
+    int merged = 0;
+    for (auto& [lower, rows] : buckets) {
+        if (rows.size() <= 1) {
+            // Even if no dup, still uppercase the drive letter on Windows-style paths
+            // so subsequent rescans (which always upper-case) match this row.
+            auto& only = rows[0];
+            if (only.path.size() >= 2 && only.path[1] == ':' &&
+                only.path[0] >= 'a' && only.path[0] <= 'z') {
+                std::string up = only.path;
+                up[0] = (char)(up[0] - 'a' + 'A');
+                // Skip if collision (shouldn't happen — bucket key is lower-case)
+                db_.run("UPDATE OR IGNORE graph_nodes SET path=? WHERE id=?",
+                        {up, std::to_string(only.id)});
+            }
+            continue;
+        }
+        // Pick keeper: prefer upper-case-drive; else first id
+        int64_t keeper_id = rows[0].id;
+        std::string keeper_path = rows[0].path;
+        for (auto& r : rows) {
+            if (r.path.size() >= 2 && r.path[1] == ':' &&
+                r.path[0] >= 'A' && r.path[0] <= 'Z') {
+                keeper_id = r.id;
+                keeper_path = r.path;
+                break;
+            }
+        }
+        // Reparent edges + delete dups
+        for (auto& r : rows) {
+            if (r.id == keeper_id) continue;
+            ++merged;
+            db_.run("UPDATE OR IGNORE graph_edges SET src=? WHERE src=?",
+                    {std::to_string(keeper_id), std::to_string(r.id)});
+            db_.run("UPDATE OR IGNORE graph_edges SET dst=? WHERE dst=?",
+                    {std::to_string(keeper_id), std::to_string(r.id)});
+            db_.run("DELETE FROM graph_edges WHERE src=dst", {});
+            // Reparent symbol children to keeper
+            db_.run("UPDATE OR IGNORE graph_nodes SET parent_id=? WHERE parent_id=?",
+                    {std::to_string(keeper_id), std::to_string(r.id)});
+            db_.run("DELETE FROM graph_nodes WHERE id=?", {std::to_string(r.id)});
+        }
+        // Normalize keeper's drive case
+        if (keeper_path.size() >= 2 && keeper_path[1] == ':' &&
+            keeper_path[0] >= 'a' && keeper_path[0] <= 'z') {
+            std::string up = keeper_path;
+            up[0] = (char)(up[0] - 'a' + 'A');
+            db_.run("UPDATE OR IGNORE graph_nodes SET path=? WHERE id=?",
+                    {up, std::to_string(keeper_id)});
+        }
+    }
+    return merged;
+}
+
 // Phase 22: BFS forward (src→dst) or reverse (dst→src) closure with cycle detection.
 std::vector<int64_t> GraphStore::closure(int64_t start,
                                           const std::vector<std::string>& edge_types,

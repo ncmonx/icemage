@@ -5,6 +5,7 @@
 #include "../core/zone_resolver.hpp"
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <tuple>
@@ -133,6 +134,14 @@ int Scanner::scan(const std::string& root, const Options& opts) {
     // A9: load gitignore
     GitIgnore gi;
     if (opts.gitignore) gi.load(root + "/.gitignore");
+
+    // Phase 21 hotfix: auto-merge case-mismatched duplicate path nodes from
+    // pre-v0.6.1 scans (Windows). Cheap when no dups exist (one SELECT).
+    int merged = store_.dedupeCaseMixedPaths();
+    if (merged > 0) {
+        std::cerr << "[icmg] auto-deduped " << merged
+                  << " case-mismatched path node(s) from earlier scans\n";
+    }
 
     // Phase 17: zone resolver — auto-tag scanned files by path glob.
     icmg::core::ZoneResolver zoner(store_.db());
