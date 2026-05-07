@@ -80,3 +80,19 @@ Rejected:
 Open:
 - Phase 21 not started; Task 5b (parallel) recommended first.
 - Backlog: dedicated unit tests for workflow_cmd, bundle_cmd, summarize_cmd, budget_cmd, graph closure+dedupe, scanner drive-norm, sql_symbol, csharp_symbol, output_cap.
+
+## 2026-05-07 21:30 [saved]
+Goal: Phase 21 partial - parallel primitive (5b), DB filter (5c), drive-case auto-dedupe.
+Decisions:
+- icmg parallel: std::thread per task + counting semaphore wraps existing safeExec; max_concurrency capped at hardware_concurrency() then 32; merge modes json|concat|none + --json full result. fail_fast cancels pending only (in-flight finishes naturally).
+- DB filter (sqlcmd/mysql/psql/mariadb): always preserve errors/diagnostics/row-count footers; tabular cap header + 20 rows + truncate marker; mysqldump/pg_dump fall through (substring "dump" check).
+- Auto-dedupe in scanner: GraphStore::dedupeCaseMixedPaths() called as first scan step. Cheap when no dups (single SELECT). Fixes pre-v0.6.1 DBs without manual `icmg graph dedupe` invocation.
+- Single source of truth: extracted dedupe logic from GraphDedupeCommand into GraphStore method; CLI command now wraps it.
+Rejected:
+- Hard SIGKILL on fail_fast for in-flight tasks - lets running children finish to avoid corrupted DB writes.
+- Lowercasing path on Windows - just drive letter; preserves user-readable mixed case in folder names.
+- Migration-only fix for case-mix - users don't always re-scan after upgrade; auto-dedupe on every scan more reliable.
+- LLM tree-summarize as P21 priority - replaced by parallel + DB filter (more universal value).
+Open:
+- Phase 21: 2/9+1 tasks done. Remaining: embeddings, vec recall, agent, MCP resources, cross-project, streaming, SP auto-link, chat REPL, token analytics.
+- Test backlog: workflow_cmd, bundle_cmd, summarize_cmd, budget_cmd, parallel-fail-fast, dedupe edge cases.
