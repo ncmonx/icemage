@@ -1,7 +1,7 @@
 #include "../base_mcp_tool.hpp"
 #include "../../core/registry.hpp"
-#include "../../icm/memory_store.hpp"
-#include "../../icm/memory_node.hpp"
+#include "../../imem/memory_store.hpp"
+#include "../../imem/memory_node.hpp"
 
 namespace icmg::mcp {
 
@@ -28,13 +28,13 @@ protected:
     }
 
     json callImpl(const json& args, core::Db& db) override {
-        icm::MemoryNode node;
+        imem::MemoryNode node;
         node.topic      = getStr(args, "topic");
         node.content    = getStr(args, "content");
         node.keywords   = getStr(args, "keywords");
-        node.importance = icm::importanceFromName(getStr(args, "importance", "med"));
+        node.importance = imem::importanceFromName(getStr(args, "importance", "med"));
 
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
         int64_t id = store.store(node, false);
         return {{"id", id}, {"topic", node.topic}, {"status", "stored"}};
     }

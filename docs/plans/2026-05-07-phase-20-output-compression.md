@@ -94,7 +94,7 @@ fi
 ## Task 5 — Smart abbreviation expansion in store
 
 **Files:**
-- Modify: `src/icm/memory_store.cpp::store()`
+- Modify: `src/imem/memory_store.cpp::store()`
 
 When inserting content, run through abbreviation engine in *reverse* (long→short): replace common phrases with abbr keys. On `recall`, re-expand. Halves storage for repetitive memory.
 

@@ -2,7 +2,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
-#include "../../icm/memory_store.hpp"
+#include "../../imem/memory_store.hpp"
 #include <iostream>
 #include <iomanip>
 #include <chrono>
@@ -64,20 +64,20 @@ public:
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
         auto nodes = store.all();
 
         // Filter by topic prefix
         if (!topic_filter.empty()) {
             nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
-                [&](const icm::MemoryNode& n){
+                [&](const imem::MemoryNode& n){
                     return n.topic.rfind(topic_filter, 0) != 0;
                 }), nodes.end());
         }
 
         // Newest first
         std::sort(nodes.begin(), nodes.end(),
-            [](const icm::MemoryNode& a, const icm::MemoryNode& b){
+            [](const imem::MemoryNode& a, const imem::MemoryNode& b){
                 return a.last_used > b.last_used;
             });
         if ((int)nodes.size() > limit) nodes.resize(limit);
@@ -138,7 +138,7 @@ public:
         }
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
         auto n = store.get(id);
         if (n.id == 0) {
             std::cerr << "icmg memory show: not found (#" << id << ")\n";
@@ -166,7 +166,7 @@ public:
     int run(const std::vector<std::string>&) override {
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
         auto nodes = store.all();
 
         int by_imp[4] = {0,0,0,0};
@@ -219,7 +219,7 @@ public:
         }
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
         int n = store.purge(days);
         std::cout << "Purged " << n << " node(s) deleted >" << days << " days ago.\n";
         return 0;
@@ -243,7 +243,7 @@ public:
         }
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
         auto results = store.recall(query, 10, false);
         if (results.empty()) {
             std::cout << "No matches.\n";
@@ -272,7 +272,7 @@ public:
         }
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
         auto history = store.queryHistory(limit);
         if (history.empty()) {
             std::cout << "No query history.\n";

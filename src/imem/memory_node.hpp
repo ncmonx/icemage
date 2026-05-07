@@ -2,7 +2,7 @@
 #include <string>
 #include <cstdint>
 
-namespace icmg::icm {
+namespace icmg::imem {
 
 struct MemoryNode {
     int64_t     id          = 0;
@@ -43,4 +43,4 @@ inline int importanceFromName(const std::string& name) {
     return 1; // default: med
 }
 
-} // namespace icmg::icm
+} // namespace icmg::imem

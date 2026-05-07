@@ -314,7 +314,7 @@ icmg graph impact <file> [--depth N] [--json]
 BFS melalui inbound edges (siapa yang depend ke file ini):
 ```
 Impact of changing: src/core/db.hpp
-  Direct (depth 1):  src/core/db.cpp, src/icm/memory_store.cpp  [2 files]
+  Direct (depth 1):  src/core/db.cpp, src/imem/memory_store.cpp  [2 files]
   Transitive (depth 2+): src/cli/dispatcher.cpp, src/graph/graph_store.cpp  [5 files]
   Total impact: 7 files
   Risk score: 7 × avg_importance(1.8) = 12.6

@@ -4,7 +4,7 @@
 #include <vector>
 #include <unordered_map>
 
-namespace icmg::icm {
+namespace icmg::imem {
 
 class Scorer {
 public:
@@ -56,4 +56,4 @@ private:
     double idf(const std::string& term) const;
 };
 
-} // namespace icmg::icm
+} // namespace icmg::imem

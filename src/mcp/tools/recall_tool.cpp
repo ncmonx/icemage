@@ -1,7 +1,7 @@
 #include "../base_mcp_tool.hpp"
 #include "../../core/registry.hpp"
-#include "../../icm/memory_store.hpp"
-#include "../../icm/memory_node.hpp"
+#include "../../imem/memory_store.hpp"
+#include "../../imem/memory_node.hpp"
 
 namespace icmg::mcp {
 
@@ -33,8 +33,8 @@ protected:
         std::string topic = getStr(args, "topic");
         limit = std::max(1, std::min(50, limit));
 
-        icm::MemoryStore store(db);
-        std::vector<icm::MemoryNode> nodes;
+        imem::MemoryStore store(db);
+        std::vector<imem::MemoryNode> nodes;
         if (!topic.empty()) {
             nodes = store.recallByTopic(topic, limit);
         } else {
