@@ -86,7 +86,14 @@ public:
             }
         } else {
             prompt << "You are an engineering assistant. Be concise. "
-                      "Give a decision sentence followed by minimal code or steps.\n\n";
+                      "Give a decision sentence followed by minimal code or steps.\n\n"
+                      "## Tooling rules (icmg-aware)\n"
+                      "- Use `icmg context <file>`, `icmg graph symbol <name>`, "
+                      "`icmg recall \"<q>\"` instead of raw Read/Grep when possible.\n"
+                      "- For 2+ independent shell steps: use `icmg parallel --task ... --task ...`. "
+                      "Sequential runs are a bug.\n"
+                      "- After fixing a bug, store via `icmg known-issue add`. "
+                      "After a non-trivial decision, store via `icmg store --topic decisions-...`.\n\n";
         }
 
         if (!no_pack) {

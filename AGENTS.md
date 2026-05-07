@@ -6,10 +6,30 @@ Universal context for **Claude Code, Cursor, Copilot, Aider, Continue, GitHub Co
 
 ---
 
+## CRITICAL parallel-first rule
+
+**If you have 2+ independent steps (independent files, independent checks, independent recalls), you MUST run them via `icmg parallel`.** Sequential runs are a bug — they waste wall-clock and miss the I/O parallelism win (3-6× speedup typical). This rule is non-negotiable.
+
+```bash
+# Wrong:
+icmg verify --command "ctest"
+icmg verify --command "cmake --build build"
+icmg run npm test
+
+# Right:
+icmg parallel \
+    --task "icmg verify --command 'ctest'" \
+    --task "icmg verify --command 'cmake --build build'" \
+    --task "icmg run npm test"
+```
+
+Heuristic: do the next 2+ steps share a file write or depend on each other's output? **No → use `icmg parallel`.**
+
 ## When to Use icmg (decision tree)
 
 | Situation | Tool | Why |
 |---|---|---|
+| **2+ independent steps** | `icmg parallel --task "..." --task "..."` | DEFAULT — parallel-first rule |
 | Task starts, need orientation | `icmg pack "<task>"` | One 4KB bundle replaces 5-10 explorations |
 | Need a specific file's context | `icmg context <file>` | File + symbols + neighbors + memory in 1 call |
 | Need a specific function | `icmg graph symbol <Name>` | 30-line symbol node, not 800-line file |
