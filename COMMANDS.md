@@ -6,6 +6,46 @@ Complete alphabetical reference. For grouped/topical view, see `README.md`.
 
 ---
 
+## agent — LLM proxy (Phase 23)
+
+```
+icmg agent "<task>"               # pack→prompt→LLM CLI→auto-store decision
+icmg agent --dry-run "<task>"     # show prompt only, no LLM call
+icmg agent --no-store "<task>"    # don't auto-memorize result
+icmg agent --no-pack  "<task>"    # skip pack step (terse prompt)
+icmg agent --command "<cmd>"      # override agent.command
+icmg agent --timeout 180          # default 120s
+```
+
+Config (`~/.icmg/config.json`): `agent.command` (default `claude --print`), `agent.system_prompt_path`, `agent.max_tokens`.
+
+---
+
+## chat — Interactive REPL (Phase 23)
+
+```
+icmg chat                         # default
+icmg chat --no-llm                # sandbox: print packed prompt, no LLM call
+icmg chat --no-pack               # skip pack each turn
+icmg chat --session <name>        # custom session id
+```
+
+Slash commands: `\save <name>`, `\load <name>`, `\clear`, `\help`, `\quit`. History persists at `~/.icmg/chat-history.txt`.
+
+---
+
+## embed — Build/refresh semantic index (Phase 23)
+
+```
+icmg embed memory [--limit N] [--force]     # embed memory_nodes
+icmg embed graph  [--limit N] [--force]     # embed graph_nodes
+icmg embed --status                          # availability + counts
+```
+
+Requires `pip install sentence-transformers`. Skips rows whose `body_hash` is unchanged unless `--force`. Without Python sidecar: `--status` reports unavailable; `recall --semantic` falls back to BM25.
+
+---
+
 ## abbr — Abbreviation engine
 
 ```
@@ -262,18 +302,24 @@ icmg --project <name> <command>          # one-off override
 
 ---
 
-## recall — BM25 memory recall
+## recall — BM25 memory recall (+ semantic, Phase 23)
 
 ```
 icmg recall <query>
     [--limit N]            # default 10
     [--topic PREFIX]       # filter by topic prefix
     [--zone Z]             # restrict corpus to zone
+    [--semantic]           # hybrid BM25+cosine (Phase 23)
+    [--alpha N]            # blend 0..1 (1=BM25, 0=vec, default 0.5)
+    [--pure]               # alpha=0 (vec only)
+    [--all-projects]       # iterate registered projects
     [--fuzzy]              # fuzzy fallback
     [--explain]            # show score breakdown
     [--history]            # show recent queries instead
     [--json]
 ```
+
+`--semantic` requires embeddings: run `icmg embed memory` first. Without sentence-transformers installed, `--semantic` silently degrades to BM25.
 
 ---
 

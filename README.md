@@ -183,6 +183,48 @@ Claude Code sessions burn 50K+ tokens reading large files, running noisy command
 | `icmg wflog recent [--limit N]` | Newest first |
 | `icmg wflog show <id>` | Full detail |
 
+### Semantic Recall + Agent + Chat (Phase 23, v0.9.0)
+
+| Command | Purpose |
+|---|---|
+| `icmg embed memory` | Build semantic index over memory_nodes (sentence-transformer) |
+| `icmg embed graph` | Build index over graph_nodes (file + symbol bodies) |
+| `icmg embed --status` | Show embedder availability + count |
+| `icmg embed --force` | Re-embed even if `body_hash` unchanged |
+| `icmg recall "X" --semantic` | Hybrid BM25 + cosine (default α=0.5) |
+| `icmg recall "X" --semantic --alpha 0.3` | Weight more toward vec |
+| `icmg recall "X" --pure` | Pure cosine (alpha=0) |
+| `icmg agent "<task>"` | LLM proxy: pack→prompt→user-CLI→auto-store decision |
+| `icmg agent --dry-run "<task>"` | Show assembled prompt; no LLM call |
+| `icmg agent --no-store --no-pack "<task>"` | Skip auto-store / packing |
+| `icmg chat` | Interactive REPL over agent (`\save \load \clear \quit`) |
+| `icmg chat --no-llm` | Sandbox mode: print packed prompt only |
+
+**MCP Resources protocol:** server now exposes `resources/list` + `resources/read` with URI scheme:
+- `icmg://memory/<id>` — MemoryNode JSON
+- `icmg://graph/<id>` — GraphNode JSON (file or symbol)
+- `icmg://session/<name>` — saved session snapshot
+- `icmg://summary/<file_path>` — heuristic outline
+
+**Setup (semantic recall):**
+```bash
+pip install sentence-transformers          # one-time, ~500MB
+icmg embed memory                          # builds index
+icmg recall "auth issue" --semantic        # finds "fix login bug" via paraphrase
+```
+
+**Graceful fallback:** without Python sentence-transformers, `--semantic` silently uses BM25-only. No regression.
+
+**Agent config (`~/.icmg/config.json`):**
+```json
+{
+  "agent.command": "claude --print",
+  "agent.system_prompt_path": "~/.icmg/agent-system.md",
+  "agent.max_tokens": "2000"
+}
+```
+Common alternatives: `ollama run mistral`, `gh copilot suggest`, custom curl wrapper.
+
 ### Stored Procedures
 
 | Command | Purpose |
@@ -300,7 +342,7 @@ icmg ships an MCP (Model Context Protocol) server so Claude Code (and any MCP-aw
 
 ## Token-Efficiency Roadmap
 
-Implemented (v0.8.0):
+Implemented (v0.9.0):
 
 | Phase | Feature | Saving |
 |---|---|---|
@@ -310,15 +352,15 @@ Implemented (v0.8.0):
 | 20 | Output compression — `summarize`, `budget`, hook templates | 60-80% large reads |
 | 21 | Advanced — `parallel`, `filter`, db-cli filter, cross-project, sp-link, budget HTML | I/O 3-6× faster + 95-99% on SQL output |
 | 22 | Workflow integration — known-issue, verify, phase, design | Audit + 5-10× context retention |
+| 23 | Semantic recall + agent + MCP resources + chat REPL | Paraphrase 50→85%, MCP cache <10% overhead |
 
-Deferred to Phase 23+:
+Deferred to Phase 24+:
 
 | Feature | Status | Why deferred |
 |---|---|---|
-| Semantic embeddings (`recall --semantic`) | future | Python sidecar dep |
-| Agent proxy (`icmg agent <task>`) | future | LLM API config |
-| MCP Resources protocol | future | Full protocol extension |
-| `icmg chat` REPL | future | Interactive + LLM dep |
+| ONNX Runtime backend (no-Python embeddings) | future | +20MB binary; tier-2 only |
+| Auto-fine-tune embedding model | future | Heavy compute |
+| Voice mode / VS Code extension | future | Different audience |
 
 **Cumulative target:** 80-90% token reduction + 90% context retention across resets.
 
@@ -346,6 +388,45 @@ cp icmg.exe /c/msys64/usr/local/bin/
 ```
 
 **Requirements:** CMake 3.20+, C++17 compiler (gcc 9+/clang 10+/MSVC 2019+). Bundled deps: SQLite3 amalgamation, nlohmann/json single header.
+
+---
+
+## Hook Templates
+
+Drop-in PreToolUse / PostToolUse hooks live in `examples/hooks/`:
+
+| Script | Event | Purpose |
+|---|---|---|
+| `icmg-shrink-read.sh` | PreToolUse:Read | Inject `icmg summarize` for large files; soft `additionalContext` mode by default (Read still proceeds) |
+| `icmg-cap-output.sh` | PostToolUse:Bash | Spill stdout >8KB to `/tmp/icmg-spill-*` and return head+tail |
+| `icmg-known-issue-recall.sh` | PostToolUseFailure:Bash | On Bash error, query `icmg known-issue match` and inject past resolution |
+
+**Threshold tuning (icmg-shrink-read.sh):**
+
+| Env var | Default | Effect |
+|---|---|---|
+| `ICMG_SHRINK_THRESHOLD` | `60000` (~1000+ lines) | Bytes above which summary injects |
+| `ICMG_SHRINK_STRICT` | `0` | Set to `1` to **deny** Read instead of soft inject |
+| `ICMG_SHRINK_EXCLUDE` | `""` | egrep regex; matching files bypass hook entirely |
+| `ICMG_SHRINK_INCLUDE` | `""` | egrep regex; only matching files are checked |
+
+**Common pitfall (fixed in v0.9.0):** earlier templates defaulted to 30KB + `permissionDecision: deny`, which fired confirm-loops on ~500-line project source files. New default is 60KB + `additionalContext` (no block, no nag). Per-language opt-out:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Read",
+      "hooks": [{
+        "type": "command",
+        "command": "ICMG_SHRINK_THRESHOLD=120000 ICMG_SHRINK_EXCLUDE='\\.cs$|\\.sql$' /path/to/icmg-shrink-read.sh"
+      }]
+    }]
+  }
+}
+```
+
+See `examples/hooks/README.md` for full install + composing examples.
 
 ---
 
