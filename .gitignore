@@ -28,6 +28,11 @@ third_party/nlohmann/json.hpp
 # AI assistant artifacts
 context-snapshot.json
 
-# Claude project settings (local only)
-.claude/settings.local.json
+# Claude project + internal planning (not public)
+.claude/
+docs/plans/
+docs/private/
+CLAUDE.md
 session-log.md
+state.md
+PROGRESS.md
