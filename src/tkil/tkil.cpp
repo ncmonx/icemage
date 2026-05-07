@@ -108,6 +108,22 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
     }
 
     recordCommand(command, fr.original_lines, fr.filtered_lines);
+
+    // Phase 20: log to tool_invocations for `icmg budget`. Best-effort —
+    // ignore failures (table may not exist on legacy DBs that didn't migrate).
+    try {
+        int64_t raw_b  = (int64_t)combined.size();
+        int64_t filt_b = (int64_t)fr.output.size();
+        int64_t in_t   = (raw_b + 3) / 4;
+        int64_t out_t  = (filt_b + 3) / 4;
+        int64_t saved  = in_t > out_t ? (in_t - out_t) : 0;
+        db_.run(
+            "INSERT INTO tool_invocations(tool_name,command,raw_bytes,filtered_bytes,"
+            " est_tokens_in,est_tokens_out,saved_tokens) VALUES('run',?,?,?,?,?,?)",
+            {command, std::to_string(raw_b), std::to_string(filt_b),
+             std::to_string(in_t), std::to_string(out_t), std::to_string(saved)});
+    } catch (...) { /* table missing on un-migrated DB — skip */ }
+
     return result.exit_code;
 }
 
