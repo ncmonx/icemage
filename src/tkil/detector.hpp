@@ -13,6 +13,10 @@ enum class CmdType {
     Docker,         // docker build, docker logs, docker-compose
     PackageManager, // npm install, yarn, pip install, gem install (A5)
     Db,             // sqlcmd, mysql, mariadb, psql (Phase 21 Task 5c)
+    Vitest,         // vitest test runner
+    Playwright,     // playwright test runner
+    Tsc,            // typescript compiler
+    Lint,           // eslint, clippy, ruff, golangci-lint, etc.
     Default         // unknown
 };
 
@@ -38,6 +42,10 @@ inline std::ostream& operator<<(std::ostream& os, CmdType t) {
         case CmdType::Docker:         return os << "Docker";
         case CmdType::PackageManager: return os << "PackageManager";
         case CmdType::Db:             return os << "Db";
+        case CmdType::Vitest:         return os << "Vitest";
+        case CmdType::Playwright:     return os << "Playwright";
+        case CmdType::Tsc:            return os << "Tsc";
+        case CmdType::Lint:           return os << "Lint";
         case CmdType::Default:        return os << "Default";
     }
     return os << "Unknown";

@@ -286,6 +286,63 @@ public:
 };
 
 // =============================================================================
+// memory decay — periodically reduce importance of stale nodes (Phase: memoir+decay)
+// =============================================================================
+class MemoryDecayCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "memory-decay"; }
+    std::string description() const override { return "Reduce importance of stale memory nodes"; }
+
+    void usage() const override {
+        std::cout <<
+            "Usage: icmg memory decay [options]\n\n"
+            "Reduces importance of nodes not used in N days.\n\n"
+            "Options:\n"
+            "  --threshold-days N  Stale after N days (default 30)\n"
+            "  --floor N           Minimum importance (default 0; pinned=3 won't decay)\n"
+            "  --dry-run           Show counts; do not modify\n"
+            "  --pinned-keep       Skip nodes with importance=3 (critical/pinned)\n";
+    }
+
+    int run(const std::vector<std::string>& args) override {
+        if (hasFlag(args, "--help")) { usage(); return 0; }
+        int days  = 30;  try { days  = std::stoi(flagValue(args, "--threshold-days", "30")); } catch (...) {}
+        int floor = 0;   try { floor = std::stoi(flagValue(args, "--floor", "0")); } catch (...) {}
+        bool dry  = hasFlag(args, "--dry-run");
+        bool pinned_keep = !hasFlag(args, "--no-pinned-keep");   // default keep
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        int64_t cutoff = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count() - (int64_t)days * 86400;
+
+        // Count candidates first.
+        int candidates = 0, pinned = 0;
+        std::string where = "deleted_at IS NULL AND last_used > 0 AND last_used < ? AND importance > ?";
+        db.query("SELECT COUNT(*) FROM memory_nodes WHERE " + where,
+                 {std::to_string(cutoff), std::to_string(floor)},
+                 [&](const core::Row& r){ if (!r.empty()) candidates = std::stoi(r[0]); });
+        if (pinned_keep) {
+            db.query("SELECT COUNT(*) FROM memory_nodes WHERE " + where + " AND importance = 3",
+                     {std::to_string(cutoff), std::to_string(floor)},
+                     [&](const core::Row& r){ if (!r.empty()) pinned = std::stoi(r[0]); });
+        }
+        int affected = candidates - (pinned_keep ? pinned : 0);
+        std::cout << "Decay candidates: " << candidates
+                  << "  pinned-skipped: " << (pinned_keep ? pinned : 0)
+                  << "  will decay: " << affected << "\n";
+        if (dry) return 0;
+
+        std::string upd = "UPDATE memory_nodes SET importance = importance - 1 "
+                          "WHERE deleted_at IS NULL AND last_used > 0 AND last_used < ? AND importance > ?";
+        if (pinned_keep) upd += " AND importance != 3";
+        db.run(upd, {std::to_string(cutoff), std::to_string(floor)});
+        std::cout << "Decayed " << affected << " nodes.\n";
+        return 0;
+    }
+};
+
+// =============================================================================
 // Root dispatcher: `icmg memory <subcommand>`
 // =============================================================================
 
@@ -306,6 +363,7 @@ public:
             "  forget <id>                                     Soft-delete node\n"
             "  restore <id>                                    Restore deleted node\n"
             "  purge [--days N]                                Hard-delete old soft-deleted (default 30d)\n"
+            "  decay [--threshold-days N] [--dry-run]          Reduce importance of stale nodes\n"
             "\n"
             "See also: icmg store, icmg recall (top-level shortcuts).\n";
     }
@@ -326,6 +384,7 @@ public:
         else if (sub == "stats")   registered = "memory-stats";
         else if (sub == "history") registered = "memory-history";
         else if (sub == "purge")   registered = "memory-purge";
+        else if (sub == "decay")   registered = "memory-decay";
         else if (sub == "forget")  registered = "forget";   // existing top-level
         else if (sub == "restore") registered = "restore";  // existing top-level
         else {
@@ -351,5 +410,6 @@ ICMG_REGISTER_COMMAND("memory-stats",   MemoryStatsCommand);
 ICMG_REGISTER_COMMAND("memory-search",  MemorySearchCommand);
 ICMG_REGISTER_COMMAND("memory-history", MemoryHistoryCommand);
 ICMG_REGISTER_COMMAND("memory-purge",   MemoryPurgeCommand);
+ICMG_REGISTER_COMMAND("memory-decay",   MemoryDecayCommand);
 
 } // namespace icmg::cli
