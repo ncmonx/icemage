@@ -3,7 +3,7 @@
 <!-- AUTO-MANAGED: project-description -->
 ## Project Overview
 
-**icmg** — single C++ binary unifying ICM (memory), Graphify (knowledge graph), and RTK (Tkil command filter).
+**icmg** — single C++ binary unifying ICM (memory), KGraph (knowledge graph), and RTK (Tkil command filter).
 
 Additional features: per-folder rules, structured data, multi-project registry, abbreviation engine, stored procedure store, visual graph, MCP server.
 
