@@ -1,8 +1,9 @@
-// Phase 20: token-budget tracker.
+// Phase 20: token-budget tracker. Phase 21 Task 9: HTML analytics.
 //   icmg budget                  — usage report (last 24h default)
 //   icmg budget --window 7d
 //   icmg budget record <tool> --raw N --filtered M [--cmd "..."]
 //   icmg budget by-tool / by-cmd
+//   icmg budget --html [--out FILE]   — HTML dashboard (Phase 21 T9)
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <vector>
 #include <map>
+#include <fstream>
 
 namespace icmg::cli {
 
@@ -133,6 +135,98 @@ public:
                     std::cout << "  [" << r[1] << "x] " << r[2]
                               << " tok saved  " << r[0].substr(0, 60) << "\n";
                 });
+            return 0;
+        }
+
+        // HTML dashboard (Phase 21 Task 9)
+        if (hasFlag(args, "--html")) {
+            std::string out_file = flagValue(args, "--out", "icmg-budget.html");
+            int64_t window = parseWindow(flagValue(args, "--window", "7d"));
+            int64_t since  = bdgNow() - window;
+
+            // Per-tool aggregation
+            struct ToolStat { int64_t calls=0, raw=0, filtered=0, saved=0; };
+            std::map<std::string, ToolStat> by_tool;
+            // Per-day timeline
+            std::map<int64_t, int64_t> day_in, day_out, day_saved;
+            db.query(
+                "SELECT timestamp, tool_name, raw_bytes, filtered_bytes,"
+                " est_tokens_in, est_tokens_out, saved_tokens"
+                " FROM tool_invocations WHERE timestamp >= ?",
+                {std::to_string(since)},
+                [&](const core::Row& r) {
+                    if (r.size() < 7) return;
+                    try {
+                        int64_t ts = std::stoll(r[0]);
+                        int64_t day = ts - (ts % 86400);
+                        std::string tool = r[1];
+                        int64_t raw  = r[2].empty() ? 0 : std::stoll(r[2]);
+                        int64_t filt = r[3].empty() ? 0 : std::stoll(r[3]);
+                        int64_t in_t = r[4].empty() ? 0 : std::stoll(r[4]);
+                        int64_t out_t= r[5].empty() ? 0 : std::stoll(r[5]);
+                        int64_t sv   = r[6].empty() ? 0 : std::stoll(r[6]);
+                        auto& ts2 = by_tool[tool];
+                        ++ts2.calls; ts2.raw += raw; ts2.filtered += filt; ts2.saved += sv;
+                        day_in[day]    += in_t;
+                        day_out[day]   += out_t;
+                        day_saved[day] += sv;
+                    } catch (...) {}
+                });
+
+            std::ofstream f(out_file);
+            if (!f) { std::cerr << "icmg budget: cannot open " << out_file << "\n"; return 1; }
+
+            f << "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+              << "<title>icmg budget</title>"
+              << "<style>"
+              << "body{font-family:system-ui;background:#1a1a2e;color:#e0e0e0;padding:20px;}"
+              << "h1{color:#4fc3f7;}h2{color:#9bb8e8;border-bottom:1px solid #2a2a4a;padding-bottom:6px;}"
+              << "table{border-collapse:collapse;margin:16px 0;}"
+              << "th,td{padding:6px 14px;border-bottom:1px solid #2a2a4a;text-align:left;}"
+              << "th{color:#4fc3f7;}"
+              << ".bar{height:18px;background:linear-gradient(90deg,#42a5f5,#a855f7);display:inline-block;}"
+              << ".muted{color:#9e9e9e;font-size:13px;}"
+              << "</style></head><body>"
+              << "<h1>icmg token budget</h1>"
+              << "<p class='muted'>Window: last " << window/3600 << "h</p>";
+
+            // Top tools table with bars
+            f << "<h2>By tool</h2><table>"
+              << "<tr><th>Tool</th><th>Calls</th><th>Raw bytes</th>"
+              << "<th>Filtered bytes</th><th>Tokens saved</th><th>Reduction</th></tr>";
+            int64_t max_saved = 1;
+            for (auto& [t, s] : by_tool) if (s.saved > max_saved) max_saved = s.saved;
+            for (auto& [t, s] : by_tool) {
+                double pct = s.raw > 0 ? 100.0 * (double)(s.raw - s.filtered) / (double)s.raw : 0.0;
+                int barw = (int)(200.0 * (double)s.saved / (double)max_saved);
+                f << "<tr><td>" << t << "</td><td>" << s.calls << "</td>"
+                  << "<td>" << s.raw << "</td><td>" << s.filtered << "</td>"
+                  << "<td>" << s.saved << " <span class='bar' style='width:" << barw << "px'></span></td>"
+                  << "<td>" << std::fixed << std::setprecision(1) << pct << "%</td></tr>";
+            }
+            f << "</table>";
+
+            // Daily timeline
+            f << "<h2>Daily timeline</h2><table>"
+              << "<tr><th>Day (UTC)</th><th>Tokens in</th><th>Tokens out</th><th>Saved</th></tr>";
+            int64_t max_day = 1;
+            for (auto& [d, v] : day_in) if (v > max_day) max_day = v;
+            for (auto& [d, in_t] : day_in) {
+                int64_t out_t = day_out[d];
+                int64_t sv    = day_saved[d];
+                int barw = (int)(200.0 * (double)in_t / (double)max_day);
+                char dbuf[32];
+                time_t tt = (time_t)d;
+                struct tm* gm = gmtime(&tt);
+                if (gm) strftime(dbuf, sizeof(dbuf), "%Y-%m-%d", gm); else snprintf(dbuf, sizeof(dbuf), "%lld", (long long)d);
+                f << "<tr><td>" << dbuf << "</td>"
+                  << "<td>" << in_t << " <span class='bar' style='width:" << barw << "px'></span></td>"
+                  << "<td>" << out_t << "</td><td>" << sv << "</td></tr>";
+            }
+            f << "</table>";
+            f << "<p class='muted'>Generated by icmg budget --html</p>";
+            f << "</body></html>";
+            std::cout << "Wrote " << out_file << "\n";
             return 0;
         }
 

@@ -38,7 +38,7 @@
 | 18 | Function/Symbol-level Nodes | [x] | 2026-05-07 | 2026-05-07 | 8a0b3f6 | C# + SQL extractors, two-tier graph (file→symbols), call edges, graph symbol/callers/callees CLI, 4 unit tests. Verified end-to-end. |
 | 19 | Context Bundle Commands (context/pack/diff-summary/explain/session) | [x] | 2026-05-07 | 2026-05-07 | f8330e9 | 5 commands + output_cap utility. End-to-end verified on real repo. |
 | 20 | Output Compression & Auto-Summarization | [x] | 2026-05-07 | 2026-05-07 | 560c85a | icmg summarize + budget commands, hook templates (shrink-read, cap-output, known-issue-recall), auto-record icmg run into tool_invocations. End-to-end verified. Drive-case fix: 58773db (v0.6.1). |
-| 21 | Advanced (embeddings, agent proxy, MCP resources, REPL, **parallel**) | [~] | 2026-05-07 | — | (in progress) | Plan: docs/plans/2026-05-07-phase-21-advanced.md — 6-8d. Task 5b (`icmg parallel`) DONE (v0.7.0). Remaining: embeddings, agent, MCP resources, cross-project, streaming, SP auto-link, chat REPL, token analytics. |
+| 21 | Advanced (parallel, db-filter, cross-project, streaming, sp-link, budget-html) | [x] | 2026-05-07 | 2026-05-07 | (pending) | 6/9 tasks shipped: 5b parallel (v0.7.0), 5c db-filter (v0.7.2), 5 cross-project recall (v0.7.3), 6 streaming filter (v0.7.5), 7 sp link (v0.8.0), 9 budget HTML (v0.8.0). Deferred to Phase 23: 1+2 embeddings (Python sidecar), 3 agent proxy (LLM API), 4 MCP resources (protocol extension), 8 chat REPL (interactive + LLM). |
 | 22 | Workflow Integration (KG transitive impact + GSD lifecycle + Superpowers gates) | [x] | 2026-05-07 | 2026-05-07 | 063936d | Closure-based impact (forward+reverse), known-issue/verify/phase/design/wflog umbrella commands, migration 0008. End-to-end verified. |
 
 ---

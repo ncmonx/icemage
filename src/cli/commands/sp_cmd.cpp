@@ -10,6 +10,8 @@
 #include <sstream>
 #include <filesystem>
 #include <algorithm>
+#include <set>
+#include <regex>
 
 namespace icmg::cli {
 
@@ -64,6 +66,7 @@ public:
         if (sub == "template")     return doTemplate(store, args);
         if (sub == "impact-table") return doImpactTable(store, args);
         if (sub == "remove")       return doRemove(store, args);
+        if (sub == "link")         return doLink(db, args);
 
         std::cerr << "icmg sp: unknown subcommand '" << sub << "'\n";
         usage(); return 1;
@@ -547,6 +550,68 @@ private:
                 std::cout << "+ " << lb[j] << "\n"; ++j;
             }
         }
+    }
+    // ---- link (Phase 21 Task 7) -------------------------------------------
+    // Scan a file for stored-proc references and insert `calls` edges from
+    // the file node to matching SP symbol nodes in the graph.
+    int doLink(core::Db& db, const std::vector<std::string>& args) {
+        std::string target;
+        for (size_t i = 1; i < args.size(); ++i) {
+            if (!args[i].empty() && args[i][0] != '-') { target = args[i]; break; }
+        }
+        if (target.empty()) {
+            std::cerr << "icmg sp link: requires <file>\n"; return 1;
+        }
+        namespace fs = std::filesystem;
+        if (!fs::exists(target)) {
+            std::cerr << "icmg sp link: file not found: " << target << "\n"; return 1;
+        }
+        std::ifstream f(target, std::ios::binary);
+        if (!f) { std::cerr << "icmg sp link: cannot open\n"; return 1; }
+        std::ostringstream buf; buf << f.rdbuf();
+        std::string content = buf.str();
+
+        std::error_code ec;
+        std::string canon = fs::weakly_canonical(target, ec).string();
+        if (ec) canon = target;
+#ifdef _WIN32
+        if (canon.size() >= 2 && canon[1] == ':' && canon[0] >= 'a' && canon[0] <= 'z')
+            canon[0] = (char)(canon[0] - 'a' + 'A');
+#endif
+        int64_t src_id = 0;
+        db.query("SELECT id FROM graph_nodes WHERE path=?", {canon},
+                 [&](const core::Row& r){ if (!r.empty()) try { src_id = std::stoll(r[0]); } catch(...){} });
+        if (src_id == 0) {
+            std::cerr << "icmg sp link: file not in graph (run `icmg graph scan` first)\n";
+            return 1;
+        }
+
+        std::regex re_call(R"(\bEXEC(?:UTE)?\s+\[?(\w+)\]?)",
+                           std::regex::ECMAScript | std::regex::icase);
+        std::set<std::string> hits;
+        for (auto it = std::sregex_iterator(content.begin(), content.end(), re_call);
+             it != std::sregex_iterator(); ++it) {
+            hits.insert((*it)[1].str());
+        }
+        if (hits.empty()) {
+            std::cout << "No SP references found in " << target << "\n";
+            return 0;
+        }
+        int linked = 0;
+        for (auto& name : hits) {
+            int64_t dst_id = 0;
+            db.query(
+                "SELECT id FROM graph_nodes WHERE kind='sp' AND symbol_name=? LIMIT 1",
+                {name},
+                [&](const core::Row& r){ if (!r.empty()) try { dst_id = std::stoll(r[0]); } catch(...){} });
+            if (dst_id == 0 || dst_id == src_id) continue;
+            db.run(
+                "INSERT OR IGNORE INTO graph_edges(src,dst,edge_type,weight) VALUES(?,?,'calls',1.5)",
+                {std::to_string(src_id), std::to_string(dst_id)});
+            ++linked;
+        }
+        std::cout << "Linked " << linked << " SP reference(s).\n";
+        return 0;
     }
 };
 

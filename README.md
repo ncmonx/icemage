@@ -1,7 +1,7 @@
 # icmg — Unified Memory, Knowledge Graph & Token-Saving CLI
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-17%2F17%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-18%2F18%20passing-brightgreen)](#)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](#)
 
 **Single C++17 binary** unifying:
@@ -122,6 +122,8 @@ Claude Code sessions burn 50K+ tokens reading large files, running noisy command
 | `icmg run --raw <command>` | No filtering (debug) |
 | `icmg run --json <command>` | JSON output with metadata |
 | `icmg run --dry-run <command>` | Show detected filter without running |
+| `icmg parallel --task "<cmd>" [--task ...]` | Run commands concurrently (subprocess fan-out) |
+| `icmg filter <type>` | Apply Tkil filter to stdin (pipe-style) |
 | `icmg cmd suggest [<prefix>]` | Suggest commands by frequency |
 | `icmg cmd record <command>` | Manually record a command |
 | `icmg cmd list` | List all recorded commands |
@@ -134,7 +136,13 @@ Claude Code sessions burn 50K+ tokens reading large files, running noisy command
 - `cargo/cmake/make/dotnet build` → errors + warnings only
 - `npm test / cargo test` → failures + summary
 - `grep/rg` → matches grouped by file, max 200 lines
+- `sqlcmd / mysql / mariadb / psql` → header + 20 rows + footer; errors preserved (Phase 21)
+- `mysqldump / pg_dump` → pass-through (schema dumps)
 - default → first 50 + last 20 lines
+
+**Parallel fan-out (Phase 21):** `icmg parallel` runs N commands concurrently — auto-caps at hardware cores (max 32). Merge modes: `json` (parses each child stdout), `concat`, `none` (per-task block). Use `--fail-fast` for blocking gates.
+
+**Pipe-style filter (Phase 21):** `<cmd> | icmg filter <type>` or `... | icmg filter --as "<original-cmd>"` applies filter to stdin without running the command via icmg run.
 
 ### Context Bundles (Phase 19)
 
@@ -186,6 +194,7 @@ Claude Code sessions burn 50K+ tokens reading large files, running noisy command
 | `icmg sp diff <name>` | Show version diffs |
 | `icmg sp template <kind>` | SP template |
 | `icmg sp impact-table <table>` | SPs that touch this table |
+| `icmg sp link <file>` | Scan file for `EXEC <sp>` refs → insert call edges (Phase 21) |
 
 ### Abbreviations
 
@@ -291,21 +300,25 @@ icmg ships an MCP (Model Context Protocol) server so Claude Code (and any MCP-aw
 
 ## Token-Efficiency Roadmap
 
-Implemented (v0.5.0):
+Implemented (v0.8.0):
 
 | Phase | Feature | Saving |
 |---|---|---|
 | 17 | Zone partitioning — scoped recall, sharper IDF | 30-50% on recall |
 | 18 | Symbol-level nodes — read fn instead of file | 80%+ on fix-bug-X |
 | 19 | Context bundles — `context`/`pack`/`diff-summary` | 50-70% session start |
+| 20 | Output compression — `summarize`, `budget`, hook templates | 60-80% large reads |
+| 21 | Advanced — `parallel`, `filter`, db-cli filter, cross-project, sp-link, budget HTML | I/O 3-6× faster + 95-99% on SQL output |
 | 22 | Workflow integration — known-issue, verify, phase, design | Audit + 5-10× context retention |
 
-Planned:
+Deferred to Phase 23+:
 
-| Phase | Feature | Saving |
+| Feature | Status | Why deferred |
 |---|---|---|
-| 20 | Output compression — auto-summarize big files, output cap, `icmg budget` | 60-80% large reads |
-| 21 | Advanced — semantic embeddings, agent proxy, MCP resources, REPL | +20-30% |
+| Semantic embeddings (`recall --semantic`) | future | Python sidecar dep |
+| Agent proxy (`icmg agent <task>`) | future | LLM API config |
+| MCP Resources protocol | future | Full protocol extension |
+| `icmg chat` REPL | future | Interactive + LLM dep |
 
 **Cumulative target:** 80-90% token reduction + 90% context retention across resets.
 
