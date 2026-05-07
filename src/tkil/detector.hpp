@@ -3,7 +3,7 @@
 #include <vector>
 #include <ostream>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 enum class CmdType {
     GitLog,         // git log, git diff, git show, git status
@@ -41,4 +41,4 @@ inline std::ostream& operator<<(std::ostream& os, CmdType t) {
     return os << "Unknown";
 }
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

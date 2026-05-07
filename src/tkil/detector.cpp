@@ -1,7 +1,7 @@
 #include "detector.hpp"
 #include <algorithm>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 Detector::Detector() {
     // Order matters — first match wins
@@ -88,4 +88,4 @@ CmdType Detector::detect(const std::string& command) const {
     return CmdType::Default;
 }
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

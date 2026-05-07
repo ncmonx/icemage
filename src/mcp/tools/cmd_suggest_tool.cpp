@@ -7,7 +7,7 @@ class CmdSuggestTool : public BaseMcpTool {
 public:
     std::string name()        const override { return "icmg_cmd_suggest"; }
     std::string description() const override {
-        return "Suggest frequently used RTK commands, optionally filtered by prefix.";
+        return "Suggest frequently used Tkil commands, optionally filtered by prefix.";
     }
     std::vector<McpToolParam> params() const override {
         return {

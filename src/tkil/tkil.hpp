@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 struct CmdRecord {
     int64_t     id          = 0;
@@ -17,9 +17,9 @@ struct CmdRecord {
     double      score       = 0.0;
 };
 
-class RTK {
+class Tkil {
 public:
-    explicit RTK(core::Db& db);
+    explicit Tkil(core::Db& db);
 
     // A1: argv-safe run + filter + print + record
     int runFiltered(const std::string& command,
@@ -46,4 +46,4 @@ private:
     double computeScore(int freq, int64_t last_used) const;
 };
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

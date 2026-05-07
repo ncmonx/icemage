@@ -3,7 +3,7 @@
 #include <regex>
 #include <algorithm>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 class GitFilter : public BaseFilter {
 public:
@@ -86,4 +86,4 @@ public:
 
 ICMG_REGISTER_FILTER("git", GitFilter);
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

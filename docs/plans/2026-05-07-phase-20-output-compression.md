@@ -62,7 +62,7 @@ User opts in by adding to `.claude/settings.local.json`. Saves 80-90% on large f
 ## Task 3 — Diff compression
 
 **Files:**
-- Modify: `src/rtk/filters/git_filter.cpp`
+- Modify: `src/tkil/filters/git_filter.cpp`
 
 Currently filters `git log/diff/status/show` to changed lines + 3-line context. Extend:
 - For diffs > 500 lines, prepend symbol-summary header (reuse Phase 19 `diff-summary`).

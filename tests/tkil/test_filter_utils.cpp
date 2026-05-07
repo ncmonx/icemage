@@ -1,7 +1,7 @@
 #include "../test_main.hpp"
-#include "../../src/rtk/filters/filter_utils.hpp"
+#include "../../src/tkil/filters/filter_utils.hpp"
 
-using namespace icmg::rtk;
+using namespace icmg::tkil;
 
 // ---- filter_utils unit tests -----------------------------------------------
 

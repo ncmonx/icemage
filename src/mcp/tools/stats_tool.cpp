@@ -48,7 +48,7 @@ protected:
                  });
         stats["top_topics"] = top_topics;
 
-        // Top 5 RTK commands by frequency
+        // Top 5 Tkil commands by frequency
         json top_cmds = json::array();
         db.query("SELECT command, frequency FROM commands"
                  " ORDER BY frequency DESC LIMIT 5",

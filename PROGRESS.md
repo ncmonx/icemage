@@ -24,7 +24,7 @@
 | 02 | ICM Memory + BM25 Scorer | [x] | 2026-05-06 | 2026-05-06 | 360420d | |
 | 03 | Graph CRUD + Scanner + Language Extractors | [x] | 2026-05-06 | 2026-05-06 | c4564ee | C#+PHP added (051e2f9) |
 | 04 | File Watcher (cross-platform daemon) | [x] | 2026-05-06 | 2026-05-06 | bbddc9b | |
-| 05 | RTK Filter + Runner | [x] | 2026-05-06 | 2026-05-06 | 1780b30 | |
+| 05 | Tkil Filter + Runner | [x] | 2026-05-06 | 2026-05-06 | 1780b30 | |
 | 06 | Per-folder Rules + Inheritance | [x] | 2026-05-06 | 2026-05-06 | dbc005c | |
 | 07 | Structured Data (model/view/behavior/schema) | [x] | 2026-05-06 | 2026-05-06 | 960b648 | |
 | 08 | Multi-project Registry | [x] | 2026-05-06 | 2026-05-06 | fe7f150 | |
@@ -33,7 +33,7 @@
 | 11 | Import (ICM/Graphify/JSON/CSV) + Export | [x] | 2026-05-06 | 2026-05-06 | 585145b | |
 | 12 | Visual Graph (HTML + Cytoscape.js) | [x] | 2026-05-06 | 2026-05-06 | 945fc98 | |
 | 13 | MCP Server (stdio transport) | [x] | 2026-05-06 | 2026-05-06 | 1b440f8 | 14 tools, stdio JSON-RPC 2.0, audit log |
-| 14 | Integration Testing + Bug Fix | [x] | 2026-05-06 | 2026-05-06 | 6afe58a | 7 suites (ICM/Graph/RTK/Features/MCP/Security/Perf), 14 unit tests, 44 integration tests — all pass |
+| 14 | Integration Testing + Bug Fix | [x] | 2026-05-06 | 2026-05-06 | 6afe58a | 7 suites (ICM/Graph/Tkil/Features/MCP/Security/Perf), 14 unit tests, 44 integration tests — all pass |
 | 17 | Zone Partitioning (subsystem/layer scoping) | [x] | 2026-05-07 | 2026-05-07 | (pending) | Auto-detected 19 zones, --zone flag on recall/graph/viz, BM25 IDF per zone, 7 unit tests pass |
 | 18 | Function/Symbol-level Nodes | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-18-symbol-nodes.md — 3-5d, ROI: 80%+ token cut on "fix bug X" tasks. Depends on 17 |
 | 19 | Context Bundle Commands (context/pack/diff-summary/explain/session) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-19-context-bundles.md — 2-3d. Depends on 17, 18 |
@@ -56,7 +56,7 @@
 │   ├── 10 Stored Procedures
 │   │   └── 11 Import/Export
 │   └── 12 Visual Graph
-├── 05 RTK Filter
+├── 05 Tkil Filter
 ├── 06 Rules
 └── 08 Multi-project
     └── 11 Import/Export
@@ -85,7 +85,7 @@ Catat setiap sesi kerja di sini.
 | 2026-05-06 | 2 | 02 | ICM Memory + BM25 Scorer | MemoryNode/Store/Scorer, store/recall/forget/restore CLI, PRE_STORE abbr hook, scorer invalidate hook, 360420d |
 | 2026-05-06 | 3 | 03 | Graph CRUD + Scanner + 9 extractors | GraphNode/Store/Scanner, C++/Python/JS/Go/Rust/Java/C#/PHP/Generic extractors, graph-* CLI, migration 0002, c4564ee+051e2f9 |
 | 2026-05-06 | 4 | 04 | File Watcher daemon | Win/Linux/Mac watchers, Debouncer, Daemon fork/PID, graph-watch/stop/watch-status CLI, bbddc9b |
-| 2026-05-06 | 5 | 05 | RTK Filter + Runner | Detector, BaseFilter, git/build/test/search/default/package filters, runner (parseArgv+safeExec), RTK class, run+cmd CLI, migration 0003 |
+| 2026-05-06 | 5 | 05 | Tkil Filter + Runner | Detector, BaseFilter, git/build/test/search/default/package filters, runner (parseArgv+safeExec), RTK class, run+cmd CLI, migration 0003 |
 | 2026-05-06 | 6 | 06 | Per-folder Rules + Inheritance | Rule/RuleStore/RuleResolver, rule CLI, PRE_STORE hook, migration 0004, 12 tests |
 | 2026-05-06 | 7 | 07 | Structured Data | StructuredData/DataStore (CRUD+versioning+search+revert), data CLI, graph-context integration, 11 tests |
 | 2026-05-06 | 8 | 08 | Multi-project Registry | GlobalDb+migrations, ProjectContext, --project flag dispatcher, project CLI, 5 tests |

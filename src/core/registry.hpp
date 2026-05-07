@@ -51,7 +51,7 @@ private:
 // ---- Forward declarations for real base types (defined in their own headers) ----
 namespace icmg::graph { class BaseExtractor; }
 namespace icmg::cli   { class BaseCommand;   }
-namespace icmg::rtk   { class BaseFilter;    }
+namespace icmg::tkil   { class BaseFilter;    }
 namespace icmg::mcp { class BaseMcpTool; }
 namespace icmg {
     class BaseImporter;        // defined in src/import/base_importer.hpp
@@ -71,7 +71,7 @@ namespace icmg {
 // ICMG_REGISTER_FILTER("git", GitFilter)
 #define ICMG_REGISTER_FILTER(pattern, Class) \
     static bool _reg_flt_##Class = []() { \
-        ::icmg::core::Registry<::icmg::rtk::BaseFilter>::instance() \
+        ::icmg::core::Registry<::icmg::tkil::BaseFilter>::instance() \
             .reg(pattern, []() { return std::make_unique<Class>(); }); \
         return true; \
     }()

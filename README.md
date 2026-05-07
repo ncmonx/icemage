@@ -1,10 +1,10 @@
-# icmg — Unified Memory, Graph & RTK Tool
+# icmg — Unified Memory, Graph & Tkil Tool
 
 Single C++17 binary unifying three developer tools:
 
 - **ICM** — persistent memory across AI sessions (BM25 recall, scoring, TTL)
 - **Graphify** — code knowledge graph (file scanner, dependency edges, context)
-- **RTK** — token-saving CLI proxy (filters noisy build/test/git output)
+- **Tkil** — token-saving (formerly RTK) CLI proxy (filters noisy build/test/git output)
 
 Plus: per-folder rules, structured data store, abbreviation engine, stored procedure library, import/export, visual graph, MCP server.
 
@@ -83,7 +83,7 @@ icmg --help
 cd /path/to/any-project
 icmg store "test" "hello world"
 icmg recall "hello"             # should return the stored node
-icmg run git status             # RTK filter working
+icmg run git status             # Tkil filter working
 icmg doctor                     # full health check
 ```
 
@@ -204,10 +204,10 @@ icmg graph-watch-status
 icmg graph-stop
 ```
 
-### RTK — Token-Saving Command Proxy
+### Tkil — Token-Saving (formerly RTK) Command Proxy
 
 ```bash
-# Run any command through the RTK filter (filters noisy output)
+# Run any command through the Tkil filter (filters noisy output)
 icmg run git log --oneline -50
 icmg run cargo build
 icmg run npm test
@@ -377,7 +377,7 @@ bash tests/run_all.sh
 # Individual suites
 ICMG=./build/icmg.exe bash tests/test_icm.sh
 ICMG=./build/icmg.exe bash tests/test_graph.sh
-ICMG=./build/icmg.exe bash tests/test_rtk.sh
+ICMG=./build/icmg.exe bash tests/test_tkil.sh
 ICMG=./build/icmg.exe bash tests/test_features.sh
 ICMG=./build/icmg.exe bash tests/test_mcp.sh
 ICMG=./build/icmg.exe bash tests/test_security.sh

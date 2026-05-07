@@ -182,7 +182,7 @@ public:
             std::cerr << "icmg grep: pattern required\n"; return 1;
         }
 
-        // Delegate directly to grep subprocess (RTK already has grep filter in run cmd)
+        // Delegate directly to grep subprocess (Tkil already has grep filter in run cmd)
         // Use execvp-style via argv to avoid shell glob expansion
         std::vector<std::string> grep_args = {"-rn", "--", pattern, dir};
         std::string icmg_run = "icmg run grep";

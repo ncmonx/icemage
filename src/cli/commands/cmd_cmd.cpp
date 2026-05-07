@@ -2,7 +2,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
-#include "../../rtk/rtk.hpp"
+#include "../../tkil/tkil.hpp"
 #include <iostream>
 #include <iomanip>
 
@@ -17,7 +17,7 @@ namespace icmg::cli {
 class CmdCommand : public BaseCommand {
 public:
     std::string name()        const override { return "cmd"; }
-    std::string description() const override { return "Command history, suggestions, and RTK stats"; }
+    std::string description() const override { return "Command history, suggestions, and Tkil stats"; }
 
     void usage() const override {
         std::cout <<
@@ -26,7 +26,7 @@ public:
             "  suggest [<prefix>] [--limit N] [--json]   Suggest commands by score\n"
             "  record  <command...>                       Record a command manually\n"
             "  list    [--limit N] [--json]               List all recorded commands\n"
-            "  stats                                      Show RTK token-savings stats\n";
+            "  stats                                      Show Tkil token-savings stats\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -36,14 +36,14 @@ public:
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        rtk::RTK rtk(db);
+        tkil::Tkil tkil_exec(db);
 
         const std::string& sub = args[0];
 
-        if (sub == "suggest") return doSuggest(rtk, args);
-        if (sub == "record")  return doRecord(rtk, args);
+        if (sub == "suggest") return doSuggest(tkil_exec, args);
+        if (sub == "record")  return doRecord(tkil_exec, args);
         if (sub == "list")    return doList(db, args);
-        if (sub == "stats")   { rtk.printStats(); return 0; }
+        if (sub == "stats")   { tkil_exec.printStats(); return 0; }
 
         std::cerr << "icmg cmd: unknown subcommand '" << sub << "'\n";
         usage();
@@ -52,7 +52,7 @@ public:
 
 private:
     // ---- suggest -----------------------------------------------
-    int doSuggest(rtk::RTK& rtk, const std::vector<std::string>& args) {
+    int doSuggest(tkil::Tkil& tkil_exec, const std::vector<std::string>& args) {
         std::string prefix;
         int limit = 10;
         bool json_out = false;
@@ -67,7 +67,7 @@ private:
             }
         }
 
-        auto results = rtk.suggest(prefix, limit);
+        auto results = tkil_exec.suggest(prefix, limit);
 
         if (json_out) {
             std::cout << "[\n";
@@ -103,7 +103,7 @@ private:
     }
 
     // ---- record ------------------------------------------------
-    int doRecord(rtk::RTK& rtk, const std::vector<std::string>& args) {
+    int doRecord(tkil::Tkil& tkil_exec, const std::vector<std::string>& args) {
         // Everything after "record" is the command
         std::string cmd;
         for (size_t i = 1; i < args.size(); ++i) {
@@ -114,7 +114,7 @@ private:
             std::cerr << "icmg cmd record: requires <command>\n";
             return 1;
         }
-        rtk.recordManual(cmd);
+        tkil_exec.recordManual(cmd);
         std::cout << "Recorded: " << cmd << "\n";
         return 0;
     }

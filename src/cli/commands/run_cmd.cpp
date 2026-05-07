@@ -2,7 +2,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
-#include "../../rtk/rtk.hpp"
+#include "../../tkil/tkil.hpp"
 #include <iostream>
 #include <sstream>
 
@@ -60,7 +60,7 @@ public:
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        rtk::RTK executor(db);
+        tkil::Tkil executor(db);
 
         return executor.runFiltered(command, raw, json_out, dry_run, stream);
     }

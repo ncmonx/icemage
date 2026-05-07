@@ -12,8 +12,8 @@
 ### Task 1: Command type detector
 
 **Files:**
-- Create: `src/rtk/detector.hpp`
-- Create: `src/rtk/detector.cpp`
+- Create: `src/tkil/detector.hpp`
+- Create: `src/tkil/detector.cpp`
 
 ```cpp
 enum class CmdType {
@@ -41,7 +41,7 @@ Pattern matching: prefix-based + keyword dalam command string.
 ### Task 2: Base filter interface
 
 **Files:**
-- Create: `src/rtk/base_filter.hpp`
+- Create: `src/tkil/base_filter.hpp`
 
 ```cpp
 struct FilterResult {
@@ -65,11 +65,11 @@ public:
 ### Task 3: Filter implementations
 
 **Files:**
-- Create: `src/rtk/filters/git_filter.cpp`
-- Create: `src/rtk/filters/build_filter.cpp`
-- Create: `src/rtk/filters/test_filter.cpp`
-- Create: `src/rtk/filters/search_filter.cpp`
-- Create: `src/rtk/filters/default_filter.cpp`
+- Create: `src/tkil/filters/git_filter.cpp`
+- Create: `src/tkil/filters/build_filter.cpp`
+- Create: `src/tkil/filters/test_filter.cpp`
+- Create: `src/tkil/filters/search_filter.cpp`
+- Create: `src/tkil/filters/default_filter.cpp`
 
 **GitFilter:**
 - `git status`: keep as-is (biasanya pendek)
@@ -105,8 +105,8 @@ public:
 ### Task 4: Command runner (cross-platform)
 
 **Files:**
-- Create: `src/rtk/runner.hpp`
-- Create: `src/rtk/runner.cpp`
+- Create: `src/tkil/runner.hpp`
+- Create: `src/tkil/runner.cpp`
 
 ```cpp
 struct RunResult {
@@ -130,11 +130,11 @@ private:
 ### Task 5: RTK orchestrator + auto-record
 
 **Files:**
-- Create: `src/rtk/rtk.hpp`
-- Create: `src/rtk/rtk.cpp`
+- Create: `src/tkil/rtk.hpp`
+- Create: `src/tkil/rtk.cpp`
 
 ```cpp
-class RTK {
+class Tkil {
 public:
     explicit RTK(core::Db& db);
 
@@ -209,7 +209,7 @@ Expected: filtered output lebih ringkas dari raw, JSON valid, suggest terurut by
 
 **Step 2: Commit**
 ```bash
-git add src/rtk/ src/cli/commands/run_cmd.cpp src/cli/commands/cmd_cmd.cpp
+git add src/tkil/ src/cli/commands/run_cmd.cpp src/cli/commands/cmd_cmd.cpp
 git commit -m "feat: phase-05 RTK smart filter + runner + cmd history"
 ```
 

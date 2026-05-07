@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 struct FilterResult {
     std::string output;
@@ -20,4 +20,4 @@ public:
     virtual std::string name() const = 0;
 };
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

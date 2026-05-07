@@ -4,7 +4,7 @@
 #include <vector>
 #include <regex>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 class SearchFilter : public BaseFilter {
 public:
@@ -69,4 +69,4 @@ public:
 
 ICMG_REGISTER_FILTER("search", SearchFilter);
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil
