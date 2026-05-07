@@ -23,6 +23,9 @@
 cmake -B build && cmake --build build
 # Or download release binary: https://github.com/ncmonx/icm-graph/releases
 
+# Bootstrap project for AI agents (installs hooks + AGENTS.md routing)
+icmg init
+
 # First scan
 icmg graph scan .
 
