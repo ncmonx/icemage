@@ -12,6 +12,7 @@ enum class CmdType {
     Search,         // grep, rg, ag, find (output-heavy)
     Docker,         // docker build, docker logs, docker-compose
     PackageManager, // npm install, yarn, pip install, gem install (A5)
+    Db,             // sqlcmd, mysql, mariadb, psql (Phase 21 Task 5c)
     Default         // unknown
 };
 
@@ -36,6 +37,7 @@ inline std::ostream& operator<<(std::ostream& os, CmdType t) {
         case CmdType::Search:         return os << "Search";
         case CmdType::Docker:         return os << "Docker";
         case CmdType::PackageManager: return os << "PackageManager";
+        case CmdType::Db:             return os << "Db";
         case CmdType::Default:        return os << "Default";
     }
     return os << "Unknown";

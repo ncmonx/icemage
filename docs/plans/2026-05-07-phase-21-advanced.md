@@ -181,6 +181,69 @@ Pure additive. Default sequential for all existing commands; `--parallel` opt-in
 
 ---
 
+## Task 5c — DB CLI filter (sqlcmd / mysql / psql) (NEW)
+
+**Goal:** dedicated Tkil filter for SQL Server / MySQL / MariaDB / PostgreSQL CLIs. Without this, large query results hit the default filter (first 50 + last 20 lines) which is wrong for tabular data — drops middle rows useful for verification, keeps ASCII border noise.
+
+**Files:**
+- Create: `src/tkil/filters/db_filter.cpp`
+- Modify: `src/tkil/detector.cpp` — add `Db` type + patterns.
+
+**Detection (command-string prefix or regex match):**
+
+| Pattern | Filter mode |
+|---|---|
+| `sqlcmd`, `osql` | T-SQL |
+| `mysql`, `mariadb` | MySQL |
+| `psql` | PostgreSQL |
+| `mysqldump`, `pg_dump`, `sqlcmd ... -d` schema dumps | pass-through |
+| `sqlite3` | already covered by default; skip |
+
+**Filter strategies:**
+
+T-SQL (sqlcmd):
+- Pass through `Msg N, Level N` / `Server: Msg ...` lines (errors).
+- Pass through `PRINT` output (often debug info).
+- Detect column header → keep header + first 20 rows + `(N rows affected)` footer.
+- Multi-batch (`GO`-separated): emit per-batch summary.
+
+MySQL/MariaDB:
+- Strip ASCII border lines (`+----+----+`) but keep one as separator.
+- Keep header row + first 20 rows + `X rows in set (Y sec)` footer.
+- Pass through `ERROR <code> (<state>)` lines.
+
+PostgreSQL (psql):
+- Detect `(N rows)` summary line; keep header + first 20 rows + summary.
+- Pass through `ERROR:` / `NOTICE:` / `WARNING:`.
+
+**Output cap:** if filtered still > 8KB, hard-truncate via `core::capOutput` (Phase 19).
+
+### Verification
+
+- [ ] `sqlcmd -Q "SELECT TOP 1000 ..."` (~80KB raw) → ~3KB filtered.
+- [ ] `mysql -e "SELECT * FROM logs"` (10K rows) → header + 20 rows + footer.
+- [ ] `psql -c "SELECT ..."` (1K rows) → similar.
+- [ ] Schema dump (`mysqldump`, `pg_dump`) → pass-through (full output).
+- [ ] Stored-proc error → `Msg N` lines preserved.
+- [ ] `PRINT 'debug'` rows preserved.
+- [ ] New tests: `test_db_filter` (4 cases per dialect).
+
+### Token saving
+
+- SELECT 10K rows: ~99% reduction.
+- Schema dumps: 0% (intentional).
+- Errors: 0% (preserved).
+
+### Risk / Rollback
+
+Pure additive Tkil filter. `icmg run --raw <cmd>` still bypasses filter. Wrong detection → falls back to default first/last filter (no data loss, just suboptimal).
+
+### Effort
+
+1-2 hours per dialect (T-SQL + MySQL + PG). Total ~4 hours.
+
+---
+
 ## Task 6 — Streaming filter middleware
 
 **Files:**

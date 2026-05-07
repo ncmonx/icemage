@@ -140,6 +140,67 @@ TEST("git filter: diff --name-only passes through") {
     ASSERT_CONTAINS(r.output, "src/Program.cs");
 }
 
+// =========================================================================
+// Phase 21 Task 5c — DB filter
+// =========================================================================
+
+TEST("db filter: mysql tabular output trimmed to header + N rows + footer") {
+    auto f = Reg::instance().create("db");
+    ASSERT_TRUE(f != nullptr);
+    // Synthesize 50-row mysql output
+    std::string raw =
+        "+----+--------+\n"
+        "| id | name   |\n"
+        "+----+--------+\n";
+    for (int i = 1; i <= 50; ++i) {
+        raw += "| " + std::to_string(i) + " | row" + std::to_string(i) + " |\n";
+    }
+    raw += "+----+--------+\n";
+    raw += "50 rows in set (0.01 sec)\n";
+
+    auto r = f->filter(raw, "mysql -e \"SELECT * FROM t\"");
+    ASSERT_CONTAINS(r.output, "id");
+    ASSERT_CONTAINS(r.output, "row1");
+    ASSERT_CONTAINS(r.output, "50 rows in set");
+    ASSERT_CONTAINS(r.output, "truncated");
+    // 50 raw rows + borders → ~25 lines kept (header + 20 data + truncate marker + footer)
+    ASSERT_TRUE(r.filtered_lines < r.original_lines);
+}
+
+TEST("db filter: sqlcmd error preserved") {
+    auto f = Reg::instance().create("db");
+    std::string raw =
+        "Msg 208, Level 16, State 1, Server SRV1, Line 1\n"
+        "Invalid object name 'foo'.\n";
+    auto r = f->filter(raw, "sqlcmd -Q \"SELECT * FROM foo\"");
+    ASSERT_CONTAINS(r.output, "Msg 208");
+    ASSERT_CONTAINS(r.output, "Invalid object name");
+}
+
+TEST("db filter: psql NOTICE/ERROR preserved") {
+    auto f = Reg::instance().create("db");
+    std::string raw =
+        "NOTICE:  CREATE TABLE will create implicit sequence\n"
+        "ERROR:  relation \"foo\" already exists\n"
+        " id | name\n"
+        "----+-------\n"
+        "  1 | a\n"
+        "(1 row)\n";
+    auto r = f->filter(raw, "psql -c \"SELECT ...\"");
+    ASSERT_CONTAINS(r.output, "NOTICE");
+    ASSERT_CONTAINS(r.output, "ERROR");
+    ASSERT_CONTAINS(r.output, "(1 row)");
+}
+
+TEST("db filter: dump command falls through unchanged") {
+    auto f = Reg::instance().create("db");
+    std::string raw = "CREATE TABLE foo (id INT);\nINSERT INTO foo VALUES (1);\n";
+    auto r = f->filter(raw, "mysqldump mydb");
+    // dump → pass-through (substring match on "dump")
+    ASSERT_CONTAINS(r.output, "CREATE TABLE foo");
+    ASSERT_CONTAINS(r.output, "INSERT INTO foo");
+}
+
 int main() {
     std::cout << "=== Tkil filters tests ===\n";
     return icmg::test::run_all();
