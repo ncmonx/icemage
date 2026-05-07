@@ -1,5 +1,6 @@
 #include "scanner.hpp"
 #include "extractor/cpp_extractor.hpp"
+#include "symbol_extractor/base_symbol_extractor.hpp"
 #include "../core/registry.hpp"
 #include "../core/zone_resolver.hpp"
 #include <filesystem>
@@ -238,6 +239,38 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             // Collect imports for Pass 2 resolution (don't insert edges yet)
             for (auto& imp : result.imports) {
                 pending.emplace_back(nodeId, fpath, imp);
+            }
+
+            // Phase 18: extract symbol-level nodes (functions, classes, sps).
+            // Re-extracted on every scan; remove existing children of this file first.
+            auto& sym_reg = core::Registry<BaseSymbolExtractor>::instance();
+            if (sym_reg.has(lang)) {
+                store_.removeSymbolsOf(nodeId);
+                auto sym_extractor = sym_reg.create(lang);
+                auto symbols = sym_extractor->extractSymbols(fpath, content);
+                for (auto& sym : symbols) {
+                    GraphNode sn;
+                    sn.path        = fpath + "#" + sym.name;
+                    sn.lang        = lang;
+                    sn.parent_id   = nodeId;
+                    sn.kind        = sym.kind;
+                    sn.symbol_name = sym.name;
+                    sn.signature   = sym.signature.substr(0, 240);
+                    sn.line_start  = sym.line_start;
+                    sn.line_end    = sym.line_end;
+                    sn.body_hash   = sym.body_hash;
+                    sn.zone        = node.zone;
+                    int64_t symId = store_.upsertNode(sn);
+
+                    // Queue call-graph edges as pending (resolved in Pass 2)
+                    for (auto& callee : sym.calls) {
+                        pending.emplace_back(symId, sn.path, "call:" + callee);
+                    }
+                    // Inheritance edges: extends/implements → other class symbols
+                    for (auto& base : sym.bases) {
+                        pending.emplace_back(symId, sn.path, "ext:" + base);
+                    }
+                }
             }
 
             ++updated;

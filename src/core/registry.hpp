@@ -99,3 +99,11 @@ namespace icmg {
             .reg(name, []() { return std::make_unique<Class>(); }); \
         return true; \
     }()
+
+// ICMG_REGISTER_SYMBOL_EXTRACTOR("csharp", CSharpSymbolExtractor)
+#define ICMG_REGISTER_SYMBOL_EXTRACTOR(lang, Class) \
+    static bool _reg_sym_##Class = []() { \
+        ::icmg::core::Registry<::icmg::graph::BaseSymbolExtractor>::instance() \
+            .reg(lang, []() { return std::make_unique<Class>(); }); \
+        return true; \
+    }()

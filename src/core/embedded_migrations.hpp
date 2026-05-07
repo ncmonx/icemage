@@ -203,6 +203,20 @@ CREATE TABLE IF NOT EXISTS zone_config (
 );
 INSERT OR IGNORE INTO zone_config(zone, description) VALUES('default', 'Catch-all zone');
 )SQL"},
+        {7, R"SQL(
+-- 0007_symbol_nodes
+-- Two-tier graph: symbol nodes (class/function/method/sp) child of file nodes.
+ALTER TABLE graph_nodes ADD COLUMN parent_id   INTEGER REFERENCES graph_nodes(id) ON DELETE CASCADE;
+ALTER TABLE graph_nodes ADD COLUMN kind        TEXT NOT NULL DEFAULT 'file';
+ALTER TABLE graph_nodes ADD COLUMN symbol_name TEXT;
+ALTER TABLE graph_nodes ADD COLUMN signature   TEXT;
+ALTER TABLE graph_nodes ADD COLUMN line_start  INTEGER;
+ALTER TABLE graph_nodes ADD COLUMN line_end    INTEGER;
+ALTER TABLE graph_nodes ADD COLUMN body_hash   TEXT;
+CREATE INDEX IF NOT EXISTS idx_graph_parent ON graph_nodes(parent_id);
+CREATE INDEX IF NOT EXISTS idx_graph_kind   ON graph_nodes(kind);
+CREATE INDEX IF NOT EXISTS idx_graph_symbol ON graph_nodes(symbol_name) WHERE symbol_name IS NOT NULL;
+)SQL"},
     };
 }
 
