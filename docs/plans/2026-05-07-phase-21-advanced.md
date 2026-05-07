@@ -6,7 +6,7 @@
 
 **Tech:** Local embedding model (sentence-transformers via Python or ONNX Runtime), MCP resources protocol.
 
-**Estimate:** 5-7 days.
+**Estimate:** 6-8 days (was 5-7d; +1d for `icmg parallel` task 5b).
 
 **Assumptions:**
 - User accepts a Python sidecar OR ONNX Runtime binary dep for embeddings.
@@ -87,6 +87,100 @@ Iterate registered projects; aggregate top-K from each. Useful when same symbol 
 
 ---
 
+## Task 5b — `icmg parallel` — subprocess fan-out primitive (NEW)
+
+**Goal:** generic concurrent task dispatcher for icmg subcommands. Pure C++ (pipes + threads), no Claude API. Foundation for parallelizing pack/verify/recall/scan.
+
+**Files:**
+- Create: `src/core/parallel.hpp`, `src/core/parallel.cpp` — process pool + JSON merge.
+- Create: `src/cli/commands/parallel_cmd.cpp` — `icmg parallel` CLI front-end.
+
+**Why:** several icmg hot paths are I/O-bound and embarrassingly parallel:
+- Scan: per-zone fan-out (4-6× speedup on monorepos)
+- Pack: recall + symbol lookup + rule resolve (3-4× speedup)
+- Phase verify: ctest + lint + gate + memory check (longest-task time)
+- Cross-project recall: per-project BM25 fit (N× scaling)
+
+Rather than hard-code parallelism in each command, ship one primitive.
+
+### CLI
+
+```bash
+icmg parallel \
+    --task "icmg recall 'X' --zone api --json" \
+    --task "icmg recall 'X' --zone sync --json" \
+    --task "icmg recall 'X' --zone ui --json" \
+    [--merge json|concat|none]              # default: json (top-level array merge)
+    [--max-concurrency N]                   # default: cpu_count
+    [--timeout-ms N]                        # default: 60000
+    [--fail-fast]                           # abort siblings on first non-zero exit
+```
+
+**Exit code:** 0 if all OK, max(child exit codes) otherwise.
+
+### API (used internally by other commands)
+
+```cpp
+struct ParallelTask {
+    std::string command;          // shell-style; safe-exec'd via Run
+    int         timeout_ms = 60000;
+    std::string id;               // optional tag for output
+};
+struct ParallelResult {
+    int         exit_code;
+    std::string stdout_str;
+    std::string stderr_str;
+    int         duration_ms;
+};
+
+// Spawns up to max_concurrency child processes; collects results in submission order.
+std::vector<ParallelResult>
+parallel(const std::vector<ParallelTask>& tasks, int max_concurrency);
+```
+
+### Implementation
+
+- POSIX: fork+exec with pipes, `select()`/`poll()` for multiplexed reads.
+- Windows: `CreateProcess` + named pipes; reuse `safeExecWin` from `core/exec_utils`.
+- Each child runs as a fresh `icmg` invocation — independent SQLite reads (WAL mode allows N readers + 1 writer).
+- Default `--merge json`: parse each child stdout as JSON array; concat results. If any child output is not valid JSON, fall back to concat with `\n---\n` separator.
+
+### Retrofit existing commands
+
+Behind `--parallel` flag (opt-in):
+
+| Command | Before | With --parallel |
+|---|---|---|
+| `icmg pack <task>` | Sequential recall + lookup + rules | Fan-out 3 sub-icmg calls, merge |
+| `icmg phase verify <num>` | Sequential checks | One sub-task per recorded verification |
+| `icmg recall --all-projects` | Loop over registered projects | Fan-out per project |
+| `icmg graph scan` (multi-zone) | Single-thread walk | Fan-out per top-level zone dir |
+
+Implementation: each command checks `--parallel` flag → builds `ParallelTask` list → calls `parallel(tasks, N)` → merges output. Fallback to sequential when N < 2.
+
+### Verification
+
+- [ ] `icmg parallel --task "echo a" --task "echo b"` → both outputs in stdout.
+- [ ] Fan-out 5 zone recalls completes in ~max(per-zone) time, not Σ.
+- [ ] Timeout: `icmg parallel --task "sleep 10" --timeout-ms 1000` → exit code reflects timeout (124).
+- [ ] `--fail-fast`: kills siblings when first task exits non-zero.
+- [ ] JSON merge: each child produces `[{...}]`, parent emits flat array.
+- [ ] No corruption when 4 concurrent readers hit same SQLite DB (WAL mode test).
+
+### MCP exposure
+
+`icmg_parallel` MCP tool → Claude can dispatch fan-out without invoking shell.
+
+### Rollback
+
+Pure additive. Default sequential for all existing commands; `--parallel` opt-in.
+
+### Cost / Effort
+
+1-2 days. Pays back across pack/verify/recall/scan instantly.
+
+---
+
 ## Task 6 — Streaming filter middleware
 
 **Files:**
@@ -135,9 +229,14 @@ Charts: tokens/day, savings/day, top-savers, projection.
 - [ ] `icmg agent <task>` returns code + auto-stores decision.
 - [ ] MCP resources URIs resolve in Claude Desktop / Code.
 - [ ] `--all-projects` returns aggregated top-K across global DB.
+- [ ] `icmg parallel --task ... --task ...` runs concurrently, merges JSON.
+- [ ] `icmg pack --parallel` finishes in ~max(per-task) time.
+- [ ] `--fail-fast` aborts siblings on first non-zero exit.
+- [ ] No corruption with 4 concurrent SQLite readers (WAL test).
 - [ ] `npm test | icmg filter test` produces filtered streaming output.
-- [ ] All existing 15 tests pass.
-- [ ] New tests: `test_embedder_smoke`, `test_vec_search`, `test_agent_dryrun`.
+- [ ] All existing 17 tests pass.
+- [ ] New tests: `test_embedder_smoke`, `test_vec_search`, `test_agent_dryrun`,
+  `test_parallel` (concurrency, timeout, fail-fast, JSON merge).
 
 ---
 
@@ -153,5 +252,8 @@ Embedding is opt-in; `--semantic` default off. Agent requires explicit config. M
 |---|---|
 | Python sidecar crash | Fall back to BM25; log warning |
 | LLM agent cost spike | Hard token cap per session; dry-run mode |
+| Parallel SQLite contention | WAL mode + read-only child connections + serialize writes via parent |
+| Subprocess fork-bomb | `--max-concurrency` cap (default = cpu_count, hard cap 32) |
+| Hang on stuck child | `--timeout-ms` sends SIGTERM then SIGKILL after grace |
 | Embedding staleness | Embed-on-write hook; nightly re-embed task |
 | MCP cache invalidation | Watch graph_nodes mtime; bust cache on scan |
