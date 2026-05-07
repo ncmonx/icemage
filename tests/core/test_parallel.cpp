@@ -88,6 +88,44 @@ TEST("parallel: non-zero exit propagates per-task") {
     ASSERT_TRUE(r[1].exit_code != 0);
 }
 
+// Phase 24: fail_fast cancellation tests.
+TEST("parallel: fail_fast skips later tasks when earlier fails") {
+    // First task fails fast; subsequent tasks (queued behind cap) should be
+    // marked skipped rather than executed.
+    std::vector<ParallelTask> ts;
+    ParallelTask t0; t0.command = "exit 1"; t0.id = "fail0"; ts.push_back(t0);
+    for (int i = 0; i < 4; ++i) {
+        ParallelTask t;
+#ifdef _WIN32
+        t.command = "ping -n 2 127.0.0.1 >NUL";  // ~1s, gives fail0 time to abort siblings
+#else
+        t.command = "sleep 1";
+#endif
+        t.id = "t" + std::to_string(i);
+        ts.push_back(t);
+    }
+    auto r = parallel(ts, /*max_concurrency=*/1, /*fail_fast=*/true);
+    ASSERT_EQ((int)r.size(), (int)ts.size());
+    ASSERT_TRUE(r[0].exit_code != 0);   // failure
+    // With cap=1, after fail0 fails, ts[1..4] should all be skipped.
+    int skipped = 0;
+    for (size_t i = 1; i < r.size(); ++i) if (r[i].skipped) ++skipped;
+    ASSERT_TRUE(skipped >= 3);   // at least most are skipped (race with first slot)
+}
+
+TEST("parallel: fail_fast=false runs all tasks despite failures") {
+    std::vector<ParallelTask> ts;
+    ParallelTask t0; t0.command = "exit 1"; t0.id = "fail"; ts.push_back(t0);
+    ParallelTask t1; t1.command = "echo ok"; t1.id = "ok";  ts.push_back(t1);
+
+    auto r = parallel(ts, 2, /*fail_fast=*/false);
+    ASSERT_EQ((int)r.size(), 2);
+    ASSERT_TRUE(r[0].exit_code != 0);
+    ASSERT_EQ(r[1].exit_code, 0);
+    ASSERT_FALSE(r[0].skipped);
+    ASSERT_FALSE(r[1].skipped);
+}
+
 int main() {
     std::cout << "=== parallel tests ===\n";
     return icmg::test::run_all();

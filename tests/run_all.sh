@@ -52,6 +52,7 @@ run_suite "Features"             "$SCRIPT_DIR/test_features.sh"
 run_suite "MCP Server"           "$SCRIPT_DIR/test_mcp.sh"
 run_suite "Security"             "$SCRIPT_DIR/test_security.sh"
 run_suite "Performance"          "$SCRIPT_DIR/test_performance.sh"
+run_suite "Phase 23"             "$SCRIPT_DIR/test_phase23.sh"
 
 echo "================================================"
 echo "Integration suites: $TOTAL_PASS passed, $TOTAL_FAIL failed"
