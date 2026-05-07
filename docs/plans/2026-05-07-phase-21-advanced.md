@@ -90,7 +90,7 @@ Iterate registered projects; aggregate top-K from each. Useful when same symbol 
 ## Task 6 — Streaming filter middleware
 
 **Files:**
-- Modify: `src/rtk/rtk.cpp` — add `streamFilter()` reading stdin chunk by chunk.
+- Modify: `src/tkil/rtk.cpp` — add `streamFilter()` reading stdin chunk by chunk.
 - Add: `icmg run --stream <cmd>` flag (already in spec, implement).
 
 **Use:** `npm test 2>&1 | icmg filter test` — real-time output, filter applied incrementally.

@@ -1,12 +1,12 @@
 #include "../test_main.hpp"
 #include "../../src/core/registry.hpp"
-#include "../../src/rtk/base_filter.hpp"
+#include "../../src/tkil/base_filter.hpp"
 
 // Filters are registered via static init from their .cpp TUs (linked via icmg_lib).
 // Access them through the Registry.
 
-using icmg::rtk::BaseFilter;
-using Reg = icmg::core::Registry<icmg::rtk::BaseFilter>;
+using icmg::tkil::BaseFilter;
+using Reg = icmg::core::Registry<icmg::tkil::BaseFilter>;
 
 static BaseFilter* getFilter(const std::string& key) {
     static std::unordered_map<std::string, std::unique_ptr<BaseFilter>> cache;
@@ -116,6 +116,6 @@ TEST("search filter: groups by file") {
 }
 
 int main() {
-    std::cout << "=== RTK filters tests ===\n";
+    std::cout << "=== Tkil filters tests ===\n";
     return icmg::test::run_all();
 }

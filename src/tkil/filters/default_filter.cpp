@@ -1,7 +1,7 @@
 #include "filter_utils.hpp"
 #include "../../core/registry.hpp"
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 class DefaultFilter : public BaseFilter {
 public:
@@ -37,4 +37,4 @@ public:
 
 ICMG_REGISTER_FILTER("default", DefaultFilter);
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

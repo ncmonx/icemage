@@ -1,6 +1,6 @@
 #include "runner.hpp"
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 // A1: parse argv from command string — respects quotes.
 //
@@ -41,4 +41,4 @@ std::vector<std::string> parseArgv(const std::string& command) {
     return argv;
 }
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 // Parse a shell-style command string into argv tokens.
 // Respects "quoted strings" and 'single quotes'.
@@ -18,4 +18,4 @@ inline core::ExecResult runCommand(const std::string& command,
     return core::safeExec(argv, merge_stderr, timeout_ms);
 }
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

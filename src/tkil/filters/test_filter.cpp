@@ -1,7 +1,7 @@
 #include "filter_utils.hpp"
 #include "../../core/registry.hpp"
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 class TestFilter : public BaseFilter {
 public:
@@ -65,4 +65,4 @@ public:
 
 ICMG_REGISTER_FILTER("test", TestFilter);
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

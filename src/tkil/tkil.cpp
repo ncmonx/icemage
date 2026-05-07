@@ -1,4 +1,4 @@
-#include "rtk.hpp"
+#include "tkil.hpp"
 #include "runner.hpp"
 #include "filters/filter_utils.hpp"
 #include "../core/registry.hpp"
@@ -8,16 +8,16 @@
 #include <cmath>
 #include <algorithm>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 static int64_t nowEpoch() {
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-RTK::RTK(core::Db& db) : db_(db) {}
+Tkil::Tkil(core::Db& db) : db_(db) {}
 
-BaseFilter* RTK::getFilter(CmdType type) const {
+BaseFilter* Tkil::getFilter(CmdType type) const {
     static const std::unordered_map<CmdType, std::string> type2key = {
         {CmdType::GitLog,         "git"},
         {CmdType::Build,          "build"},
@@ -27,7 +27,7 @@ BaseFilter* RTK::getFilter(CmdType type) const {
         {CmdType::PackageManager, "npm"},
         {CmdType::Default,        "default"},
     };
-    auto& reg = core::Registry<icmg::rtk::BaseFilter>::instance();
+    auto& reg = core::Registry<icmg::tkil::BaseFilter>::instance();
     auto it = type2key.find(type);
     std::string key = (it != type2key.end()) ? it->second : "default";
     if (reg.has(key)) {
@@ -40,7 +40,7 @@ BaseFilter* RTK::getFilter(CmdType type) const {
     return nullptr;
 }
 
-int RTK::runFiltered(const std::string& command, bool raw, bool json,
+int Tkil::runFiltered(const std::string& command, bool raw, bool json,
                      bool dry_run, bool /*stream*/) {
     CmdType type = detector_.detect(command);
 
@@ -111,7 +111,7 @@ int RTK::runFiltered(const std::string& command, bool raw, bool json,
     return result.exit_code;
 }
 
-void RTK::recordCommand(const std::string& cmd, int orig, int filt) {
+void Tkil::recordCommand(const std::string& cmd, int orig, int filt) {
     int64_t now = nowEpoch();
     // Upsert: bump frequency + update last_used + accumulate line stats
     db_.run(
@@ -125,18 +125,18 @@ void RTK::recordCommand(const std::string& cmd, int orig, int filt) {
         {cmd, std::to_string(now), std::to_string(orig), std::to_string(filt)});
 }
 
-void RTK::recordManual(const std::string& cmd) {
+void Tkil::recordManual(const std::string& cmd) {
     recordCommand(cmd, 0, 0);
 }
 
-double RTK::computeScore(int freq, int64_t last_used) const {
+double Tkil::computeScore(int freq, int64_t last_used) const {
     int64_t now = nowEpoch();
     double hours = (now - last_used) / 3600.0;
     double recency = std::exp(-0.02 * hours);  // decay faster than memory
     return freq * recency * 100.0;
 }
 
-std::vector<CmdRecord> RTK::suggest(const std::string& prefix, int limit) {
+std::vector<CmdRecord> Tkil::suggest(const std::string& prefix, int limit) {
     std::vector<CmdRecord> result;
     std::string pat = prefix.empty() ? "%" : prefix + "%";
 
@@ -164,7 +164,7 @@ std::vector<CmdRecord> RTK::suggest(const std::string& prefix, int limit) {
     return result;
 }
 
-void RTK::printStats() const {
+void Tkil::printStats() const {
     int total_runs = 0;
     int64_t total_orig = 0, total_filt = 0;
 
@@ -203,4 +203,4 @@ void RTK::printStats() const {
         });
 }
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil

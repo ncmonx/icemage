@@ -1,8 +1,8 @@
 #include "../test_main.hpp"
-#include "../../src/rtk/detector.hpp"
+#include "../../src/tkil/detector.hpp"
 
-using icmg::rtk::CmdType;
-using icmg::rtk::Detector;
+using icmg::tkil::CmdType;
+using icmg::tkil::Detector;
 
 // ---- Detector unit tests ---------------------------------------------------
 

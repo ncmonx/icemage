@@ -4,7 +4,7 @@
 #include <string>
 #include <sstream>
 
-namespace icmg::rtk {
+namespace icmg::tkil {
 
 // Split string into lines
 inline std::vector<std::string> splitLines(const std::string& s) {
@@ -47,4 +47,4 @@ inline bool containsAny(const std::string& line,
     return false;
 }
 
-} // namespace icmg::rtk
+} // namespace icmg::tkil
