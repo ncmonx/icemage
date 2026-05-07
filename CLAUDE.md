@@ -162,6 +162,11 @@ Token-saving commands available — prefer over default Read/Grep/Glob:
 | Big git diff | `icmg diff-summary --ref HEAD~5` | 90%+ vs raw diff |
 | Errored before? | `icmg explain "<error>"` | instant past-fix |
 | Run noisy command | `icmg run <cmd>` | filter strategy auto-applied |
+| Big SQL output | `icmg run sqlcmd/mysql/psql ...` | 95-99% reduction on tabular |
+| Independent multi-checks | `icmg parallel --task ... --task ...` | concurrent, max(per-task) latency |
+| Pipe-style filter | `<cmd> \| icmg filter <type>` | wrap existing pipelines |
+| Cross-project recall | `icmg recall "X" --all-projects` | aggregates registered projects |
+| Token budget visual | `icmg budget --html` | dashboard with charts |
 | Save mid-task state | `icmg session save <name>` | resume after `/clear` |
 
 Full reference: `@COMMANDS.md`. Agent guide: `@AGENTS.md`.

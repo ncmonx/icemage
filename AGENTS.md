@@ -19,6 +19,12 @@ Universal context for **Claude Code, Cursor, Copilot, Aider, Continue, GitHub Co
 | Errored out — déjà vu? | `icmg explain "<error>"` | Past resolution match |
 | Big git diff to review | `icmg diff-summary --ref HEAD~5` | Symbol-grouped, not raw |
 | Run noisy command | `icmg run <cmd>` | Filtered output |
+| Big SQL query result | `icmg run sqlcmd ...` / `mysql ...` | DB filter: header + 20 rows + footer |
+| Run multiple cmds in parallel | `icmg parallel --task "..." --task "..."` | Concurrent (cap=cpu_count, max 32) |
+| Pipe existing cmd output | `<cmd> \| icmg filter <type>` | Filter w/o icmg run wrapper |
+| Cross-project recall | `icmg recall "X" --all-projects` | Iterates registered projects |
+| Token budget report | `icmg budget` / `icmg budget --html` | Per-tool savings + HTML chart |
+| Outline of large file | `icmg summarize <file>` | Heuristic outline + symbol tree |
 | Save state mid-task | `icmg session save <name>` | Resume after `/clear` |
 | Recall old decision/error | `icmg recall "<query>" [--zone Z]` | BM25 semantic memory |
 
@@ -143,6 +149,8 @@ Prefer MCP tools over shell `icmg` invocations when available — same data, no 
 - **Storing 50 trivial notes.** icmg has importance levels — only `high`/`critical` survive long.
 - **Bypassing zones.** A no-zone recall scans everything; with zones it scopes 5-10× faster.
 - **Running raw `git diff` on big PRs.** Use `icmg diff-summary` first, fall back to `--full` only if needed.
+- **Running raw `sqlcmd`/`mysql`/`psql`** without `icmg run` — output not filtered, 10K-row dumps blow up context.
+- **Sequential `ctest && lint && typecheck`** when they're independent. Use `icmg parallel`.
 - **Ignoring `icmg explain` after an error.** Past fixes are usually 1 query away.
 
 ---
