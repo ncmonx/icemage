@@ -254,6 +254,23 @@ CREATE TABLE IF NOT EXISTS designs (
     notes TEXT
 );
 )SQL"},
+        {9, R"SQL(
+-- 0009_token_budget
+-- Per-invocation token estimate so `icmg budget` shows savings + hot spots.
+CREATE TABLE IF NOT EXISTS tool_invocations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    tool_name TEXT NOT NULL,
+    command TEXT,
+    raw_bytes INTEGER,
+    filtered_bytes INTEGER,
+    est_tokens_in INTEGER,
+    est_tokens_out INTEGER,
+    saved_tokens INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_tinv_ts ON tool_invocations(timestamp);
+CREATE INDEX IF NOT EXISTS idx_tinv_tool ON tool_invocations(tool_name);
+)SQL"},
     };
 }
 
