@@ -37,6 +37,10 @@ public:
 
     bool isOpen() const { return db_ != nullptr; }
 
+    // Raw handle access — for binary BLOB binding (embeddings, etc.).
+    // Use sparingly; prefer run/query for normal text params.
+    sqlite3* handle() { return db_; }
+
 private:
     sqlite3* db_ = nullptr;
     void checkRc(int rc, const std::string& ctx) const;

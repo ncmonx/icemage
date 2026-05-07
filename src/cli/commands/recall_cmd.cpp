@@ -46,6 +46,9 @@ public:
             "  --limit N       Max results (default: 10)\n"
             "  --topic X       Filter by topic prefix\n"
             "  --zone Z        Restrict corpus to zone (sharper IDF, faster)\n"
+            "  --semantic      Hybrid BM25+vec recall (Phase 23). Falls back to BM25 if no embedder.\n"
+            "  --alpha N       Blend weight 0..1 (1=BM25 only, 0=vec only, default 0.5)\n"
+            "  --pure          Equivalent to --semantic --alpha 0\n"
             "  --all-projects  Cross-project recall (aggregates from registered projects)\n"
             "  --fuzzy         Fuzzy search fallback\n"
             "  --explain       Show score breakdown\n"
@@ -62,6 +65,11 @@ public:
         bool json    = hasFlag(args, "--json");
         bool explain = hasFlag(args, "--explain");
         bool fuzzy   = hasFlag(args, "--fuzzy");
+        bool semantic = hasFlag(args, "--semantic") || hasFlag(args, "--pure");
+        bool pure_vec = hasFlag(args, "--pure");
+        double alpha = 0.5;
+        try { alpha = std::stod(flagValue(args, "--alpha", "0.5")); } catch (...) {}
+        if (pure_vec) alpha = 0.0;
         bool all_projects = hasFlag(args, "--all-projects");
         std::string topic = flagValue(args, "--topic");
         std::string zone  = flagValue(args, "--zone");
@@ -108,6 +116,8 @@ public:
             results = store.recallByTopic(topic, limit);
         } else if (!zone.empty()) {
             results = store.recallInZone(query, zone, limit, fuzzy);
+        } else if (semantic) {
+            results = store.recallSemantic(query, limit, alpha);
         } else {
             results = store.recall(query, limit, fuzzy);
         }

@@ -271,6 +271,21 @@ CREATE TABLE IF NOT EXISTS tool_invocations (
 CREATE INDEX IF NOT EXISTS idx_tinv_ts ON tool_invocations(timestamp);
 CREATE INDEX IF NOT EXISTS idx_tinv_tool ON tool_invocations(tool_name);
 )SQL"},
+        {10, R"SQL(
+-- 0010_embeddings (Phase 23): semantic recall vectors.
+CREATE TABLE IF NOT EXISTS embeddings (
+    node_id     INTEGER NOT NULL,
+    kind        TEXT    NOT NULL,
+    vec         BLOB    NOT NULL,
+    dim         INTEGER NOT NULL,
+    model       TEXT    NOT NULL DEFAULT 'all-MiniLM-L6-v2',
+    body_hash   TEXT    NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (node_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_kind ON embeddings(kind);
+CREATE INDEX IF NOT EXISTS idx_embeddings_hash ON embeddings(kind, body_hash);
+)SQL"},
     };
 }
 

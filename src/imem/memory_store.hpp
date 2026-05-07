@@ -47,6 +47,15 @@ public:
     // Recall filtered by topic prefix.
     std::vector<MemoryNode> recallByTopic(const std::string& topic, int limit = 10);
 
+    // Phase 23: hybrid BM25 + semantic recall.
+    //   alpha=1.0 -> pure BM25 (default behavior)
+    //   alpha=0.0 -> pure cosine (vec only)
+    //   default 0.5 -> 50/50 blend
+    // Falls back silently to BM25 if no embeddings available.
+    std::vector<MemoryNode> recallSemantic(const std::string& query,
+                                           int    limit = 10,
+                                           double alpha = 0.5);
+
     // Bump frequency + update last_used.
     void bumpFrequency(int64_t id);
 

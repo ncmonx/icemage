@@ -24,6 +24,11 @@ private:
     void handleListTools(const json& req);
     void handleCallTool(const json& req);
 
+    // Phase 23 Task 4: resources protocol.
+    void handleListResources(const json& req);
+    void handleReadResource(const json& req);
+    json readResourceUri(const std::string& uri);
+
     void sendResponse(const json& id, const json& result);
     void sendError(const json& id, int code, const std::string& msg);
 
