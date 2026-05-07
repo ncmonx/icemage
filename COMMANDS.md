@@ -28,6 +28,21 @@ icmg cmd stats                                      # token-savings analytics
 
 ---
 
+## budget — Token-budget tracker (Phase 20+21)
+
+```
+icmg budget                       # window summary (last 24h default)
+icmg budget --window 7d
+icmg budget by-tool [--window N]  # per-tool aggregate
+icmg budget by-cmd [--limit N]    # top N commands by tokens saved
+icmg budget --html [--out FILE]   # HTML dashboard (Phase 21 T9)
+icmg budget record <tool> --raw N [--filtered M] [--cmd "..."]
+```
+
+`icmg run` auto-records to tool_invocations; `--html` reads it for charts.
+
+---
+
 ## context — File context bundle (Phase 19)
 
 ```
@@ -105,6 +120,24 @@ icmg export [--format json|csv]
 
 ```
 icmg forget <id> [--yes]
+```
+
+---
+
+## filter — Pipe-style Tkil filter (Phase 21)
+
+```
+<cmd> | icmg filter <type>
+<cmd> | icmg filter --as "<original-cmd-string>"
+```
+
+Types: `git | build | test | search | npm | db | default`. `--as` auto-detects.
+
+Examples:
+```bash
+npm test 2>&1 | icmg filter test
+git diff       | icmg filter --as "git diff"
+sqlcmd -Q ...  | icmg filter db
 ```
 
 ---
@@ -188,6 +221,21 @@ icmg pack <task description...>
 ```
 
 Returns markdown bundle: relevant memory + matching symbols.
+
+---
+
+## parallel — Subprocess fan-out (Phase 21)
+
+```
+icmg parallel --task "<cmd>" [--task "<cmd>" ...]
+              [--max-concurrency N]
+              [--timeout-ms N]
+              [--fail-fast]
+              [--merge json|concat|none]
+              [--json]
+```
+
+Aggregates exit code = max(child exits). Default merge `json` (parses + flattens arrays). On Windows, full paths with spaces work — uses `cmd.exe /s /c "<cmd>"` to preserve internal quotes.
 
 ---
 
@@ -297,6 +345,7 @@ icmg sp diff <name>                # version diffs
 icmg sp template <kind>            # SP template
 icmg sp impact-table <table>       # SPs touching table
 icmg sp search <query>
+icmg sp link <file>                # Phase 21: scan file for EXEC <sp> → calls edges
 ```
 
 ---
