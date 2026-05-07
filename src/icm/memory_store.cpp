@@ -17,7 +17,7 @@ int64_t MemoryStore::nowEpoch() const {
 
 MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     // Columns: id, topic, content, keywords, importance, frequency,
-    //          last_used, created_at, expires_at, deleted_at
+    //          last_used, created_at, expires_at, deleted_at, [zone]
     MemoryNode n;
     if (row.size() > 0) n.id          = std::stoll(row[0]);
     if (row.size() > 1) n.topic       = row[1];
@@ -29,6 +29,7 @@ MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     if (row.size() > 7) try { n.created_at = std::stoll(row[7]); } catch (...) {}
     if (row.size() > 8) try { n.expires_at = row[8].empty() ? 0 : std::stoll(row[8]); } catch (...) {}
     if (row.size() > 9) try { n.deleted_at = row[9].empty() ? 0 : std::stoll(row[9]); } catch (...) {}
+    if (row.size() > 10 && !row[10].empty()) n.zone = row[10];
     return n;
 }
 
@@ -125,14 +126,15 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     int64_t now = nowEpoch();
     std::string expires = effective.expires_at > 0 ? std::to_string(effective.expires_at) : "";
 
+    std::string zone = effective.zone.empty() ? "default" : effective.zone;
     db_.run(
         "INSERT INTO memory_nodes(topic,content,keywords,importance,frequency,"
-        "last_used,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)",
+        "last_used,created_at,expires_at,zone) VALUES(?,?,?,?,?,?,?,?,?)",
         {effective.topic, effective.content, effective.keywords,
          std::to_string(effective.importance),
          std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
-         expires});
+         expires, zone});
 
     int64_t id = db_.lastInsertId();
     if (!effective.keywords.empty()) syncKeywords(id, effective.keywords);
@@ -183,7 +185,7 @@ int MemoryStore::purge(int days_old) {
 MemoryNode MemoryStore::get(int64_t id) const {
     MemoryNode node;
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at "
+              "last_used,created_at,expires_at,deleted_at,zone "
               "FROM memory_nodes WHERE id=?",
               {std::to_string(id)},
               [&](const core::Row& r) { node = rowToNode(r); });
@@ -196,7 +198,7 @@ std::vector<MemoryNode> MemoryStore::all() const {
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at "
+              "last_used,created_at,expires_at,deleted_at,zone "
               "FROM memory_nodes "
               "WHERE deleted_at IS NULL "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
@@ -232,13 +234,34 @@ std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
     return ranked;
 }
 
+std::vector<MemoryNode> MemoryStore::recallInZone(const std::string& query,
+                                                    const std::string& zone,
+                                                    int limit, bool /*fuzzy*/) {
+    // Filter corpus to the requested zone before fit/rank — sharper IDF + faster.
+    auto full = all();
+    std::vector<MemoryNode> corpus;
+    corpus.reserve(full.size());
+    for (auto& n : full) {
+        if (n.zone == zone) corpus.push_back(std::move(n));
+    }
+    auto& scorer = Scorer::instance();
+    scorer.invalidate();   // force re-fit on new (smaller) corpus
+    scorer.fit(corpus);
+    auto ranked = scorer.rank(query, corpus, limit);
+    if (!ranked.empty()) bumpFrequency(ranked[0].id);
+    logQuery(query + " [zone=" + zone + "]", (int)ranked.size());
+    // Restore global IDF for subsequent unscoped recalls
+    scorer.invalidate();
+    return ranked;
+}
+
 std::vector<MemoryNode> MemoryStore::recallByTopic(const std::string& topic, int limit) {
     std::vector<MemoryNode> result;
     int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at "
+              "last_used,created_at,expires_at,deleted_at,zone "
               "FROM memory_nodes "
               "WHERE topic LIKE ? AND deleted_at IS NULL "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?) "

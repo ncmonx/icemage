@@ -89,12 +89,16 @@ static int syncGraphToMemory(core::Db& db, graph::GraphStore& store,
         mn.content    = content.substr(0, 600);
         mn.keywords   = keywords;
         mn.importance = 1;  // med — file context is useful but not critical
+        mn.zone       = n.zone.empty() ? "default" : n.zone;  // Phase 17: inherit zone from source
 
         // Upsert: update if topic already exists, insert if new
         // Topic format: "graph <basename> <full-path>" — match by full path suffix
         auto existing = mem.recallByTopic("graph " + basename + " " + n.path, 1);
         if (!existing.empty()) {
             mem.update(existing[0].id, mn.content, mn.keywords);
+            // Bring zone in sync with source graph node
+            db.run("UPDATE memory_nodes SET zone=? WHERE id=?",
+                   {mn.zone, std::to_string(existing[0].id)});
         } else {
             try { mem.store(mn, /*force=*/false); } catch (...) {}
         }
@@ -260,6 +264,7 @@ public:
 
     int run(const std::vector<std::string>& args) override {
         std::string lang_filter = flagValue(args, "--lang");
+        std::string zone_filter = flagValue(args, "--zone");
         bool json_out = hasFlag(args, "--json");
 
         auto& cfg = core::Config::instance();
@@ -270,6 +275,10 @@ public:
         if (!lang_filter.empty()) {
             nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
                 [&](const graph::GraphNode& n) { return n.lang != lang_filter; }), nodes.end());
+        }
+        if (!zone_filter.empty()) {
+            nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                [&](const graph::GraphNode& n) { return n.zone != zone_filter; }), nodes.end());
         }
 
         if (json_out) {

@@ -18,6 +18,7 @@ static void setupSchema(icmg::core::Db& db) {
         " last_used INTEGER,"
         " expires_at INTEGER,"
         " deleted_at INTEGER,"
+        " zone TEXT NOT NULL DEFAULT 'default',"
         " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         ")"
     );

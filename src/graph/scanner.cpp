@@ -1,6 +1,7 @@
 #include "scanner.hpp"
 #include "extractor/cpp_extractor.hpp"
 #include "../core/registry.hpp"
+#include "../core/zone_resolver.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -132,6 +133,9 @@ int Scanner::scan(const std::string& root, const Options& opts) {
     GitIgnore gi;
     if (opts.gitignore) gi.load(root + "/.gitignore");
 
+    // Phase 17: zone resolver — auto-tag scanned files by path glob.
+    icmg::core::ZoneResolver zoner(store_.db());
+
     fs::path root_path(root);
     int updated = 0;
     int max_file_size = 2 * 1024 * 1024; // skip files > 2MB
@@ -214,6 +218,11 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             ExtractResult result = ext_ptr->extract(fpath, content);
             if (own_ext) delete ext_ptr;
 
+            // Resolve zone (relative path for cleaner glob matching).
+            std::error_code rel_ec;
+            auto rel_for_zone = fs::relative(entry.path(), root_path, rel_ec);
+            std::string zone_path = rel_ec ? fpath : rel_for_zone.string();
+
             // Build node
             GraphNode node;
             node.path       = fpath;
@@ -222,6 +231,7 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             node.symbols    = buildSymbols(result);
             node.size_bytes = (int64_t)fsz;
             node.file_hash  = hash;
+            node.zone       = zoner.resolveForPath(zone_path);
 
             int64_t nodeId = store_.upsertNode(node);
 

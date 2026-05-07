@@ -29,6 +29,7 @@ static core::Db makeTestDb() {
         " last_used INTEGER,"
         " expires_at INTEGER,"
         " deleted_at INTEGER,"
+        " zone TEXT NOT NULL DEFAULT 'default',"
         " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         ")"
     );
@@ -44,7 +45,8 @@ static core::Db makeTestDb() {
         " size_bytes INTEGER,"
         " file_hash TEXT,"
         " access_count INTEGER NOT NULL DEFAULT 0,"
-        " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+        " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+        " zone TEXT NOT NULL DEFAULT 'default'"
         ")"
     );
 

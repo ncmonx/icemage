@@ -114,14 +114,15 @@ void GraphSerializer::computeCommunities(VizData& data) const {
 
 GraphSerializer::VizData GraphSerializer::serialize(
         const std::vector<std::string>& lang_filter,
-        const std::string& community_filter) const {
+        const std::string& community_filter,
+        const std::string& zone_filter) const {
 
     VizData data;
 
     // Load nodes
     std::unordered_set<std::string> langSet(lang_filter.begin(), lang_filter.end());
 
-    db_.query("SELECT id,path,lang,context,symbols,size_bytes FROM graph_nodes ORDER BY id",
+    db_.query("SELECT id,path,lang,context,symbols,size_bytes,zone FROM graph_nodes ORDER BY id",
               {},
               [&](const core::Row& r) {
                   if (r.size() < 2) return;
@@ -132,7 +133,10 @@ GraphSerializer::VizData GraphSerializer::serialize(
                   n.context    = r.size()>3 ? r[3] : "";
                   n.symbols    = r.size()>4 ? r[4] : "{}";
                   try { n.size_bytes = std::stoll(r.size()>5 ? r[5] : "0"); } catch (...) {}
+                  n.zone       = r.size()>6 ? r[6] : "default";
                   n.label      = basename(n.path);
+
+                  if (!zone_filter.empty() && n.zone != zone_filter) return;
 
                   if (!langSet.empty()) {
                       std::string lo = n.lang;
@@ -233,6 +237,7 @@ std::string GraphSerializer::toJson(const VizData& data) const {
            << ",\"size_bytes\":" << n.size_bytes
            << ",\"degree\":" << n.degree
            << ",\"community\":\"" << escJson(n.community) << "\""
+           << ",\"zone\":\"" << escJson(n.zone) << "\""
            << ",\"color\":\"" << escJson(langColor(n.lang)) << "\""
            << "}";
     }

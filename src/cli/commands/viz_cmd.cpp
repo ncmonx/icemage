@@ -30,6 +30,7 @@ public:
             "  --format <fmt>         Output format: html (default)|dot|gexf|graphml\n"
             "  --no-open              Don't open browser after generating HTML\n"
             "  --filter-lang <langs>  Comma-separated language filter (e.g. cpp,go)\n"
+            "  --zone <name>          Restrict to one zone (e.g. sync, api)\n"
             "  --community <id>       Show only one community\n"
             "  --estimate             Show estimated output size and exit\n\n"
             "Examples:\n"
@@ -48,6 +49,7 @@ public:
         std::string fmt        = flagValue(args, "--format", "html");
         std::string outFile    = flagValue(args, "--output");
         std::string filterLang = flagValue(args, "--filter-lang");
+        std::string zoneFilter = flagValue(args, "--zone");
         std::string community  = flagValue(args, "--community");
         bool noOpen            = hasFlag(args, "--no-open");
         bool estimate          = hasFlag(args, "--estimate");
@@ -141,7 +143,7 @@ public:
 
         // HTML (default)
         viz::GraphSerializer ser(db);
-        auto data = ser.serialize(langs, community);
+        auto data = ser.serialize(langs, community, zoneFilter);
 
         std::cerr << "  Nodes: " << data.nodes.size()
                   << "  Edges: " << data.edges.size()

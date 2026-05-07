@@ -11,6 +11,9 @@ class GraphStore {
 public:
     explicit GraphStore(core::Db& db);
 
+    // Access underlying DB (for callers that need it for related tables, e.g. zone_config).
+    core::Db& db() { return db_; }
+
     // Node CRUD
     int64_t upsertNode(const GraphNode& node);
     std::optional<GraphNode> getNode(const std::string& path);

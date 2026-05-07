@@ -23,7 +23,8 @@ static core::Db makeDb() {
         " size_bytes INTEGER,"
         " file_hash TEXT,"
         " access_count INTEGER NOT NULL DEFAULT 0,"
-        " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+        " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+        " zone TEXT NOT NULL DEFAULT 'default'"
         ")"
     );
     db.run(

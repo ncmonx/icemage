@@ -37,7 +37,8 @@ static core::Db makeGraphDb() {
         " file_hash TEXT,"
         " access_count INTEGER NOT NULL DEFAULT 0,"
         " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
-        " group_id TEXT"
+        " group_id TEXT,"
+        " zone TEXT NOT NULL DEFAULT 'default'"
         ")"
     );
     db.run(
