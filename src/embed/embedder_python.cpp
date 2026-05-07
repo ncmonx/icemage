@@ -46,14 +46,18 @@ std::string findScript() {
 #else
     fs::path bin = fs::canonical("/proc/self/exe");
 #endif
-    fs::path candidate = bin.parent_path() / "icmg_embedder.py";
-    if (fs::exists(candidate)) return candidate.string();
-    candidate = bin.parent_path() / "embed" / "icmg_embedder.py";
-    if (fs::exists(candidate)) return candidate.string();
-    candidate = fs::path(std::getenv("USERPROFILE") ? std::getenv("USERPROFILE")
-                       : std::getenv("HOME") ? std::getenv("HOME") : ".")
-              / ".icmg" / "icmg_embedder.py";
-    if (fs::exists(candidate)) return candidate.string();
+    // Walk: <bin>/, <bin>/embed/, <bin>/../embed/, <bin>/../../embed/, ~/.icmg/embed/
+    std::vector<fs::path> tries;
+    tries.push_back(bin.parent_path() / "icmg_embedder.py");
+    tries.push_back(bin.parent_path() / "embed" / "icmg_embedder.py");
+    tries.push_back(bin.parent_path().parent_path() / "embed" / "icmg_embedder.py");
+    tries.push_back(bin.parent_path().parent_path().parent_path() / "embed" / "icmg_embedder.py");
+    const char* home = std::getenv("USERPROFILE");
+    if (!home) home = std::getenv("HOME");
+    if (!home) home = ".";
+    tries.push_back(fs::path(home) / ".icmg" / "icmg_embedder.py");
+    tries.push_back(fs::path(home) / ".icmg" / "embed" / "icmg_embedder.py");
+    for (auto& c : tries) if (fs::exists(c)) return c.string();
     return "";
 }
 
@@ -82,14 +86,21 @@ public:
         if (!alive_) return {};
         json req = {{"op", "embed"}, {"id", ++req_id_}, {"text", text}};
         if (!sendLine(req.dump())) { shutdown(); return {}; }
+        // Skip non-JSON / unmatched-id lines (defensive against late warnings).
         std::string line;
-        if (!readLine(line)) { shutdown(); return {}; }
-        try {
-            json resp = json::parse(line);
-            if (resp.contains("error")) { shutdown(); return {}; }
-            auto vec = resp["vec"].get<std::vector<float>>();
-            return vec;
-        } catch (...) { shutdown(); return {}; }
+        for (int i = 0; i < 50; ++i) {
+            if (!readLine(line)) { shutdown(); return {}; }
+            size_t s = 0;
+            while (s < line.size() && (line[s] == ' ' || line[s] == '\t')) ++s;
+            if (s >= line.size() || line[s] != '{') continue;
+            try {
+                json resp = json::parse(line.substr(s));
+                if (resp.contains("error")) return {};
+                if (!resp.contains("vec")) continue;
+                return resp["vec"].get<std::vector<float>>();
+            } catch (...) { continue; }
+        }
+        return {};
     }
 
 private:
@@ -165,16 +176,32 @@ private:
         pid_    = pid;
 #endif
 
-        // Handshake: read first line — should be {"op":"ready","dim":384,"model":"..."}
+        // Handshake: skip any non-JSON noise (HuggingFace warnings, etc.) until
+        // we hit a line starting with '{'. Bounded by max_skip to avoid hang.
         std::string line;
-        if (!readLine(line)) { shutdown(); return; }
-        try {
-            json j = json::parse(line);
-            if (j.value("op", "") != "ready") { shutdown(); return; }
-            dim_   = j.value("dim", 384);
-            model_ = j.value("model", "all-MiniLM-L6-v2");
-            alive_ = true;
-        } catch (...) { shutdown(); return; }
+        const int max_skip = 50;
+        for (int i = 0; i < max_skip; ++i) {
+            if (!readLine(line)) { shutdown(); return; }
+            // Trim leading whitespace
+            size_t s = 0;
+            while (s < line.size() && (line[s] == ' ' || line[s] == '\t')) ++s;
+            if (s >= line.size()) continue;
+            if (line[s] == '{') {
+                std::string j_line = line.substr(s);
+                try {
+                    json j = json::parse(j_line);
+                    if (j.value("op", "") == "ready") {
+                        dim_   = j.value("dim", 384);
+                        model_ = j.value("model", "all-MiniLM-L6-v2");
+                        alive_ = true;
+                        return;
+                    }
+                    if (j.contains("error")) { shutdown(); return; }
+                } catch (...) { /* fall through and keep skipping */ }
+            }
+            // Non-JSON or non-ready line — keep waiting.
+        }
+        shutdown();
     }
 
     bool sendLine(const std::string& s) {

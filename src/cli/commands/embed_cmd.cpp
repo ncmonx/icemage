@@ -89,9 +89,17 @@ public:
             try {
                 Row x;
                 x.id = std::stoll(r[0]);
-                if (kind == "memory") x.text = r[1] + " — " + r[2];
+                // ASCII separator " - " avoids Windows cp1252 encoding pitfalls
+                // when caller pipe is non-UTF8.
+                if (kind == "memory") x.text = r[1] + " - " + r[2];
                 else                  x.text = r[1] + "\n" + r[2];
-                if (x.text.size() > 8192) x.text.resize(8192);
+                if (x.text.size() > 8192) {
+                    x.text.resize(8192);
+                    // Avoid splitting UTF-8 multi-byte sequence at boundary.
+                    while (!x.text.empty() && (((unsigned char)x.text.back() & 0xC0) == 0x80)) {
+                        x.text.pop_back();
+                    }
+                }
                 rows.push_back(std::move(x));
             } catch (...) {}
         });
