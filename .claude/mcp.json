@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "icmg": {
-      "command": "icmg",
-      "args": ["--mcp-server"],
-      "description": "ICM-Graph unified memory + graph + SP + abbreviation server"
-    }
-  }
-}
