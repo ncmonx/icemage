@@ -20,10 +20,23 @@ public:
         bool is_log    = command.find("git log")    != std::string::npos;
         bool is_status = command.find("git status") != std::string::npos;
 
+        // Diff-summary modes (no hunk content) — bypass hunk filter, pass through.
+        // Otherwise the @@-anchor logic below drops every line.
+        bool is_diff_summary = is_diff && (
+            command.find("--stat")        != std::string::npos ||
+            command.find("--shortstat")   != std::string::npos ||
+            command.find("--numstat")     != std::string::npos ||
+            command.find("--dirstat")     != std::string::npos ||
+            command.find("--name-only")   != std::string::npos ||
+            command.find("--name-status") != std::string::npos ||
+            command.find("--summary")     != std::string::npos ||
+            command.find("--check")       != std::string::npos
+        );
+
         std::vector<std::string> kept;
 
-        if (is_status) {
-            // git status: keep as-is (usually short)
+        if (is_status || is_diff_summary) {
+            // git status / diff --stat / --name-only / etc: keep as-is (already short)
             kept = lines;
         } else if (is_log) {
             // git log: max 30 entries, shorten hash to 8 chars

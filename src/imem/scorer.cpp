@@ -5,7 +5,7 @@
 #include <sstream>
 #include <iterator>
 
-namespace icmg::icm {
+namespace icmg::imem {
 
 Scorer& Scorer::instance() {
     static Scorer inst;
@@ -146,4 +146,4 @@ std::vector<MemoryNode> Scorer::rank(const std::string& query,
     return nodes;
 }
 
-} // namespace icmg::icm
+} // namespace icmg::imem

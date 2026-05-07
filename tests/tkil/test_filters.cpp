@@ -115,6 +115,31 @@ TEST("search filter: groups by file") {
     ASSERT_CONTAINS(r.output, "src/bar.cpp");
 }
 
+// Regression: git diff --stat output (file-summary lines, no @@) must pass
+// through. Before fix the hunk-anchored filter dropped every line because
+// in_hunk never became true.
+TEST("git filter: diff --stat passes through file-summary lines") {
+    auto f = Reg::instance().create("git");
+    ASSERT_TRUE(f != nullptr);
+    std::string raw =
+        " Core.cs       | 15 +++++++++++++++\n"
+        " Program.cs    |  3 ++-\n"
+        " Sync/X.cs     | 12 ++++++------\n"
+        " 3 files changed, 25 insertions(+), 5 deletions(-)\n";
+    auto r = f->filter(raw, "git diff --cached --stat");
+    ASSERT_CONTAINS(r.output, "Core.cs");
+    ASSERT_CONTAINS(r.output, "Program.cs");
+    ASSERT_CONTAINS(r.output, "3 files changed");
+}
+
+TEST("git filter: diff --name-only passes through") {
+    auto f = Reg::instance().create("git");
+    std::string raw = "src/Core.cs\nsrc/Program.cs\n";
+    auto r = f->filter(raw, "git diff --name-only HEAD~3");
+    ASSERT_CONTAINS(r.output, "src/Core.cs");
+    ASSERT_CONTAINS(r.output, "src/Program.cs");
+}
+
 int main() {
     std::cout << "=== Tkil filters tests ===\n";
     return icmg::test::run_all();

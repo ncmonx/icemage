@@ -6,12 +6,12 @@
 #include <filesystem>
 #include <chrono>
 
-// Graphify importer: parses GRAPH_REPORT.md (output of the graphify tool).
+// Knowledge-Graph importer: parses GRAPH_REPORT.md (output of the graphify tool).
 // Maps file nodes → graph_nodes, community tags, and edges where parseable.
 
 namespace icmg {
 
-class GraphifyImporter : public BaseImporter {
+class KGraphImporter : public BaseImporter {
 public:
     std::string name()        const override { return "graphify"; }
     std::string description() const override {
@@ -176,6 +176,15 @@ protected:
     }
 };
 
-ICMG_REGISTER_IMPORTER("graphify", GraphifyImporter);
+ICMG_REGISTER_IMPORTER("kgraph", KGraphImporter);
+// Backward-compat alias for "graphify" name
+namespace { struct _AliasGraphify {
+    _AliasGraphify() {
+        icmg::core::Registry<icmg::BaseImporter>::instance().reg("graphify",
+            []() -> std::unique_ptr<icmg::BaseImporter> {
+                return std::make_unique<KGraphImporter>();
+            });
+    }
+} _alias_graphify_inst; }
 
 } // namespace icmg

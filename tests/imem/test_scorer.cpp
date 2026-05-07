@@ -1,7 +1,7 @@
 #include "../test_main.hpp"
 #include "../../src/core/db.hpp"
-#include "../../src/icm/memory_store.hpp"
-#include "../../src/icm/scorer.hpp"
+#include "../../src/imem/memory_store.hpp"
+#include "../../src/imem/scorer.hpp"
 
 // ---- BM25 Scorer integration tests (in-memory DB) --------------------------
 // Tests go through MemoryStore.recall() which internally uses Scorer.
@@ -42,7 +42,7 @@ static void setupSchema(icmg::core::Db& db) {
 TEST("scorer: empty db returns no results") {
     icmg::core::Db db(":memory:");
     setupSchema(db);
-    icmg::icm::MemoryStore store(db);
+    icmg::imem::MemoryStore store(db);
 
     auto results = store.recall("anything", 5);
     ASSERT_TRUE(results.empty());
@@ -51,16 +51,16 @@ TEST("scorer: empty db returns no results") {
 TEST("scorer: exact topic match scores highest") {
     icmg::core::Db db(":memory:");
     setupSchema(db);
-    icmg::icm::MemoryStore store(db);
+    icmg::imem::MemoryStore store(db);
 
-    icmg::icm::MemoryNode a;
+    icmg::imem::MemoryNode a;
     a.topic = "cmake build system"; a.content = "CMake config docs"; a.importance = 1;
-    icmg::icm::MemoryNode b;
+    icmg::imem::MemoryNode b;
     b.topic = "python scripting"; b.content = "some python info"; b.importance = 1;
 
     store.store(a, /*force=*/true);
     store.store(b, /*force=*/true);
-    icmg::icm::Scorer::instance().invalidate();
+    icmg::imem::Scorer::instance().invalidate();
 
     auto results = store.recall("cmake", 10);
     ASSERT_FALSE(results.empty());
@@ -70,17 +70,17 @@ TEST("scorer: exact topic match scores highest") {
 TEST("scorer: importance=critical ranks higher") {
     icmg::core::Db db(":memory:");
     setupSchema(db);
-    icmg::icm::MemoryStore store(db);
+    icmg::imem::MemoryStore store(db);
 
-    icmg::icm::MemoryNode normal;
+    icmg::imem::MemoryNode normal;
     normal.topic = "auth system"; normal.content = "JWT auth normal"; normal.importance = 1;
 
-    icmg::icm::MemoryNode critical;
+    icmg::imem::MemoryNode critical;
     critical.topic = "auth system"; critical.content = "JWT auth critical"; critical.importance = 3;
 
     store.store(normal, /*force=*/true);
     store.store(critical, /*force=*/true);
-    icmg::icm::Scorer::instance().invalidate();
+    icmg::imem::Scorer::instance().invalidate();
 
     auto results = store.recall("auth JWT", 10);
     ASSERT_EQ(results.size(), 2u);
@@ -90,14 +90,14 @@ TEST("scorer: importance=critical ranks higher") {
 TEST("scorer: soft-deleted node excluded") {
     icmg::core::Db db(":memory:");
     setupSchema(db);
-    icmg::icm::MemoryStore store(db);
+    icmg::imem::MemoryStore store(db);
 
-    icmg::icm::MemoryNode n;
+    icmg::imem::MemoryNode n;
     n.topic = "secret"; n.content = "deleted content"; n.importance = 1;
     int64_t id = store.store(n, /*force=*/true);
 
     store.remove(id);  // soft-delete
-    icmg::icm::Scorer::instance().invalidate();
+    icmg::imem::Scorer::instance().invalidate();
 
     auto results = store.recall("secret", 10);
     ASSERT_TRUE(results.empty());

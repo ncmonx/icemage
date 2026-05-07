@@ -8,7 +8,7 @@
 
 ## Goal
 
-Single C++ binary menggabungkan ICM (memory), Graphify (knowledge graph), dan RTK (command filter) dengan tambahan: per-folder rules, structured data, multi-project registry, abbreviation engine, stored procedure store, visual graph, dan MCP server.
+Single C++ binary menggabungkan ICM (memory), KGraph (knowledge graph), dan RTK (command filter) dengan tambahan: per-folder rules, structured data, multi-project registry, abbreviation engine, stored procedure store, visual graph, dan MCP server.
 
 ---
 

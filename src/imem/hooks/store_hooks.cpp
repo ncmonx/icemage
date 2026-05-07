@@ -3,7 +3,7 @@
 #include <string>
 #include <regex>
 
-namespace icmg::icm {
+namespace icmg::imem {
 
 // PRE_STORE hook: detect abbreviation patterns in content/topic
 // Patterns: "bkm=bukti kas masuk", "bkm:...", "(bkm) ..."
@@ -41,4 +41,4 @@ static void storeAbbreviationDetector(core::HookContext& ctx) {
 // Register at priority 10 (runs before default priority 50)
 ICMG_REGISTER_HOOK(core::HookEvent::PRE_STORE, storeAbbreviationDetector, 10);
 
-} // namespace icmg::icm
+} // namespace icmg::imem

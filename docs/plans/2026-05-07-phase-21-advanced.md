@@ -33,7 +33,7 @@
 ## Task 2 — Vector recall
 
 **Files:**
-- Modify: `src/icm/memory_store.cpp::recall()` — accept `--semantic` flag.
+- Modify: `src/imem/memory_store.cpp::recall()` — accept `--semantic` flag.
 - Create: `src/embed/vec_search.cpp` — cosine similarity over BLOBs.
 
 ```cpp

@@ -2,8 +2,8 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
-#include "../../icm/memory_store.hpp"
-#include "../../icm/scorer.hpp"
+#include "../../imem/memory_store.hpp"
+#include "../../imem/scorer.hpp"
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -66,7 +66,7 @@ public:
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
 
         // History mode
         if (history) {
@@ -96,7 +96,7 @@ public:
             return 1;
         }
 
-        std::vector<icm::MemoryNode> results;
+        std::vector<imem::MemoryNode> results;
         if (!topic.empty()) {
             results = store.recallByTopic(topic, limit);
         } else if (!zone.empty()) {
@@ -117,7 +117,7 @@ public:
     }
 
 private:
-    void printDefault(const std::vector<icm::MemoryNode>& nodes) const {
+    void printDefault(const std::vector<imem::MemoryNode>& nodes) const {
         if (nodes.empty()) { std::cout << "No results.\n"; return; }
         for (auto& n : nodes) {
             std::cout << std::fixed << std::setprecision(1)
@@ -137,9 +137,9 @@ private:
     }
 
     void printExplain(const std::string& query,
-                      const std::vector<icm::MemoryNode>& nodes) const {
+                      const std::vector<imem::MemoryNode>& nodes) const {
         if (nodes.empty()) { std::cout << "No results.\n"; return; }
-        auto& scorer = icm::Scorer::instance();
+        auto& scorer = imem::Scorer::instance();
         for (auto& n : nodes) {
             auto d = scorer.scoreDetailed(query, n);
             std::cout << std::fixed << std::setprecision(2)
@@ -162,7 +162,7 @@ private:
         }
     }
 
-    void printJson(const std::vector<icm::MemoryNode>& nodes) const {
+    void printJson(const std::vector<imem::MemoryNode>& nodes) const {
         std::cout << "[\n";
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto& n = nodes[i];
@@ -197,7 +197,7 @@ public:
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
 
         if (!yes) {
             auto node = store.get(id);
@@ -230,7 +230,7 @@ public:
         }
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
         store.restore(id);
         std::cout << "Restored node #" << id << "\n";
         return 0;

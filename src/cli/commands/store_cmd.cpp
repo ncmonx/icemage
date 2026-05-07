@@ -2,8 +2,8 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
-#include "../../icm/memory_store.hpp"
-#include "../../icm/memory_node.hpp"
+#include "../../imem/memory_store.hpp"
+#include "../../imem/memory_node.hpp"
 #include <iostream>
 #include <string>
 #include <chrono>
@@ -43,11 +43,11 @@ public:
         bool force          = hasFlag(args, "--force");
         bool json_out       = hasFlag(args, "--json");
 
-        icm::MemoryNode node;
+        imem::MemoryNode node;
         node.topic      = topic;
         node.content    = content;
         node.keywords   = kw;
-        node.importance = icm::importanceFromName(imp_str);
+        node.importance = imem::importanceFromName(imp_str);
 
         if (!ttl_str.empty()) {
             try {
@@ -60,7 +60,7 @@ public:
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        icm::MemoryStore store(db);
+        imem::MemoryStore store(db);
 
         try {
             int64_t id = store.store(node, force);
@@ -72,7 +72,7 @@ public:
                 std::cout << "Stored [#" << id << "] " << topic << "\n";
             }
             return 0;
-        } catch (const icm::DuplicateError& e) {
+        } catch (const imem::DuplicateError& e) {
             if (json_out) {
                 std::cout << "{\"error\":\"duplicate\",\"existing_id\":"
                           << e.existing_id << ",\"message\":\""

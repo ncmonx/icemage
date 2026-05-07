@@ -12,9 +12,9 @@
 ### Task 1: MemoryNode struct + MemoryStore CRUD
 
 **Files:**
-- Create: `src/icm/memory_node.hpp`
-- Create: `src/icm/memory_store.hpp`
-- Create: `src/icm/memory_store.cpp`
+- Create: `src/imem/memory_node.hpp`
+- Create: `src/imem/memory_store.hpp`
+- Create: `src/imem/memory_store.cpp`
 
 **memory_node.hpp:**
 ```cpp
@@ -57,8 +57,8 @@ Expected: node muncul di hasil recall.
 ### Task 2: BM25 Scorer
 
 **Files:**
-- Create: `src/icm/scorer.hpp`
-- Create: `src/icm/scorer.cpp`
+- Create: `src/imem/scorer.hpp`
+- Create: `src/imem/scorer.cpp`
 
 **Formula:**
 ```
@@ -142,7 +142,7 @@ Expected: output terformat dengan score.
 ### Task 4: Hook: PRE_STORE auto-detect abbreviation pattern
 
 **Files:**
-- Create: `src/icm/hooks/store_hooks.cpp`
+- Create: `src/imem/hooks/store_hooks.cpp`
 
 Detect pattern di content saat store:
 - `bkm=bukti kas masuk`
@@ -168,7 +168,7 @@ Expected: hasil terurut by score, format benar.
 
 **Step 2: Commit**
 ```bash
-git add src/icm/ src/cli/commands/store_cmd.cpp src/cli/commands/recall_cmd.cpp
+git add src/imem/ src/cli/commands/store_cmd.cpp src/cli/commands/recall_cmd.cpp
 git commit -m "feat: phase-02 ICM memory store + BM25 scorer"
 ```
 
@@ -179,7 +179,7 @@ git commit -m "feat: phase-02 ICM memory store + BM25 scorer"
 ### CRITICAL Fixes
 
 **A1 — Scorer re-fit on POST_STORE**
-Tambahkan hook di `src/icm/hooks/scorer_hook.cpp`:
+Tambahkan hook di `src/imem/hooks/scorer_hook.cpp`:
 ```cpp
 ICMG_REGISTER_HOOK(HookEvent::POST_STORE, [](HookContext& ctx) {
     // Invalidate scorer — will re-fit on next recall

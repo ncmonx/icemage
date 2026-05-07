@@ -63,10 +63,10 @@ Registration: `ICMG_REGISTER_IMPORTER("icm", IcmImporter);`
 
 ---
 
-### Task 3: Graphify importer
+### Task 3: Knowledge-Graph importer
 
 **Files:**
-- Create: `src/import/graphify_importer.cpp`
+- Create: `src/import/kgraph_importer.cpp`
 
 Graphify output: `graphify-out/GRAPH_REPORT.md`
 Parse Markdown sections untuk extract:

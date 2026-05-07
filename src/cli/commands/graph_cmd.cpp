@@ -6,7 +6,7 @@
 #include "../../graph/scanner.hpp"
 #include "../../graph/daemon.hpp"
 #include "../../data/data_store.hpp"
-#include "../../icm/memory_store.hpp"
+#include "../../imem/memory_store.hpp"
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
@@ -53,7 +53,7 @@ static void printNodeJson(std::ostream& o, const graph::GraphNode& n) {
 // existing memory nodes rather than creating duplicates.
 static int syncGraphToMemory(core::Db& db, graph::GraphStore& store,
                               bool verbose = false) {
-    icm::MemoryStore mem(db);
+    imem::MemoryStore mem(db);
 
     // Migrate old-format topics ("graph:<path>" with no spaces after "graph:")
     // to new space-separated format. Hard-delete old nodes so re-insert works.
@@ -84,7 +84,7 @@ static int syncGraphToMemory(core::Db& db, graph::GraphStore& store,
         }
 
         // topic = "graph <basename> <path>" — searchable AND unique
-        icm::MemoryNode mn;
+        imem::MemoryNode mn;
         mn.topic      = "graph " + basename + " " + n.path;
         mn.content    = content.substr(0, 600);
         mn.keywords   = keywords;

@@ -275,7 +275,7 @@ All new tables additive. Hook templates are user-installed — disable by removi
 ## Cross-Cutting: Topic Reserved-Prefix Registry
 
 **Files:**
-- Create: `src/icm/reserved_topics.hpp`
+- Create: `src/imem/reserved_topics.hpp`
 
 ```cpp
 constexpr const char* RESERVED_PREFIXES[] = {

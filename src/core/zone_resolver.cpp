@@ -14,7 +14,7 @@ const std::vector<std::pair<std::string,std::string>> SEED_RULES = {
     {"src/cli/**",     "cli"},
     {"src/mcp/**",     "mcp"},
     {"src/tkil/**",     "rtk"},
-    {"src/icm/**",     "memory"},
+    {"src/imem/**",     "memory"},
     {"src/graph/**",   "graph"},
     {"src/rules/**",   "rules"},
     {"src/sp/**",      "sp"},

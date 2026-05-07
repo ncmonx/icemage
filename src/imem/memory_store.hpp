@@ -5,7 +5,7 @@
 #include <vector>
 #include <stdexcept>
 
-namespace icmg::icm {
+namespace icmg::imem {
 
 class DuplicateError : public std::runtime_error {
 public:
@@ -74,4 +74,4 @@ private:
     int64_t nowEpoch() const;
 };
 
-} // namespace icmg::icm
+} // namespace icmg::imem

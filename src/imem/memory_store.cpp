@@ -6,7 +6,7 @@
 #include <sstream>
 #include <cmath>
 
-namespace icmg::icm {
+namespace icmg::imem {
 
 // ---- helpers ----
 
@@ -290,4 +290,4 @@ std::vector<std::string> MemoryStore::queryHistory(int limit) const {
     return result;
 }
 
-} // namespace icmg::icm
+} // namespace icmg::imem
