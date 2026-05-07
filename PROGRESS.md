@@ -34,6 +34,11 @@
 | 12 | Visual Graph (HTML + Cytoscape.js) | [x] | 2026-05-06 | 2026-05-06 | 945fc98 | |
 | 13 | MCP Server (stdio transport) | [x] | 2026-05-06 | 2026-05-06 | 1b440f8 | 14 tools, stdio JSON-RPC 2.0, audit log |
 | 14 | Integration Testing + Bug Fix | [x] | 2026-05-06 | 2026-05-06 | 6afe58a | 7 suites (ICM/Graph/RTK/Features/MCP/Security/Perf), 14 unit tests, 44 integration tests — all pass |
+| 17 | Zone Partitioning (subsystem/layer scoping) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-17-zones.md — 1-2d, ROI: 5-10× recall scope reduction |
+| 18 | Function/Symbol-level Nodes | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-18-symbol-nodes.md — 3-5d, ROI: 80%+ token cut on "fix bug X" tasks. Depends on 17 |
+| 19 | Context Bundle Commands (context/pack/diff-summary/explain/session) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-19-context-bundles.md — 2-3d. Depends on 17, 18 |
+| 20 | Output Compression & Auto-Summarization | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-20-output-compression.md — 2-4d. Heuristic outline, hooks, budget tracker |
+| 21 | Advanced (embeddings, agent proxy, MCP resources, REPL) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-21-advanced.md — 5-7d. Depends on 17-20 |
 
 ---
 
@@ -56,6 +61,13 @@
     └── 11 Import/Export
 13 MCP Server ← semua phase 01-10
 14 Testing ← semua phase
+
+# Token-efficiency track (post-v0.1.x)
+17 Zones (foundational scope)
+18 Symbol Nodes ← 17
+19 Context Bundles ← 17, 18
+20 Output Compression (independent, parallel-safe)
+21 Advanced ← 17, 18, 19, 20
 ```
 
 ---
@@ -114,3 +126,27 @@ Total temuan dari security & architecture review (2026-05-06):
 |---|-------|--------|
 | 15 | Shell completions, REPL, unified search, memory consolidation, git SHA tagging, token analytics | Planned |
 | 16 | Remote sync (S3/git), VS Code extension | Future |
+| 17 | **Zone partitioning** — auto path-prefix → zone, scoped recall, BM25 IDF per zone | Plan ready |
+| 18 | **Function/symbol-level nodes** — two-tier graph, body-hash staleness, call edges | Plan ready |
+| 19 | **Context bundle commands** — `icmg context`, `icmg pack`, `icmg diff-summary`, `icmg explain`, `icmg session` | Plan ready |
+| 20 | **Output compression** — `icmg summarize`, Read-shrink hook, output cap, `icmg budget` | Plan ready |
+| 21 | **Advanced** — embeddings (semantic recall), `icmg agent`, MCP resources, REPL `icmg chat` | Plan ready |
+
+---
+
+## Token-Efficiency Roadmap (Phases 17-21)
+
+**Goal:** 50-90% token reduction across typical Claude Code sessions without losing context.
+
+| Phase | Mechanism | Est. Saving | Effort |
+|-------|-----------|-------------|--------|
+| 17 — Zones | Smaller corpus per recall + sharper IDF | 30-50% on recall | 1-2d |
+| 18 — Symbols | Read 30-line fn instead of 800-line file | 80-90% on "fix X" | 3-5d |
+| 19 — Bundles | Single tool call replaces 5-10 explorations | 50-70% on session start | 2-3d |
+| 20 — Compression | Auto-summarize big files; output cap; budget tracker | 60-80% on large reads | 2-4d |
+| 21 — Advanced | Semantic recall + agent proxy + MCP resources | additional 20-30% | 5-7d |
+
+**Cumulative target:** ~70-85% reduction with no context loss.
+
+**Recommended order:** 17 → 20 (parallel) → 18 → 19 → 21.
+**MVP fastest path:** 17 + 19's `icmg context` → 5 days, ~50% saving immediately.
