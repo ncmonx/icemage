@@ -199,6 +199,15 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             std::error_code canon_ec;
             auto canon_path = fs::weakly_canonical(entry.path(), canon_ec);
             std::string fpath = canon_ec ? entry.path().string() : canon_path.string();
+
+            // Windows: normalize drive-letter case to UPPER to prevent
+            // d:\foo vs D:\foo duplicates (case-insensitive FS but case-preserving).
+#ifdef _WIN32
+            if (fpath.size() >= 2 && fpath[1] == ':' &&
+                fpath[0] >= 'a' && fpath[0] <= 'z') {
+                fpath[0] = (char)(fpath[0] - 'a' + 'A');
+            }
+#endif
             std::string hash  = hashFile(fpath);
 
             // Skip if not stale
