@@ -233,4 +233,89 @@ ExecResult safeExec(const std::vector<std::string>& argv,
 
 #endif // _WIN32
 
+// ---------------------------------------------------------------------------
+// safeExecShell — pass-through to shell, bypassing argv-quoting machinery.
+// Needed for `icmg parallel --task "<cmd>"` etc. where the command string is
+// a full shell line (paths-with-spaces, pipes, &&) that must NOT be re-tokenized.
+// ---------------------------------------------------------------------------
+ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int timeout_ms) {
+#ifdef _WIN32
+    ExecResult result;
+    if (cmd_line.empty()) { result.exit_code = -1; return result; }
+
+    // cmd.exe /s /c "<command>" preserves all internal quotes verbatim
+    // (the /s flag strips ONLY the first and last char if both are ").
+    std::string full_cmd = "cmd.exe /s /c \"";
+    full_cmd += cmd_line;
+    full_cmd += "\"";
+
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+
+    HANDLE hOutR, hOutW, hErrR = nullptr, hErrW;
+    CreatePipe(&hOutR, &hOutW, &sa, 0);
+    SetHandleInformation(hOutR, HANDLE_FLAG_INHERIT, 0);
+    if (merge_stderr) {
+        DuplicateHandle(GetCurrentProcess(), hOutW, GetCurrentProcess(),
+                        &hErrW, 0, TRUE, DUPLICATE_SAME_ACCESS);
+    } else {
+        CreatePipe(&hErrR, &hErrW, &sa, 0);
+        SetHandleInformation(hErrR, HANDLE_FLAG_INHERIT, 0);
+    }
+
+    STARTUPINFOA si{};
+    si.cb = sizeof(si);
+    si.hStdOutput = hOutW;
+    si.hStdError  = hErrW;
+    si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
+    si.dwFlags    = STARTF_USESTDHANDLES;
+
+    PROCESS_INFORMATION pi{};
+    auto t0 = now_ms();
+
+    std::vector<char> cmdBuf(full_cmd.begin(), full_cmd.end());
+    cmdBuf.push_back('\0');
+
+    bool ok = CreateProcessA(nullptr, cmdBuf.data(), nullptr, nullptr,
+                              TRUE, CREATE_NO_WINDOW, nullptr, nullptr,
+                              &si, &pi);
+    CloseHandle(hOutW);
+    CloseHandle(hErrW);
+
+    if (!ok) {
+        result.exit_code = -1;
+        result.err = "CreateProcess failed: " + std::to_string(GetLastError());
+        CloseHandle(hOutR);
+        if (!merge_stderr) CloseHandle(hErrR);
+        return result;
+    }
+
+    std::array<char, 4096> buf;
+    DWORD bytes;
+    while (ReadFile(hOutR, buf.data(), (DWORD)buf.size(), &bytes, nullptr) && bytes)
+        result.out.append(buf.data(), bytes);
+    if (!merge_stderr) {
+        while (ReadFile(hErrR, buf.data(), (DWORD)buf.size(), &bytes, nullptr) && bytes)
+            result.err.append(buf.data(), bytes);
+        CloseHandle(hErrR);
+    }
+    CloseHandle(hOutR);
+
+    WaitForSingleObject(pi.hProcess, (DWORD)timeout_ms);
+    DWORD exit_code = 0;
+    GetExitCodeProcess(pi.hProcess, &exit_code);
+    result.exit_code = (int)exit_code;
+    result.duration_ms = now_ms() - t0;
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return result;
+#else
+    // POSIX: argv-style is already correct (sh -c receives the whole string
+    // as a single argument). Reuse safeExec.
+    return safeExec({"/bin/sh", "-c", cmd_line}, merge_stderr, timeout_ms);
+#endif
+}
+
 } // namespace icmg::core

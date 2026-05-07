@@ -19,4 +19,15 @@ ExecResult safeExec(const std::vector<std::string>& argv,
                     bool merge_stderr = false,
                     int timeout_ms    = 30000);
 
+// Shell command execution — pass-through via /bin/sh -c (Unix) or cmd.exe /s /c (Win).
+// Use ONLY when running a user-supplied command string with shell features
+// (pipes, redirects, &&, ||, glob expansion, paths with spaces). Bypasses
+// argv-quoting that conflicts with cmd.exe's own parser.
+//
+// Security: cmd_line is run through the shell — caller is responsible for
+// trusting / sanitizing the input. Never pass external user input here.
+ExecResult safeExecShell(const std::string& cmd_line,
+                         bool merge_stderr = false,
+                         int timeout_ms    = 30000);
+
 } // namespace icmg::core
