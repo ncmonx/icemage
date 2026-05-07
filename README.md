@@ -454,10 +454,9 @@ MIT.
 
 ## Documentation
 
-- **Plans:** `docs/plans/*.md` — design + per-phase implementation plans
-- **CLAUDE.md** — agent-friendly project context (loaded by Claude Code)
-- **AGENTS.md** — universal AI agent guide (Cursor, Copilot, etc.)
-- **PROGRESS.md** — phase tracker with commit hashes
+- **AGENTS.md** — universal AI agent guide (Cursor, Copilot, Claude, etc.)
+- **COMMANDS.md** — full command reference
+- **examples/hooks/** — Claude Code hook templates (PreToolUse / PostToolUse)
 - **Releases:** https://github.com/ncmonx/icm-graph/releases
 
 ---

@@ -15,6 +15,10 @@ public:
     // dispatches, writes responses. Returns when stdin closes.
     void run();
 
+    // Public for unit tests — parses icmg:// URI, dispatches to relevant store,
+    // returns JSON content. Throws on invalid scheme / missing record.
+    json readResourceUri(const std::string& uri);
+
 private:
     core::Db& db_;
     bool initialized_ = false;
@@ -27,7 +31,6 @@ private:
     // Phase 23 Task 4: resources protocol.
     void handleListResources(const json& req);
     void handleReadResource(const json& req);
-    json readResourceUri(const std::string& uri);
 
     void sendResponse(const json& id, const json& result);
     void sendError(const json& id, int code, const std::string& msg);
