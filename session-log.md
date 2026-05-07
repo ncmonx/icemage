@@ -28,3 +28,22 @@ Rejected:
 - `wc -l` comparison in test_rtk.sh with `set -euo pipefail` — pipefail + Windows wc produces `5\n0`. Use non-empty check instead.
 Open:
 - Phase 15-16 (shell completions, REPL, remote sync, VS Code ext) not started.
+
+## 2026-05-07 11:30 [saved]
+Goal: icmg hotfixes v0.1.5-0.1.9 + token-efficiency roadmap (phases 17-21).
+Decisions:
+- GitIgnore::matches unsigned-underflow guard: require p.size() < relpath.size() before computing tail offset; also handle backslash separators.
+- Scanner uses fs::weakly_canonical for path normalization + per-call std::error_code (no shared ec).
+- BM25 freq factor: log(2 + freq) instead of log(1 + freq) — floor 0.69 makes unvisited memory nodes recallable.
+- syncGraphToMemory: drop empty-context skip; use file path as fallback content; topic = "graph <basename> <path>".
+- run_cmd quote_arg() re-quotes whitespace tokens before parseArgv — fixes spaced-path fragmentation.
+- Embedded migrations must mirror filesystem migrations; v0.1.6 forgot 0005 → group_id missing on fresh DBs.
+- icmg memory umbrella dispatches to memory-list/show/search/stats/history/purge plus existing forget/restore.
+- Viz: fcose layout default, label trunc + tooltip, distinct edge colors, hide-binary toggle on, compound parents per dir.
+Rejected:
+- log(1+freq) — multiplying by 0 makes new nodes permanently invisible.
+- Joining argv with raw spaces in run_cmd — splits paths with spaces into phantom tokens.
+- Skipping nodes with empty context in syncGraphToMemory — most cpp files have no leading comment.
+Open:
+- Phases 17-21 plans ready (zones, symbol nodes, context bundles, output compression, advanced).
+- icmg run --raw still subject to same quoting; verify on next refactor.

@@ -39,6 +39,7 @@
 | 19 | Context Bundle Commands (context/pack/diff-summary/explain/session) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-19-context-bundles.md — 2-3d. Depends on 17, 18 |
 | 20 | Output Compression & Auto-Summarization | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-20-output-compression.md — 2-4d. Heuristic outline, hooks, budget tracker |
 | 21 | Advanced (embeddings, agent proxy, MCP resources, REPL) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-21-advanced.md — 5-7d. Depends on 17-20 |
+| 22 | Workflow Integration (KG transitive impact + GSD lifecycle + Superpowers gates) | [ ] | — | — | — | Plan: docs/plans/2026-05-07-phase-22-workflow-integration.md — 8-10d. Depends on 17, 18. Closes "fast → rigorous" gap |
 
 ---
 
@@ -68,6 +69,7 @@
 19 Context Bundles ← 17, 18
 20 Output Compression (independent, parallel-safe)
 21 Advanced ← 17, 18, 19, 20
+22 Workflow Integration ← 17, 18 (KG + GSD + Superpowers gates)
 ```
 
 ---
@@ -131,10 +133,11 @@ Total temuan dari security & architecture review (2026-05-06):
 | 19 | **Context bundle commands** — `icmg context`, `icmg pack`, `icmg diff-summary`, `icmg explain`, `icmg session` | Plan ready |
 | 20 | **Output compression** — `icmg summarize`, Read-shrink hook, output cap, `icmg budget` | Plan ready |
 | 21 | **Advanced** — embeddings (semantic recall), `icmg agent`, MCP resources, REPL `icmg chat` | Plan ready |
+| 22 | **Workflow integration** — transitive impact, `icmg known-issue/verify/phase/design/log`, hook templates bundling KG+GSD+Superpowers patterns | Plan ready |
 
 ---
 
-## Token-Efficiency Roadmap (Phases 17-21)
+## Token-Efficiency Roadmap (Phases 17-22)
 
 **Goal:** 50-90% token reduction across typical Claude Code sessions without losing context.
 
@@ -145,8 +148,10 @@ Total temuan dari security & architecture review (2026-05-06):
 | 19 — Bundles | Single tool call replaces 5-10 explorations | 50-70% on session start | 2-3d |
 | 20 — Compression | Auto-summarize big files; output cap; budget tracker | 60-80% on large reads | 2-4d |
 | 21 — Advanced | Semantic recall + agent proxy + MCP resources | additional 20-30% | 5-7d |
+| 22 — Workflow | Transitive impact + lifecycle gates + queryable log/known-issues | context retention 90%, audit-ready | 8-10d |
 
-**Cumulative target:** ~70-85% reduction with no context loss.
+**Cumulative target:** ~80-90% token reduction + 90% context retention across resets.
 
-**Recommended order:** 17 → 20 (parallel) → 18 → 19 → 21.
+**Recommended order:** 17 → 18 → 22 → 19 → 20 → 21.
 **MVP fastest path:** 17 + 19's `icmg context` → 5 days, ~50% saving immediately.
+**Rigorous path:** 17 → 18 → 22 → rest. Adds workflow discipline + audit trail.
