@@ -35,7 +35,9 @@ public:
             "Options:\n"
             "  --limit N       Stop after N rows (default: all)\n"
             "  --force         Re-embed even if body_hash unchanged\n"
-            "  --status        Show current embedding count + skip\n";
+            "  --status        Show current embedding count + skip\n"
+            "  --backend B     Force backend: python (default tier-1) | onnx (Phase 33+)\n"
+            "                   Set ICMG_EMBEDDER env to override globally\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -52,11 +54,28 @@ public:
         core::Db db(cfg.projectDbPath("."));
         embed::EmbedStore es(db);
 
+        // Phase 32 scaffold: --backend selector. Currently only "python" implemented;
+        // "onnx" reserved for Phase 33 (ICMG_USE_ONNX cmake flag). ICMG_EMBEDDER env
+        // also honored by makeEmbedder() factory.
+        std::string backend = flagValue(args, "--backend");
+        if (!backend.empty()) {
+            if (backend == "onnx") {
+                std::cout << "Backend 'onnx' not compiled in. Re-build with -DICMG_USE_ONNX=ON "
+                          << "(planned Phase 33). Falling back to python.\n";
+            } else if (backend != "python") {
+                std::cerr << "embed: unknown --backend '" << backend << "' (python|onnx)\n";
+                return 1;
+            }
+        }
+
         if (status) {
             int mem = es.count("memory"), gph = es.count("graph");
             std::cout << "Embeddings: memory=" << mem << " graph=" << gph << "\n";
             auto e = embed::makeEmbedder();
-            std::cout << "Embedder: " << (e ? "available (" + e->model() + ", dim=" + std::to_string(e->dim()) + ")"
+            const char* impl = e ? "python-sidecar" : "none";
+            std::cout << "Embedder: " << (e ? std::string("available (") + e->model()
+                                              + ", dim=" + std::to_string(e->dim())
+                                              + ", backend=" + impl + ")"
                                             : "unavailable (Python sidecar missing)") << "\n";
             return 0;
         }
