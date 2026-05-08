@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.18.0 LANGUAGES CXX C)
+project(icmg VERSION 0.18.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -81,6 +81,25 @@ if(ICMG_USE_TREESITTER)
         target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER=1)
         target_include_directories(icmg_lib PUBLIC ${TS_INCLUDE})
         target_link_libraries(icmg_lib PUBLIC tree_sitter_c ${TS_LIB})
+
+        # Copy runtime DLLs next to build outputs (Windows). Resolves
+        # 0xc0000135 / "libX.dll not found" at exe launch.
+        # libtree-sitter transitively pulls wasmtime + zstd on MSYS2.
+        if(WIN32)
+            set(TS_DLL_NAMES
+                libtree-sitter-0.26.dll libtree-sitter.dll
+                wasmtime.dll libzstd.dll
+                libwinpthread-1.dll)
+            foreach(_dll IN LISTS TS_DLL_NAMES)
+                find_file(TS_DLL_${_dll} NAMES ${_dll}
+                          PATHS /c/msys64/mingw64/bin /mingw64/bin
+                                ${TS_INCLUDE}/../bin)
+                if(TS_DLL_${_dll})
+                    message(STATUS "icmg: copy DLL ${_dll}")
+                    file(COPY ${TS_DLL_${_dll}} DESTINATION ${CMAKE_BINARY_DIR})
+                endif()
+            endforeach()
+        endif()
     else()
         message(WARNING "icmg: ICMG_USE_TREESITTER=ON but tree-sitter lib/headers/grammar "
                 "not found (lib=${TS_LIB} include=${TS_INCLUDE} grammar=${TS_C_GRAMMAR}). "
@@ -104,6 +123,12 @@ add_executable(icmg src/main.cpp)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_link_libraries(icmg PRIVATE
         -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+    # Static link runtime → portable exe (no mingw DLL deps).
+    if(WIN32)
+        target_link_options(icmg PRIVATE
+            -static-libgcc -static-libstdc++
+            -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
+    endif()
 else()
     target_link_libraries(icmg PRIVATE icmg_lib)
 endif()
@@ -127,6 +152,11 @@ macro(add_icmg_test name source_file)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_link_libraries(${name} PRIVATE
             -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+        if(WIN32)
+            target_link_options(${name} PRIVATE
+                -static-libgcc -static-libstdc++
+                -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
+        endif()
     else()
         target_link_libraries(${name} PRIVATE icmg_lib)
     endif()
