@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.14.2 LANGUAGES CXX C)
+project(icmg VERSION 0.15.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,6 +36,43 @@ if(WIN32)
 endif()
 if(UNIX)
     target_link_libraries(icmg_lib PUBLIC pthread dl)
+endif()
+
+# ---------------------------------------------------------------------------
+# Phase 33 — optional backends. Both default OFF; system-detected on opt-in.
+# ---------------------------------------------------------------------------
+option(ICMG_USE_ONNX        "Build ONNX Runtime embedder backend (Phase 33+)" OFF)
+option(ICMG_USE_TREESITTER  "Build tree-sitter AST symbol extractor (Phase 33+)" OFF)
+
+if(ICMG_USE_ONNX)
+    find_library(ORT_LIB NAMES onnxruntime
+                 PATHS /usr/local/lib /opt/homebrew/lib /usr/lib
+                 ENV   ORT_LIB_DIR)
+    if(ORT_LIB)
+        message(STATUS "icmg: ONNX backend ENABLED (lib: ${ORT_LIB})")
+        target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_ONNX=1)
+        target_link_libraries(icmg_lib PUBLIC ${ORT_LIB})
+    else()
+        message(WARNING "icmg: ICMG_USE_ONNX=ON but onnxruntime not found; "
+                "install ORT (https://onnxruntime.ai) then retry. "
+                "Build proceeds without ONNX backend.")
+    endif()
+endif()
+
+if(ICMG_USE_TREESITTER)
+    find_path(TS_INCLUDE tree_sitter/api.h
+              PATHS /usr/local/include /opt/homebrew/include /usr/include)
+    find_library(TS_LIB NAMES tree-sitter
+                 PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
+    if(TS_INCLUDE AND TS_LIB)
+        message(STATUS "icmg: tree-sitter ENABLED (lib: ${TS_LIB})")
+        target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER=1)
+        target_include_directories(icmg_lib PUBLIC ${TS_INCLUDE})
+        target_link_libraries(icmg_lib PUBLIC ${TS_LIB})
+    else()
+        message(WARNING "icmg: ICMG_USE_TREESITTER=ON but tree-sitter lib/headers "
+                "not found; install via package manager. Falling back to regex extractor.")
+    endif()
 endif()
 
 # Warnings on icmg_lib
@@ -118,3 +155,4 @@ add_icmg_test(test_zone_config tests/cli/test_zone_config.cpp)
 add_icmg_test(test_review tests/cli/test_review.cpp)
 add_icmg_test(test_audit tests/cli/test_audit.cpp)
 add_icmg_test(test_index tests/cli/test_index.cpp)
+add_icmg_test(test_backend_factory tests/embed/test_backend_factory.cpp)

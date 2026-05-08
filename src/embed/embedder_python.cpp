@@ -10,6 +10,7 @@
 #include "embedder.hpp"
 #include "../core/logger.hpp"
 #include <nlohmann/json.hpp>
+#include <iostream>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -256,10 +257,42 @@ private:
 
 } // anon
 
+// Forward decl for Phase 33 ONNX stub (compiled only when ICMG_HAS_ONNX).
+#ifdef ICMG_HAS_ONNX
+std::unique_ptr<Embedder> makeOnnxEmbedder();
+#endif
+
+// Phase 33: factory respects ICMG_EMBEDDER env override.
+//   onnx   -> require ONNX (fail loudly if not compiled or model missing)
+//   python -> force Python sidecar
+//   <unset>-> auto: ONNX if compiled+available, else Python sidecar, else null
 std::unique_ptr<Embedder> makeEmbedder() {
-    auto e = std::make_unique<PythonSidecar>();
-    if (!e->available()) return nullptr;
-    return e;
+    const char* prefer = std::getenv("ICMG_EMBEDDER");
+    std::string p = prefer ? prefer : "";
+
+#ifdef ICMG_HAS_ONNX
+    if (p == "onnx" || p.empty()) {
+        auto onnx = makeOnnxEmbedder();
+        if (onnx) return onnx;
+        if (p == "onnx") {
+            std::cerr << "ICMG_EMBEDDER=onnx but ONNX backend unavailable "
+                      << "(model missing? Set ICMG_ONNX_MODEL or place at "
+                      << "~/.icmg/embed/all-MiniLM-L6-v2.onnx)\n";
+            return nullptr;
+        }
+    }
+#else
+    if (p == "onnx") {
+        std::cerr << "ICMG_EMBEDDER=onnx but binary not built with -DICMG_USE_ONNX=ON\n";
+        return nullptr;
+    }
+#endif
+
+    if (p == "python" || p.empty()) {
+        auto py = std::make_unique<PythonSidecar>();
+        if (py->available()) return py;
+    }
+    return nullptr;
 }
 
 } // namespace icmg::embed
