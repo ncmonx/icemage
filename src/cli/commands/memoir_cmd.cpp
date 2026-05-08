@@ -15,10 +15,17 @@
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
+#include "../../core/exec_utils.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <cstdio>
+#ifdef _WIN32
+  #include <windows.h>
+#else
+  #include <unistd.h>
+#endif
 
 namespace icmg::cli {
 
@@ -52,6 +59,7 @@ public:
         if (action == "show")   return show(store, rest);
         if (action == "search") return search(store, rest);
         if (action == "link")   return linkCmd(db, rest);
+        if (action == "refine") return refine(db, store, rest);
 
         std::cerr << "icmg memoir: unknown action: " << action << "\n";
         usage();
@@ -163,6 +171,112 @@ private:
             std::cout << "\n\n";
         }
         return 0;
+    }
+
+    int refine(core::Db& db, imem::MemoryStore& store, const std::vector<std::string>& args) {
+        if (args.empty()) { std::cerr << "memoir refine: <id> required\n"; return 1; }
+        int64_t id = 0;
+        try { id = std::stoll(args[0]); } catch (...) { return 1; }
+        bool dry      = hasFlag(args, "--dry-run");
+        bool no_store = hasFlag(args, "--no-store");
+
+        auto n = store.get(id);
+        if (n.id == 0 || n.topic.find("memoir:") != 0) {
+            std::cerr << "memoir refine: not a memoir id: " << id << "\n";
+            return 1;
+        }
+
+        // Pull related entries — recall on memoir keywords/topic, exclude self + other memoirs.
+        std::string seed = n.topic.substr(7) + " " + n.keywords;
+        auto related = store.recall(seed, 10, false);
+        std::ostringstream evidence;
+        for (auto& r : related) {
+            if (r.id == id) continue;
+            if (r.topic.find("memoir:") == 0) continue;
+            if (r.topic.find("pattern:") == 0) continue;
+            evidence << "- [" << r.topic << "] " << truncate(r.content, 200) << "\n";
+        }
+
+        // Assemble prompt for `icmg agent`.
+        std::ostringstream prompt;
+        prompt << "Task: refine the following memoir incrementally. Preserve the key claims, "
+               << "integrate new evidence, fix outdated facts. Output ONLY the rewritten body "
+               << "(no preamble, no commentary).\n\n";
+        prompt << "## Existing memoir\n## Title: " << n.topic.substr(7) << "\n\n";
+        prompt << n.content << "\n\n";
+        prompt << "## New evidence (recent related entries)\n";
+        if (evidence.str().empty()) prompt << "(none — refine for clarity only)\n";
+        else                        prompt << evidence.str();
+
+        if (dry) {
+            std::cout << prompt.str();
+            return 0;
+        }
+
+        // Pipe to `icmg agent --no-store --no-pack <task>`. Reuse agent for LLM call.
+        std::string self = locateSelf();
+        std::string esc = escapeArg(prompt.str());
+        // Write prompt to temp file, pipe via < redirect.
+        std::string tmp;
+#ifdef _WIN32
+        char tbuf[MAX_PATH]; GetTempPathA(MAX_PATH, tbuf);
+        char tn[MAX_PATH]; GetTempFileNameA(tbuf, "icmg", 0, tn);
+        tmp = tn;
+#else
+        char tpl[] = "/tmp/icmg_refineXXXXXX";
+        int fd = mkstemp(tpl); if (fd >= 0) close(fd);
+        tmp = tpl;
+#endif
+        { std::ofstream f(tmp); f << prompt.str(); }
+        std::string cmd = "\"" + self + "\" agent --no-pack --no-store \"refine memoir\" < \"" + tmp + "\"";
+        auto res = core::safeExecShell(cmd, false, 180000);
+        std::remove(tmp.c_str());
+        if (res.exit_code != 0 || res.out.empty()) {
+            std::cerr << "memoir refine: agent call failed (exit=" << res.exit_code << ")\n";
+            return res.exit_code;
+        }
+
+        if (no_store) {
+            std::cout << res.out;
+            return 0;
+        }
+
+        // Store new memoir + supersede old.
+        imem::MemoryNode neu;
+        neu.topic     = n.topic;
+        neu.content   = res.out;
+        neu.keywords  = n.keywords + ",refined-from:" + std::to_string(n.id);
+        neu.importance = std::max(1, n.importance);
+        neu.zone      = n.zone;
+        int64_t new_id = store.store(neu, /*force=*/true);
+
+        // Supersede old (importance demote + tag).
+        db.run("UPDATE memory_nodes SET importance = 1, "
+               "keywords = COALESCE(keywords,'') || ',superseded-by:' || ? "
+               "WHERE id = ?",
+               {std::to_string(new_id), std::to_string(n.id)});
+        std::cout << "Refined memoir #" << n.id << " -> new #" << new_id << "\n";
+        return 0;
+    }
+
+    static std::string locateSelf() {
+#ifdef _WIN32
+        char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+        return buf;
+#else
+        return "icmg";
+#endif
+    }
+    static std::string escapeArg(const std::string& s) {
+        std::string out; out.reserve(s.size());
+        for (char c : s) {
+            if (c == '"' || c == '\\') out.push_back('\\');
+            out.push_back(c);
+        }
+        return out;
+    }
+    static std::string truncate(const std::string& s, size_t n) {
+        return s.size() <= n ? s : s.substr(0, n) + "...";
     }
 
     int linkCmd(core::Db& db, const std::vector<std::string>& args) {

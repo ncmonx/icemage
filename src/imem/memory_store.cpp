@@ -207,6 +207,30 @@ std::vector<MemoryNode> MemoryStore::all() const {
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
               {std::to_string(now)},
               [&](const core::Row& r) { result.push_back(rowToNode(r)); });
+
+    // Phase 27 T3: pull avg feedback per node (last 30d) -> feedback_bias.
+    // Bias formula: 1 + 0.2 * ((avg-2.5)/2.5), clamped [0.8, 1.2].
+    // No-op if feedback table missing (try/catch).
+    try {
+        int64_t cutoff = now - 30LL * 86400;
+        std::unordered_map<int64_t, double> avg;
+        db_.query("SELECT node_id, AVG(score) FROM feedback "
+                  "WHERE created_at > ? GROUP BY node_id",
+                  {std::to_string(cutoff)},
+                  [&](const core::Row& r){
+                      if (r.size() < 2) return;
+                      try { avg[std::stoll(r[0])] = std::stod(r[1]); } catch (...) {}
+                  });
+        for (auto& n : result) {
+            auto it = avg.find(n.id);
+            if (it == avg.end()) continue;
+            double mean = it->second;
+            double bias = 1.0 + 0.2 * ((mean - 2.5) / 2.5);
+            if (bias < 0.8) bias = 0.8;
+            if (bias > 1.2) bias = 1.2;
+            n.feedback_bias = bias;
+        }
+    } catch (...) {}
     return result;
 }
 
