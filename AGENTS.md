@@ -104,6 +104,21 @@ You can also force it with `--no-think`. Same flags work on `icmg agent`.
 
 ---
 
+## External downloads (auto-route)
+
+Don't use WebFetch / curl directly when icmg has the URL covered:
+
+| Default reflex | Use instead | Saving |
+|---|---|---|
+| WebFetch \<docs URL\> | `icmg fetch <url>` | 70-90% on HTML pages |
+| curl \<api endpoint\> | `icmg fetch <url> --kind json` | 80% on big JSON |
+| Read PDF from URL | `icmg fetch <url> --kind pdf` | 85% via text extract |
+| Re-fetch same URL twice | (already cached) | 100% second hit |
+
+Fetch is content-aware (strips HTML chrome, JSON-schema-summarizes >5KB payloads, hashes binaries). Cache TTL 1h per URL+ETag. Bypass with `--refresh`.
+
+---
+
 ## Cache + batch (saves recompute and bulk cost)
 
 - **Repeat queries in same session:** `icmg pack` auto-caches results for 5 min. Identical query → instant skip.
