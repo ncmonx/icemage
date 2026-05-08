@@ -12,6 +12,7 @@
 #include <sstream>
 #include <filesystem>
 #include <cstdlib>
+#include <set>
 
 namespace fs = std::filesystem;
 
@@ -31,7 +32,9 @@ public:
             "  set <key> <value>          Update or insert\n"
             "  unset <key>                Remove key\n"
             "  edit                       Open $EDITOR on config file\n"
-            "  path                       Print config file path\n";
+            "  path                       Print config file path\n"
+            "  zone <name> <get|set|unset|list> [args]   Per-zone overrides\n"
+            "  zones                      List zones with overrides\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -62,10 +65,88 @@ public:
             return doUnset(path, args[1]);
         }
         if (action == "edit") return doEdit(path);
+        if (action == "zone") return doZone(args);
+        if (action == "zones") return doZonesList(path);
 
         std::cerr << "config: unknown action: " << action << "\n";
         usage();
         return 1;
+    }
+
+    int doZone(const std::vector<std::string>& args) {
+        // Phase 31 T4: per-zone overrides via dotted prefix `zone.<name>.<key>`.
+        // Resolver order (caller-side): zone.<X>.<key> -> <key> -> default.
+        if (args.size() < 3) {
+            std::cerr << "config zone: usage: config zone <name> <set|get|unset|list> [args]\n";
+            return 1;
+        }
+        std::string zone = args[1];
+        std::string sub  = args[2];
+        auto& cfg = core::Config::instance();
+
+        if (sub == "set") {
+            if (args.size() < 5) { std::cerr << "config zone X set <key> <value>\n"; return 1; }
+            std::string full = "zone." + zone + "." + args[3];
+            cfg.set(full, args[4]);
+            cfg.save();
+            std::cout << "set " << full << " = " << args[4] << "\n";
+            return 0;
+        }
+        if (sub == "get") {
+            if (args.size() < 4) { std::cerr << "config zone X get <key>\n"; return 1; }
+            std::string full = "zone." + zone + "." + args[3];
+            std::string v = cfg.getString(full, "");
+            std::cout << v << "\n";
+            return v.empty() ? 1 : 0;
+        }
+        if (sub == "unset") {
+            if (args.size() < 4) { std::cerr << "config zone X unset <key>\n"; return 1; }
+            return doUnset(configPath(), "zone." + zone + "." + args[3]);
+        }
+        if (sub == "list") {
+            // Print all keys with prefix `zone.<zone>.`.
+            std::ifstream f(configPath());
+            if (!f) { std::cout << "(no config)\n"; return 0; }
+            std::ostringstream s; s << f.rdbuf();
+            try {
+                auto j = nlohmann::json::parse(s.str());
+                std::string prefix = "zone." + zone + ".";
+                int n = 0;
+                for (auto& [k, v] : j.items()) {
+                    if (k.rfind(prefix, 0) == 0) {
+                        std::cout << k.substr(prefix.size()) << " = ";
+                        if (v.is_string()) std::cout << v.get<std::string>();
+                        else               std::cout << v.dump();
+                        std::cout << "\n";
+                        ++n;
+                    }
+                }
+                if (n == 0) std::cout << "(no overrides for zone '" << zone << "')\n";
+            } catch (...) {}
+            return 0;
+        }
+        std::cerr << "config zone: unknown subaction: " << sub << "\n";
+        return 1;
+    }
+
+    int doZonesList(const fs::path& path) {
+        if (!fs::exists(path)) { std::cout << "(no zones configured)\n"; return 0; }
+        std::ifstream f(path);
+        std::ostringstream s; s << f.rdbuf();
+        try {
+            auto j = nlohmann::json::parse(s.str());
+            std::set<std::string> zones;
+            for (auto& [k, v] : j.items()) {
+                if (k.rfind("zone.", 0) != 0) continue;
+                std::string rest = k.substr(5);
+                auto dot = rest.find('.');
+                if (dot != std::string::npos) zones.insert(rest.substr(0, dot));
+            }
+            if (zones.empty()) { std::cout << "(no zones)\n"; return 0; }
+            std::cout << "Zones with overrides:\n";
+            for (auto& z : zones) std::cout << "  " << z << "\n";
+        } catch (...) {}
+        return 0;
     }
 
 private:

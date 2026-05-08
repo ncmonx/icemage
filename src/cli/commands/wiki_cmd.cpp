@@ -23,6 +23,8 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <ctime>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -75,6 +77,7 @@ public:
             "Usage: icmg wiki <action> [options]\n\n"
             "Actions:\n"
             "  build [--out DIR]    Generate wiki/ (default: ./wiki)\n"
+            "  audit [--out HTML]   Quality metrics dashboard (Phase 31)\n"
             "  serve [--port N]     Print URL hint; static files only (use any HTTP server)\n\n"
             "Options for build:\n"
             "  --no-html       Skip HTML output (markdown only)\n"
@@ -88,6 +91,7 @@ public:
         std::string action = args[0];
         std::vector<std::string> rest(args.begin() + 1, args.end());
         if (action == "build") return build(rest);
+        if (action == "audit") return audit(rest);
         if (action == "serve") {
             std::string out = flagValue(rest, "--out", "wiki");
             int port = 8000; try { port = std::stoi(flagValue(rest, "--port", "8000")); } catch (...) {}
@@ -103,6 +107,160 @@ public:
     }
 
 private:
+    // Phase 31 T2: audit page — quality metrics aggregated from existing tables.
+    int audit(const std::vector<std::string>& args) {
+        bool json_out = hasFlag(args, "--json");
+        std::string out_path = flagValue(args, "--out", "audit.html");
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+
+        // Collect counts.
+        int n_files = 0, n_symbols = 0, n_sps = 0, n_tables = 0, n_views = 0;
+        int n_memory = 0, n_embed_mem = 0, n_embed_graph = 0;
+        int imp0=0, imp1=0, imp2=0, imp3=0;
+        db.query("SELECT COUNT(*) FROM graph_nodes WHERE kind='file' OR kind IS NULL", {},
+                 [&](const core::Row& r){ if (!r.empty()) n_files = std::stoi(r[0]); });
+        db.query("SELECT COUNT(*) FROM graph_nodes WHERE parent_id IS NOT NULL", {},
+                 [&](const core::Row& r){ if (!r.empty()) n_symbols = std::stoi(r[0]); });
+        db.query("SELECT COUNT(*) FROM graph_nodes WHERE kind='sp'", {},
+                 [&](const core::Row& r){ if (!r.empty()) n_sps = std::stoi(r[0]); });
+        db.query("SELECT COUNT(*) FROM graph_nodes WHERE kind='table'", {},
+                 [&](const core::Row& r){ if (!r.empty()) n_tables = std::stoi(r[0]); });
+        db.query("SELECT COUNT(*) FROM graph_nodes WHERE kind='view'", {},
+                 [&](const core::Row& r){ if (!r.empty()) n_views = std::stoi(r[0]); });
+        db.query("SELECT COUNT(*) FROM memory_nodes WHERE deleted_at IS NULL", {},
+                 [&](const core::Row& r){ if (!r.empty()) n_memory = std::stoi(r[0]); });
+        try {
+            db.query("SELECT COUNT(*) FROM embeddings WHERE kind='memory'", {},
+                     [&](const core::Row& r){ if (!r.empty()) n_embed_mem = std::stoi(r[0]); });
+            db.query("SELECT COUNT(*) FROM embeddings WHERE kind='graph'", {},
+                     [&](const core::Row& r){ if (!r.empty()) n_embed_graph = std::stoi(r[0]); });
+        } catch (...) {}
+        db.query("SELECT importance, COUNT(*) FROM memory_nodes "
+                 "WHERE deleted_at IS NULL GROUP BY importance", {},
+                 [&](const core::Row& r){
+                     if (r.size() < 2) return;
+                     int imp = std::stoi(r[0]); int c = std::stoi(r[1]);
+                     if (imp == 0) imp0 = c; else if (imp == 1) imp1 = c;
+                     else if (imp == 2) imp2 = c; else if (imp == 3) imp3 = c;
+                 });
+
+        // Verifications pass/fail (last 30d).
+        int v_pass = 0, v_fail = 0;
+        try {
+            int64_t cutoff = (int64_t)std::time(nullptr) - 30LL * 86400;
+            db.query("SELECT exit_code FROM verifications WHERE recorded_at > ?",
+                     {std::to_string(cutoff)},
+                     [&](const core::Row& r){
+                         if (r.empty()) return;
+                         int rc = std::stoi(r[0]);
+                         if (rc == 0) ++v_pass; else ++v_fail;
+                     });
+        } catch (...) {}
+
+        // Top SPs by table-ref count (calls edges out).
+        std::vector<std::pair<std::string,int>> hot_sps;
+        db.query("SELECT g.symbol_name, COUNT(*) FROM graph_nodes g "
+                 "JOIN graph_edges e ON e.src = g.id "
+                 "WHERE g.kind = 'sp' "
+                 "GROUP BY g.id ORDER BY COUNT(*) DESC LIMIT 10", {},
+                 [&](const core::Row& r){
+                     if (r.size() < 2) return;
+                     hot_sps.push_back({r[0], std::stoi(r[1])});
+                 });
+
+        if (json_out) {
+            std::cout << "{\"files\":" << n_files
+                      << ",\"symbols\":" << n_symbols
+                      << ",\"sps\":" << n_sps
+                      << ",\"tables\":" << n_tables
+                      << ",\"views\":" << n_views
+                      << ",\"memory\":" << n_memory
+                      << ",\"embed_memory\":" << n_embed_mem
+                      << ",\"embed_graph\":" << n_embed_graph
+                      << ",\"verify_pass\":" << v_pass
+                      << ",\"verify_fail\":" << v_fail
+                      << "}\n";
+            return 0;
+        }
+
+        std::ofstream f(out_path);
+        if (!f) { std::cerr << "audit: cannot write " << out_path << "\n"; return 1; }
+        f << "<!doctype html><html><head><meta charset='utf-8'><title>icmg audit</title>"
+          << "<style>body{font:14px sans-serif;max-width:960px;margin:2em auto;padding:0 1em}"
+          << "h1{border-bottom:2px solid #eee;padding-bottom:.3em}"
+          << ".card{border:1px solid #ddd;border-radius:6px;padding:1em;margin:1em 0;background:#f9f9f9}"
+          << ".metric{display:inline-block;margin:0 1em 0 0}"
+          << ".metric .num{font-size:1.8em;font-weight:600;color:#0366d6}"
+          << ".metric .lbl{color:#666;font-size:.9em}"
+          << "table{border-collapse:collapse;width:100%;margin:1em 0}"
+          << "th,td{border:1px solid #ddd;padding:.4em .8em;text-align:left}"
+          << "th{background:#f0f0f0}"
+          << ".bad{color:#c00}.ok{color:#080}"
+          << "</style></head><body>"
+          << "<h1>icmg audit</h1>"
+          << "<p>Generated " << currentDate() << "</p>"
+          << "<div class='card'><h2>Graph</h2>"
+          << metric("files", n_files)
+          << metric("symbols", n_symbols)
+          << metric("SPs", n_sps)
+          << metric("tables", n_tables)
+          << metric("views", n_views)
+          << "</div>"
+          << "<div class='card'><h2>Memory</h2>"
+          << metric("active", n_memory)
+          << metric("imp=3", imp3)
+          << metric("imp=2", imp2)
+          << metric("imp=1", imp1)
+          << metric("imp=0", imp0)
+          << "</div>"
+          << "<div class='card'><h2>Embeddings</h2>"
+          << metric("memory", n_embed_mem)
+          << metric("graph", n_embed_graph)
+          << metric("coverage memory %", n_memory ? (100 * n_embed_mem / n_memory) : 0)
+          << "</div>"
+          << "<div class='card'><h2>Verifications (30d)</h2>"
+          << "<span class='metric'><span class='num ok'>" << v_pass << "</span><span class='lbl'> pass</span></span>"
+          << "<span class='metric'><span class='num bad'>" << v_fail << "</span><span class='lbl'> fail</span></span>"
+          << "</div>";
+
+        if (!hot_sps.empty()) {
+            f << "<div class='card'><h2>Top SPs by table refs</h2>"
+              << "<table><tr><th>SP</th><th>Refs</th></tr>";
+            for (auto& [n, c] : hot_sps)
+                f << "<tr><td><code>" << esc(n) << "</code></td><td>" << c << "</td></tr>";
+            f << "</table></div>";
+        }
+
+        f << "<p style='color:#666;font-size:.85em'>Generated by <code>icmg wiki audit</code>. "
+          << "No JS deps.</p></body></html>";
+        std::cout << "Wrote " << out_path << "\n";
+        return 0;
+    }
+
+    static std::string metric(const std::string& label, int value) {
+        std::ostringstream s;
+        s << "<span class='metric'><span class='num'>" << value
+          << "</span><span class='lbl'> " << label << "</span></span>";
+        return s.str();
+    }
+    static std::string currentDate() {
+        char buf[32]; std::time_t t = std::time(nullptr);
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", std::localtime(&t));
+        return buf;
+    }
+    static std::string esc(const std::string& s) {
+        std::string out; out.reserve(s.size());
+        for (char c : s) {
+            if      (c == '<') out += "&lt;";
+            else if (c == '>') out += "&gt;";
+            else if (c == '&') out += "&amp;";
+            else               out.push_back(c);
+        }
+        return out;
+    }
+
     int build(const std::vector<std::string>& args) {
         std::string out_dir = flagValue(args, "--out", "wiki");
         bool no_html = hasFlag(args, "--no-html");
