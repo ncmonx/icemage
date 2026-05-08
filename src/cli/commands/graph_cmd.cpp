@@ -7,12 +7,18 @@
 #include "../../graph/daemon.hpp"
 #include "../../data/data_store.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../core/parallel.hpp"
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
 #include <chrono>
+#include <ctime>
+#include <set>
 #include <sstream>
 #include <filesystem>
+#ifdef _WIN32
+  #include <windows.h>
+#endif
 
 namespace icmg::cli {
 
@@ -629,7 +635,16 @@ public:
         graph::Scanner::Options opts;
         std::string depth_str = flagValue(args, "--depth", "20");
         try { opts.max_depth = std::stoi(depth_str); } catch (...) {}
-        bool json_out = hasFlag(args, "--json");
+        bool json_out  = hasFlag(args, "--json");
+        bool parallel  = hasFlag(args, "--parallel");
+        std::string since_str = flagValue(args, "--since");
+
+        // Phase 28 T4: --since + --parallel — gather changed files first via
+        // mtime filter, then fan-out single-file updates through `core::parallel`
+        // (each spawned `icmg graph update <single-file>` reuses v0.12.2 fast-path).
+        if (!since_str.empty() || parallel) {
+            return runIncremental(path, since_str, parallel, json_out);
+        }
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
@@ -652,6 +667,100 @@ public:
                       << " | memory+" << mem_synced << "\n";
         }
         return 0;
+    }
+
+private:
+    static int64_t parseSince(const std::string& s) {
+        if (s.empty()) return 0;
+        char unit = s.back();
+        int n = 1;
+        try { n = std::stoi(s.substr(0, s.size() - 1)); } catch (...) {}
+        int64_t scale = 86400;
+        if (unit == 'h') scale = 3600;
+        else if (unit == 'm') scale = 60;
+        else if (unit == 'w') scale = 7 * 86400;
+        return std::time(nullptr) - (int64_t)n * scale;
+    }
+
+    int runIncremental(const std::string& path, const std::string& since_str,
+                        bool parallel, bool json_out) {
+        int64_t cutoff = parseSince(since_str);
+        // Walk directory + collect changed files (mtime > cutoff if cutoff > 0).
+        std::vector<std::string> changed;
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(path)) {
+            changed.push_back(path);
+        } else {
+            for (auto& e : std::filesystem::recursive_directory_iterator(path, ec)) {
+                if (ec) { ec.clear(); continue; }
+                if (!e.is_regular_file()) continue;
+                std::string name = e.path().filename().string();
+                // Skip ignore_dirs cheap heuristic (avoid huge node_modules walk).
+                static const std::set<std::string> skip = {
+                    ".git", "node_modules", "dist", ".cache", ".next", ".nuxt",
+                    "__pycache__", ".venv", "venv", "target", "build", "out",
+                    "bin", "obj", ".vs", ".idea", ".icmg", "coverage", "vendor"
+                };
+                bool should_skip = false;
+                for (auto& seg : e.path()) {
+                    if (skip.count(seg.string())) { should_skip = true; break; }
+                }
+                if (should_skip) continue;
+                if (cutoff > 0) {
+                    auto wt = std::filesystem::last_write_time(e, ec);
+                    if (ec) { ec.clear(); continue; }
+                    auto sec = std::chrono::duration_cast<std::chrono::seconds>(
+                        wt.time_since_epoch()).count();
+                    if (sec < cutoff) continue;
+                }
+                changed.push_back(e.path().string());
+            }
+        }
+
+        if (changed.empty()) {
+            std::cout << "graph update: 0 changed files in window\n";
+            return 0;
+        }
+        std::cout << "graph update: " << changed.size() << " file(s) "
+                  << (parallel ? "[parallel]" : "[serial]") << "\n";
+
+        if (!parallel) {
+            // Serial: single Scanner reused across files.
+            auto& cfg = core::Config::instance();
+            core::Db db(cfg.projectDbPath("."));
+            graph::GraphStore store(db);
+            graph::Scanner scanner(store);
+            int count = 0;
+            for (auto& f : changed) count += scanner.scan(f);
+            std::cout << "  done. updated=" << count << "\n";
+            return 0;
+        }
+
+        // Parallel: spawn `icmg graph update <file>` per file via core::parallel.
+        std::vector<core::ParallelTask> tasks;
+        std::string self;
+#ifdef _WIN32
+        char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+        self = buf;
+#else
+        self = "icmg";
+#endif
+        for (auto& f : changed) {
+            core::ParallelTask t;
+            t.command = "\"" + self + "\" graph update \"" + f + "\"";
+            t.id = f;
+            tasks.push_back(std::move(t));
+        }
+        auto results = core::parallel(tasks, /*max_concurrency=*/0, /*fail_fast=*/false);
+        int ok = 0, err = 0;
+        for (auto& r : results) {
+            if (r.exit_code == 0) ++ok;
+            else                  ++err;
+        }
+        if (json_out) std::cout << "{\"changed\":" << changed.size()
+                                  << ",\"ok\":" << ok << ",\"err\":" << err << "}\n";
+        else          std::cout << "  done. ok=" << ok << " err=" << err << "\n";
+        return err > 0 ? 1 : 0;
     }
 };
 

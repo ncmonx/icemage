@@ -13,6 +13,9 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
+#include <map>
+#include <ctime>
+#include <cctype>
 #include "../../core/exec_utils.hpp"
 #include <iostream>
 #include <iomanip>
@@ -52,7 +55,8 @@ public:
             "  add <pattern> --fix <description> [--zone Z]   Register a fix\n"
             "  match <error-text>                              Find past resolutions\n"
             "  list [--zone Z] [--limit N]                     List all\n"
-            "  stats                                            Most-recurring errors\n";
+            "  stats                                            Most-recurring errors\n"
+            "  auto [--min N] [--since 30] [--apply]           Cluster verify failures by stderr fingerprint\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -120,6 +124,77 @@ public:
             auto items = mem.recallByTopic("errors-resolved", 1000);
             std::cout << "=== known-issue stats ===\n"
                       << "Total: " << items.size() << "\n";
+            return 0;
+        }
+        if (sub == "auto") {
+            // Phase 28 T5: cluster recent failed verifications by stderr
+            // fingerprint -> suggest patterns. --apply auto-registers placeholder.
+            int min_n = 3;
+            try { min_n = std::stoi(flagValue(rest, "--min", "3")); } catch (...) {}
+            int days = 30;
+            try { days = std::stoi(flagValue(rest, "--since", "30").substr(0,
+                          flagValue(rest, "--since", "30").size())); } catch (...) {}
+            bool apply = hasFlag(rest, "--apply");
+
+            int64_t cutoff = std::time(nullptr) - (int64_t)days * 86400;
+            // verifications schema: id, phase, command, exit_code, output_hash,
+            // output_head, duration_ms, recorded_at.
+            struct Cluster { std::string fp; std::string head; std::string cmd; int count = 0; int64_t any_id = 0; };
+            std::map<std::string, Cluster> clusters;
+            db.query("SELECT id, command, exit_code, COALESCE(output_head,''), recorded_at "
+                     "FROM verifications WHERE exit_code != 0 AND recorded_at > ?",
+                     {std::to_string(cutoff)},
+                     [&](const core::Row& r){
+                         if (r.size() < 5) return;
+                         std::string head = r[3].size() > 200 ? r[3].substr(0, 200) : r[3];
+                         // Normalise: strip leading whitespace + collapse paths/numbers.
+                         std::string norm = head;
+                         std::string fp;
+                         // Cheap fingerprint: first 80 alnum chars.
+                         for (char c : norm) {
+                             if (std::isalnum((unsigned char)c)) fp.push_back(c);
+                             if (fp.size() >= 80) break;
+                         }
+                         if (fp.empty()) return;
+                         auto& cl = clusters[fp];
+                         if (cl.count == 0) {
+                             cl.fp = fp; cl.head = head; cl.cmd = r[1];
+                             try { cl.any_id = std::stoll(r[0]); } catch (...) {}
+                         }
+                         ++cl.count;
+                     });
+
+            std::vector<Cluster> hot;
+            for (auto& [_, c] : clusters) if (c.count >= min_n) hot.push_back(c);
+            std::sort(hot.begin(), hot.end(),
+                      [](const Cluster& a, const Cluster& b){ return a.count > b.count; });
+
+            std::cout << "known-issue auto: " << hot.size() << " candidate(s) "
+                      << "(>= " << min_n << " in " << days << "d window)\n";
+            if (hot.empty()) return 0;
+
+            for (auto& c : hot) {
+                std::cout << "\n  [" << c.count << "x] " << c.cmd << "\n";
+                std::cout << "    " << (c.head.size() > 100 ? c.head.substr(0, 100) + "..." : c.head) << "\n";
+                if (apply) {
+                    // Pick first stderr line as pattern.
+                    std::string pattern = c.head;
+                    auto nl = pattern.find('\n');
+                    if (nl != std::string::npos) pattern = pattern.substr(0, nl);
+                    if (pattern.size() > 80) pattern = pattern.substr(0, 80);
+                    if (pattern.empty()) pattern = c.cmd;
+                    imem::MemoryNode n;
+                    n.topic    = "errors-resolved " + pattern;
+                    n.content  = "Pattern: " + pattern + "\nFix: see verifications #"
+                               + std::to_string(c.any_id) + " (auto-detected, fill in resolution)";
+                    n.keywords = "auto-detected,verifications";
+                    n.importance = 2;
+                    try { int64_t id = mem.store(n, true);
+                          std::cout << "    -> registered #" << id << "\n"; }
+                    catch (...) { std::cout << "    -> already registered (skip)\n"; }
+                }
+            }
+            if (!apply) std::cout << "\n  Re-run with --apply to register placeholders.\n";
             return 0;
         }
         std::cerr << "icmg known-issue: unknown subcommand: " << sub << "\n";
