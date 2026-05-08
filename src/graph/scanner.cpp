@@ -157,6 +157,90 @@ int Scanner::scan(const std::string& root, const Options& opts) {
     // Tuple: (src_node_id, src_file_path, import_name_string)
     std::vector<std::tuple<int64_t,std::string,std::string>> pending;
 
+    // Single-file processor (extracted so scan() can fast-path a single file
+    // arg without walking siblings — matches user expectation for
+    // `icmg graph update <file>`).
+    auto processFile = [&](const fs::path& fp, uintmax_t fsz) {
+        std::string ext = fp.extension().string();
+        std::string lang = detectLang(ext);
+        if (!opts.include_langs.empty()) {
+            bool found = false;
+            for (auto& l : opts.include_langs) if (l == lang) { found = true; break; }
+            if (!found) return;
+        }
+        if (fsz > (uintmax_t)max_file_size) return;
+        std::error_code canon_ec;
+        auto canon_path = fs::weakly_canonical(fp, canon_ec);
+        std::string fpath = canon_ec ? fp.string() : canon_path.string();
+#ifdef _WIN32
+        if (fpath.size() >= 2 && fpath[1] == ':' &&
+            fpath[0] >= 'a' && fpath[0] <= 'z') {
+            fpath[0] = (char)(fpath[0] - 'a' + 'A');
+        }
+#endif
+        std::string hash = hashFile(fpath);
+        if (opts.skip_stale && !store_.isStale(fpath, hash)) return;
+        std::ifstream f(fpath, std::ios::binary);
+        if (!f) return;
+        std::ostringstream buf; buf << f.rdbuf();
+        std::string content = buf.str();
+        BaseExtractor* ext_ptr = getExtractor(lang);
+        bool own_ext = (ext_ptr != nullptr);
+        if (!ext_ptr) ext_ptr = generic;
+        ExtractResult result = ext_ptr->extract(fpath, content);
+        if (own_ext) delete ext_ptr;
+        std::error_code rel_ec;
+        auto rel_for_zone = fs::relative(fp, root_path, rel_ec);
+        std::string zone_path = rel_ec ? fpath : rel_for_zone.string();
+        GraphNode node;
+        node.path       = fpath;
+        node.lang       = lang;
+        node.context    = result.context.substr(0, 500);
+        node.symbols    = buildSymbols(result);
+        node.size_bytes = (int64_t)fsz;
+        node.file_hash  = hash;
+        node.zone       = zoner.resolveForPath(zone_path);
+        int64_t nodeId = store_.upsertNode(node);
+        for (auto& imp : result.imports) pending.emplace_back(nodeId, fpath, imp);
+        auto& sym_reg = core::Registry<BaseSymbolExtractor>::instance();
+        if (sym_reg.has(lang)) {
+            store_.removeSymbolsOf(nodeId);
+            auto sym_extractor = sym_reg.create(lang);
+            auto symbols = sym_extractor->extractSymbols(fpath, content);
+            for (auto& sym : symbols) {
+                GraphNode sn;
+                sn.path        = fpath + "#" + sym.name;
+                sn.lang        = lang;
+                sn.parent_id   = nodeId;
+                sn.kind        = sym.kind;
+                sn.symbol_name = sym.name;
+                sn.signature   = sym.signature.substr(0, 240);
+                sn.line_start  = sym.line_start;
+                sn.line_end    = sym.line_end;
+                sn.body_hash   = sym.body_hash;
+                sn.zone        = node.zone;
+                int64_t symId = store_.upsertNode(sn);
+                for (auto& callee : sym.calls) pending.emplace_back(symId, sn.path, "call:" + callee);
+                for (auto& base : sym.bases)   pending.emplace_back(symId, sn.path, "ext:" + base);
+            }
+        }
+        ++updated;
+    };
+
+    // Single-file fast path: skip directory walk entirely.
+    {
+        std::error_code rf_ec;
+        if (fs::is_regular_file(root_path, rf_ec)) {
+            std::error_code fsz_ec;
+            auto fsz = fs::file_size(root_path, fsz_ec);
+            if (!fsz_ec) processFile(root_path, fsz);
+            if (opts.resolve_edges && !pending.empty()) {
+                store_.resolveAndInsertEdges(pending);
+            }
+            return updated;
+        }
+    }
+
     // Recursive walk
     std::function<void(const fs::path&, int)> walk = [&](const fs::path& dir, int depth) {
         if (depth > opts.max_depth) return;
@@ -188,111 +272,10 @@ int Scanner::scan(const std::string& root, const Options& opts) {
                 std::error_code is_reg_ec;
                 if (!entry.is_regular_file(is_reg_ec)) continue;
             }
-
-            std::string ext = entry.path().extension().string();
-            std::string lang = detectLang(ext);
-
-            // Filter by lang if specified
-            if (!opts.include_langs.empty()) {
-                bool found = false;
-                for (auto& l : opts.include_langs) if (l == lang) { found = true; break; }
-                if (!found) continue;
-            }
-
-            // File size guard
             std::error_code fsz_ec;
             auto fsz = entry.file_size(fsz_ec);
-            if (fsz_ec || fsz > (uintmax_t)max_file_size) continue;
-
-            // Normalize to canonical absolute path to prevent duplicate nodes
-            // when scanning from different working directories (e.g. "." vs "src").
-            std::error_code canon_ec;
-            auto canon_path = fs::weakly_canonical(entry.path(), canon_ec);
-            std::string fpath = canon_ec ? entry.path().string() : canon_path.string();
-
-            // Windows: normalize drive-letter case to UPPER to prevent
-            // d:\foo vs D:\foo duplicates (case-insensitive FS but case-preserving).
-#ifdef _WIN32
-            if (fpath.size() >= 2 && fpath[1] == ':' &&
-                fpath[0] >= 'a' && fpath[0] <= 'z') {
-                fpath[0] = (char)(fpath[0] - 'a' + 'A');
-            }
-#endif
-            std::string hash  = hashFile(fpath);
-
-            // Skip if not stale
-            if (opts.skip_stale && !store_.isStale(fpath, hash)) continue;
-
-            // Read file
-            std::ifstream f(fpath, std::ios::binary);
-            if (!f) continue;
-            std::ostringstream buf;
-            buf << f.rdbuf();
-            std::string content = buf.str();
-
-            // Get extractor
-            BaseExtractor* ext_ptr = getExtractor(lang);
-            bool own_ext = (ext_ptr != nullptr);
-            if (!ext_ptr) ext_ptr = generic;
-
-            ExtractResult result = ext_ptr->extract(fpath, content);
-            if (own_ext) delete ext_ptr;
-
-            // Resolve zone (relative path for cleaner glob matching).
-            std::error_code rel_ec;
-            auto rel_for_zone = fs::relative(entry.path(), root_path, rel_ec);
-            std::string zone_path = rel_ec ? fpath : rel_for_zone.string();
-
-            // Build node
-            GraphNode node;
-            node.path       = fpath;
-            node.lang       = lang;
-            node.context    = result.context.substr(0, 500);
-            node.symbols    = buildSymbols(result);
-            node.size_bytes = (int64_t)fsz;
-            node.file_hash  = hash;
-            node.zone       = zoner.resolveForPath(zone_path);
-
-            int64_t nodeId = store_.upsertNode(node);
-
-            // Collect imports for Pass 2 resolution (don't insert edges yet)
-            for (auto& imp : result.imports) {
-                pending.emplace_back(nodeId, fpath, imp);
-            }
-
-            // Phase 18: extract symbol-level nodes (functions, classes, sps).
-            // Re-extracted on every scan; remove existing children of this file first.
-            auto& sym_reg = core::Registry<BaseSymbolExtractor>::instance();
-            if (sym_reg.has(lang)) {
-                store_.removeSymbolsOf(nodeId);
-                auto sym_extractor = sym_reg.create(lang);
-                auto symbols = sym_extractor->extractSymbols(fpath, content);
-                for (auto& sym : symbols) {
-                    GraphNode sn;
-                    sn.path        = fpath + "#" + sym.name;
-                    sn.lang        = lang;
-                    sn.parent_id   = nodeId;
-                    sn.kind        = sym.kind;
-                    sn.symbol_name = sym.name;
-                    sn.signature   = sym.signature.substr(0, 240);
-                    sn.line_start  = sym.line_start;
-                    sn.line_end    = sym.line_end;
-                    sn.body_hash   = sym.body_hash;
-                    sn.zone        = node.zone;
-                    int64_t symId = store_.upsertNode(sn);
-
-                    // Queue call-graph edges as pending (resolved in Pass 2)
-                    for (auto& callee : sym.calls) {
-                        pending.emplace_back(symId, sn.path, "call:" + callee);
-                    }
-                    // Inheritance edges: extends/implements → other class symbols
-                    for (auto& base : sym.bases) {
-                        pending.emplace_back(symId, sn.path, "ext:" + base);
-                    }
-                }
-            }
-
-            ++updated;
+            if (fsz_ec) continue;
+            processFile(entry.path(), fsz);
         }
     };
 
