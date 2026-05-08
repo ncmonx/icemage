@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.15.0 LANGUAGES CXX C)
+project(icmg VERSION 0.15.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -156,3 +156,4 @@ add_icmg_test(test_review tests/cli/test_review.cpp)
 add_icmg_test(test_audit tests/cli/test_audit.cpp)
 add_icmg_test(test_index tests/cli/test_index.cpp)
 add_icmg_test(test_backend_factory tests/embed/test_backend_factory.cpp)
+add_icmg_test(test_wordpiece tests/embed/test_wordpiece.cpp)
