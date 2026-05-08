@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.17.0 LANGUAGES CXX C)
+project(icmg VERSION 0.18.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -61,17 +61,30 @@ endif()
 
 if(ICMG_USE_TREESITTER)
     find_path(TS_INCLUDE tree_sitter/api.h
-              PATHS /usr/local/include /opt/homebrew/include /usr/include)
+              PATHS /usr/local/include /opt/homebrew/include /usr/include
+                    /c/msys64/mingw64/include /mingw64/include)
     find_library(TS_LIB NAMES tree-sitter
-                 PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
-    if(TS_INCLUDE AND TS_LIB)
-        message(STATUS "icmg: tree-sitter ENABLED (lib: ${TS_LIB})")
+                 PATHS /usr/local/lib /opt/homebrew/lib /usr/lib
+                       /c/msys64/mingw64/lib /mingw64/lib)
+    set(TS_C_GRAMMAR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-c/src/parser.c)
+    if(TS_INCLUDE AND TS_LIB AND EXISTS ${TS_C_GRAMMAR})
+        message(STATUS "icmg: tree-sitter ENABLED (lib: ${TS_LIB}, C grammar vendored)")
+        # Vendored grammar — pure C, no extra deps.
+        add_library(tree_sitter_c STATIC ${TS_C_GRAMMAR})
+        target_include_directories(tree_sitter_c PRIVATE
+            ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-c/src
+            ${TS_INCLUDE})
+        if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+            target_compile_options(tree_sitter_c PRIVATE -w)  # silence grammar warnings
+        endif()
+
         target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER=1)
         target_include_directories(icmg_lib PUBLIC ${TS_INCLUDE})
-        target_link_libraries(icmg_lib PUBLIC ${TS_LIB})
+        target_link_libraries(icmg_lib PUBLIC tree_sitter_c ${TS_LIB})
     else()
-        message(WARNING "icmg: ICMG_USE_TREESITTER=ON but tree-sitter lib/headers "
-                "not found; install via package manager. Falling back to regex extractor.")
+        message(WARNING "icmg: ICMG_USE_TREESITTER=ON but tree-sitter lib/headers/grammar "
+                "not found (lib=${TS_LIB} include=${TS_INCLUDE} grammar=${TS_C_GRAMMAR}). "
+                "Falling back to regex extractor.")
     endif()
 endif()
 
@@ -157,3 +170,4 @@ add_icmg_test(test_audit tests/cli/test_audit.cpp)
 add_icmg_test(test_index tests/cli/test_index.cpp)
 add_icmg_test(test_backend_factory tests/embed/test_backend_factory.cpp)
 add_icmg_test(test_wordpiece tests/embed/test_wordpiece.cpp)
+add_icmg_test(test_treesitter_c tests/graph/test_treesitter_c.cpp)
