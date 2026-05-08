@@ -1,0 +1,20 @@
+icmg
+Copyright 2026 ncmonx
+
+This product includes software developed by ncmonx
+(https://github.com/ncmonx/icm-graph).
+
+Third-party components bundled in source form:
+
+- SQLite (third_party/sqlite3/) — Public Domain
+  https://www.sqlite.org/copyright.html
+
+- nlohmann/json (third_party/nlohmann/) — MIT License
+  Copyright (c) 2013-present, Niels Lohmann
+  https://github.com/nlohmann/json
+
+Optional runtime dependencies (not bundled):
+
+- sentence-transformers (Python) — Apache License 2.0
+- ONNX Runtime (planned, Phase 32) — MIT License
+- tree-sitter (planned, Phase 32) — MIT License
