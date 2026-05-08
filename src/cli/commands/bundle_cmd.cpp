@@ -7,6 +7,7 @@
 
 #include "../base_command.hpp"
 #include "../cache_emitter.hpp"
+#include "../think_directive.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -175,6 +176,46 @@ public:
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || args[0] == "--help") { usage(); return 0; }
+
+        // Phase 41 T4: --thinking-stats subaction.
+        if (hasFlag(args, "--thinking-stats")) {
+            auto& cfg = core::Config::instance();
+            core::Db db(cfg.projectDbPath("."));
+            int total=0, simple=0, complex_=0, unk=0, nt=0, conc=0;
+            int64_t bytes_total=0;
+            try {
+                db.query("SELECT COUNT(*), "
+                         " SUM(CASE WHEN intent='simple' THEN 1 ELSE 0 END), "
+                         " SUM(CASE WHEN intent='complex' THEN 1 ELSE 0 END), "
+                         " SUM(CASE WHEN intent='unknown' THEN 1 ELSE 0 END), "
+                         " SUM(no_think), SUM(concise), COALESCE(SUM(input_bytes),0) "
+                         "FROM thinking_telemetry "
+                         "WHERE created_at > strftime('%s','now') - 30*86400",
+                         {}, [&](const core::Row& r){
+                             if (r.size() < 7) return;
+                             total = std::stoi(r[0]);
+                             simple = std::stoi(r[1]);
+                             complex_ = std::stoi(r[2]);
+                             unk = std::stoi(r[3]);
+                             nt = std::stoi(r[4]);
+                             conc = std::stoi(r[5]);
+                             bytes_total = std::stoll(r[6]);
+                         });
+            } catch (...) {}
+            int est_thinking_saved = nt * 1500;  // est 1.5K thinking tok saved per no-think call
+            std::cout << "Thinking-budget telemetry (last 30d):\n"
+                      << "  total calls:     " << total << "\n"
+                      << "    simple:        " << simple << "\n"
+                      << "    complex:       " << complex_ << "\n"
+                      << "    unknown:       " << unk << "\n"
+                      << "  no-think applied: " << nt << "\n"
+                      << "  concise mode:    " << conc << "\n"
+                      << "  total bytes out: " << bytes_total << "\n"
+                      << "  est thinking tok saved: " << est_thinking_saved
+                      << " (~$" << (est_thinking_saved * 15 / 1000000.0) << " on Sonnet 4.5)\n";
+            return 0;
+        }
+
         std::string task;
         for (auto& a : args) {
             if (a.empty() || a[0] == '-') continue;
@@ -297,6 +338,33 @@ public:
             cli::CacheEmitOptions o; o.ttl_seconds = ttl;
             capped = cli::wrapCachePrefix(capped, o);
         }
+
+        // Phase 41 T1+T2: thinking-budget directive.
+        bool no_think    = hasFlag(args, "--no-think");
+        bool concise     = hasFlag(args, "--concise");
+        bool auto_think  = hasFlag(args, "--auto-think");
+        if (auto_think && !no_think && !concise) {
+            cli::Intent it = cli::classifyIntent(task);
+            if (it == cli::Intent::Simple) no_think = true;
+            std::cerr << "[icmg pack] intent=" << cli::intentLabel(it)
+                      << (no_think ? " → no-think directive applied"
+                                   : " → thinking kept on") << "\n";
+        }
+        if (concise) capped = cli::applyConciseDirective(capped);
+        else if (no_think) capped = cli::applyNoThinkDirective(capped);
+
+        // Phase 41 T4: telemetry record.
+        try {
+            cli::Intent it = auto_think ? cli::classifyIntent(task) : cli::Intent::Unknown;
+            db.run("INSERT INTO thinking_telemetry (cmd, task, intent, no_think, concise, input_bytes) "
+                   "VALUES (?,?,?,?,?,?)",
+                   {"pack", task,
+                    cli::intentLabel(it),
+                    no_think ? "1" : "0",
+                    concise  ? "1" : "0",
+                    std::to_string((int)capped.size())});
+        } catch (...) {}
+
         std::cout << capped;
         return 0;
     }
