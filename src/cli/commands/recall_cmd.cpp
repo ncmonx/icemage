@@ -243,8 +243,12 @@ public:
     std::string description() const override { return "Soft-delete a memory node"; }
 
     int run(const std::vector<std::string>& args) override {
+        // Phase 36 T3: --pattern bulk-delete by topic LIKE.
+        std::string pattern = flagValue(args, "--pattern");
+        if (!pattern.empty()) return forgetPattern(pattern, args);
+
         if (args.empty()) {
-            std::cerr << "icmg forget: requires <id>\n"; return 1;
+            std::cerr << "icmg forget: requires <id> OR --pattern <SQL-LIKE>\n"; return 1;
         }
         int64_t id;
         try { id = std::stoll(args[0]); } catch (...) {
@@ -270,6 +274,29 @@ public:
 
         store.remove(id);
         std::cout << "Forgot node #" << id << "\n";
+        return 0;
+    }
+
+private:
+    int forgetPattern(const std::string& pattern, const std::vector<std::string>& args) {
+        bool dry = hasFlag(args, "--dry-run");
+        bool yes = hasFlag(args, "--yes");
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        int n = 0;
+        db.query("SELECT COUNT(*) FROM memory_nodes WHERE topic LIKE ? AND deleted_at IS NULL",
+                 {pattern},
+                 [&](const core::Row& r){ if (!r.empty()) n = std::stoi(r[0]); });
+        std::cout << "forget --pattern '" << pattern << "': " << n << " node(s) match\n";
+        if (n == 0) return 0;
+        if (dry || !yes) {
+            if (dry) std::cout << "  [dry-run] no DB change\n";
+            else     std::cout << "  Add --yes to confirm soft-delete.\n";
+            return 0;
+        }
+        db.run("UPDATE memory_nodes SET deleted_at = strftime('%s','now') "
+               "WHERE topic LIKE ? AND deleted_at IS NULL", {pattern});
+        std::cout << "  soft-deleted " << n << " node(s).\n";
         return 0;
     }
 };

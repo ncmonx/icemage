@@ -19,6 +19,7 @@
 #include "../../embed/embed_store.hpp"
 #include "../../embed/embedder.hpp"
 #include <map>
+#include <filesystem>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -63,6 +64,7 @@ public:
         if (action == "search") return search(store, rest);
         if (action == "link")   return linkCmd(db, rest);
         if (action == "refine") return refine(db, store, rest);
+        if (action == "export") return exportCmd(db, rest);
 
         std::cerr << "icmg memoir: unknown action: " << action << "\n";
         usage();
@@ -357,6 +359,72 @@ private:
                   << (dry ? "would be added [dry-run]" : "added")
                   << "  (threshold=" << threshold << ")\n";
         return 0;
+    }
+
+    // Phase 36 T2: bulk export memoirs to markdown files.
+    int exportCmd(core::Db& db, const std::vector<std::string>& args) {
+        std::string out_dir = flagValue(args, "--out", "memoirs");
+        std::string filter  = flagValue(args, "--filter");
+        bool force = hasFlag(args, "--force");
+
+        std::filesystem::create_directories(out_dir);
+
+        std::string sql = "SELECT id, topic, content, importance, "
+                          "COALESCE(keywords,''), zone, created_at "
+                          "FROM memory_nodes WHERE topic LIKE 'memoir:%' "
+                          "AND deleted_at IS NULL";
+        std::vector<std::string> params;
+        if (!filter.empty()) {
+            sql += " AND topic LIKE ?";
+            params.push_back(filter + "%");
+        }
+        sql += " ORDER BY id";
+
+        int written = 0, skipped = 0;
+        db.query(sql, params, [&](const core::Row& r){
+            if (r.size() < 7) return;
+            std::string id = r[0], topic = r[1], content = r[2];
+            std::string imp = r[3], kw = r[4], zone = r[5], created = r[6];
+            std::string title = topic.size() > 7 ? topic.substr(7) : topic;
+            std::string slug = slugify(title);
+            std::filesystem::path out = std::filesystem::path(out_dir) / (slug + ".md");
+            if (std::filesystem::exists(out) && !force) { ++skipped; return; }
+            std::ofstream f(out);
+            if (!f) { ++skipped; return; }
+            f << "---\n"
+              << "id: " << id << "\n"
+              << "title: " << title << "\n"
+              << "importance: " << imp << "\n"
+              << "zone: " << zone << "\n"
+              << "keywords: " << kw << "\n"
+              << "created_at: " << created << "\n"
+              << "---\n\n"
+              << "# " << title << "\n\n"
+              << content << "\n";
+            ++written;
+        });
+        std::cout << "memoir export: written=" << written << " skipped=" << skipped
+                  << " (--force to overwrite existing)\n";
+        return 0;
+    }
+
+    static std::string slugify(const std::string& s) {
+        std::string out; out.reserve(s.size());
+        for (char c : s) {
+            if (std::isalnum((unsigned char)c)) out.push_back((char)::tolower((unsigned char)c));
+            else if (c == ' ' || c == '_' || c == '-' || c == '.') out.push_back('-');
+        }
+        // Collapse runs of '-'.
+        std::string compact;
+        for (char c : out) {
+            if (c == '-' && !compact.empty() && compact.back() == '-') continue;
+            compact.push_back(c);
+        }
+        if (!compact.empty() && compact.back() == '-') compact.pop_back();
+        if (!compact.empty() && compact.front() == '-') compact.erase(0, 1);
+        if (compact.empty()) compact = "untitled";
+        if (compact.size() > 100) compact.resize(100);
+        return compact;
     }
 
     void linkPair(core::Db& db, int64_t a, int64_t b) {
