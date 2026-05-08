@@ -79,6 +79,8 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"config",   "Read/write ~/.icmg/config.json"},
     {"completions", "Emit shell completion script (bash/zsh/powershell)"},
     {"lint-style",  "Text-pattern style/UI consistency lint"},
+    {"index",    "Unified maintenance pipeline (scan + embed + consolidate + patterns + decay)"},
+    {"review",   "PR pre-flight gate: parity + lint-style on git-diff"},
 };
 
 Dispatcher::Dispatcher() {}
@@ -150,7 +152,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.13.2 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.14.0 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -166,7 +168,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.13.2\n";
+    std::cout << "icmg 0.14.0\n";
 }
 
 } // namespace icmg::cli
