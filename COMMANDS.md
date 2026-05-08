@@ -613,6 +613,58 @@ icmg diff-summary --ref HEAD~10 | icmg compress > /tmp/pr-context.txt
 
 ---
 
+## fetch — URL download with content-aware reduction (v0.27+)
+
+```bash
+icmg fetch https://api.example.com/v2/docs           # auto-detect kind
+icmg fetch https://example.com --kind html
+icmg fetch https://api.github.com/repos/X/Y --kind json
+icmg fetch https://example.com --refresh             # bypass cache
+icmg fetch https://example.com --raw                 # skip reduction
+icmg fetch <url> -o /tmp/page.txt
+```
+
+| Flag | Effect |
+|---|---|
+| `--kind <K>` | Force kind: `html`, `json`, `pdf`, `text`, `binary`, `auto` |
+| `--refresh` | Bypass cache, re-download |
+| `--raw` | Skip reduction, return raw body |
+| `--max-bytes N` | Cap output (default 8192) |
+| `--ttl N` | Cache TTL seconds (default 3600) |
+| `--json` | Machine output with metadata |
+| `-o <file>` | Write to file |
+
+Reduction strategies:
+- **HTML:** strip script/style/nav/aside/footer; extract `<main>` or `<article>`; collapse whitespace; entity decode
+- **JSON:** pretty if <5KB, schema-mode (keys + types + sample values, depth 3) otherwise
+- **PDF:** shellout to `multimodal/icmg_ingest.py` sidecar
+- **Binary:** metadata only (size, FNV1a-64 hash)
+
+Cache: `fetch_cache` table per URL+ETag, default 1h TTL. Repeat fetches hit cache instantly (100% saving).
+
+Real-world savings: 87-91% on JSON / HTML in typical research workflow.
+
+---
+
+## update — Self-upgrade (v0.27+ pending-restart pattern)
+
+```bash
+icmg update --check       # compare current to latest release
+icmg update --apply       # download + atomic swap
+icmg update --rollback    # restore .bak (if present)
+```
+
+If the running binary is locked when `--apply` swaps:
+- Writes `.pending-restart` flag + leaves `.new` file in place
+- Prints recovery message
+- Next `icmg <cmd>` invocation in any new terminal applies the swap silently
+
+This eliminates the "file in use" hard failure that previously required manual `taskkill`.
+
+Post-install also fetches release notes via GitHub API and prints a "WHAT'S NEW" + "AGENT NOTE" block so AI agents auto-discover new features.
+
+---
+
 ## batch — Anthropic Batch API spec emitter (v0.26+)
 
 ```bash
