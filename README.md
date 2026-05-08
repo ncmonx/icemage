@@ -2,7 +2,7 @@
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![tests](https://img.shields.io/badge/tests-18%2F18%20passing-brightgreen)](#)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](#)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **Single C++17 binary** unifying:
 
@@ -473,7 +473,9 @@ Schema evolution: drop `migrations/NNNN_*.sql` and mirror in `src/core/embedded_
 
 ## License
 
-MIT.
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Copyright 2026 ncmonx.
 
 ## Documentation
 
