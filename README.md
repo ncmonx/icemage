@@ -1,7 +1,7 @@
 # icmg
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-42%2F42%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-43%2F43%20passing-brightgreen)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 > **Stop burning tokens. Stop losing context. Ship faster.**
@@ -62,6 +62,7 @@ Real measurements on real coding sessions (your mileage varies):
 - **Stable preamble (project map, rules):** 90% off via cache markers
 - **Repeat queries within a session:** 100% off via local result cache
 - **Bulk operations:** 50% off via batch request emission
+- **External downloads (HTML / API / PDF):** 70-90% off via local fetch + content-aware reduction
 - **Combined stack on a typical turn:** ~85–95% reduction
 
 Token-cost savings at scale: roughly **\$0.10 per non-trivial Claude turn**, hundreds of dollars a month for active users.
@@ -90,6 +91,7 @@ icmg compress             # any big text → cut tokens, reverse-able
 icmg recall "<query>"     # past decisions → surfaces what you already learned
 icmg agent "<task>"       # full pipeline (pack + cache + directives → LLM)
 icmg batch --task ...     # bulk operations → 50% discount via batch API
+icmg fetch <url>          # download HTML/JSON/PDF → reduced + cached (70-90% off)
 icmg savings              # see what you saved (console / --html / --json)
 icmg whats-new            # show release notes (call after `icmg update`)
 icmg serve                # quick visual audit of memory + graph
@@ -126,6 +128,8 @@ After a few days of use you'll notice:
 - Big PR reviews stop blowing the context window
 - Repeat questions in the same session never recompute (local cache)
 - Bulk operations (mass refactor preview, regen wiki) cost half
+- Docs/API research no longer dumps 50KB pages into your prompt
+- `icmg update --apply` survives "file in use" errors via pending-restart
 - Your monthly Claude bill stops scaring you
 
 The gains compound the more you use it. Memory recall gets sharper. Snapshot restore gets faster. Compression learns what your codebase looks like. Cache hit-rate climbs as you settle into patterns.
