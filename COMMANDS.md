@@ -613,6 +613,95 @@ icmg diff-summary --ref HEAD~10 | icmg compress > /tmp/pr-context.txt
 
 ---
 
+## batch — Anthropic Batch API spec emitter (v0.26+)
+
+```bash
+icmg batch --task "summarize A" --task "summarize B" --no-think -o batch.json
+icmg batch --file tasks.txt --concise --max-tokens 1500
+```
+
+| Flag | Effect |
+|---|---|
+| `--task "<text>"` | Add one task (repeat) |
+| `--file <path>` | Read tasks from file (one per line) |
+| `--model <name>` | Default `claude-sonnet-4-5` |
+| `--max-tokens N` | Default 2000 |
+| `--no-think` / `--concise` / `--caveman` | Inject directive into each request |
+| `--custom-id-prefix P` | Default `task` → `task-1`, `task-2`, … |
+| `-o <file>` | Write JSON to file |
+| `--emit-json` | Default behavior; output Batch API JSON |
+
+Pipe pattern:
+```bash
+icmg batch --file tasks.txt --no-think | curl -X POST \
+  https://api.anthropic.com/v1/messages/batches \
+  -H 'x-api-key: $ANTHROPIC_API_KEY' \
+  -H 'anthropic-version: 2023-06-01' \
+  -H 'Content-Type: application/json' --data @-
+```
+
+**Discount:** ~50% on bulk via Anthropic Batch API + 24h SLA.
+
+---
+
+## Tool-call cache (v0.26+)
+
+`pack` results are auto-cached locally for 5 min keyed by content hash. Repeat queries skip recompute entirely.
+
+```bash
+icmg pack "fix login bug"            # first call: compute + store
+icmg pack "fix login bug"            # second call within 5min:
+[icmg pack] cache HIT (skip recompute)
+
+icmg pack "fix login bug" --no-cache # bypass cache
+ICMG_NO_CACHE=1 icmg pack "..."      # bypass globally
+```
+
+Cache table: `tool_call_cache` in project DB. TTL fixed at 300s (matches Anthropic prompt-cache window). Pruned automatically on next call.
+
+---
+
+## savings — Unified telemetry dashboard (v0.23+)
+
+```bash
+icmg savings                         # 30-day console rollup
+icmg savings --window 7d
+icmg savings --html -o /tmp/dash.html
+icmg savings --json
+icmg savings --rate-input 0.80 --rate-output 4.00   # Haiku rates
+```
+
+Aggregates per-layer telemetry (filter, compression, thinking-budget) → with-vs-without comparison + estimated $ saved.
+
+---
+
+## shrink — Auto-detect content + intelligent reduction (v0.24+)
+
+```bash
+huge_grep_command | icmg shrink
+icmg shrink --kind compress < log.txt   # force semantic compression
+icmg shrink --threshold 0 < input.txt   # always shrink
+```
+
+Detects content type (grep, build log, SQL, JSON, generic) and applies the best strategy. Falls back to head+tail+byte-count.
+
+Auto-installed as PostToolUse:Bash hook by `icmg init` so Claude Code's huge command outputs (>50KB) shrink automatically.
+
+---
+
+## whats-new — Release notes (v0.25+)
+
+```bash
+icmg whats-new                       # current version
+icmg whats-new --tag v0.24.0         # specific version
+icmg whats-new --since v0.20         # range, oldest-first
+icmg whats-new --json
+```
+
+Called automatically by `icmg update --apply` post-install. AI agents reading the upgrade output auto-discover new features.
+
+---
+
 ## Global Flags
 
 | Flag | Effect |

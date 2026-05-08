@@ -98,8 +98,19 @@ Models think before they answer. That thinking is billed. Most of it is wasted o
 - Routine task (rename, format, list, lookup) → `pack ... --auto-think` will turn off the analysis pass
 - Hard problem (debug, refactor, design) → leave thinking on
 - Reply needs to be short → `pack ... --concise`
+- Reply needs to be ultra-short (caveman) → `pack ... --caveman`
 
-You can also force it with `--no-think`.
+You can also force it with `--no-think`. Same flags work on `icmg agent`.
+
+---
+
+## Cache + batch (saves recompute and bulk cost)
+
+- **Repeat queries in same session:** `icmg pack` auto-caches results for 5 min. Identical query → instant skip.
+  - Disable per-call: `--no-cache` flag
+  - Disable globally: `ICMG_NO_CACHE=1` env
+- **Bulk operations (≥3 similar tasks):** use `icmg batch --task ... --task ...` to emit Anthropic Batch API spec → 50% discount.
+  - Pipe `icmg batch ... --emit-json` straight into `curl /v1/messages/batches`.
 
 ---
 

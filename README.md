@@ -60,6 +60,8 @@ Real measurements on real coding sessions (your mileage varies):
 - **SQL / table dumps:** 95–99% smaller
 - **Routine "thinking" overhead:** 50–90% off
 - **Stable preamble (project map, rules):** 90% off via cache markers
+- **Repeat queries within a session:** 100% off via local result cache
+- **Bulk operations:** 50% off via batch request emission
 - **Combined stack on a typical turn:** ~85–95% reduction
 
 Token-cost savings at scale: roughly **\$0.10 per non-trivial Claude turn**, hundreds of dollars a month for active users.
@@ -86,6 +88,10 @@ icmg run <noisy-cmd>      # any command that dumps a lot → filtered output
 icmg diff-summary         # PR review → symbol-grouped, not raw diff
 icmg compress             # any big text → cut tokens, reverse-able
 icmg recall "<query>"     # past decisions → surfaces what you already learned
+icmg agent "<task>"       # full pipeline (pack + cache + directives → LLM)
+icmg batch --task ...     # bulk operations → 50% discount via batch API
+icmg savings              # see what you saved (console / --html / --json)
+icmg whats-new            # show release notes (call after `icmg update`)
 icmg serve                # quick visual audit of memory + graph
 ```
 
@@ -118,9 +124,11 @@ After a few days of use you'll notice:
 - Sessions get longer before `/compact`
 - Recurring questions ("how does auth work in this repo?") answer themselves from memory
 - Big PR reviews stop blowing the context window
+- Repeat questions in the same session never recompute (local cache)
+- Bulk operations (mass refactor preview, regen wiki) cost half
 - Your monthly Claude bill stops scaring you
 
-The gains compound the more you use it. Memory recall gets sharper. Snapshot restore gets faster. Compression learns what your codebase looks like.
+The gains compound the more you use it. Memory recall gets sharper. Snapshot restore gets faster. Compression learns what your codebase looks like. Cache hit-rate climbs as you settle into patterns.
 
 ---
 
