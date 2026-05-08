@@ -4,10 +4,15 @@
 #include "../core/config.hpp"
 #include "../core/global_db.hpp"
 #include "../core/project_context.hpp"
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <unordered_map>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+  #include <windows.h>
+#endif
 
 // Pull in all registered commands (each file registers via ICMG_REGISTER_COMMAND)
 // The linker needs to see these TUs to trigger static-init registration.
@@ -89,11 +94,59 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"savings",  "Token-savings dashboard (with/without comparison + HTML)"},
     {"shrink",   "Auto-detect content type + intelligent shrink (grep/log/SQL/JSON/generic)"},
     {"whats-new", "Show release notes (current or --since X) — call after icmg update"},
+    {"fetch",    "Download URL with content-aware reduction (HTML/JSON/PDF/binary) + cache"},
+    {"batch",    "Emit Anthropic Batch API spec (50% bulk discount)"},
 };
 
 Dispatcher::Dispatcher() {}
 
+// Phase 46 T3: best-effort pending-upgrade swap on startup. Silent if nothing.
+static void applyPendingUpgrade() {
+    namespace fs = std::filesystem;
+    fs::path self;
+#ifdef _WIN32
+    char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    self = buf;
+#else
+    try { self = fs::canonical("/proc/self/exe"); } catch (...) { return; }
+#endif
+    fs::path pending = self; pending += ".pending-restart";
+    if (!fs::exists(pending)) return;
+
+    // Read flag → target path of staged binary.
+    std::string tag, staged_path;
+    {
+        std::ifstream pf(pending);
+        if (!pf) return;
+        std::getline(pf, tag);
+        std::getline(pf, staged_path);
+    }
+    if (staged_path.empty() || !fs::exists(staged_path)) {
+        fs::remove(pending);
+        return;
+    }
+    // Self may still be locked here (we ARE running). Best chance: cmd.exe spawn
+    // a detached helper that waits 2s then renames. On Unix, atomic rename works.
+    std::error_code ec;
+    fs::path bak = self; bak += ".bak";
+    fs::remove(bak, ec);
+    fs::rename(self, bak, ec);
+    if (ec) {
+        // Still locked — leave pending in place silently, retry next session.
+        return;
+    }
+    fs::rename(staged_path, self, ec);
+    if (ec) {
+        // Restore .bak, leave pending.
+        fs::rename(bak, self, ec);
+        return;
+    }
+    fs::remove(pending);
+    std::cerr << "[icmg] pending upgrade applied: " << tag << "\n";
+}
+
 int Dispatcher::run(const std::vector<std::string>& args) {
+    applyPendingUpgrade();
     if (args.empty() || args[0] == "--help" || args[0] == "-h") {
         printHelp();
         return 0;
@@ -160,7 +213,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.26.0 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.27.0 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -176,7 +229,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.26.0\n";
+    std::cout << "icmg 0.27.0\n";
 }
 
 } // namespace icmg::cli

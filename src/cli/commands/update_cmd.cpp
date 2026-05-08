@@ -25,7 +25,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.26.0";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.27.0";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -190,7 +190,21 @@ private:
         fs::remove(bak, ec);                                  // remove old bak
         fs::rename(self, bak, ec);
         if (ec) {
-            std::cerr << "icmg update: rename current -> .bak failed: " << ec.message() << "\n";
+            // Phase 46 T3: lock-detected → pending-restart pattern.
+            std::cerr << "icmg update: cannot replace running binary ("
+                      << ec.message() << ").\n";
+            fs::path pending = self; pending += ".pending-restart";
+            std::ofstream pf(pending);
+            if (pf) {
+                pf << r.tag << "\n" << tmp.string() << "\n";
+                std::cerr << "  PENDING UPGRADE flagged. The new binary is at:\n"
+                          << "    " << tmp.string() << "\n"
+                          << "  Apply automatically by running ANY `icmg <cmd>` in a NEW terminal.\n"
+                          << "  (Or close all running icmg processes and re-run `icmg update --apply`.)\n";
+                return 0;  // not failure — pending state
+            }
+            std::cerr << "  Workaround: taskkill /F /IM icmg.exe (Windows) or "
+                      << "killall icmg (Unix), then re-run `icmg update --apply`.\n";
             fs::remove(tmp);
             return 6;
         }
