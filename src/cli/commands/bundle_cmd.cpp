@@ -6,6 +6,7 @@
 //   icmg session save/restore     — checkpoint active context
 
 #include "../base_command.hpp"
+#include "../cache_emitter.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -285,6 +286,17 @@ public:
 
         std::string spill;
         std::string capped = core::capOutput(out.str(), cap, spill);
+
+        // Phase 40 T1: optional Anthropic prompt-cache wrap.
+        if (hasFlag(args, "--cache-prefix")) {
+            int ttl = 3600;
+            try {
+                std::string t = flagValue(args, "--cache-ttl");
+                if (!t.empty()) ttl = std::stoi(t);
+            } catch (...) {}
+            cli::CacheEmitOptions o; o.ttl_seconds = ttl;
+            capped = cli::wrapCachePrefix(capped, o);
+        }
         std::cout << capped;
         return 0;
     }

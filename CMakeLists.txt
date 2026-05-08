@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.20.0 LANGUAGES CXX C)
+project(icmg VERSION 0.21.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -117,6 +117,38 @@ if(ICMG_USE_TREESITTER)
         target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER=1)
         target_include_directories(icmg_lib PUBLIC ${TS_INCLUDE})
         target_link_libraries(icmg_lib PUBLIC tree_sitter_c ${TS_LIB})
+
+        # Phase 40 T3: tree-sitter-typescript grammar (vendored).
+        set(TS_TS_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-typescript/src)
+        if(EXISTS ${TS_TS_DIR}/parser.c)
+            add_library(tree_sitter_typescript STATIC
+                ${TS_TS_DIR}/parser.c
+                ${TS_TS_DIR}/scanner.c)
+            target_include_directories(tree_sitter_typescript PRIVATE
+                ${TS_TS_DIR} ${TS_INCLUDE})
+            if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+                target_compile_options(tree_sitter_typescript PRIVATE -w)
+            endif()
+            target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER_TS=1)
+            target_link_libraries(icmg_lib PUBLIC tree_sitter_typescript)
+            message(STATUS "icmg: tree-sitter-typescript ENABLED")
+        endif()
+
+        # Phase 40 T4: tree-sitter-python grammar (vendored).
+        set(TS_PY_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-python/src)
+        if(EXISTS ${TS_PY_DIR}/parser.c)
+            add_library(tree_sitter_python STATIC
+                ${TS_PY_DIR}/parser.c
+                ${TS_PY_DIR}/scanner.c)
+            target_include_directories(tree_sitter_python PRIVATE
+                ${TS_PY_DIR} ${TS_INCLUDE})
+            if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+                target_compile_options(tree_sitter_python PRIVATE -w)
+            endif()
+            target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER_PY=1)
+            target_link_libraries(icmg_lib PUBLIC tree_sitter_python)
+            message(STATUS "icmg: tree-sitter-python ENABLED")
+        endif()
 
         # Copy runtime DLLs next to build outputs (Windows). Resolves
         # 0xc0000135 / "libX.dll not found" at exe launch.
@@ -238,3 +270,6 @@ add_icmg_test(test_backend_factory tests/embed/test_backend_factory.cpp)
 add_icmg_test(test_wordpiece tests/embed/test_wordpiece.cpp)
 add_icmg_test(test_treesitter_c tests/graph/test_treesitter_c.cpp)
 add_icmg_test(test_compressor tests/compress/test_compressor.cpp)
+add_icmg_test(test_cache_emitter tests/cli/test_cache_emitter.cpp)
+add_icmg_test(test_treesitter_typescript tests/graph/test_treesitter_typescript.cpp)
+add_icmg_test(test_treesitter_python tests/graph/test_treesitter_python.cpp)
