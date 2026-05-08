@@ -16,7 +16,7 @@ static void setupSchema(icmg::core::Db& db) {
            " topic TEXT NOT NULL, content TEXT NOT NULL, keywords TEXT,"
            " importance INTEGER NOT NULL DEFAULT 1,"
            " frequency INTEGER NOT NULL DEFAULT 1,"
-           " last_used INTEGER, expires_at INTEGER, deleted_at INTEGER,"
+           " last_used INTEGER, expires_at INTEGER, deleted_at INTEGER," " created_by TEXT NOT NULL DEFAULT '', row_version INTEGER NOT NULL DEFAULT 0,"
            " zone TEXT NOT NULL DEFAULT 'default',"
            " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')))");
     db.run("CREATE TABLE memory_keywords(memory_id INTEGER, keyword TEXT,"

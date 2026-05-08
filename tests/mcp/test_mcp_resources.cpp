@@ -22,7 +22,7 @@ static core::Db makeMcpDb() {
            " frequency INTEGER NOT NULL DEFAULT 0,"
            " last_used INTEGER NOT NULL DEFAULT 0,"
            " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
-           " expires_at INTEGER, deleted_at INTEGER,"
+           " expires_at INTEGER, deleted_at INTEGER," " created_by TEXT NOT NULL DEFAULT '', row_version INTEGER NOT NULL DEFAULT 0,"
            " zone TEXT NOT NULL DEFAULT 'default')");
     db.run("CREATE TABLE graph_nodes("
            " id INTEGER PRIMARY KEY AUTOINCREMENT,"

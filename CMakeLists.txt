@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.27.0 LANGUAGES CXX C)
+project(icmg VERSION 0.28.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -275,3 +275,4 @@ add_icmg_test(test_treesitter_typescript tests/graph/test_treesitter_typescript.
 add_icmg_test(test_treesitter_python tests/graph/test_treesitter_python.cpp)
 add_icmg_test(test_think_directive tests/cli/test_think_directive.cpp)
 add_icmg_test(test_tool_call_cache tests/core/test_tool_call_cache.cpp)
+add_icmg_test(test_file_lock tests/core/test_file_lock.cpp)

@@ -1,6 +1,7 @@
 #include "memory_store.hpp"
 #include "scorer.hpp"
 #include "../core/hook_bus.hpp"
+#include "../core/user_identity.hpp"
 #include "../embed/embedder.hpp"
 #include "../embed/embed_store.hpp"
 #include <chrono>
@@ -130,14 +131,15 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     std::string expires = effective.expires_at > 0 ? std::to_string(effective.expires_at) : "";
 
     std::string zone = effective.zone.empty() ? "default" : effective.zone;
+    // Phase 47 T4: tag created_by from user_identity (env / git config / anonymous).
     db_.run(
         "INSERT INTO memory_nodes(topic,content,keywords,importance,frequency,"
-        "last_used,created_at,expires_at,zone) VALUES(?,?,?,?,?,?,?,?,?)",
+        "last_used,created_at,expires_at,zone,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)",
         {effective.topic, effective.content, effective.keywords,
          std::to_string(effective.importance),
          std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
-         expires, zone});
+         expires, zone, core::currentUser()});
 
     int64_t id = db_.lastInsertId();
     if (!effective.keywords.empty()) syncKeywords(id, effective.keywords);
