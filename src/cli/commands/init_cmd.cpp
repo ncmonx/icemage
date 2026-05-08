@@ -76,6 +76,70 @@ jq -n --arg s "$SUMMARY" --arg f "$FILE" --arg sz "$SIZE" '{
 exit 0
 )BASH";
 
+// Embedded sidecar — kept in sync with embed/icmg_embedder.py.
+// `icmg init` drops this to ~/.icmg/embed/icmg_embedder.py so binary-only
+// installs (where source tree isn't adjacent) can still find the sidecar.
+static const char* EMBEDDER_PY = R"PY(#!/usr/bin/env python3
+"""icmg embedder sidecar — auto-installed by `icmg init`.
+Protocol: line-delimited JSON over stdin/stdout. Only JSON to stdout.
+"""
+import io, os, sys, json, warnings, logging, contextlib
+
+sys.stdin  = io.TextIOWrapper(sys.stdin.buffer,  encoding="utf-8", errors="replace", newline="\n")
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", newline="\n", line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", newline="\n")
+
+warnings.filterwarnings("ignore")
+logging.getLogger().setLevel(logging.ERROR)
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+MODEL_NAME = "all-MiniLM-L6-v2"
+DIM = 384
+
+def emit(obj):
+    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+def main():
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            from sentence_transformers import SentenceTransformer
+            model = SentenceTransformer(MODEL_NAME)
+    except ImportError as e:
+        emit({"op": "error", "error": f"sentence-transformers not installed: {e}"})
+        return 0
+    except Exception as e:
+        emit({"op": "error", "error": f"model load failed: {e}"})
+        return 0
+
+    emit({"op": "ready", "dim": DIM, "model": MODEL_NAME})
+
+    for line in sys.stdin:
+        line = line.strip()
+        if not line: continue
+        try:
+            req = json.loads(line)
+        except Exception as e:
+            emit({"id": 0, "error": f"bad json: {e}"}); continue
+        op = req.get("op", "")
+        if op == "shutdown": return 0
+        if op != "embed":
+            emit({"id": req.get("id", 0), "error": f"unknown op: {op}"}); continue
+        text = req.get("text", "")
+        try:
+            with contextlib.redirect_stdout(sys.stderr):
+                vec = model.encode(text, normalize_embeddings=False).tolist()
+            emit({"id": req.get("id", 0), "vec": vec, "dim": DIM})
+        except Exception as e:
+            emit({"id": req.get("id", 0), "error": str(e)})
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+)PY";
+
 static const char* AGENTS_BLOCK = R"MD(<!-- icmg:start -->
 ## icmg routing (auto-inserted by `icmg init`)
 
@@ -142,27 +206,31 @@ public:
             "Sets up:\n"
             "  .claude/settings.local.json  — Bash-rewrite + Read-shrink hooks\n"
             "  .claude/hooks/icmg-*.sh      — bundled hook scripts\n"
-            "  AGENTS.md                    — routing rules for AI agents\n\n"
+            "  AGENTS.md                    — routing rules for AI agents\n"
+            "  ~/.icmg/embed/icmg_embedder.py — embedder sidecar (semantic recall)\n\n"
             "Options:\n"
-            "  --no-hooks    Skip .claude/ setup\n"
-            "  --no-agents   Skip AGENTS.md update\n"
-            "  --no-scan     Skip initial graph scan\n"
-            "  --force       Overwrite existing files\n";
+            "  --no-hooks      Skip .claude/ setup\n"
+            "  --no-agents     Skip AGENTS.md update\n"
+            "  --no-embedder   Skip embedder sidecar drop\n"
+            "  --no-scan       Skip initial graph scan\n"
+            "  --force         Overwrite existing files\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help") || hasFlag(args, "-h")) { usage(); return 0; }
-        bool no_hooks  = hasFlag(args, "--no-hooks");
-        bool no_agents = hasFlag(args, "--no-agents");
-        bool no_scan   = hasFlag(args, "--no-scan");
-        bool force     = hasFlag(args, "--force");
+        bool no_hooks    = hasFlag(args, "--no-hooks");
+        bool no_agents   = hasFlag(args, "--no-agents");
+        bool no_embedder = hasFlag(args, "--no-embedder");
+        bool no_scan     = hasFlag(args, "--no-scan");
+        bool force       = hasFlag(args, "--force");
 
         fs::path root = fs::current_path();
         std::cout << "icmg init: " << root.string() << "\n";
 
         int steps = 0;
-        if (!no_hooks)  { steps += installHooks(root, force); }
-        if (!no_agents) { steps += installAgents(root, force); }
+        if (!no_hooks)    { steps += installHooks(root, force); }
+        if (!no_agents)   { steps += installAgents(root, force); }
+        if (!no_embedder) { steps += installEmbedder(force); }
 
         if (!no_scan) {
             std::cout << "  graph scan: run `icmg graph scan` to populate symbol index\n";
@@ -260,6 +328,35 @@ private:
         std::ofstream f(p);
         f << content;
         std::cout << "  + " << fs::relative(p, fs::current_path()).string() << "\n";
+        return 1;
+    }
+
+    int installEmbedder(bool force) {
+        // Drop sidecar to ~/.icmg/embed/icmg_embedder.py — findScript() picks
+        // it up there. Binary-only installs (no source tree) need this.
+        const char* h = std::getenv("USERPROFILE");
+        if (!h) h = std::getenv("HOME");
+        if (!h) h = ".";
+        fs::path dir = fs::path(h) / ".icmg" / "embed";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        fs::path target = dir / "icmg_embedder.py";
+        if (fs::exists(target) && !force) {
+            std::cout << "  = " << target.string() << " (exists; --force to overwrite)\n";
+            return 0;
+        }
+        std::ofstream f(target);
+        if (!f) {
+            std::cout << "  ! cannot write " << target.string() << "\n";
+            return 0;
+        }
+        f << EMBEDDER_PY;
+        std::cout << "  + " << target.string() << "\n";
+#ifndef _WIN32
+        fs::permissions(target,
+            fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+            fs::perm_options::add, ec);
+#endif
         return 1;
     }
 };
