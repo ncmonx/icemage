@@ -6,6 +6,21 @@ For Claude Code, Cursor, Copilot, Aider, Continue, Codespaces, anything that dri
 
 ---
 
+## Post-upgrade reflex (auto)
+
+When user runs `icmg update --apply`, the binary now prints a "WHAT'S NEW" block with the new release's full notes. **You MUST scan that block** for new commands or flags, then:
+
+1. Run `icmg --help` to refresh your view of the command list
+2. Run `icmg <new-cmd> --help` for any unfamiliar names
+3. Adopt new patterns where they apply to the current task
+4. If user invokes upgrade without specific instructions ("upgrade", "update icmg"), you are still expected to read the WHAT'S NEW block and surface a one-line summary plus the most relevant new feature for the user's project
+
+If the upgrade output is missing the block (e.g. network failure), run:
+```bash
+icmg whats-new                # current version notes
+icmg whats-new --since v0.20  # all releases since v0.20
+```
+
 ## The parallel-first rule
 
 If you have 2+ independent steps, run them concurrently. Sequential is a regression.
