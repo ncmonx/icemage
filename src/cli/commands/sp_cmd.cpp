@@ -201,7 +201,12 @@ private:
         if (args.size() < 2) { std::cerr << "icmg sp show: requires <name>\n"; return 1; }
         bool json_out = hasFlag(args, "--json");
         auto s = store.get(args[1]);
-        if (!s) { std::cerr << "SP not found: " << args[1] << "\n"; return 1; }
+        if (!s) {
+            // Fallback: try graph_nodes (populated by `icmg graph scan` SQL extractor).
+            // sp_store is the rich-metadata path; graph is the lightweight path.
+            // Print whatever the graph knows to avoid "No results" dead-end.
+            return showFromGraph(args[1], json_out);
+        }
 
         if (json_out) {
             std::cout << "{\"id\":" << s->id
@@ -251,6 +256,70 @@ private:
             }
 
             std::cout << "\n--- SQL ---\n" << s->content << "\n";
+        }
+        return 0;
+    }
+
+    // Fallback: show SP from graph_nodes (kind='sp') when stored_procedures
+    // has no entry — covers the common case where user only ran `graph scan`
+    // without `sp add`. Loads body excerpt by reading source path + line range.
+    int showFromGraph(const std::string& name, bool json_out) {
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        struct Row { int64_t id; std::string path; int ls=0, le=0; std::string sig, body_hash; };
+        std::vector<Row> rows;
+        db.query(
+            "SELECT g.id, parent.path, COALESCE(g.line_start,0), COALESCE(g.line_end,0),"
+            "       COALESCE(g.signature,''), COALESCE(g.body_hash,'') "
+            "FROM graph_nodes g "
+            "LEFT JOIN graph_nodes parent ON parent.id = g.parent_id "
+            "WHERE g.symbol_name = ? AND g.kind = 'sp'",
+            {name},
+            [&](const core::Row& r) {
+                if (r.size() < 6) return;
+                Row x;
+                try {
+                    x.id = std::stoll(r[0]);
+                    x.path = r[1];
+                    x.ls = std::stoi(r[2]);
+                    x.le = std::stoi(r[3]);
+                    x.sig = r[4];
+                    x.body_hash = r[5];
+                    rows.push_back(std::move(x));
+                } catch (...) {}
+            });
+        if (rows.empty()) {
+            std::cerr << "SP not found in stored_procedures or graph_nodes: " << name << "\n"
+                      << "Try: icmg sp add <file>  (rich metadata)\n"
+                      << "  or: icmg graph scan <dir>  (lightweight indexing)\n";
+            return 1;
+        }
+        const auto& r = rows[0];
+        if (json_out) {
+            std::cout << "{\"name\":\"" << name << "\",\"source\":\"graph_nodes\","
+                      << "\"path\":\"" << r.path << "\","
+                      << "\"line_start\":" << r.ls << ",\"line_end\":" << r.le
+                      << ",\"signature\":\"" << r.sig << "\"}\n";
+            return 0;
+        }
+        std::cout << "[graph] " << name
+                  << "  (lines " << r.ls << "-" << r.le << ")\n"
+                  << "Path: " << r.path << "\n";
+        if (!r.sig.empty()) std::cout << "Signature: " << r.sig << "\n";
+        // Body excerpt — read source file slice.
+        std::ifstream f(r.path);
+        if (f) {
+            std::cout << "\n--- SQL excerpt ---\n";
+            std::string line;
+            int n = 0;
+            while (std::getline(f, line) && n < r.le) {
+                ++n;
+                if (n >= r.ls) std::cout << line << "\n";
+            }
+        } else {
+            std::cout << "(source file not readable: " << r.path << ")\n";
+            std::cout << "Note: this SP is in graph index but stored_procedures table is empty.\n"
+                      << "      For full metadata + body, run: icmg sp add " << r.path << "\n";
         }
         return 0;
     }
