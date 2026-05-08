@@ -274,13 +274,13 @@ private:
             {
                 {"matcher", "Bash"},
                 {"hooks",   json::array({
-                    {{"type", "command"}, {"command", "bash .claude/hooks/icmg-bash-rewrite.sh"}}
+                    {{"type", "command"}, {"command", "[ -f .claude/hooks/icmg-bash-rewrite.sh ] && bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
                 })}
             },
             {
                 {"matcher", "Read"},
                 {"hooks",   json::array({
-                    {{"type", "command"}, {"command", "bash .claude/hooks/icmg-shrink-read.sh"}}
+                    {{"type", "command"}, {"command", "[ -f .claude/hooks/icmg-shrink-read.sh ] && bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
                 })}
             }
         });
