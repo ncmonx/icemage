@@ -67,6 +67,20 @@ SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE" 2>/dev/null || echo 0)
 [[ "$SIZE" -lt "$THRESHOLD" ]] && exit 0
 SUMMARY=$(icmg summarize "$FILE" 2>/dev/null || true)
 [[ -z "$SUMMARY" ]] && exit 0
+
+# ICMG_SHRINK_STRICT=1 -> hard-deny + redirect (force agent to icmg context).
+# Default soft mode just injects summary as additionalContext (Read still runs).
+if [[ "${ICMG_SHRINK_STRICT:-0}" = "1" ]]; then
+    jq -n --arg f "$FILE" --arg sz "$SIZE" --arg s "$SUMMARY" '{
+        hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: ("File " + $f + " is " + $sz + " bytes. Use `icmg context " + $f + "` (graph + symbols + memory) or `icmg graph symbol <Name>` for one symbol body. Bypass: set ICMG_SHRINK_STRICT=0 in hook env.\n\nicmg summarize:\n" + $s)
+        }
+    }'
+    exit 2
+fi
+
 jq -n --arg s "$SUMMARY" --arg f "$FILE" --arg sz "$SIZE" '{
     hookSpecificOutput: {
         hookEventName: "PreToolUse",
@@ -213,7 +227,9 @@ public:
             "  --no-agents     Skip AGENTS.md update\n"
             "  --no-embedder   Skip embedder sidecar drop\n"
             "  --no-scan       Skip initial graph scan\n"
-            "  --force         Overwrite existing files\n";
+            "  --force         Overwrite existing files\n"
+            "  --strict-read   Hard-deny Read on large non-source files (>20KB);\n"
+            "                  source extensions (.cs/.ts/.cpp/...) stay soft-mode\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -223,12 +239,13 @@ public:
         bool no_embedder = hasFlag(args, "--no-embedder");
         bool no_scan     = hasFlag(args, "--no-scan");
         bool force       = hasFlag(args, "--force");
+        bool strict_read = hasFlag(args, "--strict-read");
 
         fs::path root = fs::current_path();
         std::cout << "icmg init: " << root.string() << "\n";
 
         int steps = 0;
-        if (!no_hooks)    { steps += installHooks(root, force); }
+        if (!no_hooks)    { steps += installHooks(root, force, strict_read); }
         if (!no_agents)   { steps += installAgents(root, force); }
         if (!no_embedder) { steps += installEmbedder(force); }
 
@@ -243,7 +260,7 @@ public:
     }
 
 private:
-    int installHooks(const fs::path& root, bool force) {
+    int installHooks(const fs::path& root, bool force, bool strict_read = false) {
         int n = 0;
         fs::create_directories(root / ".claude" / "hooks");
 
@@ -280,7 +297,16 @@ private:
             {
                 {"matcher", "Read"},
                 {"hooks",   json::array({
-                    {{"type", "command"}, {"command", "[ -f .claude/hooks/icmg-shrink-read.sh ] && bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
+                    // --strict-read sets ICMG_SHRINK_STRICT=1 + lower threshold so
+                    // big files (>20KB) get hard-deny + redirect suggestion
+                    // (Use icmg context X). Source-code extensions still allowed
+                    // via ICMG_SHRINK_EXCLUDE so Edit-by-line workflow works.
+                    {{"type", "command"}, {"command",
+                        std::string("[ -f .claude/hooks/icmg-shrink-read.sh ] && ") +
+                        (strict_read
+                            ? "ICMG_SHRINK_STRICT=1 ICMG_SHRINK_THRESHOLD=20000 ICMG_SHRINK_EXCLUDE='\\.(cs|ts|tsx|js|jsx|py|rb|go|rs|cpp|hpp|c|h|java|kt|sql)$' "
+                            : "") +
+                        "bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
                 })}
             }
         });
