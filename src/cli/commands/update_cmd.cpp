@@ -25,7 +25,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.13.0";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.13.1";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
