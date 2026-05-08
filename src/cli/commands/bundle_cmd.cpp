@@ -169,9 +169,15 @@ public:
         std::cout <<
             "Usage: icmg pack <task description...> [options]\n\n"
             "Options:\n"
-            "  --zone Z          Scope to zone\n"
-            "  --max-bytes N     Cap output (default 4096)\n"
-            "  --memory-limit N  Recall result count (default 5)\n";
+            "  --zone Z              Scope to zone\n"
+            "  --max-bytes N         Cap output (default 4096)\n"
+            "  --memory-limit N      Recall result count (default 5)\n"
+            "  --cache-prefix        Wrap output in prompt-cache markers\n"
+            "  --cache-ttl N         Cache TTL seconds (default 3600)\n"
+            "  --no-think            Inject directive: skip model analysis pass\n"
+            "  --concise             Stronger directive: short reply, no code\n"
+            "  --auto-think          Classify task; apply --no-think if simple\n"
+            "  --thinking-stats      Show 30-day thinking-budget telemetry\n";
     }
 
     int run(const std::vector<std::string>& args) override {
