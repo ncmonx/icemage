@@ -42,7 +42,7 @@ icmg embed graph  [--limit N] [--force]     # embed graph_nodes
 icmg embed --status                          # availability + counts
 ```
 
-Requires `pip install sentence-transformers`. Skips rows whose `body_hash` is unchanged unless `--force`. Without Python sidecar: `--status` reports unavailable; `recall --semantic` falls back to BM25.
+Requires `pip install optional embedder`. Skips rows whose `body_hash` is unchanged unless `--force`. Without Python sidecar: `--status` reports unavailable; `recall --semantic` falls back to ranking algorithm.
 
 ---
 
@@ -130,7 +130,7 @@ icmg budget                       # window summary (last 24h default)
 icmg budget --window 7d
 icmg budget by-tool [--window N]  # per-tool aggregate
 icmg budget by-cmd [--limit N]    # top N commands by tokens saved
-icmg budget --html [--out FILE]   # HTML dashboard (Phase 21 T9)
+icmg budget --html [--out FILE]   # HTML dashboard (T9)
 icmg budget record <tool> --raw N [--filtered M] [--cmd "..."]
 ```
 
@@ -158,7 +158,7 @@ Returns: file metadata, imports, used-by, child symbols, top-3 related memory.
 ```
 icmg data add --kind <K> --name <N> --content <C>   # add entry
 icmg data show <id>                                  # detail
-icmg data search <query>                             # BM25 search
+icmg data search <query>                             # ranking algorithm search
 icmg data revert <id> --version N                    # revert to earlier version
 ```
 
@@ -367,24 +367,24 @@ icmg --project <name> <command>          # one-off override
 
 ---
 
-## recall — BM25 memory recall (+ semantic, Phase 23)
+## recall — memory recall
 
 ```
 icmg recall <query>
     [--limit N]            # default 10
     [--topic PREFIX]       # filter by topic prefix
     [--zone Z]             # restrict corpus to zone
-    [--semantic]           # hybrid BM25+cosine (Phase 23)
-    [--alpha N]            # blend 0..1 (1=BM25, 0=vec, default 0.5)
-    [--pure]               # alpha=0 (vec only)
+    [--semantic]           # paraphrase-tolerant matching
+    [--alpha N]            # blend 0..1 (default 0.5)
+    [--pure]               # vector only
     [--all-projects]       # iterate registered projects
     [--fuzzy]              # fuzzy fallback
-    [--explain]            # show score breakdown
+    [--explain]            # show ranking detail
     [--history]            # show recent queries instead
     [--json]
 ```
 
-`--semantic` requires embeddings: run `icmg embed memory` first. Without sentence-transformers installed, `--semantic` silently degrades to BM25.
+`--semantic` requires the optional embedder to be configured. Falls back gracefully when not.
 
 ---
 
@@ -492,7 +492,7 @@ icmg verify show [--phase N]                 # list recorded
 icmg verify gate [--phase N]                 # exit 0 if all pass
 ```
 
-Records: exit code, output hash (FNV1a-64), first 1KB of output, duration.
+Records: exit code, output hash (fast hash), first 1KB of output, duration.
 
 ---
 
