@@ -25,7 +25,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.24.0";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.25.0";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -213,8 +213,39 @@ private:
 #endif
         std::cout << "Installed " << r.tag << ". Old binary kept at " << bak.string() << "\n"
                   << "  Verify: icmg --version\n"
-                  << "  Rollback: icmg update --rollback\n";
+                  << "  Rollback: icmg update --rollback\n\n";
+        // Phase 44: print release notes + adoption hints so AI agents see new features.
+        printReleaseNotes(r.tag);
         return 0;
+    }
+
+    // Fetch GitHub release notes for given tag and print as actionable summary.
+    void printReleaseNotes(const std::string& tag) {
+        std::string url = std::string("https://api.github.com/repos/")
+                        + REPO + "/releases/tags/" + tag;
+        std::string cmd = "curl -sL --max-time 10 -H \"User-Agent: icmg/"
+                        + std::string(CURRENT_VERSION) + "\" \"" + url + "\"";
+        auto res = core::safeExecShell(cmd, false, 12000);
+        if (res.exit_code != 0 || res.out.empty()) return;
+        try {
+            auto j = json::parse(res.out);
+            std::string body = j.value("body", "");
+            std::string name = j.value("name", tag);
+            if (body.empty()) return;
+
+            std::cout << "════════════════════════════════════════════════════════════\n"
+                      << " WHAT'S NEW in " << name << "\n"
+                      << "════════════════════════════════════════════════════════════\n"
+                      << body << "\n"
+                      << "════════════════════════════════════════════════════════════\n"
+                      << "AGENT NOTE: scan above for new commands/flags. Reflexes to\n"
+                      << "consider adopting in your next workflow:\n"
+                      << "  • Run `icmg --help` to see refreshed command list\n"
+                      << "  • Run `icmg <new-cmd> --help` for any unfamiliar names\n"
+                      << "  • Update AGENTS.md/CLAUDE.md if new patterns apply here\n"
+                      << "  • Run `icmg savings` later to verify ROI of new features\n"
+                      << "════════════════════════════════════════════════════════════\n";
+        } catch (...) {}
     }
 
     int doRollback() {
@@ -237,5 +268,104 @@ private:
 };
 
 ICMG_REGISTER_COMMAND("update", UpdateCommand);
+
+// =============================================================================
+// `icmg whats-new` — show release notes for current or specific version.
+// AI agents call after `icmg update` to learn what changed.
+// =============================================================================
+
+class WhatsNewCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "whats-new"; }
+    std::string description() const override {
+        return "Show release notes (current version or --since X)";
+    }
+
+    void usage() const override {
+        std::cout <<
+            "Usage: icmg whats-new [options]\n\n"
+            "Options:\n"
+            "  --since <ver>   Show notes from <ver> (exclusive) up to current\n"
+            "  --tag <ver>     Show notes for one specific version\n"
+            "  --json          Machine output\n";
+    }
+
+    int run(const std::vector<std::string>& args) override {
+        if (hasFlag(args, "--help")) { usage(); return 0; }
+        std::string since = flagValue(args, "--since");
+        std::string tag   = flagValue(args, "--tag");
+        bool json_out     = hasFlag(args, "--json");
+
+        if (!tag.empty()) return showOne(tag, json_out);
+        if (!since.empty()) return showRange(since, json_out);
+
+        // Default: current version notes.
+        return showOne(std::string("v") + CURRENT_VERSION, json_out);
+    }
+
+private:
+    int showOne(const std::string& tag, bool json_out) {
+        std::string url = std::string("https://api.github.com/repos/")
+                        + REPO + "/releases/tags/" + tag;
+        std::string cmd = "curl -sL --max-time 10 -H \"User-Agent: icmg/"
+                        + std::string(CURRENT_VERSION) + "\" \"" + url + "\"";
+        auto res = core::safeExecShell(cmd, false, 12000);
+        if (res.exit_code != 0 || res.out.empty()) {
+            std::cerr << "icmg whats-new: failed to fetch " << tag << "\n";
+            return 2;
+        }
+        try {
+            auto j = json::parse(res.out);
+            if (json_out) { std::cout << j.dump(2) << "\n"; return 0; }
+            std::cout << "═══ " << j.value("name", tag) << " ═══\n"
+                      << j.value("body", "") << "\n";
+        } catch (...) {
+            std::cerr << "icmg whats-new: parse failed\n"; return 3;
+        }
+        return 0;
+    }
+
+    int showRange(const std::string& since, bool json_out) {
+        std::string url = std::string("https://api.github.com/repos/")
+                        + REPO + "/releases?per_page=20";
+        std::string cmd = "curl -sL --max-time 10 -H \"User-Agent: icmg/"
+                        + std::string(CURRENT_VERSION) + "\" \"" + url + "\"";
+        auto res = core::safeExecShell(cmd, false, 12000);
+        if (res.exit_code != 0 || res.out.empty()) {
+            std::cerr << "icmg whats-new: failed to fetch releases\n"; return 2;
+        }
+        try {
+            auto j = json::parse(res.out);
+            if (!j.is_array()) return 3;
+            // Reverse: oldest first within range.
+            std::vector<json> in_range;
+            for (auto& rel : j) {
+                std::string t = rel.value("tag_name", "");
+                if (t == since || t == ("v" + since)) break;
+                in_range.push_back(rel);
+            }
+            if (json_out) {
+                std::cout << "[\n";
+                for (size_t i = 0; i < in_range.size(); ++i) {
+                    if (i) std::cout << ",\n";
+                    std::cout << in_range[i].dump(2);
+                }
+                std::cout << "\n]\n";
+                return 0;
+            }
+            std::cout << "Releases since " << since << ":\n\n";
+            for (auto it = in_range.rbegin(); it != in_range.rend(); ++it) {
+                std::cout << "═══ " << it->value("name", it->value("tag_name", ""))
+                          << " ═══\n"
+                          << it->value("body", "") << "\n\n";
+            }
+        } catch (...) {
+            std::cerr << "icmg whats-new: parse failed\n"; return 3;
+        }
+        return 0;
+    }
+};
+
+ICMG_REGISTER_COMMAND("whats-new", WhatsNewCommand);
 
 } // namespace icmg::cli
