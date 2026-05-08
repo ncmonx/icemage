@@ -176,6 +176,7 @@ public:
             "  --cache-ttl N         Cache TTL seconds (default 3600)\n"
             "  --no-think            Inject directive: skip model analysis pass\n"
             "  --concise             Stronger directive: short reply, no code\n"
+            "  --caveman             Strongest: ultra-terse fragment-style reply (~60 words)\n"
             "  --auto-think          Classify task; apply --no-think if simple\n"
             "  --thinking-stats      Show 30-day thinking-budget telemetry\n";
     }
@@ -348,15 +349,17 @@ public:
         // Phase 41 T1+T2: thinking-budget directive.
         bool no_think    = hasFlag(args, "--no-think");
         bool concise     = hasFlag(args, "--concise");
+        bool caveman     = hasFlag(args, "--caveman");
         bool auto_think  = hasFlag(args, "--auto-think");
-        if (auto_think && !no_think && !concise) {
+        if (auto_think && !no_think && !concise && !caveman) {
             cli::Intent it = cli::classifyIntent(task);
             if (it == cli::Intent::Simple) no_think = true;
             std::cerr << "[icmg pack] intent=" << cli::intentLabel(it)
                       << (no_think ? " → no-think directive applied"
                                    : " → thinking kept on") << "\n";
         }
-        if (concise) capped = cli::applyConciseDirective(capped);
+        if (caveman)       capped = cli::applyCavemanDirective(capped);
+        else if (concise)  capped = cli::applyConciseDirective(capped);
         else if (no_think) capped = cli::applyNoThinkDirective(capped);
 
         // Phase 41 T4: telemetry record.

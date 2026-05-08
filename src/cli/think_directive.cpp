@@ -99,4 +99,20 @@ std::string applyConciseDirective(const std::string& text) {
     return os.str();
 }
 
+std::string applyCavemanDirective(const std::string& text) {
+    if (hasDirective(text)) return text;
+    std::ostringstream os;
+    os << "<icmg-directive>\n"
+       << "Caveman mode ultra. Answer directly, no analysis, no exploration. "
+       << "Drop articles (a/an/the), drop filler (just/really/basically/actually/simply), "
+       << "drop pleasantries. Use fragments. Use arrows for causality (X → Y). "
+       << "Abbreviate where unambiguous (DB, auth, config, fn, impl). "
+       << "One word when one word enough. Pattern: [thing] [action] [reason]. "
+       << "Code/commits/security text: keep normal English. "
+       << "Reply under 60 words unless user explicitly requested more.\n"
+       << "</icmg-directive>\n"
+       << text;
+    return os.str();
+}
+
 } // namespace icmg::cli
