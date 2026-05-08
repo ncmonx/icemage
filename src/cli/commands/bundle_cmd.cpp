@@ -9,6 +9,8 @@
 #include "../cache_emitter.hpp"
 #include "../think_directive.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/tool_call_cache.hpp"
+#include <cstdlib>
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
@@ -239,6 +241,21 @@ public:
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
+
+        // Phase 45 T1: tool-call cache. Key = (cmd, normalized args).
+        bool no_cache = hasFlag(args, "--no-cache") || std::getenv("ICMG_NO_CACHE");
+        std::string cache_args = task + "|zone=" + zone
+                               + "|cap=" + std::to_string(cap)
+                               + "|mem=" + std::to_string(mem_limit);
+        core::ToolCallCache tcc(db);
+        std::string capped;  // pre-directive raw output
+        std::optional<std::string> cached;
+        if (!no_cache) cached = tcc.lookup("pack", cache_args);
+        if (cached) {
+            capped = *cached;
+            std::cerr << "[icmg pack] cache HIT (skip recompute)\n";
+        } else {
+
         imem::MemoryStore mem(db);
         graph::GraphStore store(db);
 
@@ -333,7 +350,9 @@ public:
         }
 
         std::string spill;
-        std::string capped = core::capOutput(out.str(), cap, spill);
+        capped = core::capOutput(out.str(), cap, spill);
+        if (!no_cache) tcc.store("pack", cache_args, capped, 300);
+        }  // end else (cache-miss compute branch)
 
         // Phase 40 T1: optional Anthropic prompt-cache wrap.
         if (hasFlag(args, "--cache-prefix")) {

@@ -102,8 +102,18 @@ public:
             // Locate icmg.exe alongside this binary.
             char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
             pack_cmd = std::string("\"") + buf + "\" pack \"" + escape(task) + "\" --max-bytes 4096";
+            if (hasFlag(args, "--no-think"))    pack_cmd += " --no-think";
+            if (hasFlag(args, "--concise"))     pack_cmd += " --concise";
+            if (hasFlag(args, "--caveman"))     pack_cmd += " --caveman";
+            if (hasFlag(args, "--auto-think"))  pack_cmd += " --auto-think";
+            if (hasFlag(args, "--cache-prefix")) pack_cmd += " --cache-prefix";
 #else
             pack_cmd = "icmg pack \"" + escape(task) + "\" --max-bytes 4096";
+            if (hasFlag(args, "--no-think"))    pack_cmd += " --no-think";
+            if (hasFlag(args, "--concise"))     pack_cmd += " --concise";
+            if (hasFlag(args, "--caveman"))     pack_cmd += " --caveman";
+            if (hasFlag(args, "--auto-think"))  pack_cmd += " --auto-think";
+            if (hasFlag(args, "--cache-prefix")) pack_cmd += " --cache-prefix";
 #endif
             auto pack_res = core::safeExecShell(pack_cmd, false, 30000);
             if (pack_res.exit_code == 0 && !pack_res.out.empty()) {

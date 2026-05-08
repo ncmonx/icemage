@@ -90,6 +90,29 @@ jq -n --arg s "$SUMMARY" --arg f "$FILE" --arg sz "$SIZE" '{
 exit 0
 )BASH";
 
+// Phase 45 T3: PostToolUse:Bash hook routes huge stdout through `icmg shrink`.
+static const char* CAP_OUTPUT_SH = R"BASH(#!/usr/bin/env bash
+set -uo pipefail
+out=$(jq -r '.tool_response.stdout // .tool_response.output // empty')
+sz=${#out}
+CAP=${ICMG_CAP_BYTES:-50000}
+[[ "$sz" -le "$CAP" ]] && exit 0
+if command -v icmg >/dev/null 2>&1; then
+    shrunk=$(printf '%s' "$out" | icmg shrink --threshold 0 2>/dev/null)
+    if [[ -n "$shrunk" ]]; then
+        jq -n --arg m "$shrunk" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+        exit 0
+    fi
+fi
+hash=$(echo -n "$out" | sha1sum | cut -c1-8)
+spill="/tmp/icmg-spill-$hash.txt"
+printf '%s' "$out" > "$spill"
+head_part=$(printf '%s' "$out" | head -c 4096)
+tail_part=$(printf '%s' "$out" | tail -c 2048)
+msg=$(printf '%s\n... [truncated, %d bytes total, full at %s] ...\n%s' "$head_part" "$sz" "$spill" "$tail_part")
+jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+)BASH";
+
 // Phase 40 T2: PreCompact hook — auto-snapshots session before /compact
 // or auto-compaction wipes context. Runs `icmg session save auto-precompact-<ts>`.
 static const char* PRECOMPACT_PY = R"PY(#!/usr/bin/env python3
@@ -294,6 +317,8 @@ private:
         // Drop hook scripts.
         n += writeFile(root / ".claude" / "hooks" / "icmg-bash-rewrite.sh", BASH_REWRITE_SH, force);
         n += writeFile(root / ".claude" / "hooks" / "icmg-shrink-read.sh", SHRINK_READ_SH, force);
+        // Phase 45 T3: cap-output PostToolUse hook (auto-shrink Bash >50KB).
+        n += writeFile(root / ".claude" / "hooks" / "icmg-cap-output.sh", CAP_OUTPUT_SH, force);
         // Phase 40 T2: PreCompact auto-snapshot.
         n += writeFile(root / ".claude" / "hooks" / "icmg-precompact-snapshot.py", PRECOMPACT_PY, force);
 
@@ -339,6 +364,17 @@ private:
                 })}
             }
         });
+        // Phase 45 T3: PostToolUse:Bash — auto-shrink huge outputs (>50KB).
+        cfg["hooks"]["PostToolUse"] = json::array({
+            {
+                {"matcher", "Bash"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command", "[ -f .claude/hooks/icmg-cap-output.sh ] && bash .claude/hooks/icmg-cap-output.sh || exit 0"}}
+                })}
+            }
+        });
+
         // Phase 40 T2: PreCompact hook — snapshot session before /compact.
         cfg["hooks"]["PreCompact"] = json::array({
             {
