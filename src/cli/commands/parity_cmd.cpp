@@ -20,6 +20,7 @@
 #include "../../graph/graph_store.hpp"
 #include "../../graph/graph_node.hpp"
 #include <iostream>
+#include <fstream>
 #include <set>
 #include <map>
 #include <regex>
@@ -40,7 +41,8 @@ public:
             "  --kind K            Filter to one kind (method/property/field/class)\n"
             "  --ignore PATTERN    Regex skip (matches against symbol_name)\n"
             "  --detect-renames    Levenshtein heuristic (off by default)\n"
-            "  --json              Machine output\n\n"
+            "  --json              Machine output\n"
+            "  --html PATH         Write side-by-side HTML diff (no JS deps)\n\n"
             "Exit code: count of MISSING_IN_NEW. 0 = full parity.\n";
     }
 
@@ -69,6 +71,7 @@ public:
         std::string ignore_pat  = flagValue(args, "--ignore");
         bool detect_renames     = hasFlag(args, "--detect-renames");
         bool json_out           = hasFlag(args, "--json");
+        std::string html_out    = flagValue(args, "--html");
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
@@ -133,6 +136,12 @@ public:
                     matched_extra.insert(best_idx);
                 }
             }
+        }
+
+        // Phase 30 T3: HTML side-by-side visual diff.
+        if (!html_out.empty()) {
+            writeHtml(html_out, ref, nw, missing, extra, renames);
+            std::cerr << "Wrote " << html_out << "\n";
         }
 
         // Output.
@@ -204,6 +213,87 @@ private:
             std::swap(prev, cur);
         }
         return prev[M];
+    }
+
+    static std::string escape_html(const std::string& s) {
+        std::string out; out.reserve(s.size());
+        for (char c : s) {
+            switch (c) {
+                case '<': out += "&lt;";  break;
+                case '>': out += "&gt;";  break;
+                case '&': out += "&amp;"; break;
+                case '"': out += "&quot;"; break;
+                default:  out.push_back(c);
+            }
+        }
+        return out;
+    }
+
+    void writeHtml(const std::string& path, const std::string& ref, const std::string& nw,
+                   const std::vector<std::pair<std::string,std::string>>& missing,
+                   const std::vector<std::pair<std::string,std::string>>& extra,
+                   const std::vector<std::tuple<std::string,std::string,int>>& renames) {
+        std::ofstream f(path);
+        if (!f) { std::cerr << "icmg parity --html: cannot write " << path << "\n"; return; }
+        f << "<!doctype html><html><head><meta charset='utf-8'><title>icmg parity: "
+          << escape_html(nw) << "</title><style>"
+          << "body{font:14px -apple-system,sans-serif;max-width:1200px;margin:2em auto;padding:0 1em;color:#111}"
+          << "h1{border-bottom:2px solid #eee;padding-bottom:.3em}"
+          << ".sum{display:flex;gap:1em;margin:1em 0}"
+          << ".badge{padding:4px 10px;border-radius:14px;font-size:.85em}"
+          << ".bad{background:#ffd7d7;color:#9a0000}"
+          << ".add{background:#fff3cd;color:#7a5a00}"
+          << ".ren{background:#dde7ff;color:#243a7a}"
+          << ".ok{background:#d8f3d8;color:#1a6e1a}"
+          << "table{border-collapse:collapse;width:100%;margin:1em 0}"
+          << "th,td{border:1px solid #ddd;padding:.4em .8em;vertical-align:top}"
+          << "th{background:#f6f8fa;text-align:left}"
+          << ".missing{background:#ffe7e7}.extra{background:#fff8df}.renamed{background:#e7eeff}"
+          << ".muted{color:#666;font-size:.85em}"
+          << "</style></head><body>"
+          << "<h1>icmg parity</h1>"
+          << "<p class='muted'>ref: <code>" << escape_html(ref) << "</code><br>"
+          << "new: <code>" << escape_html(nw) << "</code></p>"
+          << "<div class='sum'>"
+          << "<span class='badge bad'>MISSING " << missing.size() << "</span>"
+          << "<span class='badge add'>EXTRA "   << extra.size()   << "</span>";
+        if (!renames.empty()) f << "<span class='badge ren'>RENAMED? " << renames.size() << "</span>";
+        if (missing.empty() && extra.empty()) f << "<span class='badge ok'>parity OK</span>";
+        f << "</div>";
+
+        f << "<h2>Missing in new (likely the bug class)</h2>";
+        if (missing.empty()) f << "<p class='muted'>none</p>";
+        else {
+            f << "<table><tr><th>Symbol</th><th>Kind</th></tr>";
+            for (auto& [n, k] : missing)
+                f << "<tr class='missing'><td><code>" << escape_html(n)
+                  << "</code></td><td>" << escape_html(k) << "</td></tr>";
+            f << "</table>";
+        }
+
+        f << "<h2>Extra in new (informational)</h2>";
+        if (extra.empty()) f << "<p class='muted'>none</p>";
+        else {
+            f << "<table><tr><th>Symbol</th><th>Kind</th></tr>";
+            for (auto& [n, k] : extra)
+                f << "<tr class='extra'><td><code>" << escape_html(n)
+                  << "</code></td><td>" << escape_html(k) << "</td></tr>";
+            f << "</table>";
+        }
+
+        if (!renames.empty()) {
+            f << "<h2>Possible renames (Levenshtein heuristic)</h2>"
+              << "<table><tr><th>From</th><th>To</th><th>Distance</th></tr>";
+            for (auto& [a, b, d] : renames)
+                f << "<tr class='renamed'><td><code>" << escape_html(a)
+                  << "</code></td><td><code>" << escape_html(b)
+                  << "</code></td><td>" << d << "</td></tr>";
+            f << "</table>";
+        }
+
+        f << "<p class='muted' style='margin-top:2em'>Generated by <code>icmg parity --html</code>"
+          << " (no JS deps). Re-run after edits to refresh.</p>"
+          << "</body></html>";
     }
 
     static std::string escape_json(const std::string& s) {
