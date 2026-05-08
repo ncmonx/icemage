@@ -90,6 +90,33 @@ jq -n --arg s "$SUMMARY" --arg f "$FILE" --arg sz "$SIZE" '{
 exit 0
 )BASH";
 
+// Phase 40 T2: PreCompact hook — auto-snapshots session before /compact
+// or auto-compaction wipes context. Runs `icmg session save auto-precompact-<ts>`.
+static const char* PRECOMPACT_PY = R"PY(#!/usr/bin/env python3
+"""icmg PreCompact hook (auto-installed by `icmg init`).
+
+Snapshots active session via `icmg session save auto-precompact-<ts>` so
+decisions and recall context survive Claude Code context compression.
+"""
+import json, shutil, subprocess, sys, time
+def main():
+    try: sys.stdin.read()
+    except: pass
+    icmg = shutil.which("icmg") or shutil.which("icmg.exe")
+    if not icmg:
+        print(json.dumps({"continue": True})); return 0
+    tag = "auto-precompact-" + time.strftime("%Y%m%d-%H%M%S")
+    try:
+        subprocess.run([icmg, "session", "save", tag],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        print(json.dumps({"continue": True,
+                          "systemMessage": f"icmg snapshot: {tag}"}))
+    except Exception:
+        print(json.dumps({"continue": True}))
+    return 0
+if __name__ == "__main__": sys.exit(main())
+)PY";
+
 // Embedded sidecar — kept in sync with embed/icmg_embedder.py.
 // `icmg init` drops this to ~/.icmg/embed/icmg_embedder.py so binary-only
 // installs (where source tree isn't adjacent) can still find the sidecar.
@@ -267,6 +294,8 @@ private:
         // Drop hook scripts.
         n += writeFile(root / ".claude" / "hooks" / "icmg-bash-rewrite.sh", BASH_REWRITE_SH, force);
         n += writeFile(root / ".claude" / "hooks" / "icmg-shrink-read.sh", SHRINK_READ_SH, force);
+        // Phase 40 T2: PreCompact auto-snapshot.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-precompact-snapshot.py", PRECOMPACT_PY, force);
 
 #ifndef _WIN32
         // chmod +x on POSIX
@@ -307,6 +336,15 @@ private:
                             ? "ICMG_SHRINK_STRICT=1 ICMG_SHRINK_THRESHOLD=20000 ICMG_SHRINK_EXCLUDE='\\.(cs|ts|tsx|js|jsx|py|rb|go|rs|cpp|hpp|c|h|java|kt|sql)$' "
                             : "") +
                         "bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
+                })}
+            }
+        });
+        // Phase 40 T2: PreCompact hook — snapshot session before /compact.
+        cfg["hooks"]["PreCompact"] = json::array({
+            {
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command", "python3 .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || python .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || true"}}
                 })}
             }
         });

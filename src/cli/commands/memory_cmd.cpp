@@ -385,6 +385,7 @@ public:
         else if (sub == "history") registered = "memory-history";
         else if (sub == "purge")   registered = "memory-purge";
         else if (sub == "decay")   registered = "memory-decay";
+        else if (sub == "prune")   registered = "memory-prune";
         else if (sub == "health")  registered = "memory-health";
         else if (sub == "consolidate")     registered = "memory-consolidate";
         else if (sub == "extract-patterns")registered = "memory-extract-patterns";
@@ -406,6 +407,134 @@ public:
     }
 };
 
+// =============================================================================
+// Phase 40 T6: memory prune — soft-delete by age + importance threshold (LRU-decay).
+// Importance ≥2 always protected. Default --dry-run; --yes to commit.
+// =============================================================================
+class MemoryPruneCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "memory-prune"; }
+    std::string description() const override {
+        return "Soft-delete low-importance, stale memory nodes (LRU-decay policy)";
+    }
+
+    void usage() const override {
+        std::cout <<
+            "Usage: icmg memory prune [options]\n\n"
+            "Default --dry-run: shows count + sample, no DB change.\n"
+            "Add --yes to actually soft-delete.\n\n"
+            "Options:\n"
+            "  --age <Nd>                 Min age (e.g. 90d). Default 180d.\n"
+            "  --importance-max N         Only prune importance ≤ N (default 1).\n"
+            "                             Importance ≥2 always protected.\n"
+            "  --topic-prefix <P>         Restrict to topic LIKE 'P%'.\n"
+            "  --keep-recent-uses N       Keep nodes with last_used within N days.\n"
+            "                             Default 30d.\n"
+            "  --yes                      Commit (default is dry-run).\n";
+    }
+
+    int run(const std::vector<std::string>& args) override {
+        if (hasFlag(args, "--help") || hasFlag(args, "-h")) { usage(); return 0; }
+        bool yes = hasFlag(args, "--yes");
+        int age_days = 180;
+        int recent_days = 30;
+        int imp_max = 1;
+        try {
+            std::string a = flagValue(args, "--age");
+            if (!a.empty()) {
+                if (!a.empty() && a.back() == 'd') a.pop_back();
+                age_days = std::stoi(a);
+            }
+            std::string r = flagValue(args, "--keep-recent-uses");
+            if (!r.empty()) {
+                if (!r.empty() && r.back() == 'd') r.pop_back();
+                recent_days = std::stoi(r);
+            }
+            std::string m = flagValue(args, "--importance-max");
+            if (!m.empty()) imp_max = std::stoi(m);
+        } catch (...) {}
+        std::string topic_prefix = flagValue(args, "--topic-prefix");
+
+        if (imp_max >= 2) {
+            std::cerr << "icmg memory prune: --importance-max must be ≤1 "
+                      << "(importance ≥2 = decisions / pinned, always protected).\n";
+            return 1;
+        }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+
+        int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        int64_t cutoff_age    = now - (int64_t)age_days   * 86400;
+        int64_t cutoff_recent = now - (int64_t)recent_days * 86400;
+
+        // Build query: not deleted, age beyond cutoff, importance ≤ N,
+        // last_used <=cutoff_recent OR null, optional topic LIKE.
+        std::string sql =
+            "SELECT id, topic, importance, created_at, last_used FROM memory_nodes "
+            "WHERE deleted_at IS NULL "
+            "  AND created_at < ? "
+            "  AND importance <= ? "
+            "  AND (last_used IS NULL OR last_used < ?)";
+        std::vector<std::string> params = {
+            std::to_string(cutoff_age),
+            std::to_string(imp_max),
+            std::to_string(cutoff_recent)
+        };
+        if (!topic_prefix.empty()) {
+            sql += " AND topic LIKE ?";
+            params.push_back(topic_prefix + "%");
+        }
+        sql += " ORDER BY created_at ASC";
+
+        std::vector<int> ids;
+        std::vector<std::string> sample_topics;
+        try {
+            db.query(sql, params, [&](const core::Row& r){
+                if (r.size() < 2) return;
+                ids.push_back(std::stoi(r[0]));
+                if (sample_topics.size() < 5) sample_topics.push_back(r[1]);
+            });
+        } catch (const std::exception& e) {
+            std::cerr << "icmg memory prune: query failed: " << e.what() << "\n";
+            return 2;
+        }
+
+        std::cout << "Eviction candidates: " << ids.size() << "\n"
+                  << "  age threshold:     " << age_days << "d (created before)\n"
+                  << "  importance max:    " << imp_max << " (≥2 protected)\n"
+                  << "  last_used recent:  " << recent_days << "d\n";
+        if (!topic_prefix.empty())
+            std::cout << "  topic prefix:      " << topic_prefix << "\n";
+        if (!sample_topics.empty()) {
+            std::cout << "  sample topics:\n";
+            for (auto& t : sample_topics) std::cout << "    - " << t << "\n";
+        }
+
+        if (!yes) {
+            std::cout << "\n(dry-run) Re-run with --yes to soft-delete " << ids.size() << " node(s).\n";
+            return 0;
+        }
+        if (ids.empty()) {
+            std::cout << "Nothing to prune.\n";
+            return 0;
+        }
+
+        // Soft-delete in batch.
+        int n = 0;
+        for (int id : ids) {
+            try {
+                db.run("UPDATE memory_nodes SET deleted_at = strftime('%s','now') WHERE id = ?", {std::to_string(id)});
+                ++n;
+            } catch (...) {}
+        }
+        std::cout << "Pruned " << n << " node(s) (soft-delete).\n"
+                  << "  Recover via: icmg restore <id>\n";
+        return 0;
+    }
+};
+
 ICMG_REGISTER_COMMAND("memory",         MemoryRootCommand);
 ICMG_REGISTER_COMMAND("memory-list",    MemoryListCommand);
 ICMG_REGISTER_COMMAND("memory-show",    MemoryShowCommand);
@@ -414,5 +543,6 @@ ICMG_REGISTER_COMMAND("memory-search",  MemorySearchCommand);
 ICMG_REGISTER_COMMAND("memory-history", MemoryHistoryCommand);
 ICMG_REGISTER_COMMAND("memory-purge",   MemoryPurgeCommand);
 ICMG_REGISTER_COMMAND("memory-decay",   MemoryDecayCommand);
+ICMG_REGISTER_COMMAND("memory-prune",   MemoryPruneCommand);
 
 } // namespace icmg::cli
