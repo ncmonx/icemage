@@ -87,6 +87,7 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"compress", "Semantic prompt compression with reversible glossary (Phase 39)"},
     {"expand",   "Reverse `icmg compress` output via glossary"},
     {"savings",  "Token-savings dashboard (with/without comparison + HTML)"},
+    {"shrink",   "Auto-detect content type + intelligent shrink (grep/log/SQL/JSON/generic)"},
 };
 
 Dispatcher::Dispatcher() {}
@@ -158,7 +159,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.23.0 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.24.0 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -174,7 +175,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.23.0\n";
+    std::cout << "icmg 0.24.0\n";
 }
 
 } // namespace icmg::cli
