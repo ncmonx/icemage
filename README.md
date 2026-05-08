@@ -1,7 +1,7 @@
 # icmg — Unified Memory, Knowledge Graph & Token-Saving CLI
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-38%2F38%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-41%2F41%20passing-brightgreen)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **Single C++17 binary** unifying:
@@ -415,6 +415,7 @@ Implemented (v0.19.0 — current):
 | 37 | tree-sitter C/C++ AST extractor | Symbol accuracy 95%+ on C/C++ |
 | 38 | Embedded HTTP dashboard (`icmg serve`) + multi-modal Python sidecar (PDF/OCR) | Visual audit + non-text input |
 | **39** | **Semantic prompt compression (`icmg compress`/`expand`)** | **30-60% on dynamic context, $0.10+ saved per big request** |
+| **40** | **Anthropic prompt cache + PreCompact hook + tree-sitter TS/Python + MCP compress + memory eviction** | **90% discount on cached prefix; auto-snapshot on /compact; AST accuracy on TS/Py; long-term DB hygiene** |
 
 Deferred to Phase 25+:
 
