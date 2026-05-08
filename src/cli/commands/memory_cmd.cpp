@@ -385,6 +385,9 @@ public:
         else if (sub == "history") registered = "memory-history";
         else if (sub == "purge")   registered = "memory-purge";
         else if (sub == "decay")   registered = "memory-decay";
+        else if (sub == "health")  registered = "memory-health";
+        else if (sub == "consolidate")     registered = "memory-consolidate";
+        else if (sub == "extract-patterns")registered = "memory-extract-patterns";
         else if (sub == "forget")  registered = "forget";   // existing top-level
         else if (sub == "restore") registered = "restore";  // existing top-level
         else {
