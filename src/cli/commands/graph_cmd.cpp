@@ -911,6 +911,7 @@ public:
             "  stats                 Graph statistics\n"
             "  orphans               Find orphan files (no inbound edges)\n"
             "  cycles                Detect circular dependencies\n"
+            "  communities           Louvain auto-cluster (Phase 26 — suggests zones)\n"
             "  hot                   Show most accessed files\n"
             "  watch [dir]           Start file watcher daemon\n"
             "  stop [dir]            Stop file watcher daemon\n"
