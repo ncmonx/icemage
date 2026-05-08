@@ -16,6 +16,9 @@
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../embed/embed_store.hpp"
+#include "../../embed/embedder.hpp"
+#include <map>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -280,19 +283,88 @@ private:
     }
 
     int linkCmd(core::Db& db, const std::vector<std::string>& args) {
-        if (args.empty()) { std::cerr << "icmg memoir link: <id> --to <other-id>\n"; return 1; }
+        if (hasFlag(args, "--auto")) return autoLink(db, args);
+        if (args.empty()) { std::cerr << "icmg memoir link: <id> --to <other-id>  OR  --auto\n"; return 1; }
         int64_t a, b;
         try { a = std::stoll(args[0]); b = std::stoll(flagValue(args, "--to")); } catch (...) {
             std::cerr << "Invalid IDs\n"; return 1;
         }
-        // Append cross-ref keyword to both.
+        linkPair(db, a, b);
+        std::cout << "Linked memoir #" << a << " <-> #" << b << "\n";
+        return 0;
+    }
+
+    // Phase 35 T1: auto-cluster memoirs by cosine similarity ≥ threshold.
+    // Threshold lower than `consolidate` (0.92) — "related" not "duplicate".
+    int autoLink(core::Db& db, const std::vector<std::string>& args) {
+        double threshold = 0.75;
+        try { threshold = std::stod(flagValue(args, "--threshold", "0.75")); } catch (...) {}
+        bool dry = hasFlag(args, "--dry-run");
+
+        // Pull memoirs.
+        struct M { int64_t id; std::string topic; std::string keywords; };
+        std::vector<M> memoirs;
+        db.query("SELECT id, topic, COALESCE(keywords,'') FROM memory_nodes "
+                 "WHERE topic LIKE 'memoir:%' AND deleted_at IS NULL", {},
+                 [&](const core::Row& r){
+                     if (r.size() < 3) return;
+                     try { memoirs.push_back({std::stoll(r[0]), r[1], r[2]}); } catch (...) {}
+                 });
+        if (memoirs.size() < 2) {
+            std::cout << "memoir link --auto: <2 memoirs to compare\n";
+            return 0;
+        }
+
+        // Need embedder for cosine.
+        embed::EmbedStore es(db);
+        std::vector<int64_t> ids;
+        for (auto& m : memoirs) ids.push_back(m.id);
+        // Use a default 384-dim — matches MiniLM. If no embeddings, vec will be empty.
+        auto rows = es.getMany("memory", ids, 384);
+        std::map<int64_t, std::vector<float>> by_id;
+        for (auto& kv : rows) by_id.emplace(kv.first, std::move(kv.second));
+        if (by_id.empty()) {
+            std::cerr << "memoir link --auto: no embeddings (run `icmg embed memory` first)\n";
+            return 1;
+        }
+
+        // Pairwise cosine, skip already-linked.
+        int linked = 0;
+        for (size_t i = 0; i < memoirs.size(); ++i) {
+            auto va = by_id.find(memoirs[i].id);
+            if (va == by_id.end() || va->second.empty()) continue;
+            for (size_t j = i + 1; j < memoirs.size(); ++j) {
+                auto vb = by_id.find(memoirs[j].id);
+                if (vb == by_id.end() || vb->second.empty()) continue;
+                double sim = embed::cosine(va->second, vb->second);
+                if (sim < threshold) continue;
+                std::string tag_a = "linked:" + std::to_string(memoirs[j].id);
+                std::string tag_b = "linked:" + std::to_string(memoirs[i].id);
+                if (memoirs[i].keywords.find(tag_a) != std::string::npos &&
+                    memoirs[j].keywords.find(tag_b) != std::string::npos) continue;   // already linked
+                std::cout << "  + #" << memoirs[i].id << " <-> #" << memoirs[j].id
+                          << "  (cosine=" << std::fixed << std::setprecision(2) << sim << ")\n";
+                if (!dry) {
+                    linkPair(db, memoirs[i].id, memoirs[j].id);
+                    // Update local copy so subsequent iterations dedupe.
+                    memoirs[i].keywords += "," + tag_a;
+                    memoirs[j].keywords += "," + tag_b;
+                }
+                ++linked;
+            }
+        }
+        std::cout << "memoir link --auto: " << linked << " new link(s) "
+                  << (dry ? "would be added [dry-run]" : "added")
+                  << "  (threshold=" << threshold << ")\n";
+        return 0;
+    }
+
+    void linkPair(core::Db& db, int64_t a, int64_t b) {
         for (auto pair : std::vector<std::pair<int64_t, int64_t>>{{a, b}, {b, a}}) {
             db.run("UPDATE memory_nodes SET keywords = COALESCE(keywords, '') || ',linked:' || ? "
                    "WHERE id = ?",
                    {std::to_string(pair.second), std::to_string(pair.first)});
         }
-        std::cout << "Linked memoir #" << a << " <-> #" << b << "\n";
-        return 0;
     }
 };
 
