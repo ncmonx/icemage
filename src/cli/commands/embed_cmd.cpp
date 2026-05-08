@@ -72,10 +72,15 @@ public:
             int mem = es.count("memory"), gph = es.count("graph");
             std::cout << "Embeddings: memory=" << mem << " graph=" << gph << "\n";
             auto e = embed::makeEmbedder();
-            const char* impl = e ? "python-sidecar" : "none";
+            std::string impl = "none";
+            if (e) {
+                impl = e->model().find("onnx") != std::string::npos
+                       ? "onnx" : "python-sidecar";
+            }
             std::cout << "Embedder: " << (e ? std::string("available (") + e->model()
                                               + ", dim=" + std::to_string(e->dim())
                                               + ", backend=" + impl + ")"
+
                                             : "unavailable (Python sidecar missing)") << "\n";
             return 0;
         }
