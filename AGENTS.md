@@ -1,226 +1,125 @@
-# AGENTS.md — icmg for AI Coding Agents
+# AGENTS.md — using icmg from inside an AI coding agent
 
-Universal context for **Claude Code, Cursor, Copilot, Aider, Continue, GitHub Codespaces, etc.** This file tells your agent how to use icmg to cut tokens 70-85% without losing context.
+For Claude Code, Cursor, Copilot, Aider, Continue, Codespaces, anything that drives a model. This file tells the agent the right reflexes.
 
-> **TL;DR:** Before reading large files or running noisy commands, ask icmg first. Treat it as your code-aware retrieval layer.
+> **The rule of thumb:** before reading a big file or running a noisy command, ask `icmg` first.
 
 ---
 
-## CRITICAL parallel-first rule
+## The parallel-first rule
 
-**If you have 2+ independent steps (independent files, independent checks, independent recalls), you MUST run them via `icmg parallel`.** Sequential runs are a bug — they waste wall-clock and miss the I/O parallelism win (3-6× speedup typical). This rule is non-negotiable.
+If you have 2+ independent steps, run them concurrently. Sequential is a regression.
 
 ```bash
-# Wrong:
-icmg verify --command "ctest"
-icmg verify --command "cmake --build build"
+# Wrong
+icmg run ctest
 icmg run npm test
 
-# Right:
+# Right
 icmg parallel \
-    --task "icmg verify --command 'ctest'" \
-    --task "icmg verify --command 'cmake --build build'" \
+    --task "icmg run ctest" \
     --task "icmg run npm test"
 ```
 
-Heuristic: do the next 2+ steps share a file write or depend on each other's output? **No → use `icmg parallel`.**
-
-## When to Use icmg (decision tree)
-
-| Situation | Tool | Why |
-|---|---|---|
-| **2+ independent steps** | `icmg parallel --task "..." --task "..."` | DEFAULT — parallel-first rule |
-| Task starts, need orientation | `icmg pack "<task>"` | One 4KB bundle replaces 5-10 explorations |
-| Need a specific file's context | `icmg context <file>` | File + symbols + neighbors + memory in 1 call |
-| Need a specific function | `icmg graph symbol <Name>` | 30-line symbol node, not 800-line file |
-| Want to know who calls X | `icmg graph callers <Name>` | Direct call edges |
-| Want to know what X depends on | `icmg graph callees <Name>` | Reverse direction |
-| Want full impact radius | `icmg graph reverse-impact <Name> --depth 5` | Transitive — who breaks |
-| Errored out — déjà vu? | `icmg explain "<error>"` | Past resolution match |
-| Big git diff to review | `icmg diff-summary --ref HEAD~5` | Symbol-grouped, not raw |
-| Run noisy command | `icmg run <cmd>` | Filtered output |
-| Big SQL query result | `icmg run sqlcmd ...` / `mysql ...` | DB filter: header + 20 rows + footer |
-| Run multiple cmds in parallel | `icmg parallel --task "..." --task "..."` | Concurrent (cap=cpu_count, max 32) |
-| Pipe existing cmd output | `<cmd> \| icmg filter <type>` | Filter w/o icmg run wrapper |
-| Cross-project recall | `icmg recall "X" --all-projects` | Iterates registered projects |
-| Paraphrase recall (fuzzy intent) | `icmg recall "X" --semantic` | Hybrid BM25+vec; finds "auth issue" → "fix login bug" |
-| Delegate sub-task to LLM | `icmg agent "<task>"` | Pack-bundle + LLM CLI + auto-store decision |
-| Interactive multi-turn | `icmg chat` | REPL: each turn packs context + agent + memorize |
-| Long-form context (post-mortem, ADR) | `icmg memoir add --title T --content-file F` | Stored never-truncated, importance=2 |
-| Browse stored memoirs | `icmg memoir list / show <id> / search <q>` | Cross-linkable via `link` |
-| Generate static knowledge site | `icmg wiki build [--include-memoirs]` | Markdown + HTML, no JS deps |
-| Stale memory hygiene | `icmg memory decay --threshold-days 30` | Reduces importance; preserves pinned (3) |
-| Bootstrap project for AI agents | `icmg init` | Installs hooks + AGENTS.md routing block |
-| List dir token-friendly | `icmg ls [path] [--tree / --ext / --json]` | Native, dirs first, sizes formatted |
-| Token budget report | `icmg budget` / `icmg budget --html` | Per-tool savings + HTML chart |
-| Outline of large file | `icmg summarize <file>` | Heuristic outline + symbol tree |
-| Save state mid-task | `icmg session save <name>` | Resume after `/clear` |
-| Recall old decision/error | `icmg recall "<query>" [--zone Z]` | BM25 semantic memory |
+If two steps don't share a file write and don't feed each other's output, parallel.
 
 ---
 
-## Workflow Patterns
+## Decision tree
 
-### Starting a new task
+| Situation | Reach for |
+|---|---|
+| Starting any task | `icmg pack "<task>"` |
+| Need a single file's context | `icmg context <file>` |
+| Need a specific symbol | `icmg graph symbol <name>` |
+| Who depends on this? | `icmg graph reverse-impact <name>` |
+| Reviewing a big diff | `icmg diff-summary` |
+| Running anything noisy (build, test, query, log tail) | `icmg run <cmd>` |
+| Hit an error you've seen before | `icmg explain "<error>"` |
+| Need recall over project memory | `icmg recall "<query>"` |
+| Want to delegate a sub-task | `icmg agent "<task>"` |
+| Sending a 30K+ token blob to the model | pipe through `icmg compress` |
+| Big stable preamble repeated each turn | `icmg pack ... --cache-prefix` |
+| Routine task that doesn't need analysis | `icmg pack ... --auto-think` |
+| Saving state before `/clear` or `/compact` | `icmg session save <name>` |
 
-```bash
-# 1. Get task-context bundle (4KB, all relevant memory + symbols)
-icmg pack "fix EnsureStockRegistered NullRef" --zone sync
-
-# 2. If specific file mentioned, get focused context
-icmg context src/Sync/SyncOrder.cs --max-bytes 3000
-
-# 3. Check if past resolution exists
-icmg explain "EnsureStockRegistered NullRef"
-```
-
-### Before refactoring
-
-```bash
-# Find all call sites — direct + transitive
-icmg graph callers ProcessOrder
-icmg graph reverse-impact ProcessOrder --depth 5
-```
-
-### After fixing a bug — preserve knowledge
-
-```bash
-icmg known-issue add "Pattern of recurring error" \
-    --fix "Concrete fix description with file:line" \
-    --zone <subsystem>
-```
-
-### Verification gate before commit
-
-```bash
-icmg verify --command "ctest" --phase 18
-icmg verify --command "cmake --build build" --phase 18
-icmg verify gate --phase 18  # exit 0 = all good, exit 1 = block
-```
-
-### End-of-session checkpoint
-
-```bash
-icmg session save "auth-refactor-step-2"
-icmg wflog save \
-    --goal "Refactor auth middleware" \
-    --decisions "Use JWT not session cookies" \
-    --rejected "OAuth proxy (overkill for internal API)" \
-    --open "Token expiry policy"
-```
+That covers ~95% of the day. Run `icmg --help` for the rest.
 
 ---
 
-## Token-Saving Substitutions
+## Token-saving substitutions (your default reflexes)
 
-When you would naturally reach for these tools, prefer icmg:
+When you'd normally do this... do this instead:
 
 | Default reflex | Better via icmg |
 |---|---|
-| `Read large_file.cs` | `icmg context large_file.cs` |
-| `Grep symbol_name` (across repo) | `icmg graph symbol symbol_name` |
+| `Read` a large file | `icmg context <file>` |
+| `Grep` a symbol across the repo | `icmg graph symbol <name>` |
 | `git diff` (verbose) | `icmg diff-summary` |
-| Explore imports manually | `icmg context <file>` (already includes them) |
-| Search docs/notes | `icmg recall "<query>"` |
-| Run `npm test` (1000-line output) | `icmg run npm test` (failures only) |
-| Grep for past similar bugs | `icmg explain "<error>"` |
-| Sending 30K+ tok of dynamic context | Pipe through `icmg compress` (30-60% saving, reversible) |
-| User asks "which command for X?" | `icmg ask "X"` |
-
-### Compression rules (Phase 39)
-
-`icmg compress` is for **dynamic context**, never source files about to be edited.
-
-| Use compress for | Skip compress for |
-|---|---|
-| `git diff`, build logs, stack traces | `.cs/.cpp/.ts/.py/.rs/.go` files about to be `Edit`-ed |
-| `icmg pack` output, `icmg recall` dumps | regex/exact-match search bodies |
-| Memory exports, decision history | Anthropic-cached prefix (auto-detected via `<<CACHED>>` sentinel) |
-| Markdown docs, JSON dumps | Anything < 8K tokens (overhead exceeds saving) |
-
-Telemetry persists in the project DB; review with `icmg compress --stats`.
+| Manual import exploration | `icmg context <file>` (already includes them) |
+| Search internal docs / notes | `icmg recall "<query>"` |
+| Run `npm test` then page through 1000-line output | `icmg run npm test` |
+| Grep history for similar bugs | `icmg explain "<error>"` |
+| Send a big log/diff to the model raw | pipe through `icmg compress` |
 
 ---
 
-## Project-Aware Conventions
+## Compression rules
 
-### Reserved memory topic prefixes
+`icmg compress` is for **dynamic context** — logs, diffs, dumps, history. Never for source files about to be edited.
 
-Don't collide with these prefixes when storing memory:
+- Auto-skips small inputs and source-code files
+- Pass-through preserves prompt-cache regions (don't worry about it)
+- Lossless by default; `--aggressive` is opt-in
 
-| Prefix | Owned by |
-|---|---|
-| `errors-resolved` | `icmg known-issue` |
-| `log-saved` | `icmg wflog` |
-| `session-snapshot` | `icmg session` |
-| `graph` | `icmg graph scan` (file context auto-sync) |
-| `decisions-<project>` | brainstorming convention |
-| `preferences` | user-corrections convention |
-
-When user says "remember X", default to `topic="context-<project>"` or `decisions-<project>` unless one of above clearly applies.
-
-### Zone names
-
-Auto-detected from path globs (defaults: api, sync, ui, cli, mcp, rtk, memory, graph, rules, sp, import, data, viz, core, abbreviation, tests, schema, docs). User can `icmg zone add <name> <glob>` to extend. Always pass `--zone <name>` to recall when target is known to scope BM25.
+When in doubt, pipe and check the savings number it prints.
 
 ---
 
-## MCP Tools (when configured)
+## Thinking-budget rules
 
-If `.claude/mcp.json` includes icmg, these tools are available:
+Models think before they answer. That thinking is billed. Most of it is wasted on routine work.
 
-| Tool | Use when |
-|---|---|
-| `icmg_recall` | Need past memory hits |
-| `icmg_store` | Persist decision/error/preference |
-| `icmg_graph_context` | File-level context |
-| `icmg_graph_related` | Neighbor files |
-| `icmg_rule_apply` | Per-folder coding rules |
-| `icmg_sp_search` / `icmg_sp_context` / `icmg_sp_deps` | SQL stored procedures |
-| `icmg_abbr_expand` / `icmg_abbr_list` | User abbreviations |
-| `icmg_cmd_suggest` | Recall past commands |
-| `icmg_project_switch` | Cross-project queries |
-| `icmg_stats` | Project health |
+- Routine task (rename, format, list, lookup) → `pack ... --auto-think` will turn off the analysis pass
+- Hard problem (debug, refactor, design) → leave thinking on
+- Reply needs to be short → `pack ... --concise`
 
-Prefer MCP tools over shell `icmg` invocations when available — same data, no subprocess overhead.
+You can also force it with `--no-think`.
 
 ---
 
-## Anti-Patterns (avoid)
+## Memory conventions
 
-- **Reading large files without `icmg context` first.** You're burning tokens that icmg already indexed.
-- **Repeating searches across `/clear` boundaries.** Use `icmg session save` then `restore`.
-- **Storing 50 trivial notes.** icmg has importance levels — only `high`/`critical` survive long.
-- **Bypassing zones.** A no-zone recall scans everything; with zones it scopes 5-10× faster.
-- **Running raw `git diff` on big PRs.** Use `icmg diff-summary` first, fall back to `--full` only if needed.
-- **Running raw `sqlcmd`/`mysql`/`psql`** without `icmg run` — output not filtered, 10K-row dumps blow up context.
-- **Sequential `ctest && lint && typecheck`** when they're independent. Use `icmg parallel`.
-- **Ignoring `icmg explain` after an error.** Past fixes are usually 1 query away.
+Use these prefixes when storing memory so future sessions can find things:
 
----
+- `decisions-<topic>` — architectural choices, rejected approaches
+- `errors-resolved-<area>` — fix you don't want to redo
+- `prefs-<scope>` — user preferences, conventions
+- `memoir:<title>` — long-form essays, post-mortems
 
-## Storage / Privacy
-
-- All data stored in `<project_root>/.icmg/data.db` (SQLite WAL).
-- Cross-project registry in `~/.icmg/global.db`.
-- `.icmg/` is gitignored by default (project-local, not shared).
-- No network calls, no telemetry. Pure local SQLite.
+Importance levels: low / med / high / critical. High and above survive eviction.
 
 ---
 
-## Versioning
+## Anti-patterns
 
-- Current: `icmg --version` shows installed version.
-- Phases shipped (token-efficiency track): 17 (zones), 18 (symbol nodes), 19 (context bundles), 22 (workflow integration).
-- Migrations are forward-only — `icmg doctor` reports schema version.
+Don't:
+- Read a file you could `context` or `graph symbol`
+- Run a noisy command without `icmg run`
+- Send a 30K+ blob to the model without piping through `compress`
+- Re-explain project context every turn — pack it once with `--cache-prefix`
+- Pay for thinking on a one-line rename
+
+Do:
+- Pack once, drill in twice
+- Trust the filter (it knows the noise patterns)
+- Cache the stable, compress the dynamic
+- Save snapshots before risky operations
 
 ---
 
-## Further Reading
+## Local-first guarantees
 
-- `README.md` — full command reference
-- `CLAUDE.md` — Claude Code-specific context
-- `PROGRESS.md` — phase tracker + commit hashes
-- `docs/plans/*.md` — design docs per phase
-
-**One-line reminder:** if you're about to read more than 200 lines or run a verbose command, stop — there's an icmg shortcut.
+- Per-project SQLite — never leaves your machine
+- No cloud sync, no telemetry phoned home
+- Apache-2.0 — fork it, audit it, ship it
