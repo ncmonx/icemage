@@ -124,6 +124,21 @@ When you would naturally reach for these tools, prefer icmg:
 | Search docs/notes | `icmg recall "<query>"` |
 | Run `npm test` (1000-line output) | `icmg run npm test` (failures only) |
 | Grep for past similar bugs | `icmg explain "<error>"` |
+| Sending 30K+ tok of dynamic context | Pipe through `icmg compress` (30-60% saving, reversible) |
+| User asks "which command for X?" | `icmg ask "X"` |
+
+### Compression rules (Phase 39)
+
+`icmg compress` is for **dynamic context**, never source files about to be edited.
+
+| Use compress for | Skip compress for |
+|---|---|
+| `git diff`, build logs, stack traces | `.cs/.cpp/.ts/.py/.rs/.go` files about to be `Edit`-ed |
+| `icmg pack` output, `icmg recall` dumps | regex/exact-match search bodies |
+| Memory exports, decision history | Anthropic-cached prefix (auto-detected via `<<CACHED>>` sentinel) |
+| Markdown docs, JSON dumps | Anything < 8K tokens (overhead exceeds saving) |
+
+Telemetry persists in the project DB; review with `icmg compress --stats`.
 
 ---
 

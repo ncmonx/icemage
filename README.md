@@ -1,18 +1,21 @@
 # icmg — Unified Memory, Knowledge Graph & Token-Saving CLI
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-18%2F18%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-38%2F38%20passing-brightgreen)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **Single C++17 binary** unifying:
 
 - **ICM (memory)** — BM25-ranked persistent memory with importance + recency decay
-- **Knowledge Graph** — files + symbols (functions, classes, SPs) + typed edges
+- **Knowledge Graph** — files + symbols (functions, classes, SPs) + typed edges (tree-sitter C/C++ AST in v0.18+, regex fallback for other languages)
 - **Tkil** — token-saving command filter (formerly RTK; renamed to avoid trademark collision)
 - **Workflow gates** — verify, design, phase lifecycle, known-issue registry
 - **Context bundles** — single-call aggregation (`context`, `pack`, `diff-summary`)
+- **Semantic prompt compression** (Phase 39, v0.19+) — `icmg compress` cuts dynamic context tokens 30-60% via reversible glossary; `icmg expand` round-trips
+- **Embedded HTTP dashboard** — `icmg serve` (read-only audit + recall UI)
+- **MCP server** — 14 tools exposed to Claude Code / any MCP client
 
-> **Mission:** make Claude / Cursor / any AI coding assistant **70-85% more token-efficient** without losing context.
+> **Mission:** make Claude / Cursor / any AI coding assistant **70-90% more token-efficient** without losing context.
 
 ---
 
@@ -52,6 +55,36 @@ Claude Code sessions burn 50K+ tokens reading large files, running noisy command
 | 5-10 Read+Grep+Glob to start a task | `icmg pack "task description"` → one 4KB bundle |
 | Re-explain context after each `/clear` | `icmg session save mytask` → snapshot, restore later |
 | Same error solved twice | `icmg known-issue add/match` → deduplicated past fixes |
+| 30K-token raw log dump | `icmg compress` → 12K with reversible glossary |
+
+---
+
+## Semantic Compression (v0.19+)
+
+`icmg compress` cuts dynamic prompt tokens **30-60%** through a reversible glossary that aliases repeated long paths and identifiers, then optionally strips boilerplate filler.
+
+```bash
+# Compress a big diff before sending to Claude
+git diff HEAD~5 | icmg compress > /tmp/diff.compressed
+# [compress] 28412→11203 tok (60% saved) in 84ms
+
+# Pipe pack output through compress
+icmg pack "fix auth bug" | icmg compress --aggressive
+
+# Reverse the compression (round-trip exact in lossless mode)
+icmg expand < /tmp/diff.compressed
+
+# 30-day telemetry (token totals, % saved)
+icmg compress --stats
+```
+
+**Best practices encoded:**
+- Auto-skip when input < 8K tokens (overhead > saving)
+- Auto-skip on source-code extensions (`.cs`, `.cpp`, `.ts`, …) — lossy edits would break byte-offsets
+- Pass-through `<<CACHED>>...<</CACHED>>` regions so Anthropic prompt cache stays valid
+- Lossless by default; `--aggressive` opt-in for filler-strip
+
+**Caveat:** byte compression (gzip/brotli) does NOT save tokens — Anthropic tokenizes plaintext. icmg compress is *semantic* (token-count reduction with reversible mapping), not zlib.
 
 ---
 
@@ -364,7 +397,7 @@ icmg ships an MCP (Model Context Protocol) server so Claude Code (and any MCP-aw
 
 ## Token-Efficiency Roadmap
 
-Implemented (v0.10.0):
+Implemented (v0.19.0 — current):
 
 | Phase | Feature | Saving |
 |---|---|---|
@@ -376,6 +409,12 @@ Implemented (v0.10.0):
 | 22 | Workflow integration — known-issue, verify, phase, design | Audit + 5-10× context retention |
 | 23 | Semantic recall + agent + MCP resources + chat REPL | Paraphrase 50→85%, MCP cache <10% overhead |
 | 24 | Wiki/HTML viz + memoir/decay + dedicated filters (vitest/playwright/tsc/lint) | Onboarding artifact + long-term memory hygiene |
+| 25-30 | Lint/style, parity, template scaffold, discover, communities, SQL graph | Style consistency + topic clustering + 99% saving on stored procedures |
+| 31-34 | index pipeline, zone config, PR review, audit HTML, ask, memoir, WordPiece tokenizer | Discoverability + offline tokenization |
+| 35-36 | pr-summary + memoir link --auto + ask | NL command discovery + decision capture |
+| 37 | tree-sitter C/C++ AST extractor | Symbol accuracy 95%+ on C/C++ |
+| 38 | Embedded HTTP dashboard (`icmg serve`) + multi-modal Python sidecar (PDF/OCR) | Visual audit + non-text input |
+| **39** | **Semantic prompt compression (`icmg compress`/`expand`)** | **30-60% on dynamic context, $0.10+ saved per big request** |
 
 Deferred to Phase 25+:
 

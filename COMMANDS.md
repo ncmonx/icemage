@@ -551,6 +551,68 @@ icmg zone resolve <path>               # debug
 
 ---
 
+## Semantic Compression (Phase 39, v0.19+)
+
+Reversible glossary-based prompt compression. Cuts dynamic-context tokens 30–60% on logs, diffs, and dumps. Lossless by default; round-trip exact.
+
+### `icmg compress`
+
+```bash
+icmg compress < input.txt > compressed.txt
+icmg compress --aggressive --kind .log mybuild.log
+icmg compress --threshold 4000 --json
+icmg compress --stats
+```
+
+| Flag | Effect |
+|---|---|
+| `--aggressive` | Add boilerplate filler-strip (lossy but readable) |
+| `--threshold N` | Skip if est-tokens < N (default 8000) |
+| `--kind <ext>` | Hint content kind (`.log`, `.md`, `.cs`, …); auto-skip source code |
+| `--force` | Bypass threshold + kind gate |
+| `--stats` | Print 30-day cumulative token totals + savings % |
+| `--json` | Emit machine-readable summary instead of compressed text |
+| `-o <file>` | Write to file instead of stdout |
+
+Output format:
+```
+<icmg-glossary v=1 hash=abc123…>
+@P1=src/middleware/authentication/jwt_validator.cpp
+$I1=AuthenticationMiddleware
+</icmg-glossary>
+<icmg-body>
+…body using @P1 and $I1 aliases…
+</icmg-body>
+```
+
+### `icmg expand`
+
+```bash
+icmg expand < compressed.txt > original.txt
+icmg expand --hash <H>      # load glossary from db by content hash
+icmg expand --lenient       # leave unknown aliases as-is
+```
+
+### Pipe patterns (recommended)
+
+```bash
+git diff HEAD~5 | icmg compress
+icmg pack "fix login bug" | icmg compress --aggressive
+icmg diff-summary --ref HEAD~10 | icmg compress > /tmp/pr-context.txt
+```
+
+### Skip rules (auto-applied)
+
+| Trigger | Behavior |
+|---|---|
+| Input < threshold tokens | Pass-through unchanged |
+| Content kind in source-code ext (`.cs/.cpp/.ts/...`) | Pass-through (lossy edit risk) |
+| Input contains `<<CACHED>>...<</CACHED>>` sentinel | Pass-through (preserve Anthropic prompt cache) |
+
+**Caveat:** `icmg compress` is *semantic* token reduction, not byte compression. gzip would produce binary that Claude tokenizes as garbage. The glossary approach cuts actual token count while staying reversible.
+
+---
+
 ## Global Flags
 
 | Flag | Effect |
