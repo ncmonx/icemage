@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.14.1 LANGUAGES CXX C)
+project(icmg VERSION 0.14.2 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -115,3 +115,6 @@ add_icmg_test(test_lint_style tests/cli/test_lint_style.cpp)
 add_icmg_test(test_known_issue_auto tests/cli/test_known_issue_auto.cpp)
 add_icmg_test(test_config tests/cli/test_config.cpp)
 add_icmg_test(test_zone_config tests/cli/test_zone_config.cpp)
+add_icmg_test(test_review tests/cli/test_review.cpp)
+add_icmg_test(test_audit tests/cli/test_audit.cpp)
+add_icmg_test(test_index tests/cli/test_index.cpp)
