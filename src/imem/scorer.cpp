@@ -108,7 +108,7 @@ Scorer::ScoreDetail Scorer::scoreDetailed(const std::string& query,
     int imp = std::max(0, std::min(3, node.importance));
     d.importance_mult = mult[imp];
 
-    d.total = d.bm25 * d.recency * d.freq * d.importance_mult;
+    d.total = d.bm25 * d.recency * d.freq * d.importance_mult * node.feedback_bias;
 
     // Matched tokens
     auto q_tokens = tokenize(query);

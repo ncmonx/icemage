@@ -11,6 +11,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/global_db.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../embed/embedder.hpp"
 #include "../../embed/embed_store.hpp"
@@ -42,9 +43,11 @@ public:
         if (hasFlag(args, "--help")) { usage(); return 0; }
         bool dry      = hasFlag(args, "--dry-run");
         bool json_out = hasFlag(args, "--json");
+        bool all_proj = hasFlag(args, "--all-projects");
         std::string prefix = flagValue(args, "--topic-prefix");
 
         auto& cfg = core::Config::instance();
+        if (all_proj) return runAll(cfg, dry, prefix);
         core::Db db(cfg.projectDbPath("."));
         imem::MemoryStore store(db);
         auto embedder = embed::makeEmbedder();
@@ -130,6 +133,43 @@ public:
                    "WHERE id = ?", {std::to_string(loser.id)});
         }
         std::cout << "  applied. " << merges.size() << " loser(s) soft-deleted; freq summed into keepers.\n";
+        return 0;
+    }
+
+    int runAll(core::Config& cfg, bool dry, const std::string& prefix) {
+        try {
+            auto& gdb = core::GlobalDb::instance();
+            gdb.init();
+            auto projs = gdb.listProjects();
+            if (projs.empty()) {
+                std::cerr << "consolidate --all-projects: no registered projects\n";
+                return 1;
+            }
+            int total_merges = 0;
+            for (auto& p : projs) {
+                if (p.db_path.empty()) continue;
+                std::cout << "[" << p.name << "] " << p.db_path << "\n";
+                try {
+                    cfg.setProjectDbOverride(p.db_path);
+                    // Re-call run() recursively without --all-projects flag.
+                    std::vector<std::string> args;
+                    if (dry) args.push_back("--dry-run");
+                    if (!prefix.empty()) { args.push_back("--topic-prefix"); args.push_back(prefix); }
+                    int ec = run(args);
+                    (void)ec;  // count comes from individual report
+                    cfg.clearProjectDbOverride();
+                } catch (const std::exception& e) {
+                    std::cerr << "  ! skipped: " << e.what() << "\n";
+                    cfg.clearProjectDbOverride();
+                }
+                ++total_merges;
+            }
+            std::cout << "consolidate --all-projects: processed " << total_merges
+                      << " project(s)" << (dry ? " [dry-run]" : "") << "\n";
+        } catch (const std::exception& e) {
+            std::cerr << "consolidate --all-projects: " << e.what() << "\n";
+            return 1;
+        }
         return 0;
     }
 

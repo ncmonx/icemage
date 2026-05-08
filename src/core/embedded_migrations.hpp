@@ -299,6 +299,18 @@ CREATE TABLE IF NOT EXISTS templates (
 );
 CREATE INDEX IF NOT EXISTS idx_templates_source ON templates(source_path);
 )SQL"},
+        {12, R"SQL(
+-- 0012_feedback (Phase 27): recall feedback for reranker bias.
+CREATE TABLE IF NOT EXISTS feedback (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_id     INTEGER NOT NULL,
+    query       TEXT NOT NULL DEFAULT '',
+    score       INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_node    ON feedback(node_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at);
+)SQL"},
     };
 }
 

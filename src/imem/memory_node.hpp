@@ -23,6 +23,7 @@ struct MemoryNode {
     double      recency     = 0.0;
     double      freq_score  = 0.0;
     double      importance_mult = 0.0;
+    double      feedback_bias = 1.0;   // Phase 27: 0.8 .. 1.2 from avg user score
 };
 
 // Importance level helpers
