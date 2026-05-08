@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <sstream>
 #include <filesystem>
+#include <thread>
+#include <chrono>
 
 #ifndef _WIN32
 #  include <sys/stat.h>
@@ -44,8 +46,12 @@ void Db::applyPragmas() {
     run("PRAGMA journal_mode=WAL");
     run("PRAGMA synchronous=NORMAL");
     run("PRAGMA foreign_keys=ON");
-    run("PRAGMA busy_timeout=5000");
+    // Phase 28+ — `graph update --parallel` spawns N subprocess writers
+    // contending for single-writer lock. 30s gives time to drain queue.
+    run("PRAGMA busy_timeout=30000");
     run("PRAGMA cache_size=-8000"); // 8 MB
+    // wal_autocheckpoint default 1000 pages is fine; explicit for clarity.
+    run("PRAGMA wal_autocheckpoint=1000");
 }
 
 void Db::checkRc(int rc, const std::string& ctx) const {
@@ -55,9 +61,33 @@ void Db::checkRc(int rc, const std::string& ctx) const {
     }
 }
 
+// SQLite's busy_timeout already retries internally, but on POSIX it can return
+// SQLITE_BUSY before timeout when WAL writer lock is held by another connection
+// in a transaction. Wrap step() with explicit backoff to absorb those bursts.
+static int stepWithRetry(sqlite3_stmt* stmt) {
+    int rc;
+    int backoff_ms = 5;
+    for (int attempt = 0; attempt < 60; ++attempt) {   // ~6s total
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_BUSY && rc != SQLITE_LOCKED) return rc;
+        std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+        if (backoff_ms < 200) backoff_ms = (int)(backoff_ms * 1.6);
+        sqlite3_reset(stmt);
+    }
+    return rc;
+}
+
 void Db::run(const std::string& sql) {
     char* errmsg = nullptr;
-    int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errmsg);
+    int rc;
+    int backoff_ms = 5;
+    for (int attempt = 0; attempt < 60; ++attempt) {
+        rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errmsg);
+        if (rc != SQLITE_BUSY && rc != SQLITE_LOCKED) break;
+        if (errmsg) { sqlite3_free(errmsg); errmsg = nullptr; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+        if (backoff_ms < 200) backoff_ms = (int)(backoff_ms * 1.6);
+    }
     if (rc != SQLITE_OK) {
         std::string msg = sql.substr(0, 60) + ": " + (errmsg ? errmsg : "?");
         sqlite3_free(errmsg);
@@ -74,7 +104,7 @@ void Db::run(const std::string& sql, const std::vector<std::string>& params) {
         sqlite3_bind_text(stmt, i + 1, params[i].c_str(), -1, SQLITE_TRANSIENT);
     }
 
-    rc = sqlite3_step(stmt);
+    rc = stepWithRetry(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
         throw DbError("exec: " + sql.substr(0, 60) + ": " + sqlite3_errmsg(db_));
@@ -92,7 +122,19 @@ void Db::query(const std::string& sql,
         sqlite3_bind_text(stmt, i + 1, params[i].c_str(), -1, SQLITE_TRANSIENT);
     }
 
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+    // Retry initial step on BUSY/LOCKED. Once we have first row, subsequent
+    // steps within same statement won't see contention.
+    int backoff_ms = 5;
+    for (int attempt = 0; attempt < 60; ++attempt) {
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_BUSY && rc != SQLITE_LOCKED) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+        if (backoff_ms < 200) backoff_ms = (int)(backoff_ms * 1.6);
+        sqlite3_reset(stmt);
+        for (int i = 0; i < (int)params.size(); ++i)
+            sqlite3_bind_text(stmt, i + 1, params[i].c_str(), -1, SQLITE_TRANSIENT);
+    }
+    while (rc == SQLITE_ROW) {
         int cols = sqlite3_column_count(stmt);
         Row row;
         row.reserve(cols);
@@ -101,6 +143,7 @@ void Db::query(const std::string& sql,
             row.push_back(val ? reinterpret_cast<const char*>(val) : "");
         }
         cb(row);
+        rc = sqlite3_step(stmt);
     }
 
     sqlite3_finalize(stmt);
