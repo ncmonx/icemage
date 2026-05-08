@@ -23,6 +23,10 @@
 #include <regex>
 #include <ctime>
 #include <vector>
+#include <cstdlib>
+#ifdef _WIN32
+  #include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -43,6 +47,9 @@ public:
             "  --transcript-glob G   Override path pattern\n"
             "                        (default: ~/.claude/projects/*/conversations/*.jsonl)\n"
             "  --no-transcript       Disable scanning entirely\n"
+            "  --apply               Auto-install bash-rewrite hook if signal >= threshold\n"
+            "  --threshold N         --apply trigger floor (default 5)\n"
+            "  --dry-run             With --apply, print plan only\n"
             "  --json\n";
     }
 
@@ -141,7 +148,42 @@ public:
             if (n++ >= top) break;
             std::cout << "  " << std::setw(4) << k << "x  " << p << "\n";
         }
+
+        // Phase 28 T3: --apply auto-installs bash-rewrite hook when signal high.
+        if (hasFlag(args, "--apply")) {
+            int threshold = 5;
+            try { threshold = std::stoi(flagValue(args, "--threshold", "5")); } catch (...) {}
+            int hot_total = 0;
+            for (auto& [c, k] : missed_v) if (k >= threshold) ++hot_total;
+            bool dry = hasFlag(args, "--dry-run");
+            std::cout << "\n--apply: " << hot_total << " command(s) above threshold " << threshold << "\n";
+            if (hot_total == 0) {
+                std::cout << "  No action — agent already routes through icmg consistently.\n";
+                return 0;
+            }
+            if (dry) {
+                std::cout << "  [dry-run] would invoke `icmg init --no-agents --no-embedder --force`\n";
+                return 0;
+            }
+            // Reuse `icmg init` logic to write hooks + settings.local.json.
+            std::string self = locateSelf();
+            std::string cmd = "\"" + self + "\" init --no-agents --no-embedder --force";
+            std::cout << "  installing bash-rewrite hook via `icmg init`...\n";
+            int rc = std::system(cmd.c_str());
+            if (rc == 0) std::cout << "  Done. Restart your AI agent to pick up new hook.\n";
+            else         std::cout << "  init failed (exit=" << rc << ")\n";
+            return rc;
+        }
         return 0;
+    }
+
+    static std::string locateSelf() {
+#ifdef _WIN32
+        char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+        return buf;
+#else
+        return "icmg";
+#endif
     }
 
 private:

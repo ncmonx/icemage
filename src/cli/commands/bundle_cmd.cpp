@@ -19,6 +19,7 @@
 #include <chrono>
 #include <algorithm>
 #include <regex>
+#include <nlohmann/json.hpp>
 #include <fstream>
 #include <set>
 #include <filesystem>
@@ -239,11 +240,55 @@ public:
             out << "## Files & Symbols (" << file_hits << ")\n" << files_section.str();
         }
 
+        // Phase 28 T2: detect "like X" / "copy of X" / "modeled on X" -> auto-include
+        // matching template manifest summary.
+        {
+            std::regex re_like(R"(\b(?:like|similar to|modeled on|based on|copy of)\s+(\w+))",
+                               std::regex::ECMAScript | std::regex::icase);
+            std::smatch m;
+            if (std::regex_search(task, m, re_like) && m.size() >= 2) {
+                std::string ref_name = m[1].str();
+                // Lookup template by source path stem matching ref_name.
+                std::string mj;
+                db.query("SELECT manifest_json FROM templates "
+                         "WHERE name = ? OR source_path LIKE ? OR source_path LIKE ? LIMIT 1",
+                         {ref_name, "%/" + ref_name + ".%", "%\\" + ref_name + ".%"},
+                         [&](const core::Row& r){ if (!r.empty()) mj = r[0]; });
+                if (!mj.empty()) {
+                    out << "## Reference template: " << ref_name << "\n";
+                    try {
+                        auto j = nlohmann::json::parse(mj);
+                        out << "  source: " << j.value("source", "") << "\n";
+                        if (j.contains("required_symbols") && j["required_symbols"].is_array()) {
+                            out << "  required_symbols (" << j["required_symbols"].size() << "):\n";
+                            for (auto& s : j["required_symbols"]) {
+                                out << "    - " << s.value("name", "")
+                                    << " (" << s.value("kind", "") << ")\n";
+                            }
+                        }
+                        if (j.contains("structural_markers") && j["structural_markers"].is_array()) {
+                            out << "  structural_markers:\n";
+                            for (size_t i = 0; i < j["structural_markers"].size(); ++i) {
+                                std::string sm = j["structural_markers"][i];
+                                out << "    " << sm << "\n";
+                            }
+                        }
+                    } catch (...) {
+                        out << "  (manifest parse failed)\n";
+                    }
+                    out << "\n  Verify after creation: `icmg parity " << ref_name
+                        << " <new-file>` or `icmg template apply " << ref_name
+                        << " --to <new-file> --check`\n\n";
+                }
+            }
+        }
+
         std::string spill;
         std::string capped = core::capOutput(out.str(), cap, spill);
         std::cout << capped;
         return 0;
     }
+
 };
 
 // =============================================================================
