@@ -48,11 +48,21 @@ public:
     int         dim() const override       { return 384; }
     std::string model() const override     { return "all-MiniLM-L6-v2"; }
 
-    std::vector<float> embed(const std::string& /*text*/) override {
-        // Phase 34 will replace this with real inference.
+    std::vector<float> embed(const std::string& text) override {
+        // Phase 37: real impl path is here when ORT linkage works.
+        // Algorithm sketch (filled when ORT lib usable):
+        //   1. lazy-load model_ via Ort::Session
+        //   2. tokenizer_.encode(text) -> input_ids + attention_mask
+        //   3. session.Run(...) -> last_hidden_state [1, seq, 384]
+        //   4. mask-weighted mean pool over tokens -> [384]
+        //   5. L2-normalize, return
+        //
+        // Currently: returns {} so factory falls back to Python sidecar.
+        // WordPiece tokenizer (Phase 34) ready and tested separately.
+        (void)text;
         core::Logger::instance().warn(
-            "ONNX backend stub — Phase 34 not implemented yet. "
-            "Falling back to nullptr (caller must catch + use Python sidecar)."
+            "ONNX backend: model found at " + model_path_ +
+            " but real inference deferred (link ORT in Phase 37 dedicated session)."
         );
         return {};
     }
