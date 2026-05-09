@@ -16,6 +16,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/url_sanitize.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <cstdio>
@@ -57,6 +58,13 @@ public:
             if (!a.empty() && a[0] != '-') { url = a; break; }
         }
         if (url.empty()) { std::cerr << "icmg fetch: requires <url>\n"; return 1; }
+
+        // Phase 50 T3: validate URL before shell-out.
+        std::string url_err;
+        if (!core::validateUrl(url, url_err)) {
+            std::cerr << "icmg fetch: rejected URL — " << url_err << "\n";
+            return 1;
+        }
 
         std::string kind_hint = flagValue(args, "--kind", "auto");
         bool refresh   = hasFlag(args, "--refresh");

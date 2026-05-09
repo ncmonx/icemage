@@ -16,6 +16,9 @@
 #include <sstream>
 #include <filesystem>
 #include <vector>
+#include <regex>
+#include <algorithm>
+#include <cctype>
 #ifdef _WIN32
   #include <windows.h>
 #else
@@ -29,7 +32,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.29.3";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.29.4";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -161,7 +164,82 @@ private:
 #endif
     }
 
-    int doApply(const Release& r, bool /*skip_verify*/) {
+    // Phase 50 T1: download + verify sha256 manifest. Returns true on match
+    // or when skip_verify=true. False on hard mismatch (caller aborts).
+    // Warns and proceeds when manifest absent (transition period — older
+    // releases pre-v0.29.4 lack .sha256 sidecar files).
+    bool verifySha256(const fs::path& downloaded, const std::string& asset_url,
+                       bool skip_verify) {
+        if (skip_verify) {
+            std::cerr << "icmg update: --skip-verify passed; skipping integrity check\n";
+            return true;
+        }
+        std::string sha_url = asset_url + ".sha256";
+        fs::path sha_tmp = downloaded; sha_tmp += ".sha256";
+        std::string cmd = "curl -sL --max-time 10 -o \"" + sha_tmp.string()
+                        + "\" \"" + sha_url + "\"";
+        auto res = core::safeExecShell(cmd, false, 12000);
+        if (res.exit_code != 0 || !fs::exists(sha_tmp) || fs::file_size(sha_tmp) < 16) {
+            std::cerr << "icmg update: WARNING — sha256 manifest unavailable at "
+                      << sha_url << "\n"
+                      << "  Older release without integrity manifest. Proceeding "
+                      << "without verification. Pass --skip-verify to silence.\n";
+            fs::remove(sha_tmp);
+            return true;  // transition period: don't break existing users
+        }
+        std::ifstream sf(sha_tmp);
+        std::string expected;
+        sf >> expected;  // first whitespace-separated token = sha256 hex
+        sf.close();
+        fs::remove(sha_tmp);
+        std::transform(expected.begin(), expected.end(), expected.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+        if (expected.size() != 64) {
+            std::cerr << "icmg update: malformed sha256 manifest (got '"
+                      << expected << "'); aborting\n";
+            return false;
+        }
+
+        // Compute sha256 of downloaded file via OS tool.
+        std::string actual = computeSha256(downloaded);
+        if (actual.empty()) {
+            std::cerr << "icmg update: WARNING — cannot compute sha256 (no certutil/"
+                      << "sha256sum/shasum on PATH); skipping verification\n";
+            return true;
+        }
+        if (actual != expected) {
+            std::cerr << "icmg update: SHA256 MISMATCH — file integrity check FAILED\n"
+                      << "  expected: " << expected << "\n"
+                      << "  actual:   " << actual << "\n"
+                      << "  Aborting. The release artifact may be tampered.\n"
+                      << "  Override with --skip-verify (NOT recommended).\n";
+            return false;
+        }
+        std::cout << "icmg update: sha256 verified (" << expected.substr(0, 16) << "...)\n";
+        return true;
+    }
+
+    static std::string computeSha256(const fs::path& file) {
+#ifdef _WIN32
+        // certutil -hashfile <path> SHA256 → outputs hash on a line w/o spaces
+        std::string cmd = "certutil -hashfile \"" + file.string() + "\" SHA256";
+#else
+        std::string cmd = "(sha256sum \"" + file.string()
+                        + "\" 2>/dev/null || shasum -a 256 \"" + file.string() + "\")";
+#endif
+        auto res = core::safeExecShell(cmd, false, 30000);
+        if (res.exit_code != 0 || res.out.empty()) return {};
+        // Parse: find first 64-hex-char token in output.
+        std::string out = res.out;
+        std::transform(out.begin(), out.end(), out.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+        std::regex hex_re("[0-9a-f]{64}");
+        std::smatch m;
+        if (std::regex_search(out, m, hex_re)) return m.str();
+        return {};
+    }
+
+    int doApply(const Release& r, bool skip_verify) {
         if (r.asset_url.empty()) {
             std::cerr << "icmg update: no platform asset on release " << r.tag << "\n";
             return 3;
@@ -189,6 +267,13 @@ private:
             fs::remove(tmp);
             return 5;
         }
+
+        // Phase 50 T1: integrity verify before swap.
+        if (!verifySha256(tmp, r.asset_url, skip_verify)) {
+            fs::remove(tmp);
+            return 8;
+        }
+
         std::error_code ec;
         // Backup current.
         fs::remove(bak, ec);                                  // remove old bak
