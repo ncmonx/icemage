@@ -18,6 +18,10 @@
 #include <vector>
 #ifdef _WIN32
   #include <windows.h>
+#else
+  #include <sys/wait.h>
+  #include <sys/stat.h>
+  #include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -25,7 +29,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.29.2";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.29.3";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -190,18 +194,31 @@ private:
         fs::remove(bak, ec);                                  // remove old bak
         fs::rename(self, bak, ec);
         if (ec) {
-            // Phase 46 T3: lock-detected → pending-restart pattern.
-            std::cerr << "icmg update: cannot replace running binary ("
-                      << ec.message() << ").\n";
+            // Phase 47.x: lock-detected → spawn detached helper that waits
+            // for our process to exit, then performs the swap. User gets
+            // automatic apply on the next invocation OR after current process
+            // terminates (whichever first). Falls back to pending-restart
+            // flag if helper spawn fails.
+            std::cerr << "icmg update: target locked by current process. "
+                      << "Spawning detached helper to apply on exit...\n";
+            if (spawnDetachedSwapHelper(self, tmp, bak, r.tag)) {
+                std::cerr << "  Helper armed. The new binary will be installed "
+                          << "as soon as this process exits.\n"
+                          << "  (Auto-confirmed on next `icmg <cmd>` invocation.)\n";
+                fs::path pending = self; pending += ".pending-restart";
+                std::ofstream pf(pending);
+                if (pf) pf << r.tag << "\n" << tmp.string() << "\n";
+                return 0;
+            }
+            // Helper spawn failed — fall back to pending-only flag.
+            std::cerr << "  Helper spawn failed. Falling back to pending-restart flag.\n";
             fs::path pending = self; pending += ".pending-restart";
             std::ofstream pf(pending);
             if (pf) {
                 pf << r.tag << "\n" << tmp.string() << "\n";
-                std::cerr << "  PENDING UPGRADE flagged. The new binary is at:\n"
-                          << "    " << tmp.string() << "\n"
-                          << "  Apply automatically by running ANY `icmg <cmd>` in a NEW terminal.\n"
-                          << "  (Or close all running icmg processes and re-run `icmg update --apply`.)\n";
-                return 0;  // not failure — pending state
+                std::cerr << "  PENDING UPGRADE flagged.\n"
+                          << "  Run ANY `icmg <cmd>` in a NEW terminal to complete.\n";
+                return 0;
             }
             std::cerr << "  Workaround: taskkill /F /IM icmg.exe (Windows) or "
                       << "killall icmg (Unix), then re-run `icmg update --apply`.\n";
@@ -260,6 +277,90 @@ private:
                       << "  • Run `icmg savings` later to verify ROI of new features\n"
                       << "════════════════════════════════════════════════════════════\n";
         } catch (...) {}
+    }
+
+    // Spawn detached helper that waits for current PID to exit, then
+    // moves staged .new -> self. Cross-platform: cmd.exe + ping for delay
+    // on Windows; sh + sleep on POSIX. Returns true on successful spawn.
+    bool spawnDetachedSwapHelper(const fs::path& self, const fs::path& staged,
+                                  const fs::path& bak, const std::string& tag) {
+#ifdef _WIN32
+        DWORD pid = GetCurrentProcessId();
+        std::string self_s    = self.string();
+        std::string staged_s  = staged.string();
+        std::string bak_s     = bak.string();
+        std::string pending_s = self_s + ".pending-restart";
+        // Build batch script content. Polls process existence; once gone,
+        // remove .bak (if any), rename self -> .bak, rename staged -> self,
+        // remove .pending-restart marker.
+        fs::path script = fs::temp_directory_path() / ("icmg_swap_" + std::to_string(pid) + ".cmd");
+        {
+            std::ofstream s(script);
+            if (!s) return false;
+            // Quote paths for Windows.
+            s << "@echo off\r\n";
+            s << "setlocal\r\n";
+            s << ":wait\r\n";
+            s << "tasklist /FI \"PID eq " << pid << "\" 2>nul | find \"" << pid << "\" >nul\r\n";
+            s << "if not errorlevel 1 (\r\n";
+            s << "  ping -n 2 127.0.0.1 >nul\r\n";  // ~1s delay
+            s << "  goto wait\r\n";
+            s << ")\r\n";
+            // Process gone — perform swap.
+            s << "if exist \"" << bak_s << "\" del /Q \"" << bak_s << "\"\r\n";
+            s << "ren \"" << self_s << "\" \"" << bak.filename().string() << "\" 2>nul\r\n";
+            s << "move /Y \"" << staged_s << "\" \"" << self_s << "\" >nul 2>&1\r\n";
+            s << "if exist \"" << pending_s << "\" del /Q \"" << pending_s << "\"\r\n";
+            s << "del /Q \"%~f0\"\r\n";  // self-delete
+        }
+        // Spawn detached.
+        STARTUPINFOA si{}; si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi{};
+        std::string cmd = "cmd.exe /c \"\"" + script.string() + "\"\"";
+        std::vector<char> mut(cmd.begin(), cmd.end());
+        mut.push_back(0);
+        BOOL ok = CreateProcessA(nullptr, mut.data(), nullptr, nullptr, FALSE,
+                                  DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                                  nullptr, nullptr, &si, &pi);
+        if (!ok) return false;
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        (void)tag;
+        return true;
+#else
+        // POSIX: simple shell wrapper. PID-based wait via /proc presence.
+        pid_t pid = ::getpid();
+        fs::path script = fs::temp_directory_path() / ("icmg_swap_" + std::to_string(pid) + ".sh");
+        {
+            std::ofstream s(script);
+            if (!s) return false;
+            s << "#!/bin/sh\n";
+            s << "while kill -0 " << pid << " 2>/dev/null; do sleep 1; done\n";
+            s << "rm -f \"" << bak.string() << "\"\n";
+            s << "mv \"" << self.string() << "\" \"" << bak.string() << "\" 2>/dev/null\n";
+            s << "mv \"" << staged.string() << "\" \"" << self.string() << "\"\n";
+            s << "chmod +x \"" << self.string() << "\"\n";
+            s << "rm -f \"" << self.string() << ".pending-restart\"\n";
+            s << "rm -- \"$0\"\n";
+        }
+        chmod(script.c_str(), 0755);
+        // Detach via fork + setsid + double-fork.
+        pid_t fp = fork();
+        if (fp < 0) return false;
+        if (fp == 0) {
+            setsid();
+            if (fork() == 0) {
+                execlp("sh", "sh", script.c_str(), nullptr);
+                _exit(1);
+            }
+            _exit(0);
+        }
+        ::waitpid(fp, nullptr, 0);
+        (void)tag;
+        return true;
+#endif
     }
 
     int doRollback() {
