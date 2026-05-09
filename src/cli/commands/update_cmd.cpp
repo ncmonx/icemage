@@ -32,7 +32,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.31.0";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.31.1";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -167,7 +167,7 @@ private:
     // Phase 50 T1: download + verify sha256 manifest. Returns true on match
     // or when skip_verify=true. False on hard mismatch (caller aborts).
     // Warns and proceeds when manifest absent (transition period — older
-    // releases pre-v0.31.0 lack .sha256 sidecar files).
+    // releases pre-v0.31.1 lack .sha256 sidecar files).
     bool verifySha256(const fs::path& downloaded, const std::string& asset_url,
                        bool skip_verify) {
         if (skip_verify) {
@@ -331,6 +331,9 @@ private:
                   << "  Verify: icmg --version\n"
                   << "  Rollback: icmg update --rollback\n\n";
 
+        // Phase 53 T1: per-DLL SHA256 verify against release manifest.
+        verifyBundledDlls(self, r, skip_verify);
+
         // Phase 52 T3: auto-refresh installed hooks if .claude/hooks exists in cwd.
         if (fs::exists(fs::current_path() / ".claude" / "hooks")) {
             std::cout << "Refreshing project hooks (.claude/hooks/icmg-*.sh)...\n";
@@ -460,6 +463,72 @@ private:
         (void)tag;
         return true;
 #endif
+    }
+
+    // Phase 53 T1: per-DLL integrity verify post-install. Skips silently for
+    // missing .sha256 sidecars (transition window). Hard mismatch = warn loudly
+    // but does NOT auto-rollback (user can manually rollback if needed).
+    void verifyBundledDlls(const fs::path& self, const Release& r, bool skip_verify) {
+        if (skip_verify) return;
+        // Asset URL pattern: replace icmg.exe filename in r.asset_url with each DLL.
+        std::string base_url = r.asset_url;
+        auto slash = base_url.find_last_of('/');
+        if (slash == std::string::npos) return;
+        base_url = base_url.substr(0, slash + 1);  // ".../v0.31.1/"
+
+        const std::vector<std::string> dlls = {
+            "onnxruntime.dll",
+            "onnxruntime_providers_shared.dll",
+            "libtree-sitter-0.26.dll",
+            "wasmtime.dll",
+            "libzstd.dll",
+            "libwinpthread-1.dll",
+        };
+
+        fs::path install_dir = self.parent_path();
+        int verified = 0, missing_manifest = 0, mismatch = 0;
+        for (auto& dll : dlls) {
+            fs::path local = install_dir / dll;
+            if (!fs::exists(local)) continue;  // optional, skip
+            std::string sha_url = base_url + dll + ".sha256";
+            fs::path sha_tmp = install_dir / (dll + ".sha256.tmp");
+            std::string cmd = "curl -sL --max-time 10 -o \"" + sha_tmp.string()
+                            + "\" \"" + sha_url + "\"";
+            auto res = core::safeExecShell(cmd, false, 12000);
+            if (res.exit_code != 0 || !fs::exists(sha_tmp) || fs::file_size(sha_tmp) < 16) {
+                ++missing_manifest;
+                fs::remove(sha_tmp);
+                continue;
+            }
+            std::ifstream sf(sha_tmp);
+            std::string expected;
+            sf >> expected;
+            sf.close();
+            fs::remove(sha_tmp);
+            std::transform(expected.begin(), expected.end(), expected.begin(),
+                           [](unsigned char c){ return std::tolower(c); });
+            if (expected.size() != 64) continue;
+            std::string actual = computeSha256(local);
+            if (actual.empty()) continue;
+            if (actual != expected) {
+                std::cerr << "icmg update: DLL SHA256 MISMATCH — " << dll << "\n"
+                          << "  expected: " << expected << "\n"
+                          << "  actual:   " << actual << "\n"
+                          << "  Run `icmg update --rollback` if you suspect tampering.\n";
+                ++mismatch;
+            } else {
+                ++verified;
+            }
+        }
+        if (verified > 0) {
+            std::cout << "icmg update: " << verified << " DLL(s) sha256-verified";
+            if (missing_manifest > 0)
+                std::cout << " (" << missing_manifest << " manifest not yet uploaded)";
+            std::cout << "\n";
+        }
+        if (mismatch > 0) {
+            std::cerr << "icmg update: " << mismatch << " DLL(s) failed integrity check\n";
+        }
     }
 
     int doRollback() {

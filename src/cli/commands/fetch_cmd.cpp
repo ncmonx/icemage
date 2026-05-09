@@ -17,6 +17,7 @@
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/url_sanitize.hpp"
+#include "../../core/fetch_reduce.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <cstdio>
@@ -228,7 +229,7 @@ private:
     }
 
     std::string reduce(const std::string& body, const std::string& kind, size_t cap) {
-        if (kind == "html") return reduceHtml(body, cap);
+        if (kind == "html") return core::reduceHtml(body, cap);
         if (kind == "json") return reduceJson(body, cap);
         if (kind == "pdf")  return reducePdf(body, cap);
         if (kind == "binary") return reduceBinary(body);
