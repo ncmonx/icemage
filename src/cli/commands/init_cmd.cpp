@@ -38,12 +38,25 @@ CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 echo "$CMD" | grep -qE '^RAW=1 ' && exit 0
 echo "$CMD" | grep -qE '(^|[ |&;])(icmg|rtk)[ ]+' && exit 0
 
+# Phase 58: log strict denial as JSONL (~/.icmg/strict-denials.jsonl).
+log_denial() {
+    local hook="$1" target="$2" reason="$3"
+    local home_dir="${USERPROFILE:-${HOME:-/tmp}}"
+    mkdir -p "$home_dir/.icmg" 2>/dev/null || return 0
+    printf '{"ts":%s,"hook":"%s","target":%s,"reason":%s}\n' \
+        "$(date +%s)" "$hook" \
+        "$(printf '%s' "$target" | jq -Rs .)" \
+        "$(printf '%s' "$reason" | jq -Rs .)" \
+        >> "$home_dir/.icmg/strict-denials.jsonl" 2>/dev/null || true
+}
+
 # Strict mode: cat/head/tail/less/more on a file >20KB → hard-deny, force icmg context.
 if [[ "${ICMG_STRICT_BASH:-0}" = "1" ]]; then
     FILE_CMD=$(echo "$CMD" | grep -oE '^[[:space:]]*(cat|head|tail|less|more)[[:space:]]+[^ |&;<>]+' | awk '{print $2}')
     if [[ -n "$FILE_CMD" && -f "$FILE_CMD" ]]; then
         SIZE=$(stat -c%s "$FILE_CMD" 2>/dev/null || stat -f%z "$FILE_CMD" 2>/dev/null || echo 0)
         if [[ "$SIZE" -gt 20000 ]]; then
+            log_denial "bash-strict" "$FILE_CMD" "cat/head/tail on file ${SIZE}B"
             jq -n --arg f "$FILE_CMD" --arg sz "$SIZE" '{
                 hookSpecificOutput: {
                     hookEventName: "PreToolUse",
@@ -58,6 +71,7 @@ fi
 
 PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status)([[:space:]]|$)'
 if echo "$CMD" | grep -qE "$PATTERN"; then
+    log_denial "bash-rewrite" "$CMD" "noisy command — use icmg run"
     jq -n --arg c "$CMD" '{
         hookSpecificOutput: {
             hookEventName: "PreToolUse",
@@ -90,6 +104,13 @@ SUMMARY=$(icmg summarize "$FILE" 2>/dev/null || true)
 # ICMG_SHRINK_STRICT=1 -> hard-deny + redirect (force agent to icmg context).
 # Default soft mode just injects summary as additionalContext (Read still runs).
 if [[ "${ICMG_SHRINK_STRICT:-0}" = "1" ]]; then
+    HOMED="${USERPROFILE:-${HOME:-/tmp}}"
+    mkdir -p "$HOMED/.icmg" 2>/dev/null || true
+    printf '{"ts":%s,"hook":"%s","target":%s,"reason":%s}\n' \
+        "$(date +%s)" "read-strict" \
+        "$(printf '%s' "$FILE" | jq -Rs .)" \
+        "$(printf '%s' "Read on file ${SIZE}B" | jq -Rs .)" \
+        >> "$HOMED/.icmg/strict-denials.jsonl" 2>/dev/null || true
     jq -n --arg f "$FILE" --arg sz "$SIZE" --arg s "$SUMMARY" '{
         hookSpecificOutput: {
             hookEventName: "PreToolUse",
@@ -427,6 +448,8 @@ private:
                     {{"type", "command"}, {"command",
                         "INPUT=$(cat); URL=$(echo \"$INPUT\" | jq -r '.tool_input.url // empty' 2>/dev/null); "
                         "[ -z \"$URL\" ] && exit 0; "
+                        "HOMED=\"${USERPROFILE:-${HOME:-/tmp}}\"; mkdir -p \"$HOMED/.icmg\" 2>/dev/null; "
+                        "printf '{\"ts\":%s,\"hook\":\"webfetch-strict\",\"target\":%s,\"reason\":\"WebFetch denied\"}\\n' \"$(date +%s)\" \"$(printf '%s' \"$URL\" | jq -Rs .)\" >> \"$HOMED/.icmg/strict-denials.jsonl\" 2>/dev/null || true; "
                         "jq -n --arg u \"$URL\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:(\"STRICT mode: use `icmg fetch \" + $u + \"` (cached + reduced, 70-90% token saving). Bypass: icmg strict off.\")}}'; "
                         "exit 2"}}
                 })}

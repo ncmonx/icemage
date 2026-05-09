@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -148,6 +149,9 @@ public:
                             + dollars(thinking.actual_tokens, rate_out);
         double cost_saved   = cost_without - cost_with;
 
+        // Phase 58: aggregate strict-mode denials within window.
+        auto denials = readStrictDenials(cutoff);
+
         if (json_out) {
             std::cout << "{\"window_days\":" << window_days
                       << ",\"total\":{\"calls\":" << total.calls
@@ -162,7 +166,10 @@ public:
                       << "\"filter\":{\"calls\":" << filter.calls << ",\"saved\":" << filter.saved << "},"
                       << "\"compress\":{\"calls\":" << compress.calls << ",\"saved\":" << compress.saved << "},"
                       << "\"thinking\":{\"calls\":" << thinking.calls << ",\"saved\":" << thinking.saved << "}}"
-                      << "}\n";
+                      << ",\"strict_denials\":{\"total\":" << denials.total;
+            for (auto& kv : denials.by_hook)
+                std::cout << ",\"" << kv.first << "\":" << kv.second;
+            std::cout << "}}\n";
             return 0;
         }
 
@@ -183,11 +190,52 @@ public:
                   << "Cost with    icmg: $" << cost_with << "\n"
                   << "You saved:         $" << cost_saved
                   << "  (" << std::fixed << std::setprecision(1)
-                  << pct(total.saved, total.raw_tokens) << "%)\n\n";
+                  << pct(total.saved, total.raw_tokens) << "%)\n";
+
+        if (denials.total > 0) {
+            std::cout << "\nStrict-mode denials in window: " << denials.total << "\n";
+            for (auto& kv : denials.by_hook) {
+                std::cout << "  " << std::left << std::setw(20) << kv.first
+                          << std::right << std::setw(6) << kv.second << " blocked\n";
+            }
+            std::cout << "  → each block redirected agent to icmg context/fetch\n";
+        }
+        std::cout << "\n";
         return 0;
     }
 
 private:
+    // Phase 58: read ~/.icmg/strict-denials.jsonl, count by hook within window.
+    struct DenialBucketImpl { int64_t total = 0; std::map<std::string,int64_t> by_hook; };
+    DenialBucketImpl readStrictDenials(int64_t cutoff_ts) {
+        DenialBucketImpl out;
+        const char* home = std::getenv("USERPROFILE");
+        if (!home) home = std::getenv("HOME");
+        if (!home) return out;
+        std::filesystem::path log = std::filesystem::path(home) / ".icmg" / "strict-denials.jsonl";
+        if (!std::filesystem::exists(log)) return out;
+        std::ifstream f(log);
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line.empty()) continue;
+            // Cheap parse: find "ts": and "hook":. Avoids json dep on hot path.
+            auto ts_pos = line.find("\"ts\":");
+            if (ts_pos == std::string::npos) continue;
+            int64_t ts = 0;
+            try { ts = std::stoll(line.substr(ts_pos + 5)); } catch (...) { continue; }
+            if (ts < cutoff_ts) continue;
+            auto h_pos = line.find("\"hook\":\"");
+            if (h_pos == std::string::npos) continue;
+            h_pos += 8;
+            auto h_end = line.find('"', h_pos);
+            if (h_end == std::string::npos) continue;
+            std::string hook = line.substr(h_pos, h_end - h_pos);
+            ++out.total;
+            ++out.by_hook[hook];
+        }
+        return out;
+    }
+
     static void renderRow(const std::string& label, const Bucket& b) {
         std::cout << "  " << std::left << std::setw(32) << label
                   << std::right << std::setw(8) << b.calls << " calls "
