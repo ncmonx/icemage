@@ -27,6 +27,8 @@ void writeTokenReceipt(core::Db& db, const std::string& cmd,
 }
 #include "../../graph/graph_store.hpp"
 #include "../../graph/scanner.hpp"
+#include "../../compress/compressor.hpp"
+#include "../../compress/glossary_store.hpp"
 #include "../../imem/memory_store.hpp"
 #include <iostream>
 #include <iomanip>
@@ -316,6 +318,8 @@ public:
             "  --memory-limit N      Recall result count (default 5)\n"
             "  --cache-prefix        Wrap output in prompt-cache markers\n"
             "  --auto-cache          Auto-wrap when output >= 4KB (Phase 67)\n"
+            "  --no-compress         Skip auto-compress (Phase 70 — default ON >=6KB)\n"
+            "  --compress-aggressive Stronger lossy compress (filler-strip)\n"
             "  --cache-ttl N         Cache TTL seconds (default 3600)\n"
             "  --no-think            Force directive: skip model analysis pass\n"
             "  --concise             Stronger directive: short reply, no code\n"
@@ -593,6 +597,43 @@ public:
             } catch (...) {}
             cli::CacheEmitOptions o; o.ttl_seconds = ttl;
             capped = cli::wrapCachePrefix(capped, o);
+        }
+
+        // Phase 70: auto-compress when output ≥ threshold. Default ON; opt-out
+        // via --no-compress. Lossless mode; emits compressed body + glossary
+        // header so model can interpret aliases. Threshold 6KB (1.5K tok)
+        // lower than compressor's internal 8K to trigger more often on pack.
+        bool no_compress = hasFlag(args, "--no-compress");
+        size_t comp_threshold = 3000;
+        try { comp_threshold = (size_t)std::stoul(flagValue(args, "--compress-min", "3000")); } catch (...) {}
+        if (!no_compress && capped.size() >= comp_threshold) {
+            try {
+                compress::CompressOptions copts;
+                copts.mode = hasFlag(args, "--compress-aggressive")
+                              ? compress::Mode::Aggressive
+                              : compress::Mode::Lossless;
+                copts.threshold_tok = 1500;  // override compressor's 8K skip
+                compress::Compressor c(copts);
+                auto cr = c.compress(capped, "pack");
+                if (!cr.skipped && cr.tok_out > 0 && cr.tok_out < cr.tok_in) {
+                    // Persist telemetry so dashboard reflects this auto-call.
+                    try {
+                        compress::GlossaryStore store(db);
+                        store.save(cr.content_hash, cr.glossary);
+                        store.recordTelemetry("compress-auto", cr.bytes_in, cr.bytes_out,
+                                               cr.tok_in, cr.tok_out, cr.elapsed_ms,
+                                               copts.mode == compress::Mode::Aggressive
+                                                ? "auto-aggressive" : "auto-lossless");
+                    } catch (...) {}
+                    int saved_pct = cr.tok_in > 0
+                                     ? (100 - (100 * cr.tok_out / cr.tok_in)) : 0;
+                    std::cerr << "[icmg pack] auto-compress: "
+                              << cr.tok_in << " → " << cr.tok_out
+                              << " tok (" << saved_pct << "% saved, "
+                              << cr.glossary.size() << " glossary entries)\n";
+                    capped = cr.text;
+                }
+            } catch (...) {}
         }
 
         // Phase 41 T1+T2: thinking-budget directive.

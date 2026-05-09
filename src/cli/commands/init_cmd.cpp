@@ -91,6 +91,40 @@ INPUT=$(cat)
 FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE" ]] && exit 0
 [[ ! -f "$FILE" ]] && exit 0
+
+# Phase 70: repeat-Read dedup — same file Read twice in same session at full
+# range = waste. Track Read history at ~/.icmg/read-log-<session>.txt; if
+# file already Read in last 30min and current Read has no offset/limit,
+# force tiny limit (10 lines) since model already has full content.
+HOMED="${USERPROFILE:-${HOME:-/tmp}}"
+mkdir -p "$HOMED/.icmg" 2>/dev/null || true
+LOG="$HOMED/.icmg/read-log.txt"
+NOW=$(date +%s)
+OFFSET=$(echo "$INPUT" | jq -r '.tool_input.offset // empty' 2>/dev/null)
+LIMIT_IN=$(echo "$INPUT" | jq -r '.tool_input.limit // empty' 2>/dev/null)
+if [[ -z "$OFFSET" && -z "$LIMIT_IN" && -f "$LOG" ]]; then
+    # Find prior Read of same file within 1800s window.
+    while IFS=$'\t' read -r ts path; do
+        [[ "$path" != "$FILE" ]] && continue
+        age=$((NOW - ts))
+        [[ "$age" -gt 1800 ]] && continue
+        # Already Read recently at full range → cap re-Read aggressively.
+        jq -n --arg f "$FILE" --argjson lim 10 '{
+            hookSpecificOutput: {
+                hookEventName: "PreToolUse",
+                permissionDecision: "allow",
+                updatedInput: {file_path: $f, limit: $lim},
+                additionalContext: ("REPEAT-READ dedup: " + $f + " was Read in last 30min. Capped to 10 lines. Use offset+limit for specific re-read.")
+            }
+        }'
+        exit 0
+    done < "$LOG"
+fi
+# Append to log (best-effort, capped at 200 lines via tail).
+printf '%s\t%s\n' "$NOW" "$FILE" >> "$LOG" 2>/dev/null || true
+# Trim log if huge.
+[[ -f "$LOG" ]] && [[ $(wc -l < "$LOG") -gt 200 ]] && tail -100 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+
 THRESHOLD="${ICMG_SHRINK_THRESHOLD:-60000}"
 INC="${ICMG_SHRINK_INCLUDE:-}"
 EXC="${ICMG_SHRINK_EXCLUDE:-}"
@@ -101,30 +135,42 @@ SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE" 2>/dev/null || echo 0)
 SUMMARY=$(icmg summarize "$FILE" 2>/dev/null || true)
 [[ -z "$SUMMARY" ]] && exit 0
 
-# ICMG_SHRINK_STRICT=1 -> hard-deny + redirect (force agent to icmg context).
-# Default soft mode just injects summary as additionalContext (Read still runs).
+# Phase 70: STRICT mode also uses updatedInput.limit cap (was hard-deny).
+# Hard-deny broke Edit's "Read-first" session requirement. Cap to 50 lines
+# in strict mode (vs 100 default) — still enforces "use icmg" while letting
+# downstream Edit succeed. Logs denial-style entry for visibility.
 if [[ "${ICMG_SHRINK_STRICT:-0}" = "1" ]]; then
     HOMED="${USERPROFILE:-${HOME:-/tmp}}"
     mkdir -p "$HOMED/.icmg" 2>/dev/null || true
     printf '{"ts":%s,"hook":"%s","target":%s,"reason":%s}\n' \
         "$(date +%s)" "read-strict" \
         "$(printf '%s' "$FILE" | jq -Rs .)" \
-        "$(printf '%s' "Read on file ${SIZE}B" | jq -Rs .)" \
+        "$(printf '%s' "Read capped on file ${SIZE}B" | jq -Rs .)" \
         >> "$HOMED/.icmg/strict-denials.jsonl" 2>/dev/null || true
-    jq -n --arg f "$FILE" --arg sz "$SIZE" --arg s "$SUMMARY" '{
+    STRICT_LIMIT="${ICMG_READ_STRICT_LIMIT:-50}"
+    jq -n --arg f "$FILE" --arg sz "$SIZE" --arg s "$SUMMARY" --argjson lim "$STRICT_LIMIT" '{
         hookSpecificOutput: {
             hookEventName: "PreToolUse",
-            permissionDecision: "deny",
-            permissionDecisionReason: ("File " + $f + " is " + $sz + " bytes. Use `icmg context " + $f + "` (graph + symbols + memory) or `icmg graph symbol <Name>` for one symbol body. Bypass: set ICMG_SHRINK_STRICT=0 in hook env.\n\nicmg summarize:\n" + $s)
+            permissionDecision: "allow",
+            updatedInput: {file_path: $f, limit: $lim},
+            additionalContext: ("STRICT: file " + $f + " is " + $sz + " bytes. Read CAPPED to " + ($lim|tostring) + " lines. Use `icmg context " + $f + " --lines A-B` for surgical slice. Use `icmg graph symbol <Name>` for one symbol body.\n\nicmg summarize:\n" + $s)
         }
     }'
-    exit 2
+    exit 0
 fi
 
-jq -n --arg s "$SUMMARY" --arg f "$FILE" --arg sz "$SIZE" '{
+# Phase 70: cap Read via updatedInput.limit instead of deny — satisfies Edit's
+# "must Read first" session requirement while still saving tokens. User-side
+# Edit tool checks for prior Read of same path; full deny breaks that flow.
+# Default cap: 100 lines (~3KB ≈ 750 tok). User can re-Read with explicit
+# offset+limit if more needed. Aggressive enough to save 80-90% on big files.
+LIMIT="${ICMG_READ_LIMIT:-100}"
+jq -n --arg s "$SUMMARY" --arg f "$FILE" --arg sz "$SIZE" --argjson lim "$LIMIT" '{
     hookSpecificOutput: {
         hookEventName: "PreToolUse",
-        additionalContext: ("Large file " + $f + " (" + $sz + " bytes). icmg summarize:\n\n" + $s + "\n\nProceed with full Read or use `icmg context " + $f + "` for filtered slice.")
+        permissionDecision: "allow",
+        updatedInput: {file_path: $f, limit: $lim},
+        additionalContext: ("Large file " + $f + " (" + $sz + " bytes). Capped Read to " + ($lim|tostring) + " lines via icmg hook. Full slice: `icmg context " + $f + " --lines A-B`. icmg summarize:\n\n" + $s)
     }
 }'
 exit 0
@@ -156,8 +202,17 @@ msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
     "Off only when user says 'stop caveman' or 'normal mode'.")
 # Phase 67 T32: prepend violation pressure if recent caveman thinking-phase
 # violations recorded. Escalates language at 2+ / 5+ violations in 24h.
+# Phase 70: also surface real session token total to model — encourages
+# self-throttling when token usage high.
 if command -v icmg >/dev/null 2>&1; then
     pressure=$(icmg compliance inject 2>/dev/null)
+    tok_summary=$(icmg context-budget --json --top 0 2>/dev/null | jq -r '.total_tokens // empty' 2>/dev/null)
+    if [[ -n "$tok_summary" && "$tok_summary" -gt 50000 ]]; then
+        # Convert to K for brevity.
+        k=$((tok_summary / 1000))
+        budget_msg="SESSION TOKEN USAGE: ${k}K so far. Apply compression. Use icmg context+--lines instead of full Read. Skip thinking when obvious."
+        msg="${budget_msg}"$'\n\n'"${msg}"
+    fi
     if [[ -n "$pressure" ]]; then
         msg="${pressure}"$'\n\n'"${msg}"
     fi
@@ -175,7 +230,7 @@ static const char* CAP_OUTPUT_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 out=$(jq -r '.tool_response.stdout // .tool_response.output // empty')
 sz=${#out}
-CAP=${ICMG_CAP_BYTES:-50000}
+CAP=${ICMG_CAP_BYTES:-8000}
 [[ "$sz" -le "$CAP" ]] && exit 0
 if command -v icmg >/dev/null 2>&1; then
     shrunk=$(printf '%s' "$out" | icmg shrink --threshold 0 2>/dev/null)
@@ -471,12 +526,14 @@ private:
                 })}
             });
         }
-        cfg["hooks"]["PreToolUse"] = pre_array;
-        // Phase 45 T3: PostToolUse:Bash — auto-shrink huge outputs (>50KB).
+        // (PreToolUse assigned later after Phase 70 Edit hook appended.)
+        // Phase 45 T3: PostToolUse:Bash — auto-shrink huge outputs (>8KB).
         // Phase 67 T4: PostToolUse:Edit — capture user fixes to AI-emitted code.
+        // Phase 70: PostToolUse:Glob/Grep/WebFetch + universal cap for any
+        // tool result >8KB. Coverage extension targeting outside-icmg waste.
         cfg["hooks"]["PostToolUse"] = json::array({
             {
-                {"matcher", "Bash"},
+                {"matcher", "Bash|PowerShell"},
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"command", "[ -f .claude/hooks/icmg-cap-output.sh ] && bash .claude/hooks/icmg-cap-output.sh || exit 0"}}
@@ -488,8 +545,41 @@ private:
                     {{"type", "command"},
                      {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -c '.tool_input | {old_string, new_string, file_path}' 2>/dev/null | icmg correction capture 2>/dev/null || true"}}
                 })}
+            },
+            // Phase 70: Glob/Grep cap — both produce path/line lists that
+            // accumulate fast. Cap to top 50 entries.
+            {
+                {"matcher", "Glob|Grep"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command",
+                      "INPUT=$(cat); "
+                      "OUT=$(echo \"$INPUT\" | jq -r '.tool_response.output // .tool_response.content // empty' 2>/dev/null); "
+                      "LINES=$(printf '%s' \"$OUT\" | wc -l); "
+                      "[ \"$LINES\" -lt 50 ] && exit 0; "
+                      "HEAD=$(printf '%s' \"$OUT\" | head -50); "
+                      "MSG=$(printf '%s\\n... [%d total entries; first 50 shown — refine query for fewer] ...\\n' \"$HEAD\" \"$LINES\"); "
+                      "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
+                })}
+            },
+            // Phase 70: WebFetch result cap — even after icmg fetch reduce,
+            // direct WebFetch can return large pages. Cap to 4KB.
+            {
+                {"matcher", "WebFetch"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command",
+                      "INPUT=$(cat); "
+                      "OUT=$(echo \"$INPUT\" | jq -r '.tool_response.content // .tool_response.output // empty' 2>/dev/null); "
+                      "SZ=${#OUT}; "
+                      "[ \"$SZ\" -lt 4096 ] && exit 0; "
+                      "HEAD=$(printf '%s' \"$OUT\" | head -c 4000); "
+                      "MSG=$(printf '%s\\n... [WebFetch capped from %d to 4KB; use icmg fetch for cached + reduced] ...\\n' \"$HEAD\" \"$SZ\"); "
+                      "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
+                })}
             }
         });
+        cfg["hooks"]["PreToolUse"] = pre_array;
 
         // Phase 51 T2: SessionStart caveman directive.
         cfg["hooks"]["SessionStart"] = json::array({

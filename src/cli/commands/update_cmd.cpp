@@ -32,7 +32,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.33.3";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.33.4";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -168,7 +168,7 @@ private:
     // Phase 50 T1: download + verify sha256 manifest. Returns true on match
     // or when skip_verify=true. False on hard mismatch (caller aborts).
     // Warns and proceeds when manifest absent (transition period — older
-    // releases pre-v0.33.3 lack .sha256 sidecar files).
+    // releases pre-v0.33.4 lack .sha256 sidecar files).
     bool verifySha256(const fs::path& downloaded, const std::string& asset_url,
                        bool skip_verify) {
         if (skip_verify) {
@@ -495,7 +495,7 @@ private:
         std::string base_url = r.asset_url;
         auto slash = base_url.find_last_of('/');
         if (slash == std::string::npos) return 0;
-        base_url = base_url.substr(0, slash + 1);  // ".../v0.33.3/"
+        base_url = base_url.substr(0, slash + 1);  // ".../v0.33.4/"
 
         const std::vector<std::string> dlls = {
             "onnxruntime.dll",
