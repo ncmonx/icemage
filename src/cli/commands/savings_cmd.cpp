@@ -52,6 +52,8 @@ double dollars(int64_t tokens, double rate_per_mtok = 3.0) {
 } // namespace
 
 class SavingsCommand : public BaseCommand {
+    // Phase 68: extra layer buckets stashed for emitHtml (avoids large sig change).
+    Bucket pack_recpt_, strict_block_, fetch_cache_, image_cache_;
 public:
     std::string name()        const override { return "savings"; }
     std::string description() const override {
@@ -92,7 +94,7 @@ public:
         core::Db db(cfg.projectDbPath("."));
         int64_t cutoff = (int64_t)std::time(nullptr) - (int64_t)window_days * 86400;
 
-        Bucket filter, compress, thinking;
+        Bucket filter, compress, thinking, pack_recpt, strict_block, fetch_cache, image_cache;
 
         try {
             db.query("SELECT COUNT(*), COALESCE(SUM(raw_bytes),0), COALESCE(SUM(filtered_bytes),0), COALESCE(SUM(saved_tokens),0) "
@@ -140,11 +142,96 @@ public:
                      });
         } catch (...) {}
 
+        // Phase 68: pack-receipt rows (Phase 67 T1) — covers per-pack memory/
+        // graph/file hit token cost. Treats whole receipt as "with-icmg actual"
+        // since receipts only fire when pack actually used.
+        try {
+            db.query("SELECT COUNT(*), COALESCE(SUM(est_tokens),0) FROM token_receipts "
+                     "WHERE ts > ?",
+                     {std::to_string(cutoff)},
+                     [&](const core::Row& r){
+                         if (r.size() < 2) return;
+                         pack_recpt.calls = std::stoll(r[0]);
+                         pack_recpt.actual_tokens = std::stoll(r[1]);
+                         // No "without" baseline — pack always-on, no comparable raw.
+                         pack_recpt.raw_tokens = pack_recpt.actual_tokens;
+                         pack_recpt.saved = 0;
+                     });
+        } catch (...) {}
+
+        // Phase 68: strict-mode denials count (Phase 58). Each block redirects
+        // agent to icmg context/fetch — count the redirect as 1500 tokens
+        // saved on average (raw Read of file user would otherwise have).
+        {
+            const char* h = std::getenv("USERPROFILE");
+            if (!h) h = std::getenv("HOME");
+            if (h) {
+                std::filesystem::path log = std::filesystem::path(h) / ".icmg" / "strict-denials.jsonl";
+                if (std::filesystem::exists(log)) {
+                    std::ifstream f(log);
+                    std::string line;
+                    int64_t denial_count = 0;
+                    while (std::getline(f, line)) {
+                        auto pos = line.find("\"ts\":");
+                        if (pos == std::string::npos) continue;
+                        try {
+                            int64_t ts = std::stoll(line.substr(pos + 5));
+                            if (ts >= cutoff) ++denial_count;
+                        } catch (...) {}
+                    }
+                    strict_block.calls = denial_count;
+                    strict_block.raw_tokens = denial_count * 1500;
+                    strict_block.saved = denial_count * 1500;
+                    strict_block.actual_tokens = 0;
+                }
+            }
+        }
+
+        // Phase 68: fetch_cache hit savings — each cache hit = avoided
+        // re-download of (typically reduced) HTML payload.
+        try {
+            db.query("SELECT COUNT(*), COALESCE(SUM(bytes_in - bytes_out),0) FROM fetch_cache "
+                     "WHERE expires_at > ?",
+                     {std::to_string(std::time(nullptr))},
+                     [&](const core::Row& r){
+                         if (r.size() < 2) return;
+                         fetch_cache.calls = std::stoll(r[0]);
+                         int64_t bytes_saved = std::stoll(r[1]);
+                         fetch_cache.saved = bytes_saved / 4;
+                         fetch_cache.raw_tokens = fetch_cache.saved;
+                         fetch_cache.actual_tokens = 0;
+                     });
+        } catch (...) {}
+
+        // Phase 68: image_cache hit savings (OCR sidecar reuse).
+        try {
+            db.query("SELECT COUNT(*), COALESCE(SUM(LENGTH(text_extracted)),0) FROM image_cache "
+                     "WHERE created_at > ?",
+                     {std::to_string(cutoff)},
+                     [&](const core::Row& r){
+                         if (r.size() < 2) return;
+                         image_cache.calls = std::stoll(r[0]);
+                         // OCR'd text = extracted; vision-API tokens saved ~10× text size.
+                         int64_t text_bytes = std::stoll(r[1]);
+                         image_cache.saved = (text_bytes * 10) / 4;
+                         image_cache.raw_tokens = image_cache.saved;
+                         image_cache.actual_tokens = 0;
+                     });
+        } catch (...) {}
+
         Bucket total;
-        total.calls         = filter.calls + compress.calls + thinking.calls;
-        total.raw_tokens    = filter.raw_tokens + compress.raw_tokens + thinking.raw_tokens;
-        total.actual_tokens = filter.actual_tokens + compress.actual_tokens + thinking.actual_tokens;
-        total.saved         = filter.saved + compress.saved + thinking.saved;
+        total.calls         = filter.calls + compress.calls + thinking.calls
+                            + pack_recpt.calls + strict_block.calls
+                            + fetch_cache.calls + image_cache.calls;
+        total.raw_tokens    = filter.raw_tokens + compress.raw_tokens + thinking.raw_tokens
+                            + pack_recpt.raw_tokens + strict_block.raw_tokens
+                            + fetch_cache.raw_tokens + image_cache.raw_tokens;
+        total.actual_tokens = filter.actual_tokens + compress.actual_tokens + thinking.actual_tokens
+                            + pack_recpt.actual_tokens + strict_block.actual_tokens
+                            + fetch_cache.actual_tokens + image_cache.actual_tokens;
+        total.saved         = filter.saved + compress.saved + thinking.saved
+                            + pack_recpt.saved + strict_block.saved
+                            + fetch_cache.saved + image_cache.saved;
 
         // Cost estimate: filter+compress = input price; thinking = output price.
         // Phase 67 T25: split cost by input vs output rates.
@@ -180,6 +267,11 @@ public:
             return 0;
         }
 
+        // Phase 68: stash new buckets for emitHtml via member fields.
+        pack_recpt_   = pack_recpt;
+        strict_block_ = strict_block;
+        fetch_cache_  = fetch_cache;
+        image_cache_  = image_cache;
         if (html) return emitHtml(filter, compress, thinking, total,
                                    cost_without, cost_with, cost_saved,
                                    window_days, out_path);
@@ -190,6 +282,10 @@ public:
         renderRow("Command filter (icmg run)",      filter);
         renderRow("Compression  (icmg compress)",   compress);
         renderRow("Thinking     (--no-think)",      thinking);
+        if (pack_recpt.calls > 0)   renderRow("Pack receipts  (memory+graph)", pack_recpt);
+        if (strict_block.calls > 0) renderRow("Strict denials (read/web/bash)", strict_block);
+        if (fetch_cache.calls > 0)  renderRow("Fetch cache    (icmg fetch)", fetch_cache);
+        if (image_cache.calls > 0)  renderRow("Image OCR cache(icmg ingest)", image_cache);
         std::cout << std::string(64, '-') << "\n";
         renderRow("TOTAL",                            total);
         std::cout << "\n"
@@ -205,6 +301,7 @@ public:
         int64_t real_tok = fetchRealSessionTokens();
         if (real_tok > 0) {
             int coverage_pct = real_tok > 0 ? (int)(100 * total.raw_tokens / real_tok) : 0;
+            if (coverage_pct > 100) coverage_pct = 100;
             std::cout << "\nReal session tokens: " << real_tok
                       << "  (icmg-covered " << total.raw_tokens
                       << " = " << coverage_pct << "%, outside "
@@ -339,6 +436,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
             int64_t uncovered = real_tokens > instrumented ? real_tokens - instrumented : 0;
             int coverage_pct = real_tokens > 0
                                 ? (int)(100 * instrumented / real_tokens) : 0;
+            if (coverage_pct > 100) coverage_pct = 100;  // cap on small transcripts
             os << R"HTML(<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin-bottom:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">
 <div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Real session tokens</div><div style="font-size:28px;font-weight:700;color:#58a6ff">)HTML"
                << humanTok(real_tokens)
@@ -365,6 +463,10 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
         emitRow(os, "Command filter",  f);
         emitRow(os, "Compression",     c);
         emitRow(os, "Thinking budget", t);
+        if (pack_recpt_.calls > 0)   emitRow(os, "Pack receipts",   pack_recpt_);
+        if (strict_block_.calls > 0) emitRow(os, "Strict denials",  strict_block_);
+        if (fetch_cache_.calls > 0)  emitRow(os, "Fetch cache",     fetch_cache_);
+        if (image_cache_.calls > 0)  emitRow(os, "Image OCR cache", image_cache_);
         os << "<tr style='font-weight:700;background:#21262d'>";
         emitRow(os, "Total",           tot, false);
         os << "</tr>";

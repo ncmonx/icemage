@@ -23,6 +23,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <thread>
 #include <string>
 #include <vector>
 #include <chrono>
@@ -153,13 +154,38 @@ public:
 #else
         full_cmd = cmd + " < '" + tmp + "'";
 #endif
+        // Phase 68 T2: retry/backoff on transient errors.
+        // exit code 429 (rate-limit) / 503 (overload) / 504 (timeout) → retry
+        // up to 3x with exponential backoff (2s, 4s, 8s). Disable via --no-retry.
+        bool no_retry = hasFlag(args, "--no-retry");
+        int max_retries = no_retry ? 0 : 3;
         auto t0 = std::chrono::steady_clock::now();
-        auto res = core::safeExecShell(full_cmd, false, timeout * 1000);
+        core::ExecResult res;
+        int attempt = 0;
+        while (true) {
+            res = core::safeExecShell(full_cmd, false, timeout * 1000);
+            ++attempt;
+            bool transient = (res.exit_code == 429 || res.exit_code == 503 ||
+                              res.exit_code == 504);
+            // Some CLIs lift HTTP status codes to stderr; cheap detect.
+            if (!transient && (res.err.find("rate_limit") != std::string::npos ||
+                                res.err.find("overloaded") != std::string::npos ||
+                                res.err.find("Too Many Requests") != std::string::npos)) {
+                transient = true;
+            }
+            if (!transient || attempt > max_retries) break;
+            int wait_s = 1 << attempt;  // 2, 4, 8
+            std::cerr << "[icmg agent] transient error (exit " << res.exit_code
+                      << "), retry " << attempt << "/" << max_retries
+                      << " in " << wait_s << "s\n";
+            std::this_thread::sleep_for(std::chrono::seconds(wait_s));
+        }
         auto t1 = std::chrono::steady_clock::now();
         std::remove(tmp.c_str());
 
         if (res.exit_code != 0) {
-            std::cerr << "icmg agent: LLM exited " << res.exit_code << "\n"
+            std::cerr << "icmg agent: LLM exited " << res.exit_code
+                      << " after " << attempt << " attempt(s)\n"
                       << res.err;
             return res.exit_code;
         }

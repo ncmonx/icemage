@@ -16,6 +16,7 @@
 #include "../../core/exec_utils.hpp"
 #include "../../core/output_cap.hpp"
 #include "../ref_registry.hpp"
+#include "../pack_delta.hpp"
 #include <unordered_set>
 
 namespace icmg::cli {
@@ -25,6 +26,7 @@ void writeTokenReceipt(core::Db& db, const std::string& cmd,
                         int est_tokens);
 }
 #include "../../graph/graph_store.hpp"
+#include "../../graph/scanner.hpp"
 #include "../../imem/memory_store.hpp"
 #include <iostream>
 #include <iomanip>
@@ -89,7 +91,24 @@ public:
         imem::MemoryStore mem(db);
 
         auto node = store.getNode(file);
-        if (!node) { std::cerr << "icmg context: not found in graph: " << file << "\n"; return 1; }
+        if (!node) {
+            // Phase 68: auto-scan-on-miss. Project graph may be stale (file
+            // added after last `icmg graph scan`) or extension wasn't
+            // covered. Scan this single file inline, then retry getNode.
+            // Avoids "not in graph" → Claude falls back to native Read.
+            if (std::filesystem::exists(file)) {
+                std::cerr << "[icmg context] not in graph; scanning " << file << "...\n";
+                graph::Scanner scanner(store);
+                graph::Scanner::Options opts;
+                scanner.scan(file, opts);
+                node = store.getNode(file);
+            }
+            if (!node) {
+                std::cerr << "icmg context: not found in graph: " << file
+                          << " (and on-demand scan didn't index it — check ext support / file size)\n";
+                return 1;
+            }
+        }
 
         std::ostringstream out;
         out << "File: " << node->path << "  (lang=" << node->lang
@@ -667,31 +686,7 @@ public:
         return 0;
     }
 
-private:
-    // Line-set delta: returns lines in `cur` not present in `prev` (set-diff).
-    // Preserves order from `cur`. Cheap O(N+M) via hash set.
-    static std::string computePackDelta(const std::string& prev,
-                                         const std::string& cur) {
-        std::unordered_set<std::string> prev_lines;
-        std::istringstream ps(prev);
-        std::string line;
-        while (std::getline(ps, line)) {
-            // Trim trailing \r
-            while (!line.empty() && line.back() == '\r') line.pop_back();
-            if (!line.empty()) prev_lines.insert(line);
-        }
-        std::ostringstream out;
-        std::istringstream cs(cur);
-        while (std::getline(cs, line)) {
-            std::string trimmed = line;
-            while (!trimmed.empty() && trimmed.back() == '\r') trimmed.pop_back();
-            // Always emit blank lines (preserve structure) + lines not in prev.
-            if (trimmed.empty() || !prev_lines.count(trimmed)) {
-                out << line << "\n";
-            }
-        }
-        return out.str();
-    }
+    // Phase 68 T2: computePackDelta extracted to pack_delta.hpp for unit tests.
 };
 
 // =============================================================================

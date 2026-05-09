@@ -49,6 +49,15 @@ static const struct { const char* ext; const char* lang; } EXT_MAP[] = {
     {".cs","csharp"}, {".csx","csharp"},
     {".php","php"}, {".php5","php"}, {".phtml","php"},
     {".sql","sql"},
+    // Phase 68: doc/data/config files. Lang label only — no AST extractor;
+    // generic extractor still applies (regex symbol scan).
+    {".md","markdown"}, {".markdown","markdown"}, {".rst","markdown"},
+    {".json","json"}, {".jsonc","json"},
+    {".yaml","yaml"}, {".yml","yaml"},
+    {".toml","toml"},
+    {".xml","xml"},
+    {".sh","shell"}, {".bash","shell"}, {".zsh","shell"},
+    {".ps1","powershell"},
 };
 
 Scanner::Scanner(GraphStore& store) : store_(store) {}
