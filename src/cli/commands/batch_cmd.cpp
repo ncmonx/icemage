@@ -7,6 +7,7 @@
 // `claude api batch create batch.json` (or any compatible client).
 
 #include "../base_command.hpp"
+#include "../batch_builder.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -86,32 +87,15 @@ public:
         bool concise   = hasFlag(args, "--concise");
         bool caveman   = hasFlag(args, "--caveman");
 
-        std::string preamble;
-        if (caveman) {
-            preamble = "Caveman mode ultra. Drop articles/filler. Fragments OK. "
-                       "Arrows for causality. Reply under 60 words.\n\n";
-        } else if (concise) {
-            preamble = "Answer directly. No analysis. Reply under 100 words. "
-                       "No code blocks unless requested.\n\n";
-        } else if (no_think) {
-            preamble = "Answer directly without analysis. Single-pass response.\n\n";
-        }
-
-        nlohmann::json out;
-        out["requests"] = nlohmann::json::array();
-        int idx = 1;
-        for (auto& t : tasks) {
-            nlohmann::json req;
-            req["custom_id"] = id_prefix + "-" + std::to_string(idx++);
-            req["params"]["model"] = model;
-            req["params"]["max_tokens"] = max_tokens;
-            req["params"]["messages"] = nlohmann::json::array();
-            nlohmann::json m;
-            m["role"] = "user";
-            m["content"] = preamble + t;
-            req["params"]["messages"].push_back(m);
-            out["requests"].push_back(req);
-        }
+        BatchOpts opts;
+        opts.model = model;
+        opts.max_tokens = max_tokens;
+        opts.id_prefix = id_prefix;
+        opts.directive = caveman ? BatchDirective::Caveman
+                          : concise ? BatchDirective::Concise
+                          : no_think ? BatchDirective::NoThink
+                          : BatchDirective::None;
+        nlohmann::json out = buildBatchSpec(tasks, opts);
 
         std::string out_path = flagValue(args, "-o");
         if (!out_path.empty()) {
