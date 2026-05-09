@@ -136,6 +136,11 @@ public:
             while (std::getline(ss, l, ',')) opts.include_langs.push_back(l);
         }
         bool json_out = hasFlag(args, "--json");
+        // Phase 61: --no-mem-sync (alias --no-embed) skips ALL-nodes
+        // syncGraphToMemory loop. On large repos (10k+ files) full scan was
+        // dominated by this O(N) post-pass; opt-out lets users defer to
+        // an explicit `icmg embed memory` later.
+        bool no_mem_sync = hasFlag(args, "--no-mem-sync") || hasFlag(args, "--no-embed");
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
@@ -143,7 +148,7 @@ public:
         graph::Scanner scanner(store);
 
         int count = scanner.scan(path, opts);
-        int mem_synced = syncGraphToMemory(db, store);
+        int mem_synced = no_mem_sync ? 0 : syncGraphToMemory(db, store);
         if (json_out) {
             std::cout << "{\"scanned\":" << count
                       << ",\"nodes\":" << store.nodeCount()

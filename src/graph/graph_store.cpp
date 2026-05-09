@@ -186,6 +186,23 @@ std::vector<GraphNode> GraphStore::findSymbol(const std::string& name) {
         " FROM graph_nodes WHERE symbol_name LIKE ? LIMIT 20",
         {std::string("%") + name + "%"},
         [&](const core::Row& r) { out.push_back(rowToNode(r)); });
+    if (!out.empty()) return out;
+
+    // Phase 61: Fallback 4 — JS/TS file nodes store function/class names as
+    // JSON array in `symbols` column (not separate child rows like C# does).
+    // `["BackupTab","handleSave",...]` → match via JSON-token boundary.
+    // Returns the FILE node, signaling "the symbol is defined inside this file".
+    db_.query(
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
+        " FROM graph_nodes"
+        " WHERE kind='file' AND ("
+        "    symbols LIKE ? OR symbols LIKE ? OR symbols LIKE ? OR symbols LIKE ?"
+        " ) LIMIT 30",
+        {std::string("%\"") + name + "\"%",                      // ["foo","name",...]
+         std::string("%:\"") + name + "\"%",                     // {"key":"name"}
+         std::string("%[\"") + name + "\"%",                     // ["name",...]
+         std::string("%,\"") + name + "\"%"},                    // [...,"name"]
+        [&](const core::Row& r) { out.push_back(rowToNode(r)); });
     return out;
 }
 
