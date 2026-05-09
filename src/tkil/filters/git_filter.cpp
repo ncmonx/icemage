@@ -14,11 +14,21 @@ public:
         auto lines = splitLines(raw);
         res.original_lines = (int)lines.size();
 
-        // Determine git subcommand
-        bool is_diff   = command.find("git diff")   != std::string::npos ||
-                         command.find("git show")   != std::string::npos;
-        bool is_log    = command.find("git log")    != std::string::npos;
-        bool is_status = command.find("git status") != std::string::npos;
+        // Determine git subcommand. Use word-token search instead of "git X"
+        // substring so `git -C <path> status --short` still detects status.
+        auto hasSubcmd = [&command](const char* sub) {
+            std::string needle = std::string(" ") + sub;
+            // Look for " status" anywhere AND ensure it terminates as a word.
+            auto pos = command.find(needle);
+            if (pos == std::string::npos) return false;
+            size_t after = pos + needle.size();
+            return after >= command.size()
+                || command[after] == ' '
+                || command[after] == '\0';
+        };
+        bool is_diff   = hasSubcmd("diff") || hasSubcmd("show");
+        bool is_log    = hasSubcmd("log");
+        bool is_status = hasSubcmd("status");
 
         // Diff-summary modes (no hunk content) — bypass hunk filter, pass through.
         // Otherwise the @@-anchor logic below drops every line.

@@ -143,6 +143,54 @@ CmdType Detector::detect(const std::string& command) const {
     std::string cmd = command;
     while (!cmd.empty() && cmd.front() == ' ') cmd.erase(cmd.begin());
 
+    // Normalize `git <flags> <subcmd>` -> `git <subcmd>` so prefix patterns
+    // like "git status" still match `git -C "path" status --short`.
+    // Strips git-level flags between binary and subcommand:
+    //   -C <path>, -c <key=val>, --git-dir=, --work-tree=, --paginate, --no-pager,
+    //   --bare, --literal-pathspecs, -p
+    {
+        std::string lc = cmd;
+        std::transform(lc.begin(), lc.end(), lc.begin(), ::tolower);
+        if (lc.rfind("git ", 0) == 0) {
+            std::string rest = cmd.substr(4);
+            while (!rest.empty()) {
+                while (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
+                if (rest.empty() || rest[0] != '-') break;
+                if (rest.rfind("-C ", 0) == 0 || rest.rfind("-c ", 0) == 0) {
+                    rest.erase(0, 3);
+                    if (!rest.empty() && rest.front() == '"') {
+                        auto end = rest.find('"', 1);
+                        rest = (end == std::string::npos) ? "" : rest.substr(end + 1);
+                    } else {
+                        auto sp = rest.find(' ');
+                        rest = (sp == std::string::npos) ? "" : rest.substr(sp);
+                    }
+                    continue;
+                }
+                if (rest.rfind("--git-dir=", 0) == 0
+                 || rest.rfind("--work-tree=", 0) == 0
+                 || rest.rfind("--namespace=", 0) == 0) {
+                    auto sp = rest.find(' ');
+                    rest = (sp == std::string::npos) ? "" : rest.substr(sp);
+                    continue;
+                }
+                if (rest.rfind("--paginate", 0) == 0
+                 || rest.rfind("--no-pager", 0) == 0
+                 || rest.rfind("--literal-pathspecs", 0) == 0
+                 || rest.rfind("--bare", 0) == 0
+                 || rest.rfind("-p ", 0) == 0
+                 || rest == "-p") {
+                    auto sp = rest.find(' ');
+                    rest = (sp == std::string::npos) ? "" : rest.substr(sp);
+                    continue;
+                }
+                break;  // unknown flag — stop normalizing
+            }
+            while (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
+            if (!rest.empty()) cmd = "git " + rest;
+        }
+    }
+
     for (auto& p : patterns_) {
         // Prefix match (case-insensitive check via lowercase compare)
         std::string low_cmd = cmd;
