@@ -163,6 +163,27 @@ Open caveats:
 
 ---
 
+## Self-repair
+
+icmg is designed to recover from common failure modes on its own. The trade-off: recovery takes a few extra seconds in exchange for safety.
+
+| Situation | What happens |
+|---|---|
+| Update target binary locked (Windows) | Detached helper waits for the running process to exit, then performs the swap on the next invocation — no manual restart needed |
+| Update integrity mismatch (sha256) | Aborts before swap, keeps the previous binary in place |
+| DLL bundle drift after upgrade | Per-DLL sha256 verify catches mismatches and surfaces them so you can rollback |
+| Stale lockfile from killed process | Auto-detected via PID liveness probe and cleaned up |
+| Pending upgrade interrupted | Marker file resumes the swap on the next `icmg` invocation in any new terminal |
+| Hook scripts drift after upgrade | `update --apply` re-runs `init --install-hooks --force` automatically |
+| Telemetry tables grow unbounded | `icmg memory prune-telemetry` reclaims space; runs on demand |
+| DB schema lag | Migrations apply automatically on next open; backward-compatible |
+
+Most recovery paths take 1–3 seconds. A few (network re-fetch on integrity mismatch, helper-script wait for exit) can take 10–30 seconds. Safety is prioritized over speed — every recovery preserves the previous good state via `.bak` files so manual rollback is always available.
+
+Run `icmg health` any time to confirm everything is in order.
+
+---
+
 ## Honest limits
 
 - Windows is the primary target. Linux / macOS work but are tested less.
