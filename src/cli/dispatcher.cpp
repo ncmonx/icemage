@@ -97,6 +97,7 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"fetch",    "Download URL with content-aware reduction (HTML/JSON/PDF/binary) + cache"},
     {"batch",    "Emit Anthropic Batch API spec (50% bulk discount)"},
     {"sync",     "Team sync via git-tracked JSONL (init/push/pull/merge/status)"},
+    {"caveman",  "Toggle caveman directive auto-inject (on/off/status/level)"},
 };
 
 Dispatcher::Dispatcher() {}
@@ -214,7 +215,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.30.1 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.30.2 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -230,7 +231,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.30.1\n";
+    std::cout << "icmg 0.30.2\n";
 }
 
 } // namespace icmg::cli

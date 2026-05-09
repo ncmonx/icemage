@@ -90,6 +90,29 @@ jq -n --arg s "$SUMMARY" --arg f "$FILE" --arg sz "$SIZE" '{
 exit 0
 )BASH";
 
+// Phase 51 T2: SessionStart hook injects caveman directive when flag present.
+static const char* CAVEMAN_PROMPT_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. Toggle via `icmg caveman on/off`.
+set -uo pipefail
+flag="${HOME:-$USERPROFILE}/.icmg/caveman.flag"
+[[ -f "$flag" ]] || exit 0
+level=$(head -n1 "$flag" 2>/dev/null || echo ultra)
+msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
+    "Respond terse. All technical substance stay. Only fluff die." \
+    "Drop articles, filler, pleasantries, hedging. Fragments OK." \
+    "Short synonyms. Technical terms exact. Code blocks unchanged." \
+    "Pattern: [thing] [action] [reason]. [next step]." \
+    "Code/commits/security/PRs: write normal." \
+    "Apply to thinking phase when exposed by the model." \
+    "Off only when user says 'stop caveman' or 'normal mode'.")
+jq -n --arg m "$msg" '{
+    hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: $m
+    }
+}'
+)BASH";
+
 // Phase 45 T3: PostToolUse:Bash hook routes huge stdout through `icmg shrink`.
 static const char* CAP_OUTPUT_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
@@ -321,6 +344,8 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-cap-output.sh", CAP_OUTPUT_SH, force);
         // Phase 40 T2: PreCompact auto-snapshot.
         n += writeFile(root / ".claude" / "hooks" / "icmg-precompact-snapshot.py", PRECOMPACT_PY, force);
+        // Phase 51 T2: caveman SessionStart hook.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-caveman-prompt.sh", CAVEMAN_PROMPT_SH, force);
 
 #ifndef _WIN32
         // chmod +x on POSIX
@@ -371,6 +396,16 @@ private:
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"command", "[ -f .claude/hooks/icmg-cap-output.sh ] && bash .claude/hooks/icmg-cap-output.sh || exit 0"}}
+                })}
+            }
+        });
+
+        // Phase 51 T2: SessionStart caveman directive.
+        cfg["hooks"]["SessionStart"] = json::array({
+            {
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}}
                 })}
             }
         });
