@@ -15,7 +15,15 @@
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/output_cap.hpp"
+#include "../ref_registry.hpp"
 #include <unordered_set>
+
+namespace icmg::cli {
+// Defined in receipt_cmd.cpp — forward decl to avoid extra header.
+void writeTokenReceipt(core::Db& db, const std::string& cmd,
+                        const std::string& source, const std::string& label,
+                        int est_tokens);
+}
 #include "../../graph/graph_store.hpp"
 #include "../../imem/memory_store.hpp"
 #include <iostream>
@@ -57,6 +65,7 @@ public:
             "  --depth N         Neighbor depth (default: 1)\n"
             "  --no-symbols      Skip child symbol list\n"
             "  --no-memory       Skip related memory\n"
+            "  --no-content      Skip raw file body excerpt (default: include)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
             "  --json            JSON output\n";
     }
@@ -151,6 +160,41 @@ public:
             }
         }
 
+        // Phase 67 hotfix: emit actual file CONTENT excerpt so Claude doesn't
+        // fall back to raw Read after `icmg context`. Default ON; opt-out
+        // with --no-content. Body uses ~70% of remaining cap budget.
+        bool no_content = hasFlag(args, "--no-content");
+        if (!no_content) {
+            std::string meta = out.str();
+            size_t budget = (meta.size() < cap) ? (cap - meta.size()) : 256;
+            // Reserve some headroom for header + newlines.
+            if (budget > 256) budget -= 64;
+            namespace fs = std::filesystem;
+            // Try graph-stored path first; fall back to user-supplied path.
+            std::vector<std::string> candidates = {node->path, file};
+            std::string body;
+            std::string resolved;
+            for (auto& cand : candidates) {
+                std::ifstream f(cand, std::ios::binary);
+                if (!f) continue;
+                std::ostringstream ss; ss << f.rdbuf();
+                body = ss.str();
+                resolved = cand;
+                break;
+            }
+            if (!body.empty()) {
+                bool truncated = body.size() > budget;
+                if (truncated) body.resize(budget);
+                out << "\n--- Content (" << resolved
+                    << (truncated ? "; truncated" : "")
+                    << ") ---\n" << body;
+                if (truncated) out << "\n--- [content truncated; raise --max-bytes for more] ---\n";
+            } else {
+                out << "\n--- Content unavailable (graph path mismatch; try `icmg context "
+                    << node->path << "`) ---\n";
+            }
+        }
+
         // Cap output
         std::string spill;
         std::string capped = core::capOutput(out.str(), cap, spill);
@@ -176,6 +220,7 @@ public:
             "  --max-bytes N         Cap output (default 4096)\n"
             "  --memory-limit N      Recall result count (default 5)\n"
             "  --cache-prefix        Wrap output in prompt-cache markers\n"
+            "  --auto-cache          Auto-wrap when output >= 4KB (Phase 67)\n"
             "  --cache-ttl N         Cache TTL seconds (default 3600)\n"
             "  --no-think            Force directive: skip model analysis pass\n"
             "  --concise             Stronger directive: short reply, no code\n"
@@ -184,7 +229,10 @@ public:
             "  --full-think          Opt out of auto-think — keep full thinking pass\n"
             "  --thinking-stats      Show 30-day thinking-budget telemetry\n"
             "  --diff                Emit only delta vs previous pack (60-90% smaller on repeats)\n"
-            "  --diff-reset          Clear stored last-pack baseline\n";
+            "  --diff-reset          Clear stored last-pack baseline\n"
+            "  --ref-ids             Emit [ICMG-MEM-N] anchors; subsequent calls reuse\n"
+            "  --prune-audit         Drop memory hits below --prune-min-score (default 1.5)\n"
+            "  --prune-min-score N   Threshold for prune-audit (default 1.5)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -263,20 +311,66 @@ public:
         imem::MemoryStore mem(db);
         graph::GraphStore store(db);
 
+        // Phase 67 T2: per-session ref registry (opt-in via --ref-ids).
+        bool use_refs = hasFlag(args, "--ref-ids");
+        RefRegistry refs(std::filesystem::current_path().string());
+        // Phase 67 T6: --prune-audit drops low-score memory hits (score < 1.5)
+        // and empty-context graph hits before final output. Heuristic
+        // self-prune; no LLM round-trip.
+        bool prune_audit = hasFlag(args, "--prune-audit");
+        double prune_threshold = 1.5;
+        try { prune_threshold = std::stod(flagValue(args, "--prune-min-score", "1.5")); } catch (...) {}
+
         std::ostringstream out;
         out << "# Task Context: " << trunc(task, 80) << "\n\n";
 
         // 1. Memory recall
         auto recalled = zone.empty() ? mem.recall(task, mem_limit, false)
                                        : mem.recallInZone(task, zone, mem_limit, false);
+        // Phase 67 T6: prune low-score memory hits when --prune-audit set.
+        if (prune_audit) {
+            size_t before = recalled.size();
+            recalled.erase(
+                std::remove_if(recalled.begin(), recalled.end(),
+                    [prune_threshold](const auto& m){ return m.score < prune_threshold; }),
+                recalled.end());
+            size_t pruned = before - recalled.size();
+            if (pruned > 0) {
+                std::cerr << "[icmg pack] --prune-audit dropped "
+                          << pruned << " memory hit(s) below score "
+                          << prune_threshold << "\n";
+            }
+        }
         if (!recalled.empty()) {
+            size_t mem_start = out.tellp();
             out << "## Memory (top " << recalled.size() << ")\n";
             for (auto& m : recalled) {
-                out << "- [" << std::fixed << std::setprecision(1) << m.score
-                    << "] " << trunc(m.topic, 70) << "\n";
-                out << "  " << trunc(m.content, 120) << "\n";
+                std::string body = trunc(m.content, 120);
+                if (use_refs) {
+                    bool prior = refs.seen("MEM", body);
+                    std::string ref = refs.getOrAssign("MEM", body);
+                    if (prior && !ref.empty()) {
+                        // Subsequent emission — reference only, body deduped.
+                        out << "- Reuse " << ref << " ["
+                            << std::fixed << std::setprecision(1) << m.score
+                            << "] " << trunc(m.topic, 70) << "\n";
+                    } else {
+                        // First emission — full body + ID anchor.
+                        out << "- " << (ref.empty() ? "" : ref + " ")
+                            << "[" << std::fixed << std::setprecision(1) << m.score
+                            << "] " << trunc(m.topic, 70) << "\n  " << body << "\n";
+                    }
+                } else {
+                    out << "- [" << std::fixed << std::setprecision(1) << m.score
+                        << "] " << trunc(m.topic, 70) << "\n  " << body << "\n";
+                }
             }
             out << "\n";
+            // Phase 67 T1: receipt — bytes/4 ≈ tokens
+            size_t mem_bytes = (size_t)out.tellp() - mem_start;
+            writeTokenReceipt(db, "pack", "memory",
+                              "top " + std::to_string(recalled.size()),
+                              (int)(mem_bytes / 4));
         }
 
         // 2. Mentioned files: scan task tokens, look up symbol or file
@@ -307,7 +401,12 @@ public:
             }
         }
         if (file_hits > 0) {
+            size_t fs_start = out.tellp();
             out << "## Files & Symbols (" << file_hits << ")\n" << files_section.str();
+            size_t fs_bytes = (size_t)out.tellp() - fs_start;
+            writeTokenReceipt(db, "pack", "graph",
+                              std::to_string(file_hits) + " hit(s)",
+                              (int)(fs_bytes / 4));
         }
 
         // Phase 28 T2: detect "like X" / "copy of X" / "modeled on X" -> auto-include
@@ -359,7 +458,15 @@ public:
         }  // end else (cache-miss compute branch)
 
         // Phase 40 T1: optional Anthropic prompt-cache wrap.
-        if (hasFlag(args, "--cache-prefix")) {
+        // Phase 67 T12: --auto-cache enables cache-prefix when output >= 4KB
+        // (Anthropic recommends caching when prefix > ~1K tokens for ROI).
+        bool want_cache = hasFlag(args, "--cache-prefix");
+        if (hasFlag(args, "--auto-cache") && capped.size() >= 4096) {
+            want_cache = true;
+            std::cerr << "[icmg pack] auto-cache: output " << capped.size()
+                      << "B >= 4096B threshold, wrapping in cache markers\n";
+        }
+        if (want_cache) {
             int ttl = 3600;
             try {
                 std::string t = flagValue(args, "--cache-ttl");

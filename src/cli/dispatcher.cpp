@@ -99,6 +99,14 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"sync",     "Team sync via git-tracked JSONL (init/push/pull/merge/status)"},
     {"caveman",  "Toggle caveman directive auto-inject (on/off/status/level)"},
     {"health",   "Single sanity check (DB / hooks / version / sidecars / telemetry)"},
+    {"strict",   "Toggle hook-level rule enforcement (on/off/status)"},
+    {"fail",     "Anti-pattern memory: store/recall failed approaches"},
+    {"lint-claudemd", "Detect stale file paths / symbol refs in CLAUDE.md / AGENTS.md"},
+    {"test-select", "Pick test files affected by current diff"},
+    {"receipt",  "Itemized token receipts from recent pack/context/recall calls"},
+    {"distill",  "Auto-extract decisions/facts/anti-patterns from response text into memory"},
+    {"correction", "Track diffs between AI-emitted code and user fixes"},
+    {"entropy",  "File-edit entropy from git history (hot files = bad pack candidates)"},
 };
 
 Dispatcher::Dispatcher() {}
@@ -216,7 +224,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.32.10 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.33.0 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -232,7 +240,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.32.10\n";
+    std::cout << "icmg 0.33.0\n";
 }
 
 } // namespace icmg::cli

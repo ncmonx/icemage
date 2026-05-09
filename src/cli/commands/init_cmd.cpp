@@ -457,12 +457,20 @@ private:
         }
         cfg["hooks"]["PreToolUse"] = pre_array;
         // Phase 45 T3: PostToolUse:Bash — auto-shrink huge outputs (>50KB).
+        // Phase 67 T4: PostToolUse:Edit — capture user fixes to AI-emitted code.
         cfg["hooks"]["PostToolUse"] = json::array({
             {
                 {"matcher", "Bash"},
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"command", "[ -f .claude/hooks/icmg-cap-output.sh ] && bash .claude/hooks/icmg-cap-output.sh || exit 0"}}
+                })}
+            },
+            {
+                {"matcher", "Edit"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -c '.tool_input | {old_string, new_string, file_path}' 2>/dev/null | icmg correction capture 2>/dev/null || true"}}
                 })}
             }
         });
@@ -478,11 +486,23 @@ private:
         });
 
         // Phase 40 T2: PreCompact hook — snapshot session before /compact.
+        // Phase 67 T5: also distill session into memory primer for next session.
         cfg["hooks"]["PreCompact"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "python3 .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || python .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || true"}}
+                     {"command", "python3 .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || python .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || true"}},
+                    {{"type", "command"},
+                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.transcript // empty' 2>/dev/null | icmg distill session 2>/dev/null || true"}}
+                })}
+            }
+        });
+        // Phase 67 T3: Stop hook auto-distills assistant message into memory.
+        cfg["hooks"]["Stop"] = json::array({
+            {
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.message.content[]?.text // empty' 2>/dev/null | icmg distill auto --min-len 200 2>/dev/null || true"}}
                 })}
             }
         });

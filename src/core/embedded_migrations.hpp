@@ -410,6 +410,21 @@ CREATE TABLE IF NOT EXISTS sync_log (
 ALTER TABLE graph_nodes ADD COLUMN row_version INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE graph_nodes ADD COLUMN created_by TEXT NOT NULL DEFAULT '';
 )SQL"},
+        {20, R"SQL(
+-- 0020_token_receipts
+CREATE TABLE IF NOT EXISTS token_receipts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL DEFAULT '',
+    cmd         TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    label       TEXT NOT NULL DEFAULT '',
+    est_tokens  INTEGER NOT NULL DEFAULT 0,
+    useful_pct  INTEGER NOT NULL DEFAULT 0,
+    ts          INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_receipts_ts ON token_receipts(ts);
+CREATE INDEX IF NOT EXISTS idx_receipts_session ON token_receipts(session_id);
+)SQL"},
     };
 }
 
