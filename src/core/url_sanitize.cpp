@@ -50,7 +50,10 @@ bool validateUrl(const std::string& url, std::string& reason) {
         }
     }
     // Optional: validate basic shape via regex (host present).
-    static const std::regex shape(R"(^https?://[A-Za-z0-9._~:\-]+(/[^\s]*)?$)");
+    // Path/query/fragment chars per RFC 3986 unreserved + reserved.
+    static const std::regex shape(
+        R"(^https?://[A-Za-z0-9._~:\-]+(/[A-Za-z0-9._~:/?#\[\]@!*+,=%\-]*)?$)"
+    );
     if (!std::regex_match(url, shape)) {
         reason = "URL shape rejected (host/path validation)";
         return false;
