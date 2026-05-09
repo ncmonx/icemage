@@ -526,13 +526,35 @@ private:
     }
 
     // ---- impact-table (A4) -------------------------------------------------
+    // Phase 63: accept 3-part names `[DB].[dbo].[Order]` / `DB.dbo.Order` and
+    // bracketed bare `[Order]`. Strips DB/schema prefix + brackets to match
+    // the bare-name format scanner stores in tables_used.
+    static std::string normalizeTableName(const std::string& raw) {
+        std::string s = raw;
+        // Strip surrounding whitespace
+        while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(0, 1);
+        while (!s.empty() && (s.back()  == ' ' || s.back()  == '\t')) s.pop_back();
+        // 3-part: take last segment after final '.'
+        auto dot = s.find_last_of('.');
+        if (dot != std::string::npos) s = s.substr(dot + 1);
+        // Strip [brackets] / "quotes" / `backticks`
+        if (!s.empty() && (s.front() == '[' || s.front() == '"' || s.front() == '`')) s.erase(0, 1);
+        if (!s.empty() && (s.back()  == ']' || s.back()  == '"' || s.back()  == '`')) s.pop_back();
+        return s;
+    }
+
     int doImpactTable(sp::SpStore& store, const std::vector<std::string>& args) {
         if (args.size() < 2) { std::cerr << "icmg sp impact-table: requires <table>\n"; return 1; }
         std::string depth_str = flagValue(args, "--depth");
         int max_depth = depth_str.empty() ? 2 : std::stoi(depth_str);
-        std::string table = args[1];
+        std::string raw_input = args[1];
+        std::string table = normalizeTableName(raw_input);
 
-        std::cout << "Table: " << table << "\n";
+        if (raw_input != table) {
+            std::cout << "Table: " << table << " (normalized from " << raw_input << ")\n";
+        } else {
+            std::cout << "Table: " << table << "\n";
+        }
 
         // BFS
         std::vector<std::string> visited;

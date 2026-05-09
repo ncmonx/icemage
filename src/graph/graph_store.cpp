@@ -180,6 +180,10 @@ std::vector<GraphNode> GraphStore::findSymbol(const std::string& name) {
         [&](const core::Row& r) { out.push_back(rowToNode(r)); });
     if (!out.empty()) return out;
 
+    // Phase 63: skip noisy substring + JSON-array fallbacks for short queries
+    // (1-2 chars match nearly everything, drowns useful results).
+    if (name.size() < 3) return out;
+
     // Fallback 3: substring match (last resort, capped).
     db_.query(
         "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
