@@ -32,7 +32,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.31.5";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.32.0";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -85,6 +85,7 @@ public:
         bool preview  = flagValue(args, "--channel") == "preview";
         bool json_out = hasFlag(args, "--json");
         bool skip_verify = hasFlag(args, "--skip-verify");
+        bool no_auto_rollback = hasFlag(args, "--no-auto-rollback");
 
         if (rollback) return doRollback();
         if (!check && !apply) { usage(); return 1; }
@@ -110,7 +111,7 @@ public:
         if (check || cmp >= 0) return 0;
         if (!apply) return 0;
 
-        return doApply(latest, skip_verify);
+        return doApply(latest, skip_verify, no_auto_rollback);
     }
 
 private:
@@ -167,7 +168,7 @@ private:
     // Phase 50 T1: download + verify sha256 manifest. Returns true on match
     // or when skip_verify=true. False on hard mismatch (caller aborts).
     // Warns and proceeds when manifest absent (transition period — older
-    // releases pre-v0.31.5 lack .sha256 sidecar files).
+    // releases pre-v0.32.0 lack .sha256 sidecar files).
     bool verifySha256(const fs::path& downloaded, const std::string& asset_url,
                        bool skip_verify) {
         if (skip_verify) {
@@ -239,7 +240,7 @@ private:
         return {};
     }
 
-    int doApply(const Release& r, bool skip_verify) {
+    int doApply(const Release& r, bool skip_verify, bool no_auto_rollback = false) {
         if (r.asset_url.empty()) {
             std::cerr << "icmg update: no platform asset on release " << r.tag << "\n";
             return 3;
@@ -332,7 +333,23 @@ private:
                   << "  Rollback: icmg update --rollback\n\n";
 
         // Phase 53 T1: per-DLL SHA256 verify against release manifest.
-        verifyBundledDlls(self, r, skip_verify);
+        // Phase 56 T2: auto-rollback on mismatch (opt-out via --no-auto-rollback).
+        int dll_mismatch = verifyBundledDlls(self, r, skip_verify);
+        if (dll_mismatch > 0 && !no_auto_rollback) {
+            std::cerr << "icmg update: AUTO-ROLLBACK triggered ("
+                      << dll_mismatch << " DLL(s) failed integrity).\n"
+                      << "  Restoring " << bak.string() << " → " << self.string() << "\n";
+            std::error_code rec;
+            fs::path swap_p = self; swap_p += ".swap";
+            fs::rename(self, swap_p, rec);
+            fs::rename(bak, self, rec);
+            if (!rec) {
+                fs::remove(swap_p, rec);
+                std::cerr << "  Rollback complete. Re-run `icmg update --apply --skip-verify` to bypass.\n";
+                return 9;
+            }
+            std::cerr << "  Rollback FAILED: " << rec.message() << "\n";
+        }
 
         // Phase 52 T3: auto-refresh installed hooks if .claude/hooks exists in cwd.
         if (fs::exists(fs::current_path() / ".claude" / "hooks")) {
@@ -468,13 +485,13 @@ private:
     // Phase 53 T1: per-DLL integrity verify post-install. Skips silently for
     // missing .sha256 sidecars (transition window). Hard mismatch = warn loudly
     // but does NOT auto-rollback (user can manually rollback if needed).
-    void verifyBundledDlls(const fs::path& self, const Release& r, bool skip_verify) {
-        if (skip_verify) return;
+    int verifyBundledDlls(const fs::path& self, const Release& r, bool skip_verify) {
+        if (skip_verify) return 0;
         // Asset URL pattern: replace icmg.exe filename in r.asset_url with each DLL.
         std::string base_url = r.asset_url;
         auto slash = base_url.find_last_of('/');
-        if (slash == std::string::npos) return;
-        base_url = base_url.substr(0, slash + 1);  // ".../v0.31.5/"
+        if (slash == std::string::npos) return 0;
+        base_url = base_url.substr(0, slash + 1);  // ".../v0.32.0/"
 
         const std::vector<std::string> dlls = {
             "onnxruntime.dll",
@@ -529,6 +546,7 @@ private:
         if (mismatch > 0) {
             std::cerr << "icmg update: " << mismatch << " DLL(s) failed integrity check\n";
         }
+        return mismatch;
     }
 
     int doRollback() {

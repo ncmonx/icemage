@@ -37,6 +37,25 @@ CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [[ -z "$CMD" ]] && exit 0
 echo "$CMD" | grep -qE '^RAW=1 ' && exit 0
 echo "$CMD" | grep -qE '(^|[ |&;])(icmg|rtk)[ ]+' && exit 0
+
+# Strict mode: cat/head/tail/less/more on a file >20KB → hard-deny, force icmg context.
+if [[ "${ICMG_STRICT_BASH:-0}" = "1" ]]; then
+    FILE_CMD=$(echo "$CMD" | grep -oE '^[[:space:]]*(cat|head|tail|less|more)[[:space:]]+[^ |&;<>]+' | awk '{print $2}')
+    if [[ -n "$FILE_CMD" && -f "$FILE_CMD" ]]; then
+        SIZE=$(stat -c%s "$FILE_CMD" 2>/dev/null || stat -f%z "$FILE_CMD" 2>/dev/null || echo 0)
+        if [[ "$SIZE" -gt 20000 ]]; then
+            jq -n --arg f "$FILE_CMD" --arg sz "$SIZE" '{
+                hookSpecificOutput: {
+                    hookEventName: "PreToolUse",
+                    permissionDecision: "deny",
+                    permissionDecisionReason: ("File " + $f + " is " + $sz + " bytes. STRICT mode: use `icmg context " + $f + "` instead of cat/head/tail. Bypass: ICMG_STRICT_BASH=0.")
+                }
+            }'
+            exit 2
+        fi
+    fi
+fi
+
 PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status)([[:space:]]|$)'
 if echo "$CMD" | grep -qE "$PATTERN"; then
     jq -n --arg c "$CMD" '{
@@ -377,20 +396,19 @@ private:
             cfg = json::object();
         }
         if (!cfg.contains("hooks")) cfg["hooks"] = json::object();
-        cfg["hooks"]["PreToolUse"] = json::array({
+        json pre_array = json::array({
             {
                 {"matcher", "Bash"},
                 {"hooks",   json::array({
-                    {{"type", "command"}, {"command", "[ -f .claude/hooks/icmg-bash-rewrite.sh ] && bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
+                    {{"type", "command"}, {"command",
+                        std::string("[ -f .claude/hooks/icmg-bash-rewrite.sh ] && ") +
+                        (strict_read ? "ICMG_STRICT_BASH=1 " : "") +
+                        "bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
                 })}
             },
             {
                 {"matcher", "Read"},
                 {"hooks",   json::array({
-                    // --strict-read sets ICMG_SHRINK_STRICT=1 + lower threshold so
-                    // big files (>20KB) get hard-deny + redirect suggestion
-                    // (Use icmg context X). Source-code extensions still allowed
-                    // via ICMG_SHRINK_EXCLUDE so Edit-by-line workflow works.
                     {{"type", "command"}, {"command",
                         std::string("[ -f .claude/hooks/icmg-shrink-read.sh ] && ") +
                         (strict_read
@@ -400,6 +418,21 @@ private:
                 })}
             }
         });
+        // Phase 56 T1: WebFetch redirect to `icmg fetch` (cache + reduce → 70-90% off).
+        // Strict mode hard-denies; soft mode emits suggestion but allows.
+        if (strict_read) {
+            pre_array.push_back({
+                {"matcher", "WebFetch"},
+                {"hooks", json::array({
+                    {{"type", "command"}, {"command",
+                        "INPUT=$(cat); URL=$(echo \"$INPUT\" | jq -r '.tool_input.url // empty' 2>/dev/null); "
+                        "[ -z \"$URL\" ] && exit 0; "
+                        "jq -n --arg u \"$URL\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:(\"STRICT mode: use `icmg fetch \" + $u + \"` (cached + reduced, 70-90% token saving). Bypass: icmg strict off.\")}}'; "
+                        "exit 2"}}
+                })}
+            });
+        }
+        cfg["hooks"]["PreToolUse"] = pre_array;
         // Phase 45 T3: PostToolUse:Bash — auto-shrink huge outputs (>50KB).
         cfg["hooks"]["PostToolUse"] = json::array({
             {
