@@ -18,6 +18,7 @@
 #include <iomanip>
 #include <fstream>
 #include <sstream>
+#include <chrono>
 #include <filesystem>
 #include <map>
 #include <regex>
@@ -71,6 +72,33 @@ public:
             std::cout << "icmg discover: no transcripts found.\n"
                       << "  Looked at default ~/.claude/projects/*/conversations/*.jsonl\n"
                       << "  Override via --transcript-glob.\n";
+            return 0;
+        }
+
+        // Phase 64: mtime filter — skip transcripts older than --since cutoff
+        // BEFORE opening (avoids GB-scale JSONL parse on large transcript dirs).
+        // Then sort by mtime desc and cap via --max-files (default 200) so
+        // recent activity wins on busy machines.
+        int max_files = 200;
+        try { max_files = std::stoi(flagValue(args, "--max-files", "200")); } catch (...) {}
+        std::vector<std::pair<fs::path, int64_t>> with_mtime;
+        with_mtime.reserve(files.size());
+        for (auto& f : files) {
+            std::error_code ec;
+            auto wt = fs::last_write_time(f, ec);
+            if (ec) continue;
+            int64_t sec = std::chrono::duration_cast<std::chrono::seconds>(
+                wt.time_since_epoch()).count();
+            if (sec < cutoff) continue;  // older than --since window
+            with_mtime.push_back({f, sec});
+        }
+        std::sort(with_mtime.begin(), with_mtime.end(),
+                  [](auto& a, auto& b){ return a.second > b.second; });
+        if ((int)with_mtime.size() > max_files) with_mtime.resize(max_files);
+        files.clear();
+        for (auto& [p, _] : with_mtime) files.push_back(p);
+        if (files.empty()) {
+            std::cout << "icmg discover: no transcripts in --since window.\n";
             return 0;
         }
 

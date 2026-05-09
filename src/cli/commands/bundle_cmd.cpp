@@ -421,20 +421,30 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg diff-summary [--ref REF] [--full]\n\n"
+            "Usage: icmg diff-summary [--ref REF] [--full] [--limit N]\n\n"
             "Wraps `git diff [REF]` and groups changes by enclosing symbol\n"
-            "(via line_start/line_end of indexed graph nodes).\n";
+            "(via line_start/line_end of indexed graph nodes).\n\n"
+            "Options:\n"
+            "  --ref REF      Compare against REF (default: working tree vs index)\n"
+            "  --full         Append raw `git diff` output\n"
+            "  --limit N      Cap files printed (default 200) on huge changesets\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help")) { usage(); return 0; }
         std::string ref = flagValue(args, "--ref");
         bool full = hasFlag(args, "--full");
+        // Phase 64: cap file count on huge working trees (default 200).
+        int limit = 200;
+        try { limit = std::stoi(flagValue(args, "--limit", "200")); } catch (...) {}
 
-        // Run git diff (use --name-only first to get file list)
-        std::string cmd = "git diff --name-only";
-        if (!ref.empty()) cmd += " " + ref;
-        auto result = core::safeExec({"sh", "-c", cmd}, true, 30000);
+        // Phase 64: single git-diff with --unified=0 (no context lines, smallest
+        // payload) parsed inline by `diff --git a/X b/X` boundaries. Replaces
+        // O(N) subprocess spawns (1 git diff --name-only + N per-file diffs)
+        // with a single subprocess. Speeds up 10-100x on large working trees.
+        std::string raw_cmd = "git diff --unified=0";
+        if (!ref.empty()) raw_cmd += " " + ref;
+        auto result = core::safeExec({"sh", "-c", raw_cmd}, true, 60000);
         if (result.exit_code != 0) {
             std::cerr << "git diff failed: " << result.out << "\n";
             return 1;
@@ -447,49 +457,64 @@ public:
         if (!ref.empty()) std::cout << " (ref=" << ref << ")";
         std::cout << ":\n";
 
+        // Single-pass parse: scan for `diff --git a/<path> b/<path>` headers,
+        // collect `@@ ... +<start>,<len> @@` hunks per file.
+        std::regex file_re(R"(^diff --git a/(.+?) b/(.+)$)");
+        std::regex hunk_re(R"(^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@)");
         std::istringstream iss(result.out);
-        std::string fpath;
+        std::string line;
+        std::string cur_file;
+        std::vector<std::pair<int,int>> cur_ranges;
         int file_count = 0;
-        while (std::getline(iss, fpath)) {
-            while (!fpath.empty() && (fpath.back() == '\r' || fpath.back() == '\n')) fpath.pop_back();
-            if (fpath.empty()) continue;
-            ++file_count;
-            std::cout << "M " << fpath << "\n";
+        bool truncated = false;
 
-            // Get diff for this single file (compact)
-            std::string fcmd = "git diff " + (ref.empty() ? std::string() : ref + " ") + "-- \"" + fpath + "\"";
-            auto fdiff = core::safeExec({"sh", "-c", fcmd}, true, 15000);
-            // Parse @@ markers → list affected line ranges
-            std::regex hunk_re(R"(@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@)");
-            std::vector<std::pair<int,int>> ranges;
-            for (auto it = std::sregex_iterator(fdiff.out.begin(), fdiff.out.end(), hunk_re);
-                 it != std::sregex_iterator(); ++it) {
-                int start = std::stoi((*it)[1].str());
-                int len = (*it)[2].matched ? std::stoi((*it)[2].str()) : 1;
-                ranges.push_back({start, start + len - 1});
-            }
-            // Map ranges → enclosing symbols
-            for (auto& [s, e] : ranges) {
+        auto flushFile = [&]() {
+            if (cur_file.empty()) return;
+            ++file_count;
+            if (file_count > limit) { truncated = true; return; }
+            std::cout << "M " << cur_file << "\n";
+            for (auto& [s, e] : cur_ranges) {
                 std::string sym, kind;
                 db.query(
                     "SELECT COALESCE(symbol_name,''), kind FROM graph_nodes"
                     " WHERE path=? AND kind != 'file'"
                     "   AND line_start <= ? AND line_end >= ?"
                     " ORDER BY (line_end - line_start) ASC LIMIT 1",
-                    {fpath, std::to_string(s), std::to_string(e)},
+                    {cur_file, std::to_string(s), std::to_string(e)},
                     [&](const core::Row& r){ if (r.size() >= 2) { sym = r[0]; kind = r[1]; } });
                 if (!sym.empty())
                     std::cout << "  ~ " << kind << " " << sym << " (L" << s << "-" << e << ")\n";
                 else
                     std::cout << "  ~ L" << s << "-" << e << "\n";
             }
+        };
+
+        while (std::getline(iss, line)) {
+            while (!line.empty() && (line.back() == '\r')) line.pop_back();
+            std::smatch m;
+            if (std::regex_match(line, m, file_re)) {
+                flushFile();
+                cur_file = m[2].str();  // prefer b/ path (post-rename)
+                cur_ranges.clear();
+            } else if (std::regex_search(line, m, hunk_re)) {
+                int start = std::stoi(m[1].str());
+                int len = m[2].matched ? std::stoi(m[2].str()) : 1;
+                if (len == 0) len = 1;
+                cur_ranges.push_back({start, start + len - 1});
+            }
         }
+        flushFile();
+
         if (file_count == 0) std::cout << "  (no changes)\n";
+        if (truncated) {
+            std::cout << "  ... " << (file_count - limit) << " more file(s) truncated. "
+                      << "Raise --limit to see all.\n";
+        }
 
         if (full) {
             std::cout << "\n--- Full diff ---\n";
-            std::string raw_cmd = "git diff" + (ref.empty() ? std::string() : " " + ref);
-            auto raw = core::safeExec({"sh", "-c", raw_cmd}, true, 30000);
+            std::string raw_full = "git diff" + (ref.empty() ? std::string() : " " + ref);
+            auto raw = core::safeExec({"sh", "-c", raw_full}, true, 60000);
             std::cout << raw.out;
         }
         return 0;
