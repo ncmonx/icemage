@@ -665,6 +665,79 @@ Post-install also fetches release notes via GitHub API and prints a "WHAT'S NEW"
 
 ---
 
+## ingest — OCR images locally (v0.28+)
+
+```bash
+icmg ingest screenshot.png             # OCR text + 7d hash cache
+icmg ingest --raw shot.png             # metadata only, no OCR
+icmg ingest --refresh shot.png         # bypass cache
+icmg ingest --json shot.png            # machine output
+icmg ingest --min-chars 30 shot.png    # tune confidence threshold
+```
+
+| Flag | Effect |
+|---|---|
+| `--raw` | Skip OCR; print hash + size only |
+| `--refresh` | Bypass cache, re-OCR |
+| `--min-chars N` | Below → emit "vision-recommended" note (default 30) |
+| `--ttl N` | Cache TTL seconds (default 604800 = 7d) |
+| `--json` | Machine output |
+| `-o <file>` | Write to file |
+
+| Image type | Saving | Speed |
+|---|---|---|
+| Code / terminal screenshot | 90-95% | 5x faster than vision call |
+| API doc screenshot | 75% | 3x faster |
+| UI mockup | OCR limited; vision-recommended | — |
+
+Cache: `image_cache` table per FNV1a image hash, 7d TTL. Repeat ingest = instant.
+Requires Python `pytesseract` + `Pillow` + tesseract binary on PATH. Without sidecar → falls back to metadata mode.
+
+---
+
+## sync — Team memory + graph sharing via git-tracked JSONL (v0.29+)
+
+Real team sharing of memory + graph. JSONL snapshots tracked in git, conflict-resolved via row_version optimistic locking.
+
+```bash
+# First-time setup per teammate
+icmg sync init           # creates .icmg/sync/ + gitignore wiring
+
+# Daily workflow
+icmg store --topic decisions-x "..."
+icmg sync push           # DB -> .icmg/sync/<table>.jsonl (sorted by content_hash)
+# git add .icmg/sync && git commit && git remote-update
+
+# Teammate after fetching
+icmg sync pull           # .icmg/sync/ -> his data.db
+# [icmg sync pull] +1 inserted, ~0 updated, 0 conflicts
+
+icmg sync status         # snapshot row counts + last push metadata
+icmg sync merge /path/old.db --yes      # adoption case: fold solo DB into team
+```
+
+| Subcommand | Purpose |
+|---|---|
+| `init` | Create `.icmg/sync/`, update `.gitignore` to track shared dir |
+| `push` | DB → deterministic JSONL snapshot |
+| `pull` | JSONL → DB merge with conflict resolution |
+| `merge <db>` | Fold another local data.db (solo→team adoption) |
+| `status` | Snapshot row counts + last push metadata |
+
+Conflict resolution table:
+
+| Local vs Remote | Action |
+|---|---|
+| local missing | INSERT |
+| local v < remote v | UPDATE (remote wins) |
+| local v == remote v | no-op |
+| local v > remote v | keep local, log conflict to stderr |
+| `--force-remote` | overwrite local on any version diff |
+
+Tables synced: `memory_nodes`, `graph_nodes`. NOT synced: per-user state (recall freq, last_used), embeddings, caches. Embeddings regenerate locally via `icmg embed memory --backfill` after pull.
+
+---
+
 ## batch — Anthropic Batch API spec emitter (v0.26+)
 
 ```bash

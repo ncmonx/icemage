@@ -129,6 +129,40 @@ Fetch is content-aware (strips HTML chrome, JSON-schema-summarizes >5KB payloads
 
 ---
 
+## Image inputs (auto-route via icmg ingest)
+
+When user pastes / uploads a screenshot, prefer local OCR before invoking model vision:
+
+| Default reflex | Use instead |
+|---|---|
+| Send screenshot to model vision | `icmg ingest <file>` first; pass extracted text |
+| Re-process same screenshot in session | (already cached for 7d per image hash) |
+
+Only fall back to vision when:
+- `icmg ingest` reports low confidence (`< 50%` or `< 30 chars` of alnum)
+- Image is a UI mockup / chart / diagram (visual structure, not text)
+
+`icmg ingest` requires Python `pytesseract` + `Pillow` + tesseract binary. Without sidecar → emit raw image as fallback.
+
+---
+
+## Team workflow (icmg sync)
+
+Memory + graph shareable across teammates via git-tracked JSONL snapshots:
+
+| When | Reflex |
+|---|---|
+| First time on this project | `icmg sync init` once |
+| After making decision worth sharing | `icmg sync push` then `git add .icmg/sync && git commit` |
+| After fetching teammate's changes | `icmg sync pull` |
+| Joining team with prior solo work | `icmg sync merge /path/old.db --yes` |
+
+What syncs: `memory_nodes`, `graph_nodes`. NOT synced: per-user state (recall freq, last_used), embeddings, caches. After pull, run `icmg embed memory --backfill` to regenerate embeddings locally.
+
+Conflicts resolved by row_version optimistic locking (auto-bumped on writes). Newer wins; equal versions = no-op; local-newer kept with warning. `--force-remote` overrides.
+
+---
+
 ## Memory conventions
 
 Use these prefixes when storing memory so future sessions can find things:
