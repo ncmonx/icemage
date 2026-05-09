@@ -160,7 +160,9 @@ Every contribution funds priority feature work and faster bug response.
 
 ## License
 
-Apache 2.0. Use it however you want. Attribution appreciated, not required.
+Apache 2.0. The binary releases are freely usable, modifiable (via your own toolchain), and redistributable under the terms of the license.
+
+Source is maintained privately. The license does not require source publication, only preservation of `LICENSE` and `NOTICE` when redistributing the binary. If you have a specific need (audit, contribution, integration) please open an issue on this repository.
 
 See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
