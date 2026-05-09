@@ -7,6 +7,7 @@
 #include "../base_mcp_tool.hpp"
 #include "../../core/registry.hpp"
 #include "../../compress/compressor.hpp"
+#include "../../compress/glossary_store.hpp"
 
 namespace icmg::mcp {
 
@@ -33,7 +34,7 @@ protected:
         requireStr(args, "text", 5'000'000);  // 5MB cap
     }
 
-    json callImpl(const json& args, core::Db& /*db*/) override {
+    json callImpl(const json& args, core::Db& db) override {
         std::string text = getStr(args, "text");
         bool aggressive  = false;
         if (args.contains("aggressive") && args["aggressive"].is_boolean())
@@ -50,6 +51,16 @@ protected:
         opts.threshold_tok = threshold;
         compress::Compressor c(opts);
         auto r = c.compress(text, kind);
+
+        // Phase 54: write telemetry so dashboard reflects MCP-driven compression.
+        try {
+            compress::GlossaryStore store(db);
+            if (!r.skipped) store.save(r.content_hash, r.glossary);
+            store.recordTelemetry("compress", r.bytes_in, r.bytes_out,
+                                   r.tok_in, r.tok_out, r.elapsed_ms,
+                                   r.skipped ? "skipped"
+                                             : (aggressive ? "aggressive" : "lossless"));
+        } catch (...) {}
 
         json glossary = json::object();
         for (auto& kv : r.glossary) glossary[kv.first] = kv.second;
