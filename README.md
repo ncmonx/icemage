@@ -1,7 +1,7 @@
 # icmg
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-44%2F44%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-45%2F45%20passing-brightgreen)](#)
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
@@ -78,7 +78,7 @@ Token-cost savings at scale: roughly **\$0.10 per non-trivial Claude turn**, hun
 
 - **One binary.** No node_modules, no Python venv, no Docker. Drop it in `PATH`.
 - **Local-first.** Per-project SQLite. Never phones home. Your code stays yours.
-- **MCP server built-in.** Plugs into Claude Code, Cline, Continue — anything that speaks MCP.
+- **MCP server built-in.** 20 tools exposed (recall, store, graph, sync, fetch, ingest, batch, savings, compress, …) — plugs into Claude Code, Cline, Continue, anything that speaks MCP.
 - **Embedded dashboard.** `icmg serve` opens a tiny local UI for audit and recall.
 - **AST-aware** for several languages out of the box; clean fallback for the rest.
 - **Team-friendly.** Memory + graph share via git-tracked snapshots; conflict-resolved via row versioning.
@@ -142,6 +142,24 @@ After a few days of use you'll notice:
 - Your monthly Claude bill stops scaring you
 
 The gains compound the more you use it. Memory recall gets sharper. Snapshot restore gets faster. Compression learns what your codebase looks like. Cache hit-rate climbs as you settle into patterns.
+
+---
+
+## Security
+
+Local-first design with explicit boundaries:
+
+- **Update integrity:** every release ships a SHA256 sidecar. `icmg update --apply` verifies before swap; mismatch aborts. Bypass via `--skip-verify`.
+- **URL sanitization:** `icmg fetch` validates URLs against a shell-metacharacter blocklist before any shell-out (no curl injection).
+- **HTTPS-only** for self-update + fetch.
+- **Parameterized SQL** queries throughout (no SQL injection on store/recall/import).
+- **No telemetry phoned home** — the binary makes network calls only when you invoke `update`, `fetch`, `embed` (Python sidecar), or `whats-new`.
+- **Per-project DB** is plaintext SQLite. If you store secrets as memory, treat the DB file as sensitive (filesystem permissions remain the boundary).
+- **Hooks** modify `.claude/settings.local.json` only on `icmg init`. Review before opt-in.
+
+Open caveats:
+- Image OCR runs Python `pytesseract` + `Pillow` subprocess; respect those projects' CVE history when ingesting untrusted images.
+- MCP stdio is unauthenticated (local-only threat model).
 
 ---
 
