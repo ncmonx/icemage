@@ -151,10 +151,40 @@ std::vector<GraphNode> GraphStore::childrenOf(int64_t parent_id) {
 
 std::vector<GraphNode> GraphStore::findSymbol(const std::string& name) {
     std::vector<GraphNode> out;
+    // Phase 60: exact match first, then case-insensitive + suffix-match fallback.
+    // JS/TS extractor sometimes stores qualified names (`Class.method`,
+    // `module::sym`); a bare lookup of `method` should still hit. Also
+    // matches when stored name is `default` or has trailing punctuation.
     db_.query(
         "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
         " FROM graph_nodes WHERE symbol_name=?",
         {name},
+        [&](const core::Row& r) { out.push_back(rowToNode(r)); });
+    if (!out.empty()) return out;
+
+    // Fallback 1: case-insensitive exact.
+    db_.query(
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
+        " FROM graph_nodes WHERE LOWER(symbol_name)=LOWER(?)",
+        {name},
+        [&](const core::Row& r) { out.push_back(rowToNode(r)); });
+    if (!out.empty()) return out;
+
+    // Fallback 2: suffix match (e.g. `method` matches `Class.method`).
+    db_.query(
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
+        " FROM graph_nodes"
+        " WHERE symbol_name LIKE ? OR symbol_name LIKE ? OR symbol_name LIKE ?"
+        " LIMIT 50",
+        {std::string("%.") + name, std::string("%::") + name, std::string("%/") + name},
+        [&](const core::Row& r) { out.push_back(rowToNode(r)); });
+    if (!out.empty()) return out;
+
+    // Fallback 3: substring match (last resort, capped).
+    db_.query(
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
+        " FROM graph_nodes WHERE symbol_name LIKE ? LIMIT 20",
+        {std::string("%") + name + "%"},
         [&](const core::Row& r) { out.push_back(rowToNode(r)); });
     return out;
 }
@@ -361,12 +391,22 @@ std::vector<GraphNode> GraphStore::related(const std::string& path, int limit) {
 std::vector<GraphNode> GraphStore::search(const std::string& query, int limit) {
     std::string pat = "%" + query + "%";
     std::vector<GraphNode> result;
+    // Phase 60: include symbol_name in search columns. Two-tier graph
+    // (file + child symbols) means searching content alone misses symbol-
+    // level matches that live in their own row with empty context.
     db_.query(
         "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
         " FROM graph_nodes"
         " WHERE path LIKE ? OR context LIKE ? OR symbols LIKE ?"
-        " ORDER BY updated_at DESC LIMIT ?",
-        {pat, pat, pat, std::to_string(limit)},
+        "    OR symbol_name LIKE ? OR signature LIKE ?"
+        " ORDER BY"
+        "   CASE WHEN symbol_name = ? THEN 0"
+        "        WHEN symbol_name LIKE ? THEN 1"
+        "        ELSE 2 END,"
+        "   updated_at DESC LIMIT ?",
+        {pat, pat, pat, pat, pat,
+         query, std::string("%") + query,
+         std::to_string(limit)},
         [&](const core::Row& r) { result.push_back(rowToNode(r)); });
     return result;
 }

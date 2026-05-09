@@ -37,8 +37,14 @@ Db::Db(const std::string& path) {
     // if user_version lags behind embedded latest. Closes "row_version missing"
     // bug-class when DB opened via path that bypasses ensureProjectDb.
     // No-op when up-to-date (one PRAGMA user_version read).
+    //
+    // Skip when user_version == 0: fresh DB OR test fixture that creates raw
+    // schema without versioning. ensureProjectDb runs full Migrator on real
+    // brand-new project DBs; this defensive path only catches partially-
+    // migrated DBs (cur > 0 < latest).
     try {
         int cur = userVersion();
+        if (cur == 0) throw 0;  // skip — fresh / unversioned DB
         int latest = 0;
         for (auto& [ver, _sql] : embeddedMigrations()) latest = std::max(latest, ver);
         if (cur < latest) {

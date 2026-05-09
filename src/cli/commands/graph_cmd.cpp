@@ -637,13 +637,18 @@ public:
         try { opts.max_depth = std::stoi(depth_str); } catch (...) {}
         bool json_out  = hasFlag(args, "--json");
         bool parallel  = hasFlag(args, "--parallel");
+        // Phase 60: --no-mem-sync skips the expensive ALL-nodes memory sync.
+        // Per-file `graph update <file>` calls were >10min on large graphs
+        // because syncGraphToMemory walks every graph_node. Opt-out for fast
+        // incremental updates; full `graph scan` still syncs by default.
+        bool no_mem_sync = hasFlag(args, "--no-mem-sync") || hasFlag(args, "--no-embed");
         std::string since_str = flagValue(args, "--since");
 
         // Phase 28 T4: --since + --parallel — gather changed files first via
         // mtime filter, then fan-out single-file updates through `core::parallel`
         // (each spawned `icmg graph update <single-file>` reuses v0.12.2 fast-path).
         if (!since_str.empty() || parallel) {
-            return runIncremental(path, since_str, parallel, json_out);
+            return runIncremental(path, since_str, parallel, json_out, no_mem_sync);
         }
 
         auto& cfg = core::Config::instance();
@@ -653,7 +658,7 @@ public:
 
         if (!json_out) std::cout << "Updating graph for: " << path << "\n";
         int count = scanner.scan(path, opts);
-        int mem_synced = syncGraphToMemory(db, store);
+        int mem_synced = no_mem_sync ? 0 : syncGraphToMemory(db, store);
 
         if (json_out) {
             std::cout << "{\"updated\":" << count
@@ -683,7 +688,8 @@ private:
     }
 
     int runIncremental(const std::string& path, const std::string& since_str,
-                        bool parallel, bool json_out) {
+                        bool parallel, bool json_out, bool no_mem_sync = false) {
+        (void)no_mem_sync;  // propagated to spawned subprocs via flag below
         int64_t cutoff = parseSince(since_str);
         // Walk directory + collect changed files (mtime > cutoff if cutoff > 0).
         std::vector<std::string> changed;
@@ -748,6 +754,7 @@ private:
         for (auto& f : changed) {
             core::ParallelTask t;
             t.command = "\"" + self + "\" graph update \"" + f + "\"";
+            if (no_mem_sync) t.command += " --no-mem-sync";
             t.id = f;
             tasks.push_back(std::move(t));
         }
