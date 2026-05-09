@@ -1,7 +1,10 @@
 ﻿#include "db.hpp"
 #include "migrator.hpp"
+#include "embedded_migrations.hpp"
 #include "path_utils.hpp"
 #include <sqlite3.h>
+#include <algorithm>
+#include <cctype>
 #include <stdexcept>
 #include <sstream>
 #include <filesystem>
@@ -29,6 +32,50 @@ Db::Db(const std::string& path) {
 #endif
 
     applyPragmas();
+
+    // Phase 59 T2: defensive schema repair — auto-run pending embedded migrations
+    // if user_version lags behind embedded latest. Closes "row_version missing"
+    // bug-class when DB opened via path that bypasses ensureProjectDb.
+    // No-op when up-to-date (one PRAGMA user_version read).
+    try {
+        int cur = userVersion();
+        int latest = 0;
+        for (auto& [ver, _sql] : embeddedMigrations()) latest = std::max(latest, ver);
+        if (cur < latest) {
+            for (auto& [ver, sql] : embeddedMigrations()) {
+                if (ver <= cur) continue;
+                run("BEGIN TRANSACTION");
+                try {
+                    // Inline strip of BEGIN/COMMIT lines that some migrations include.
+                    std::istringstream in(sql);
+                    std::ostringstream out;
+                    std::string line;
+                    while (std::getline(in, line)) {
+                        std::string t = line;
+                        auto p = t.find_first_not_of(" \t\r");
+                        if (p != std::string::npos) t = t.substr(p);
+                        std::string u = t;
+                        for (auto& c : u) c = (char)std::toupper((unsigned char)c);
+                        if (u == "BEGIN" || u == "BEGIN;" ||
+                            u == "BEGIN TRANSACTION" || u == "BEGIN TRANSACTION;" ||
+                            u == "COMMIT" || u == "COMMIT;" ||
+                            u == "ROLLBACK" || u == "ROLLBACK;") continue;
+                        out << line << '\n';
+                    }
+                    run(out.str());
+                    run("COMMIT");
+                    setUserVersion(ver);
+                } catch (...) {
+                    try { run("ROLLBACK"); } catch (...) {}
+                    // Schema-repair failure should not block Db open; user
+                    // can run `icmg doctor` for diagnosis.
+                    break;
+                }
+            }
+        }
+    } catch (...) {
+        // Defensive only; never block Db open on schema-repair failure.
+    }
 }
 
 Db::~Db() {

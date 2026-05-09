@@ -154,10 +154,25 @@ private:
         std::string tmp_path = std::string("/tmp/icmg_fetch_") + std::to_string(std::time(nullptr)) + ".tmp";
 #endif
         std::string hdr_path = tmp_path + ".hdr";
-        std::string cmd = "curl -sL --max-time 30 -D \"" + hdr_path + "\" -o \""
-                        + tmp_path + "\" \"" + url + "\"";
-        auto res = core::safeExecShell(cmd, false, 35000);
+        // Phase 59: bash-c on Windows interprets `\` as escape; normalize tmp
+        // paths to forward slash for shell consumption. curl accepts `/` on
+        // Windows fine. Disk read below uses original tmp_path (Windows API
+        // tolerates either separator).
+        std::string sh_tmp = tmp_path, sh_hdr = hdr_path;
+#ifdef _WIN32
+        for (auto& c : sh_tmp) if (c == '\\') c = '/';
+        for (auto& c : sh_hdr) if (c == '\\') c = '/';
+#endif
+        std::string cmd = "curl -sL --max-time 30 -D \"" + sh_hdr + "\" -o \""
+                        + sh_tmp + "\" \"" + url + "\"";
+        auto res = core::safeExecShell(cmd, true, 35000);
         if (res.exit_code != 0) {
+            if (std::getenv("ICMG_DEBUG_FETCH")) {
+                std::cerr << "[fetch debug] cmd=" << cmd << "\n"
+                          << "[fetch debug] exit=" << res.exit_code << "\n"
+                          << "[fetch debug] out=" << res.out << "\n"
+                          << "[fetch debug] err=" << res.err << "\n";
+            }
             std::remove(tmp_path.c_str());
             std::remove(hdr_path.c_str());
             return false;

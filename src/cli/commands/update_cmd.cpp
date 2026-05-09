@@ -32,7 +32,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.32.2";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.32.3";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -168,7 +168,7 @@ private:
     // Phase 50 T1: download + verify sha256 manifest. Returns true on match
     // or when skip_verify=true. False on hard mismatch (caller aborts).
     // Warns and proceeds when manifest absent (transition period — older
-    // releases pre-v0.32.2 lack .sha256 sidecar files).
+    // releases pre-v0.32.3 lack .sha256 sidecar files).
     bool verifySha256(const fs::path& downloaded, const std::string& asset_url,
                        bool skip_verify) {
         if (skip_verify) {
@@ -177,7 +177,9 @@ private:
         }
         std::string sha_url = asset_url + ".sha256";
         fs::path sha_tmp = downloaded; sha_tmp += ".sha256";
-        std::string cmd = "curl -sL --max-time 10 -o \"" + sha_tmp.string()
+        std::string sh_path = sha_tmp.string();
+        for (auto& c : sh_path) if (c == '\\') c = '/';  // bash-c safe
+        std::string cmd = "curl -sL --max-time 10 -o \"" + sh_path
                         + "\" \"" + sha_url + "\"";
         auto res = core::safeExecShell(cmd, false, 12000);
         if (res.exit_code != 0 || !fs::exists(sha_tmp) || fs::file_size(sha_tmp) < 16) {
@@ -260,7 +262,9 @@ private:
         fs::remove(tmp);
 
         std::cout << "Downloading " << r.asset_url << " -> " << tmp.string() << "\n";
-        std::string cmd = "curl -sL --max-time 120 -o \"" + tmp.string() + "\" \""
+        std::string sh_tmp = tmp.string();
+        for (auto& c : sh_tmp) if (c == '\\') c = '/';  // bash-c safe
+        std::string cmd = "curl -sL --max-time 120 -o \"" + sh_tmp + "\" \""
                         + r.asset_url + "\"";
         auto res = core::safeExecShell(cmd, false, 130000);
         if (res.exit_code != 0 || !fs::exists(tmp) || fs::file_size(tmp) < 1024) {
@@ -491,7 +495,7 @@ private:
         std::string base_url = r.asset_url;
         auto slash = base_url.find_last_of('/');
         if (slash == std::string::npos) return 0;
-        base_url = base_url.substr(0, slash + 1);  // ".../v0.32.2/"
+        base_url = base_url.substr(0, slash + 1);  // ".../v0.32.3/"
 
         const std::vector<std::string> dlls = {
             "onnxruntime.dll",
@@ -509,7 +513,9 @@ private:
             if (!fs::exists(local)) continue;  // optional, skip
             std::string sha_url = base_url + dll + ".sha256";
             fs::path sha_tmp = install_dir / (dll + ".sha256.tmp");
-            std::string cmd = "curl -sL --max-time 10 -o \"" + sha_tmp.string()
+            std::string sh_path = sha_tmp.string();
+            for (auto& c : sh_path) if (c == '\\') c = '/';  // bash-c safe
+            std::string cmd = "curl -sL --max-time 10 -o \"" + sh_path
                             + "\" \"" + sha_url + "\"";
             auto res = core::safeExecShell(cmd, false, 12000);
             if (res.exit_code != 0 || !fs::exists(sha_tmp) || fs::file_size(sha_tmp) < 16) {
