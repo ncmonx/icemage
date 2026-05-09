@@ -2,6 +2,7 @@
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![tests](https://img.shields.io/badge/tests-44%2F44%20passing-brightgreen)](#)
+[![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
@@ -65,6 +66,8 @@ Real measurements on real coding sessions (your mileage varies):
 - **Repeat queries within a session:** 100% off via local result cache
 - **Bulk operations:** 50% off via batch request emission
 - **External downloads (HTML / API / PDF):** 70-90% off via local fetch + content-aware reduction
+- **Screenshot input via OCR:** 90-95% off + 5x faster than vision on text-heavy images
+- **Team-shared memory + graph:** zero-recompute on shared decisions across teammates
 - **Combined stack on a typical turn:** ~85–95% reduction
 
 Token-cost savings at scale: roughly **\$0.10 per non-trivial Claude turn**, hundreds of dollars a month for active users.
@@ -78,7 +81,9 @@ Token-cost savings at scale: roughly **\$0.10 per non-trivial Claude turn**, hun
 - **MCP server built-in.** Plugs into Claude Code, Cline, Continue — anything that speaks MCP.
 - **Embedded dashboard.** `icmg serve` opens a tiny local UI for audit and recall.
 - **AST-aware** for several languages out of the box; clean fallback for the rest.
-- **Apache-2.0.** Use it, fork it, ship it.
+- **Team-friendly.** Memory + graph share via git-tracked snapshots; conflict-resolved via row versioning.
+- **Image-aware.** Local OCR for screenshots saves 90%+ vs vision API on text-heavy images.
+- **Apache-2.0.** License preserved on releases.
 
 ---
 
@@ -94,6 +99,8 @@ icmg recall "<query>"     # past decisions → surfaces what you already learned
 icmg agent "<task>"       # full pipeline (pack + cache + directives → LLM)
 icmg batch --task ...     # bulk operations → 50% discount via batch API
 icmg fetch <url>          # download HTML/JSON/PDF → reduced + cached (70-90% off)
+icmg ingest screenshot.png # OCR a screenshot → text-only payload (90% off vs vision)
+icmg sync init/push/pull   # team share memory + graph via git-tracked JSONL
 icmg savings              # see what you saved (console / --html / --json)
 icmg whats-new            # show release notes (call after `icmg update`)
 icmg serve                # quick visual audit of memory + graph
