@@ -14,7 +14,8 @@ inline std::string buildHtml(const std::string& graphJson, const std::string& ti
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>icmg graph</title>
+<title>Icemage graph</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='f' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%237DD3FC'/><stop offset='100%25' stop-color='%234338CA'/></linearGradient></defs><circle cx='16' cy='16' r='14' fill='none' stroke='url(%23f)' stroke-width='1.5'/><g stroke='url(%23f)' stroke-width='1.4' fill='none' stroke-linecap='round'><path d='M16 16 L16 7 M16 16 L9 12 M16 16 L23 12 M16 16 L9 20 M16 16 L23 20 M16 16 L16 25'/></g><polygon points='16,13 19,16 16,19 13,16' fill='url(%23f)'/></svg>"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"
         crossorigin="anonymous"></script>
 <script src="https://unpkg.com/layout-base/layout-base.js"></script>

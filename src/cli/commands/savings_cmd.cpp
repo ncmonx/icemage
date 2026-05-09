@@ -202,7 +202,8 @@ private:
                   int window_days, const std::string& out_path) {
         std::ostringstream os;
         os << R"HTML(<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>icmg savings</title>
+<html><head><meta charset="utf-8"><title>Icemage savings</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='f' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%237DD3FC'/><stop offset='100%25' stop-color='%234338CA'/></linearGradient></defs><circle cx='16' cy='16' r='14' fill='none' stroke='url(%23f)' stroke-width='1.5'/><g stroke='url(%23f)' stroke-width='1.4' fill='none' stroke-linecap='round'><path d='M16 16 L16 7 M16 16 L9 12 M16 16 L23 12 M16 16 L9 20 M16 16 L23 20 M16 16 L16 25'/></g><polygon points='16,13 19,16 16,19 13,16' fill='url(%23f)'/></svg>"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font:14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#0d1117;color:#c9d1d9;padding:32px;max-width:1100px;margin:0 auto}
