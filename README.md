@@ -1,8 +1,11 @@
-# icmg
+<p align="center">
+  <img src="assets/logo.svg" alt="Icemage" width="160"/>
+</p>
+
+# Icemage <sub><sup>(`icmg`)</sup></sub>
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-45%2F45%20passing-brightgreen)](#)
-[![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
+[![tests](https://img.shields.io/badge/tests-47%2F47%20passing-brightgreen)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
