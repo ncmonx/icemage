@@ -3,6 +3,8 @@
 #include <chrono>
 #include <array>
 #include <cstdlib>
+#include <cstring>
+#include <cctype>
 #include <fstream>
 
 #ifdef _WIN32
@@ -32,6 +34,44 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
                                bool merge_stderr, int timeout_ms) {
     ExecResult result;
     if (argv.empty()) { result.exit_code = -1; return result; }
+
+    // MSYS-aware routing: when running under MSYS2/Git Bash and argv[0] is a
+    // bare command name (no path, no .exe/.com), route through bash -lc so:
+    //   - `find`/`sort`/`link`/`tee` resolve to MSYS bins, not Windows shadows
+    //     (Windows find.exe is a text search tool, NOT GNU find).
+    //   - `pnpm`/`npx`/`yarn` (.cmd shims) launch correctly via shell.
+    //   - npm prefix and ~/.bashrc PATH augmentations apply.
+    // Skip when argv[0] contains '/' or '\\' (explicit path) or has executable
+    // extension (user already resolved binary).
+    if (std::getenv("MSYSTEM") != nullptr || std::getenv("BASH") != nullptr) {
+        const std::string& a0 = argv[0];
+        bool has_path = a0.find('/') != std::string::npos || a0.find('\\') != std::string::npos;
+        auto ends_with_ci = [](const std::string& s, const char* ext) {
+            size_t n = std::strlen(ext);
+            if (s.size() < n) return false;
+            for (size_t i = 0; i < n; ++i)
+                if (std::tolower((unsigned char)s[s.size()-n+i]) != ext[i]) return false;
+            return true;
+        };
+        bool has_ext = ends_with_ci(a0, ".exe") || ends_with_ci(a0, ".com");
+        if (!has_path && !has_ext) {
+            // Reconstruct shell-quoted command line.
+            std::string sh_cmd;
+            for (size_t i = 0; i < argv.size(); ++i) {
+                if (i) sh_cmd += ' ';
+                const std::string& a = argv[i];
+                bool need_quote = a.empty() || a.find_first_of(" \t\"'$`\\|&;<>()*?#~!") != std::string::npos;
+                if (!need_quote) { sh_cmd += a; continue; }
+                sh_cmd += '\'';
+                for (char c : a) {
+                    if (c == '\'') sh_cmd += "'\\''";
+                    else sh_cmd += c;
+                }
+                sh_cmd += '\'';
+            }
+            return safeExecShell(sh_cmd, merge_stderr, timeout_ms);
+        }
+    }
 
     // Build command line using Windows CommandLineToArgvW-compatible quoting.
     //
@@ -114,10 +154,34 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
     CloseHandle(hErrW);
 
     if (!ok) {
-        result.exit_code = -1;
-        result.err = "CreateProcess failed: " + std::to_string(GetLastError());
+        DWORD err = GetLastError();
         CloseHandle(hOutR);
         if (!merge_stderr) CloseHandle(hErrR);
+        // ERROR_FILE_NOT_FOUND (2) for bare commands → likely MSYS builtin
+        // (`find`, `grep`, `awk`) or .cmd/.bat shim (`pnpm.cmd`, `npx.cmd`,
+        // `yarn.cmd`) which CreateProcess cannot launch directly. Retry via
+        // bash -lc when running under MSYS2/Git Bash so login profile loads
+        // /usr/bin + ~/.bashrc PATH augmentations (npm prefix etc.).
+        if (err == ERROR_FILE_NOT_FOUND &&
+            (std::getenv("MSYSTEM") != nullptr || std::getenv("BASH") != nullptr)) {
+            // Reconstruct shell-quoted command line.
+            std::string sh_cmd;
+            for (size_t i = 0; i < argv.size(); ++i) {
+                if (i) sh_cmd += ' ';
+                const std::string& a = argv[i];
+                bool need_quote = a.empty() || a.find_first_of(" \t\"'$`\\|&;<>()*?#~!") != std::string::npos;
+                if (!need_quote) { sh_cmd += a; continue; }
+                sh_cmd += '\'';
+                for (char c : a) {
+                    if (c == '\'') sh_cmd += "'\\''";  // close, escape, reopen
+                    else sh_cmd += c;
+                }
+                sh_cmd += '\'';
+            }
+            return safeExecShell(sh_cmd, merge_stderr, timeout_ms);
+        }
+        result.exit_code = -1;
+        result.err = "CreateProcess failed: " + std::to_string(err);
         return result;
     }
 
@@ -310,8 +374,12 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
             if (bash_path.empty()) prefer_bash = false;
         }
         if (prefer_bash) {
-            // bash -c "<command>" — preserve internal quoting, escape any
-            // double-quotes in cmd_line so they survive the wrap.
+            // bash -c with PATH prepended — keep parent's PATH (so Windows-
+            // installed tools like git/node/etc. stay reachable) but prepend
+            // MSYS bin dirs so `find`/`grep`/`awk`/`sort` resolve to GNU
+            // versions, not Windows shadows.
+            // Avoid -l (login): would source /etc/profile and OVERRIDE PATH
+            // to MSYS-only, breaking tools the user added via Windows install.
             std::string esc = cmd_line;
             std::string out;
             out.reserve(esc.size() + 16);
@@ -319,7 +387,12 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
                 if (c == '"' || c == '\\') out.push_back('\\');
                 out.push_back(c);
             }
-            full_cmd = "\"" + bash_path + "\" -c \"" + out + "\"";
+            // Inject PATH prefix inside bash invocation. Using single-quoted
+            // here-prefix so $PATH expands inside child bash to its inherited
+            // value. No profile load → low latency.
+            full_cmd = "\"" + bash_path + "\" -c \""
+                       "export PATH=\\\"/usr/bin:/mingw64/bin:$PATH\\\"; "
+                       + out + "\"";
         } else {
             full_cmd = "cmd.exe /s /c \"";
             full_cmd += cmd_line;
