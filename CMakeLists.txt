@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.32.5 LANGUAGES CXX C)
+project(icmg VERSION 0.32.6 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

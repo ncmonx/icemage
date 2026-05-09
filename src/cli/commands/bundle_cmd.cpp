@@ -176,10 +176,11 @@ public:
             "  --memory-limit N      Recall result count (default 5)\n"
             "  --cache-prefix        Wrap output in prompt-cache markers\n"
             "  --cache-ttl N         Cache TTL seconds (default 3600)\n"
-            "  --no-think            Inject directive: skip model analysis pass\n"
+            "  --no-think            Force directive: skip model analysis pass\n"
             "  --concise             Stronger directive: short reply, no code\n"
             "  --caveman             Strongest: ultra-terse fragment-style reply (~60 words)\n"
-            "  --auto-think          Classify task; apply --no-think if simple\n"
+            "  --auto-think          Classify task; apply --no-think if simple (DEFAULT)\n"
+            "  --full-think          Opt out of auto-think — keep full thinking pass\n"
             "  --thinking-stats      Show 30-day thinking-budget telemetry\n";
     }
 
@@ -366,14 +367,20 @@ public:
         }
 
         // Phase 41 T1+T2: thinking-budget directive.
+        // Phase 62: auto-think is now ON BY DEFAULT. Plain `icmg pack "task"`
+        // classifies intent + applies --no-think when task is simple. Opt out
+        // with --full-think for users who want full thinking pass.
         bool no_think    = hasFlag(args, "--no-think");
         bool concise     = hasFlag(args, "--concise");
         bool caveman     = hasFlag(args, "--caveman");
-        bool auto_think  = hasFlag(args, "--auto-think");
+        bool full_think  = hasFlag(args, "--full-think");
+        bool auto_think  = hasFlag(args, "--auto-think") ||
+                           (!no_think && !concise && !caveman && !full_think);
+        cli::Intent classified = cli::Intent::Unknown;
         if (auto_think && !no_think && !concise && !caveman) {
-            cli::Intent it = cli::classifyIntent(task);
-            if (it == cli::Intent::Simple) no_think = true;
-            std::cerr << "[icmg pack] intent=" << cli::intentLabel(it)
+            classified = cli::classifyIntent(task);
+            if (classified == cli::Intent::Simple) no_think = true;
+            std::cerr << "[icmg pack] intent=" << cli::intentLabel(classified)
                       << (no_think ? " → no-think directive applied"
                                    : " → thinking kept on") << "\n";
         }
@@ -382,16 +389,20 @@ public:
         else if (no_think) capped = cli::applyNoThinkDirective(capped);
 
         // Phase 41 T4: telemetry record.
-        try {
-            cli::Intent it = auto_think ? cli::classifyIntent(task) : cli::Intent::Unknown;
-            db.run("INSERT INTO thinking_telemetry (cmd, task, intent, no_think, concise, input_bytes) "
-                   "VALUES (?,?,?,?,?,?)",
-                   {"pack", task,
-                    cli::intentLabel(it),
-                    no_think ? "1" : "0",
-                    concise  ? "1" : "0",
-                    std::to_string((int)capped.size())});
-        } catch (...) {}
+        // Phase 62: only record when a directive actually applied — skip noise
+        // rows that show "0 saved" on the savings dashboard.
+        bool any_directive = no_think || concise || caveman;
+        if (any_directive) {
+            try {
+                db.run("INSERT INTO thinking_telemetry (cmd, task, intent, no_think, concise, input_bytes) "
+                       "VALUES (?,?,?,?,?,?)",
+                       {"pack", task,
+                        cli::intentLabel(classified),
+                        no_think ? "1" : "0",
+                        concise  ? "1" : "0",
+                        std::to_string((int)capped.size())});
+            } catch (...) {}
+        }
 
         std::cout << capped;
         return 0;
