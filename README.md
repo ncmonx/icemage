@@ -1,8 +1,10 @@
 # icmg
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-43%2F43%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-44%2F44%20passing-brightgreen)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
+[![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
 
 > **Stop burning tokens. Stop losing context. Ship faster.**
 
@@ -142,6 +144,18 @@ The gains compound the more you use it. Memory recall gets sharper. Snapshot res
 - It is opinionated. If you fight the conventions you'll fight the tool.
 - It will not magically make a bad prompt good — it makes a good prompt cheap.
 - Some optional capabilities require a one-time download (the binary tells you when).
+
+---
+
+## Support
+
+Solo maintainer, no VC backing. If icmg saved you tokens, consider supporting development:
+
+- 💚 [GitHub Sponsors](https://github.com/sponsors/ncmonx) — recurring or one-time
+- ☕ [Ko-fi](https://ko-fi.com/ncmonx) — quick tip, no signup
+- ₿ Crypto via [Coinbase Commerce](https://commerce.coinbase.com/checkout/REPLACE_WITH_CHECKOUT_ID) (BTC / ETH / USDC)
+
+Every contribution funds priority feature work and faster bug response.
 
 ---
 
