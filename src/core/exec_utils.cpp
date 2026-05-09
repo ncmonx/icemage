@@ -2,6 +2,8 @@
 #include <stdexcept>
 #include <chrono>
 #include <array>
+#include <cstdlib>
+#include <fstream>
 
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
@@ -278,13 +280,51 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
 
     // cmd.exe /s /c "<command>" preserves all internal quotes verbatim
     // (the /s flag strips ONLY the first and last char if both are ").
+    //
+    // Prefer bash on MSYS — when running under MSYS2/MinGW (or Git Bash),
+    // PATH-resolution and shell builtins (cat, head, grep, awk) match the
+    // calling shell. cmd.exe loses this when env paths are MSYS-formatted
+    // (`/c/...`) instead of `C:\...` — yields "CreateProcess failed: 2"
+    // even when binary IS on PATH from bash perspective.
     std::string full_cmd;
     if (use_direct) {
         full_cmd = cmd_for_direct;  // direct exec, no shell wrap
     } else {
-        full_cmd = "cmd.exe /s /c \"";
-        full_cmd += cmd_line;
-        full_cmd += "\"";
+        bool prefer_bash = std::getenv("MSYSTEM") != nullptr
+                        || std::getenv("BASH") != nullptr;
+        std::string bash_path;
+        if (prefer_bash) {
+            // Resolve bash.exe by checking common locations; PATH lookup
+            // through cmd.exe wouldn't help us at this point.
+            const char* candidates[] = {
+                "C:/msys64/usr/bin/bash.exe",
+                "C:/msys64/mingw64/bin/bash.exe",
+                "C:/Program Files/Git/bin/bash.exe",
+                "C:/Program Files/Git/usr/bin/bash.exe",
+                nullptr
+            };
+            for (int i = 0; candidates[i]; ++i) {
+                std::ifstream f(candidates[i]);
+                if (f.good()) { bash_path = candidates[i]; break; }
+            }
+            if (bash_path.empty()) prefer_bash = false;
+        }
+        if (prefer_bash) {
+            // bash -c "<command>" — preserve internal quoting, escape any
+            // double-quotes in cmd_line so they survive the wrap.
+            std::string esc = cmd_line;
+            std::string out;
+            out.reserve(esc.size() + 16);
+            for (char c : esc) {
+                if (c == '"' || c == '\\') out.push_back('\\');
+                out.push_back(c);
+            }
+            full_cmd = "\"" + bash_path + "\" -c \"" + out + "\"";
+        } else {
+            full_cmd = "cmd.exe /s /c \"";
+            full_cmd += cmd_line;
+            full_cmd += "\"";
+        }
     }
 
     SECURITY_ATTRIBUTES sa{};
