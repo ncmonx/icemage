@@ -315,6 +315,16 @@ public:
         bool force       = hasFlag(args, "--force");
         bool strict_read = hasFlag(args, "--strict-read");
 
+        // Global strict flag: ~/.icmg/strict.flag → enforce on every init/upgrade.
+        if (!strict_read) {
+            const char* home = std::getenv("HOME");
+            if (!home) home = std::getenv("USERPROFILE");
+            if (home) {
+                fs::path flag = fs::path(home) / ".icmg" / "strict.flag";
+                if (fs::exists(flag)) strict_read = true;
+            }
+        }
+
         fs::path root = fs::current_path();
         std::cout << "icmg init: " << root.string() << "\n";
 
