@@ -107,6 +107,9 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"distill",  "Auto-extract decisions/facts/anti-patterns from response text into memory"},
     {"correction", "Track diffs between AI-emitted code and user fixes"},
     {"entropy",  "File-edit entropy from git history (hot files = bad pack candidates)"},
+    {"tool-budget", "Per-turn tool-call gate (prevents runaway loops)"},
+    {"shorten",  "Heuristic prompt rewriter — strip filler/politeness/redundancy"},
+    {"context-budget", "Real Claude session token usage from transcript (covers ALL sources)"},
 };
 
 Dispatcher::Dispatcher() {}
@@ -224,7 +227,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.33.0 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.33.1 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -240,7 +243,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.33.0\n";
+    std::cout << "icmg 0.33.1\n";
 }
 
 } // namespace icmg::cli

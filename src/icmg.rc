@@ -4,8 +4,8 @@
 IDI_ICON1 ICON "../assets/icmg.ico"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION    0,33,0,0
- PRODUCTVERSION 0,33,0,0
+ FILEVERSION    0,33,1,0
+ PRODUCTVERSION 0,33,1,0
  FILEFLAGSMASK  0x3fL
  FILEFLAGS      0x0L
  FILEOS         0x40004L
@@ -18,12 +18,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "ncmonx"
             VALUE "FileDescription",  "Icemage — context, memory, graph CLI"
-            VALUE "FileVersion",      "0.33.0"
+            VALUE "FileVersion",      "0.33.1"
             VALUE "InternalName",     "icmg"
             VALUE "LegalCopyright",   "Apache-2.0"
             VALUE "OriginalFilename", "icmg.exe"
             VALUE "ProductName",      "Icemage"
-            VALUE "ProductVersion",   "0.33.0"
+            VALUE "ProductVersion",   "0.33.1"
         END
     END
     BLOCK "VarFileInfo"

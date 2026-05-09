@@ -27,6 +27,7 @@ public:
             "Actions:\n"
             "  show   [--last N]    Print last N rows (default 20)\n"
             "  total  [--window 7d] Aggregate per source within window\n"
+            "  by-file [--top N]    Aggregate per label (file/topic) — find hot files\n"
             "  clear  [--older 30d] Delete rows older than window\n";
     }
 
@@ -86,6 +87,30 @@ public:
                               << std::setw(14) << r[0]
                               << std::setw(10) << r[1]
                               << r[2] << "\n";
+                });
+            return 0;
+        }
+
+        if (action == "by-file") {
+            int top = 20;
+            try { top = std::stoi(flagValue(args, "--top", "20")); } catch (...) {}
+            std::cout << "Top " << top << " labels by token cost (all-time):\n";
+            std::cout << "  " << std::left
+                      << std::setw(10) << "calls"
+                      << std::setw(10) << "tokens"
+                      << "label\n";
+            std::cout << "  " << std::string(60, '-') << "\n";
+            db.query(
+                "SELECT label, COUNT(*), COALESCE(SUM(est_tokens),0) FROM token_receipts"
+                " WHERE label != ''"
+                " GROUP BY label ORDER BY SUM(est_tokens) DESC LIMIT ?",
+                {std::to_string(top)},
+                [](const core::Row& r) {
+                    if (r.size() < 3) return;
+                    std::cout << "  " << std::left
+                              << std::setw(10) << r[1]
+                              << std::setw(10) << r[2]
+                              << r[0].substr(0, 60) << "\n";
                 });
             return 0;
         }

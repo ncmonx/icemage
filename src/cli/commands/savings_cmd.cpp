@@ -143,10 +143,13 @@ public:
         total.saved         = filter.saved + compress.saved + thinking.saved;
 
         // Cost estimate: filter+compress = input price; thinking = output price.
-        double cost_without = dollars(filter.raw_tokens + compress.raw_tokens, rate_in)
-                            + dollars(thinking.raw_tokens, rate_out);
-        double cost_with    = dollars(filter.actual_tokens + compress.actual_tokens, rate_in)
-                            + dollars(thinking.actual_tokens, rate_out);
+        // Phase 67 T25: split cost by input vs output rates.
+        double cost_in_without  = dollars(filter.raw_tokens + compress.raw_tokens, rate_in);
+        double cost_in_with     = dollars(filter.actual_tokens + compress.actual_tokens, rate_in);
+        double cost_out_without = dollars(thinking.raw_tokens, rate_out);
+        double cost_out_with    = dollars(thinking.actual_tokens, rate_out);
+        double cost_without = cost_in_without + cost_out_without;
+        double cost_with    = cost_in_with    + cost_out_with;
         double cost_saved   = cost_without - cost_with;
 
         // Phase 58: aggregate strict-mode denials within window.
@@ -186,8 +189,10 @@ public:
         std::cout << std::string(64, '-') << "\n";
         renderRow("TOTAL",                            total);
         std::cout << "\n"
-                  << "Cost without icmg: $" << std::fixed << std::setprecision(2) << cost_without << "\n"
-                  << "Cost with    icmg: $" << cost_with << "\n"
+                  << "Cost without icmg: $" << std::fixed << std::setprecision(2) << cost_without
+                  << "  (input $" << cost_in_without << " / output $" << cost_out_without << ")\n"
+                  << "Cost with    icmg: $" << cost_with
+                  << "  (input $" << cost_in_with    << " / output $" << cost_out_with    << ")\n"
                   << "You saved:         $" << cost_saved
                   << "  (" << std::fixed << std::setprecision(1)
                   << pct(total.saved, total.raw_tokens) << "%)\n";

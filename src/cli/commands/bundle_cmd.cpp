@@ -66,6 +66,8 @@ public:
             "  --no-symbols      Skip child symbol list\n"
             "  --no-memory       Skip related memory\n"
             "  --no-content      Skip raw file body excerpt (default: include)\n"
+            "  --siblings        Also list test/doc/types sibling files (Phase 67)\n"
+            "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
             "  --json            JSON output\n";
     }
@@ -160,10 +162,60 @@ public:
             }
         }
 
+        // Phase 67 T19: --siblings — auto-include test / doc / types siblings.
+        // Saves the typical "what does X test?" / "where are X types?" follow-up
+        // queries by emitting paths upfront. Off by default to keep --max-bytes
+        // budget tight; users opt in via flag.
+        if (hasFlag(args, "--siblings")) {
+            namespace fs = std::filesystem;
+            fs::path src(node->path);
+            std::string stem = src.stem().string();
+            std::string ext  = src.extension().string();
+            fs::path dir     = src.parent_path();
+            std::vector<std::string> sibs = {
+                (dir / (stem + ".test" + ext)).string(),
+                (dir / (stem + ".spec" + ext)).string(),
+                (dir / (stem + ".d.ts")).string(),
+                (dir / (stem + ".types" + ext)).string(),
+                (dir / ("test_" + stem + ext)).string(),
+                (dir / (stem + "_test" + ext)).string(),
+                (dir / (stem + ".md")).string(),
+                ("tests/test_" + stem + ext),
+                ("docs/" + stem + ".md"),
+            };
+            std::vector<std::string> found;
+            for (auto& s : sibs) if (fs::exists(s)) found.push_back(s);
+            if (!found.empty()) {
+                out << "Siblings: ";
+                for (size_t i = 0; i < found.size(); ++i) {
+                    if (i) out << ", ";
+                    out << found[i];
+                }
+                out << "\n";
+            }
+        }
+
         // Phase 67 hotfix: emit actual file CONTENT excerpt so Claude doesn't
         // fall back to raw Read after `icmg context`. Default ON; opt-out
         // with --no-content. Body uses ~70% of remaining cap budget.
+        // Phase 67 T26: --lines START-END slice — mirrors Read tool offset/limit
+        // so Claude doesn't fall back to native Read for line ranges.
         bool no_content = hasFlag(args, "--no-content");
+        std::string lines_arg = flagValue(args, "--lines");
+        int line_start = 0, line_end = 0;
+        if (!lines_arg.empty()) {
+            auto dash = lines_arg.find('-');
+            try {
+                if (dash != std::string::npos) {
+                    line_start = std::stoi(lines_arg.substr(0, dash));
+                    line_end   = std::stoi(lines_arg.substr(dash + 1));
+                } else {
+                    line_start = line_end = std::stoi(lines_arg);
+                }
+            } catch (...) { line_start = line_end = 0; }
+            if (line_start <= 0) line_start = 1;
+            if (line_end < line_start) line_end = line_start;
+        }
         if (!no_content) {
             std::string meta = out.str();
             size_t budget = (meta.size() < cap) ? (cap - meta.size()) : 256;
@@ -183,12 +235,36 @@ public:
                 break;
             }
             if (!body.empty()) {
-                bool truncated = body.size() > budget;
-                if (truncated) body.resize(budget);
-                out << "\n--- Content (" << resolved
-                    << (truncated ? "; truncated" : "")
-                    << ") ---\n" << body;
-                if (truncated) out << "\n--- [content truncated; raise --max-bytes for more] ---\n";
+                if (line_start > 0) {
+                    // Slice to requested line range. Output preserves line
+                    // numbers via `cat -n` style header so Claude can locate
+                    // edit anchors without re-running Read.
+                    std::istringstream is(body);
+                    std::ostringstream sliced;
+                    std::string line;
+                    int n = 0;
+                    while (std::getline(is, line)) {
+                        ++n;
+                        if (n < line_start) continue;
+                        if (n > line_end) break;
+                        sliced << std::setw(5) << n << "  " << line << "\n";
+                    }
+                    std::string slice_body = sliced.str();
+                    bool truncated = slice_body.size() > budget;
+                    if (truncated) slice_body.resize(budget);
+                    out << "\n--- Content (" << resolved
+                        << " lines " << line_start << "-" << line_end
+                        << (truncated ? "; truncated" : "")
+                        << ") ---\n" << slice_body;
+                    if (truncated) out << "\n--- [slice truncated; raise --max-bytes] ---\n";
+                } else {
+                    bool truncated = body.size() > budget;
+                    if (truncated) body.resize(budget);
+                    out << "\n--- Content (" << resolved
+                        << (truncated ? "; truncated" : "")
+                        << ") ---\n" << body;
+                    if (truncated) out << "\n--- [content truncated; raise --max-bytes for more] ---\n";
+                }
             } else {
                 out << "\n--- Content unavailable (graph path mismatch; try `icmg context "
                     << node->path << "`) ---\n";
@@ -232,7 +308,8 @@ public:
             "  --diff-reset          Clear stored last-pack baseline\n"
             "  --ref-ids             Emit [ICMG-MEM-N] anchors; subsequent calls reuse\n"
             "  --prune-audit         Drop memory hits below --prune-min-score (default 1.5)\n"
-            "  --prune-min-score N   Threshold for prune-audit (default 1.5)\n";
+            "  --prune-min-score N   Threshold for prune-audit (default 1.5)\n"
+            "  --budget N            Knapsack-keep highest-score hits within N tokens\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -320,6 +397,10 @@ public:
         bool prune_audit = hasFlag(args, "--prune-audit");
         double prune_threshold = 1.5;
         try { prune_threshold = std::stod(flagValue(args, "--prune-min-score", "1.5")); } catch (...) {}
+        // Phase 67 T16: --budget N — knapsack-rank memory hits by score/cost,
+        // drop lowest until estimated tokens under N. cap is bytes; budget is tokens.
+        int token_budget = 0;
+        try { token_budget = std::stoi(flagValue(args, "--budget", "0")); } catch (...) {}
 
         std::ostringstream out;
         out << "# Task Context: " << trunc(task, 80) << "\n\n";
@@ -339,6 +420,25 @@ public:
                 std::cerr << "[icmg pack] --prune-audit dropped "
                           << pruned << " memory hit(s) below score "
                           << prune_threshold << "\n";
+            }
+        }
+        // Phase 67 T16: knapsack — sort by score desc, accumulate until budget hit.
+        if (token_budget > 0 && !recalled.empty()) {
+            std::sort(recalled.begin(), recalled.end(),
+                      [](const auto& a, const auto& b){ return a.score > b.score; });
+            size_t accum_tok = 0;
+            size_t kept = 0;
+            for (auto& m : recalled) {
+                size_t est = (m.topic.size() + m.content.size()) / 4 + 4;
+                if (accum_tok + est > (size_t)token_budget) break;
+                accum_tok += est;
+                ++kept;
+            }
+            if (kept < recalled.size()) {
+                std::cerr << "[icmg pack] --budget " << token_budget << " tok kept "
+                          << kept << "/" << recalled.size() << " hit(s) ("
+                          << accum_tok << " tok est)\n";
+                recalled.resize(kept);
             }
         }
         if (!recalled.empty()) {

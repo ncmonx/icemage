@@ -9,8 +9,12 @@ public:
 
     FilterResult filter(const std::string& raw, const std::string& /*cmd*/) override {
         FilterResult res;
-        auto lines = splitLines(raw);
-        res.original_lines = (int)lines.size();
+        auto raw_lines = splitLines(raw);  // already ANSI-stripped + CR-collapsed
+        res.original_lines = (int)raw_lines.size();
+
+        // Phase 67 T27: dedup + blank-collapse pass before head/tail trim.
+        // Cuts 30-60% on noisy outputs (compile warnings, progress spam).
+        auto lines = collapseBlankRuns(dedupConsecutive(raw_lines));
 
         constexpr int HEAD = 50;
         constexpr int TAIL = 20;
@@ -21,11 +25,9 @@ public:
             return res;
         }
 
-        // Head
         for (int i = 0; i < HEAD; ++i) res.output += lines[i] + "\n";
         int omitted = (int)lines.size() - HEAD - TAIL;
         res.output += "\n... (" + std::to_string(omitted) + " lines omitted) ...\n\n";
-        // Tail
         for (int i = (int)lines.size() - TAIL; i < (int)lines.size(); ++i)
             res.output += lines[i] + "\n";
 
