@@ -13,6 +13,10 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/exec_utils.hpp"
+#ifdef _WIN32
+  #include <windows.h>
+#endif
 
 #include <chrono>
 #include <ctime>
@@ -197,6 +201,16 @@ public:
                   << "  (" << std::fixed << std::setprecision(1)
                   << pct(total.saved, total.raw_tokens) << "%)\n";
 
+        // Phase 67 hotfix: real session total alongside dashboard estimate.
+        int64_t real_tok = fetchRealSessionTokens();
+        if (real_tok > 0) {
+            int coverage_pct = real_tok > 0 ? (int)(100 * total.raw_tokens / real_tok) : 0;
+            std::cout << "\nReal session tokens: " << real_tok
+                      << "  (icmg-covered " << total.raw_tokens
+                      << " = " << coverage_pct << "%, outside "
+                      << (real_tok - total.raw_tokens) << ")\n";
+        }
+
         if (denials.total > 0) {
             std::cout << "\nStrict-mode denials in window: " << denials.total << "\n";
             for (auto& kv : denials.by_hook) {
@@ -250,6 +264,28 @@ private:
                   << pct(b.saved, b.raw_tokens) << "% saved)\n";
     }
 
+    // Phase 67 hotfix: query latest transcript for REAL session total
+    // (covers all sources, not just icmg-instrumented). Subprocess call
+    // to self avoids duplicating the JSONL walker.
+    static int64_t fetchRealSessionTokens() {
+        // Prefer self-exe path; fall back to ICMG_BIN env then 'icmg' on PATH.
+        std::string bin;
+#ifdef _WIN32
+        char buf[1024]; DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
+        if (n > 0) bin = buf;
+#endif
+        if (bin.empty()) {
+            const char* e = std::getenv("ICMG_BIN");
+            bin = e ? e : "icmg";
+        }
+        std::string cmd = "\"" + bin + "\" context-budget --json --top 0 2>/dev/null";
+        auto res = core::safeExecShell(cmd, false, 10000);
+        if (res.exit_code != 0 || res.out.empty()) return 0;
+        auto p = res.out.find("\"total_tokens\":");
+        if (p == std::string::npos) return 0;
+        try { return std::stoll(res.out.substr(p + 15)); } catch (...) { return 0; }
+    }
+
     int emitHtml(const Bucket& f, const Bucket& c, const Bucket& t, const Bucket& tot,
                   double cost_without, double cost_with, double cost_saved,
                   int window_days, const std::string& out_path) {
@@ -294,8 +330,29 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 <div class="stat"><div class="num">)HTML"
            << tot.calls
            << R"HTML(</div><div class="lbl">Total operations</div></div>
-</div>
-<div class="cards">)HTML";
+</div>)HTML";
+
+        // Phase 67 hotfix: real session total from latest transcript.
+        int64_t real_tokens = fetchRealSessionTokens();
+        if (real_tokens > 0) {
+            int64_t instrumented = tot.raw_tokens;
+            int64_t uncovered = real_tokens > instrumented ? real_tokens - instrumented : 0;
+            int coverage_pct = real_tokens > 0
+                                ? (int)(100 * instrumented / real_tokens) : 0;
+            os << R"HTML(<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin-bottom:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">
+<div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Real session tokens</div><div style="font-size:28px;font-weight:700;color:#58a6ff">)HTML"
+               << humanTok(real_tokens)
+               << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">All sources from latest transcript</div></div>
+<div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Icmg-covered</div><div style="font-size:28px;font-weight:700;color:#3fb950">)HTML"
+               << humanTok(instrumented) << " (" << coverage_pct
+               << R"HTML(%)</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Tracked in dashboard</div></div>
+<div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Outside coverage</div><div style="font-size:28px;font-weight:700;color:#d29922">)HTML"
+               << humanTok(uncovered)
+               << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Raw Read/Bash/MCP/conversation</div></div>
+</div>)HTML";
+        }
+
+        os << R"HTML(<div class="cards">)HTML";
 
         emitCard(os, "Command filtering",     "icmg run",       f);
         emitCard(os, "Prompt compression",    "icmg compress",  c);

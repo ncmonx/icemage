@@ -27,6 +27,8 @@ protected:
         requireStr(args, "content", 1024 * 1024);
     }
 
+    bool isMutating() const override { return true; }
+
     json callImpl(const json& args, core::Db& db) override {
         imem::MemoryNode node;
         node.topic      = getStr(args, "topic");

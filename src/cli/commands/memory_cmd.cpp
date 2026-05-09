@@ -387,6 +387,7 @@ public:
         else if (sub == "decay")   registered = "memory-decay";
         else if (sub == "prune")   registered = "memory-prune";
         else if (sub == "prune-telemetry") registered = "memory-prune-telemetry";
+        else if (sub == "prune-old")       registered = "memory-prune-old";
         else if (sub == "health")  registered = "memory-health";
         else if (sub == "consolidate")     registered = "memory-consolidate";
         else if (sub == "extract-patterns")registered = "memory-extract-patterns";

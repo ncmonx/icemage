@@ -34,6 +34,8 @@ protected:
         }
     }
 
+    bool isMutating() const override { return true; }
+
     json callImpl(const json& args, core::Db& /*db*/) override {
         std::string action = getStr(args, "action");
         bool force_remote  = args.contains("force_remote") && args["force_remote"].is_boolean()

@@ -91,6 +91,18 @@ double Scorer::recencyDecay(int64_t last_used) const {
     return std::exp(-0.01 * hours);
 }
 
+// Phase 67 T15: age-based exponential decay envelope (created_at, days).
+// Complements recencyDecay (which resets on use): even frequently-used
+// memories get demoted if their underlying knowledge is months old, since
+// codebase reality drifts. Half-life ≈ 90 days at λ=0.0077.
+double Scorer::ageDecay(int64_t created_at) const {
+    if (created_at <= 0) return 1.0;  // unknown age → no penalty
+    int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    double days = static_cast<double>(now - created_at) / 86400.0;
+    return std::exp(-0.0077 * days);  // half-life ~90d
+}
+
 double Scorer::score(const std::string& query, const MemoryNode& node) const {
     auto d = scoreDetailed(query, node);
     return d.total;
@@ -108,7 +120,10 @@ Scorer::ScoreDetail Scorer::scoreDetailed(const std::string& query,
     int imp = std::max(0, std::min(3, node.importance));
     d.importance_mult = mult[imp];
 
-    d.total = d.bm25 * d.recency * d.freq * d.importance_mult * node.feedback_bias;
+    // Phase 67 T15: age envelope multiplied in. Half-life ~90d on created_at.
+    double age_mult = ageDecay(node.created_at);
+
+    d.total = d.bm25 * d.recency * d.freq * d.importance_mult * node.feedback_bias * age_mult;
 
     // Matched tokens
     auto q_tokens = tokenize(query);

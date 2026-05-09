@@ -1,5 +1,6 @@
 #pragma once
 #include "../core/db.hpp"
+#include "../core/tool_call_cache.hpp"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -33,9 +34,21 @@ public:
     virtual std::vector<McpToolParam> params() const = 0;
 
     // A4: all tools return JSON; call() is final, callImpl() is overridden.
+    // Phase 67 T24: read-only tools wrapped in ToolCallCache (5min TTL).
+    // Mutating tools (icmg_store, icmg_sync_*) override isMutating()=true to skip.
     json call(const json& args, core::Db& db) {
         validateArgs(args);
-        return callImpl(args, db);
+        if (isMutating()) return callImpl(args, db);
+        // Cache key = tool name + canonical args dump.
+        std::string args_norm = args.is_null() ? "" : args.dump();
+        std::string key = "mcp:" + name();
+        core::ToolCallCache cache(db);
+        if (auto hit = cache.lookup(key, args_norm)) {
+            try { return json::parse(*hit); } catch (...) {}
+        }
+        json out = callImpl(args, db);
+        try { cache.store(key, args_norm, out.dump(), 300); } catch (...) {}
+        return out;
     }
 
     // JSON Schema for tools/list
@@ -58,6 +71,9 @@ protected:
 
     // Default: no validation. Override to add per-tool checks.
     virtual void validateArgs(const json& /*args*/) {}
+
+    // Override returning true to skip cache (write-side tools).
+    virtual bool isMutating() const { return false; }
 
     // Helpers
     static std::string getStr(const json& args, const std::string& key,

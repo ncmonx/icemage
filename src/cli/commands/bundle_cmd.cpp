@@ -584,6 +584,21 @@ public:
         bool concise     = hasFlag(args, "--concise");
         bool caveman     = hasFlag(args, "--caveman");
         bool full_think  = hasFlag(args, "--full-think");
+        // Phase 67 hotfix: if global caveman flag set (~/.icmg/caveman.flag),
+        // force --no-think + --caveman regardless of classifier. Addresses
+        // model thinking-phase directive non-compliance bug — kill thinking
+        // outright instead of trying to constrain it via prompt.
+        {
+            const char* h = std::getenv("USERPROFILE");
+            if (!h) h = std::getenv("HOME");
+            if (h && !full_think) {
+                std::filesystem::path flag = std::filesystem::path(h) / ".icmg" / "caveman.flag";
+                if (std::filesystem::exists(flag)) {
+                    caveman = true;
+                    no_think = true;
+                }
+            }
+        }
         bool auto_think  = hasFlag(args, "--auto-think") ||
                            (!no_think && !concise && !caveman && !full_think);
         cli::Intent classified = cli::Intent::Unknown;

@@ -34,6 +34,8 @@ protected:
         requireStr(args, "text", 5'000'000);  // 5MB cap
     }
 
+    bool isMutating() const override { return true; }  // writes telemetry + glossary
+
     json callImpl(const json& args, core::Db& db) override {
         std::string text = getStr(args, "text");
         bool aggressive  = false;

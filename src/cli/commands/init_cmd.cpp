@@ -144,8 +144,24 @@ msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
     "Short synonyms. Technical terms exact. Code blocks unchanged." \
     "Pattern: [thing] [action] [reason]. [next step]." \
     "Code/commits/security/PRs: write normal." \
-    "Apply to thinking phase when exposed by the model." \
+    "" \
+    "THINKING PHASE rules (this is where verbose drift happens):" \
+    "- Apply caveman ultra to internal thinking section too." \
+    "- Internal reasoning: bullet fragments, no prose paragraphs." \
+    "- Cap thinking to 80 words. If approach is obvious, skip thinking entirely." \
+    "- No 'Let me check / Now I will / Looking at...' narration." \
+    "- Decision form: '[option] -> [outcome]. pick [winner].'" \
+    "- Repeating the question back inside thinking is forbidden." \
+    "" \
     "Off only when user says 'stop caveman' or 'normal mode'.")
+# Phase 67 T32: prepend violation pressure if recent caveman thinking-phase
+# violations recorded. Escalates language at 2+ / 5+ violations in 24h.
+if command -v icmg >/dev/null 2>&1; then
+    pressure=$(icmg compliance inject 2>/dev/null)
+    if [[ -n "$pressure" ]]; then
+        msg="${pressure}"$'\n\n'"${msg}"
+    fi
+fi
 jq -n --arg m "$msg" '{
     hookSpecificOutput: {
         hookEventName: "SessionStart",
@@ -498,11 +514,18 @@ private:
             }
         });
         // Phase 67 T3: Stop hook auto-distills assistant message into memory.
+        // Phase 67 T32: also pipes raw JSON to compliance check-thinking →
+        // logs violation when thinking section > 80 words while caveman ON.
+        // Phase 57: tool-budget reset on each Stop (per-turn counter).
         cfg["hooks"]["Stop"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.message.content[]?.text // empty' 2>/dev/null | icmg distill auto --min-len 200 2>/dev/null || true"}}
+                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.message.content[]?.text // empty' 2>/dev/null | icmg distill auto --min-len 200 2>/dev/null || true"}},
+                    {{"type", "command"},
+                     {"command", "INPUT=$(cat); echo \"$INPUT\" | icmg compliance check-thinking --max-words 80 2>/dev/null || true"}},
+                    {{"type", "command"},
+                     {"command", "icmg tool-budget reset 2>/dev/null || true"}}
                 })}
             }
         });

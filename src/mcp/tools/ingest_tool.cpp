@@ -35,6 +35,8 @@ protected:
         }
     }
 
+    bool isMutating() const override { return true; }  // writes image_cache + telemetry
+
     json callImpl(const json& args, core::Db& /*db*/) override {
         std::string path = getStr(args, "path");
         bool refresh = args.contains("refresh") && args["refresh"].is_boolean()
