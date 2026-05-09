@@ -1,0 +1,158 @@
+// Phase 52 T1: top-level `icmg health` — single sanity check.
+// Distinct from `icmg memory health` (per-table memory diagnostics).
+
+#include "../base_command.hpp"
+#include "../../core/registry.hpp"
+#include "../../core/config.hpp"
+#include "../../core/db.hpp"
+#include <nlohmann/json.hpp>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+
+namespace fs = std::filesystem;
+
+namespace icmg::cli {
+
+class HealthOverallCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "health"; }
+    std::string description() const override {
+        return "Single sanity check (DB / hooks / version / sidecars / telemetry)";
+    }
+
+    void usage() const override {
+        std::cout <<
+            "Usage: icmg health [options]\n\n"
+            "Options:\n"
+            "  --json         Machine-readable output\n"
+            "  --quiet        Only print summary line\n";
+    }
+
+    int run(const std::vector<std::string>& args) override {
+        if (hasFlag(args, "--help")) { usage(); return 0; }
+        bool json_out = hasFlag(args, "--json");
+        bool quiet    = hasFlag(args, "--quiet");
+
+        struct Check { std::string name; std::string status; std::string detail; };
+        std::vector<Check> checks;
+
+        auto& cfg = core::Config::instance();
+        std::string db_path = cfg.projectDbPath(".");
+        if (!fs::exists(db_path)) {
+            checks.push_back({"db", "WARN", "DB not yet created (run icmg init)"});
+        } else {
+            try {
+                core::Db db(db_path);
+                std::string ok = "?";
+                db.query("PRAGMA integrity_check", {},
+                         [&](const core::Row& r){ if (!r.empty()) ok = r[0]; });
+                checks.push_back({"db", ok == "ok" ? "OK" : "FAIL", "integrity=" + ok});
+                int v = db.userVersion();
+                checks.push_back({"schema", v >= 19 ? "OK" : "WARN",
+                                  "user_version=" + std::to_string(v) + " (latest=19)"});
+                int64_t rows = 0;
+                for (auto* tbl : {"tool_invocations", "compression_telemetry", "thinking_telemetry"}) {
+                    try {
+                        db.query(std::string("SELECT COUNT(*) FROM ") + tbl, {},
+                                 [&](const core::Row& r){ if (!r.empty()) rows += std::stoll(r[0]); });
+                    } catch (...) {}
+                }
+                checks.push_back({"telemetry",
+                                  rows < 100000 ? "OK" : "WARN",
+                                  std::to_string(rows) + " telemetry rows"
+                                  + (rows >= 100000 ? " (icmg memory prune-telemetry)" : "")});
+            } catch (const std::exception& e) {
+                checks.push_back({"db", "FAIL", e.what()});
+            }
+        }
+
+        // Hooks installed.
+        fs::path settings = fs::current_path() / ".claude" / "settings.local.json";
+        if (!fs::exists(settings)) {
+            checks.push_back({"hooks", "WARN", "no .claude/settings.local.json (run icmg init)"});
+        } else {
+            int present = 0, total = 4;
+            for (auto* f : {"icmg-bash-rewrite.sh", "icmg-shrink-read.sh",
+                             "icmg-cap-output.sh", "icmg-caveman-prompt.sh"}) {
+                if (fs::exists(fs::current_path() / ".claude" / "hooks" / f)) ++present;
+            }
+            checks.push_back({"hooks",
+                              present == total ? "OK" : (present > 0 ? "WARN" : "FAIL"),
+                              std::to_string(present) + "/" + std::to_string(total) + " hook scripts"});
+        }
+
+        // Caveman flag.
+        const char* home = std::getenv("USERPROFILE");
+        if (!home) home = std::getenv("HOME");
+        fs::path caveman_flag = fs::path(home ? home : ".") / ".icmg" / "caveman.flag";
+        if (fs::exists(caveman_flag)) {
+            std::ifstream f(caveman_flag); std::string lvl; std::getline(f, lvl);
+            checks.push_back({"caveman", "INFO", "ON (level=" + (lvl.empty() ? "ultra" : lvl) + ")"});
+        } else {
+            checks.push_back({"caveman", "INFO", "OFF (toggle: icmg caveman on)"});
+        }
+
+        // Sidecars.
+        fs::path embedder = fs::path(home ? home : ".") / ".icmg" / "embed" / "icmg_embedder.py";
+        checks.push_back({"sidecar.embedder",
+                          fs::exists(embedder) ? "OK" : "INFO",
+                          fs::exists(embedder) ? "installed" : "missing (semantic recall optional)"});
+
+        // Sync state.
+        fs::path sync_dir = fs::current_path() / ".icmg" / "sync";
+        if (fs::exists(sync_dir)) {
+            int files = 0;
+            for (auto& e : fs::directory_iterator(sync_dir)) if (e.is_regular_file()) ++files;
+            checks.push_back({"sync", "OK", std::to_string(files) + " snapshot files"});
+        } else {
+            checks.push_back({"sync", "INFO", "not initialized (icmg sync init)"});
+        }
+
+        // Render.
+        bool any_fail = false, any_warn = false;
+        for (auto& c : checks) {
+            if (c.status == "FAIL") any_fail = true;
+            else if (c.status == "WARN") any_warn = true;
+        }
+
+        if (json_out) {
+            nlohmann::json j;
+            j["overall"] = any_fail ? "FAIL" : (any_warn ? "WARN" : "OK");
+            j["checks"] = nlohmann::json::array();
+            for (auto& c : checks) {
+                j["checks"].push_back({
+                    {"name", c.name}, {"status", c.status}, {"detail", c.detail}
+                });
+            }
+            std::cout << j.dump(2) << "\n";
+        } else if (quiet) {
+            std::cout << (any_fail ? "FAIL" : (any_warn ? "WARN" : "OK")) << "\n";
+        } else {
+            std::cout << "icmg health\n"
+                      << std::string(60, '-') << "\n";
+            for (auto& c : checks) {
+                const char* mark = c.status == "OK"   ? "[+]"
+                                  : c.status == "FAIL" ? "[X]"
+                                  : c.status == "WARN" ? "[!]" : "[i]";
+                std::cout << "  " << mark << " " << c.name;
+                int pad = 22 - (int)c.name.size();
+                if (pad > 0) std::cout << std::string(pad, ' ');
+                std::cout << "[" << c.status << "] ";
+                int pad2 = 6 - (int)c.status.size();
+                if (pad2 > 0) std::cout << std::string(pad2, ' ');
+                std::cout << c.detail << "\n";
+            }
+            std::cout << std::string(60, '-') << "\n"
+                      << "Overall: " << (any_fail ? "FAIL" : (any_warn ? "WARN" : "OK")) << "\n";
+        }
+        return any_fail ? 1 : 0;
+    }
+};
+
+ICMG_REGISTER_COMMAND("health", HealthOverallCommand);
+
+} // namespace icmg::cli

@@ -386,6 +386,7 @@ public:
         else if (sub == "purge")   registered = "memory-purge";
         else if (sub == "decay")   registered = "memory-decay";
         else if (sub == "prune")   registered = "memory-prune";
+        else if (sub == "prune-telemetry") registered = "memory-prune-telemetry";
         else if (sub == "health")  registered = "memory-health";
         else if (sub == "consolidate")     registered = "memory-consolidate";
         else if (sub == "extract-patterns")registered = "memory-extract-patterns";
@@ -544,5 +545,108 @@ ICMG_REGISTER_COMMAND("memory-history", MemoryHistoryCommand);
 ICMG_REGISTER_COMMAND("memory-purge",   MemoryPurgeCommand);
 ICMG_REGISTER_COMMAND("memory-decay",   MemoryDecayCommand);
 ICMG_REGISTER_COMMAND("memory-prune",   MemoryPruneCommand);
+
+// Phase 52 T2: telemetry table prune.
+class MemoryPruneTelemetryCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "memory-prune-telemetry"; }
+    std::string description() const override {
+        return "Prune telemetry tables (>90d) + expired cache rows";
+    }
+
+    void usage() const override {
+        std::cout <<
+            "Usage: icmg memory prune-telemetry [options]\n\n"
+            "Default --dry-run. Add --yes to commit.\n\n"
+            "Options:\n"
+            "  --age <Nd>       Age threshold (default 90d)\n"
+            "  --yes            Commit (default dry-run)\n";
+    }
+
+    int run(const std::vector<std::string>& args) override {
+        if (hasFlag(args, "--help")) { usage(); return 0; }
+        bool yes = hasFlag(args, "--yes");
+        int age_days = 90;
+        try {
+            std::string a = flagValue(args, "--age");
+            if (!a.empty()) {
+                if (a.back() == 'd') a.pop_back();
+                age_days = std::stoi(a);
+            }
+        } catch (...) {}
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        int64_t cutoff = now - (int64_t)age_days * 86400;
+
+        struct Tbl { const char* name; const char* time_col; };
+        const Tbl old_tables[] = {
+            {"tool_invocations",      "timestamp"},
+            {"compression_telemetry", "created_at"},
+            {"thinking_telemetry",    "created_at"},
+            {"sync_log",              "created_at"},
+        };
+        const char* expired_tables[] = {
+            "tool_call_cache", "fetch_cache", "image_cache"
+        };
+
+        int64_t total = 0;
+        std::vector<std::pair<std::string,int64_t>> per_table;
+        for (auto& t : old_tables) {
+            try {
+                int64_t n = 0;
+                db.query(std::string("SELECT COUNT(*) FROM ") + t.name
+                         + " WHERE " + t.time_col + " < ?",
+                         {std::to_string(cutoff)},
+                         [&](const core::Row& r){ if (!r.empty()) n = std::stoll(r[0]); });
+                if (n > 0) {
+                    per_table.emplace_back(t.name, n);
+                    total += n;
+                    if (yes) {
+                        db.run(std::string("DELETE FROM ") + t.name
+                               + " WHERE " + t.time_col + " < ?",
+                               {std::to_string(cutoff)});
+                    }
+                }
+            } catch (...) {}
+        }
+        for (auto* t : expired_tables) {
+            try {
+                int64_t n = 0;
+                db.query(std::string("SELECT COUNT(*) FROM ") + t
+                         + " WHERE expires_at < ?",
+                         {std::to_string(now)},
+                         [&](const core::Row& r){ if (!r.empty()) n = std::stoll(r[0]); });
+                if (n > 0) {
+                    per_table.emplace_back(std::string(t) + " (expired)", n);
+                    total += n;
+                    if (yes) {
+                        db.run(std::string("DELETE FROM ") + t
+                               + " WHERE expires_at < ?",
+                               {std::to_string(now)});
+                    }
+                }
+            } catch (...) {}
+        }
+
+        std::cout << (yes ? "Pruned" : "[dry-run] Would prune")
+                  << " " << total << " row(s) across "
+                  << per_table.size() << " table(s)\n"
+                  << "  age threshold: " << age_days << "d\n";
+        for (auto& [name, n] : per_table) {
+            std::cout << "  " << name << ": " << n << "\n";
+        }
+        if (!yes) std::cout << "\nRe-run with --yes to commit.\n";
+        else {
+            try { db.run("VACUUM", {}); } catch (...) {}
+            std::cout << "  VACUUM ran (space reclaimed)\n";
+        }
+        return 0;
+    }
+};
+
+ICMG_REGISTER_COMMAND("memory-prune-telemetry", MemoryPruneTelemetryCommand);
 
 } // namespace icmg::cli

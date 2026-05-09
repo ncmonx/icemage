@@ -97,6 +97,7 @@ set -uo pipefail
 flag="${HOME:-$USERPROFILE}/.icmg/caveman.flag"
 [[ -f "$flag" ]] || exit 0
 level=$(head -n1 "$flag" 2>/dev/null || echo ultra)
+date -u "+%Y-%m-%dT%H:%M:%SZ" > "${HOME:-$USERPROFILE}/.icmg/caveman-last-trigger.txt" 2>/dev/null || true
 msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
     "Respond terse. All technical substance stay. Only fluff die." \
     "Drop articles, filler, pleasantries, hedging. Fragments OK." \

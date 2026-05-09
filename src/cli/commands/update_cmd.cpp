@@ -32,7 +32,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.30.2";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.31.0";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -167,7 +167,7 @@ private:
     // Phase 50 T1: download + verify sha256 manifest. Returns true on match
     // or when skip_verify=true. False on hard mismatch (caller aborts).
     // Warns and proceeds when manifest absent (transition period — older
-    // releases pre-v0.30.2 lack .sha256 sidecar files).
+    // releases pre-v0.31.0 lack .sha256 sidecar files).
     bool verifySha256(const fs::path& downloaded, const std::string& asset_url,
                        bool skip_verify) {
         if (skip_verify) {
@@ -330,6 +330,20 @@ private:
         std::cout << "Installed " << r.tag << ". Old binary kept at " << bak.string() << "\n"
                   << "  Verify: icmg --version\n"
                   << "  Rollback: icmg update --rollback\n\n";
+
+        // Phase 52 T3: auto-refresh installed hooks if .claude/hooks exists in cwd.
+        if (fs::exists(fs::current_path() / ".claude" / "hooks")) {
+            std::cout << "Refreshing project hooks (.claude/hooks/icmg-*.sh)...\n";
+            std::string cmd = "\"" + self.string() + "\" init --install-hooks --force "
+                              "--no-agents --no-embedder --no-scan";
+            auto res = core::safeExecShell(cmd, false, 15000);
+            if (res.exit_code == 0) {
+                std::cout << "  Hooks refreshed.\n\n";
+            } else {
+                std::cerr << "  Hook refresh skipped (exit=" << res.exit_code << ").\n";
+            }
+        }
+
         // Phase 44: print release notes + adoption hints so AI agents see new features.
         printReleaseNotes(r.tag);
         return 0;

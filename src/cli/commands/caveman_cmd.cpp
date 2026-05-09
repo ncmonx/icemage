@@ -66,6 +66,19 @@ public:
                 if (f) std::getline(f, level);
                 std::cout << "icmg caveman: ON (level=" << level << ")\n"
                           << "  flag: " << flag_path.string() << "\n";
+                // Hook installed?
+                fs::path hook = fs::current_path() / ".claude" / "hooks" / "icmg-caveman-prompt.sh";
+                std::cout << "  hook: " << (fs::exists(hook) ? "INSTALLED" : "MISSING (run icmg init --install-hooks --force)")
+                          << "\n";
+                // Last trigger.
+                fs::path last = flag_path.parent_path() / "caveman-last-trigger.txt";
+                if (fs::exists(last)) {
+                    std::ifstream lf(last);
+                    std::string ts; std::getline(lf, ts);
+                    std::cout << "  last fired: " << ts << "\n";
+                } else {
+                    std::cout << "  last fired: (no record yet — restart Claude session)\n";
+                }
             } else {
                 std::cout << "icmg caveman: OFF\n"
                           << "  Enable with: icmg caveman on\n";
