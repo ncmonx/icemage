@@ -153,7 +153,6 @@ Solo maintainer, no VC backing. If icmg saved you tokens, consider supporting de
 
 - 💚 [GitHub Sponsors](https://github.com/sponsors/ncmonx) — recurring or one-time
 - ☕ [Ko-fi](https://ko-fi.com/ncmonx) — quick tip, no signup
-- ₿ Crypto via [Coinbase Commerce](https://commerce.coinbase.com/checkout/REPLACE_WITH_CHECKOUT_ID) (BTC / ETH / USDC)
 
 Every contribution funds priority feature work and faster bug response.
 

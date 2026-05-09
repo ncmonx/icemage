@@ -2,6 +2,8 @@
 #include "../core/registry.hpp"
 #include <fstream>
 #include <chrono>
+#include <set>
+#include <string>
 
 // ICM importer: reads an ICM SQLite DB (from icm MCP tool) and maps to memory_nodes.
 // Tries "memories" table first (current ICM schema), then falls back to any table
@@ -57,9 +59,29 @@ private:
 
     void importFromMemoriesTable(core::Db& src, core::Db& dst,
                                   ImportStats& stats, int64_t now) {
-        // ICM schema: id, topic, content, importance, keywords, last_used, frequency
-        src.query("SELECT topic, content, importance, keywords, last_used, frequency "
-                  "FROM memories",
+        // Detect schema: ICM legacy (content/last_used/frequency)
+        // vs ICM 0.10.x (summary/last_accessed/access_count).
+        std::set<std::string> cols;
+        src.query("PRAGMA table_info(memories)", {},
+                  [&](const core::Row& r){
+                      if (r.size() >= 2) cols.insert(r[1]);
+                  });
+
+        std::string col_content   = cols.count("content")       ? "content"
+                                  : cols.count("summary")       ? "summary"
+                                  : "''";
+        std::string col_last_used = cols.count("last_used")     ? "last_used"
+                                  : cols.count("last_accessed") ? "last_accessed"
+                                  : "0";
+        std::string col_freq      = cols.count("frequency")     ? "frequency"
+                                  : cols.count("access_count")  ? "access_count"
+                                  : "1";
+
+        std::string sel = "SELECT topic, " + col_content + ", "
+                        + (cols.count("importance") ? "importance" : "1") + ", "
+                        + (cols.count("keywords")   ? "keywords"   : "''") + ", "
+                        + col_last_used + ", " + col_freq + " FROM memories";
+        src.query(sel,
                   {},
                   [&](const core::Row& r) {
                       if (r.size() < 2) return;
