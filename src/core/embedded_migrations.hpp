@@ -311,6 +311,105 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE INDEX IF NOT EXISTS idx_feedback_node    ON feedback(node_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at);
 )SQL"},
+        {13, R"SQL(
+-- 0013_compression_glossary
+CREATE TABLE IF NOT EXISTS compression_glossary (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_hash  TEXT NOT NULL,
+    alias         TEXT NOT NULL,
+    original      TEXT NOT NULL,
+    freq          INTEGER NOT NULL DEFAULT 1,
+    created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_compress_hash_alias ON compression_glossary(content_hash, alias);
+CREATE TABLE IF NOT EXISTS compression_telemetry (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    cmd           TEXT NOT NULL,
+    bytes_in      INTEGER NOT NULL,
+    bytes_out     INTEGER NOT NULL,
+    tok_in        INTEGER NOT NULL,
+    tok_out       INTEGER NOT NULL,
+    elapsed_ms    INTEGER NOT NULL,
+    mode          TEXT NOT NULL DEFAULT 'lossless',
+    created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+)SQL"},
+        {14, R"SQL(
+-- 0014_thinking_telemetry
+CREATE TABLE IF NOT EXISTS thinking_telemetry (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    cmd             TEXT NOT NULL,
+    task            TEXT NOT NULL DEFAULT '',
+    intent          TEXT NOT NULL DEFAULT 'unknown',
+    no_think        INTEGER NOT NULL DEFAULT 0,
+    concise         INTEGER NOT NULL DEFAULT 0,
+    input_bytes     INTEGER NOT NULL DEFAULT 0,
+    elapsed_ms      INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+)SQL"},
+        {15, R"SQL(
+-- 0015_tool_call_cache
+CREATE TABLE IF NOT EXISTS tool_call_cache (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    cmd          TEXT NOT NULL,
+    content_hash TEXT NOT NULL UNIQUE,
+    result_blob  TEXT NOT NULL,
+    hit_count    INTEGER NOT NULL DEFAULT 0,
+    created_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    expires_at   INTEGER NOT NULL
+);
+)SQL"},
+        {16, R"SQL(
+-- 0016_fetch_cache
+CREATE TABLE IF NOT EXISTS fetch_cache (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    url          TEXT NOT NULL UNIQUE,
+    etag         TEXT NOT NULL DEFAULT '',
+    content_kind TEXT NOT NULL DEFAULT 'unknown',
+    body_reduced TEXT NOT NULL,
+    bytes_in     INTEGER NOT NULL DEFAULT 0,
+    bytes_out    INTEGER NOT NULL DEFAULT 0,
+    hit_count    INTEGER NOT NULL DEFAULT 0,
+    fetched_at   INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    expires_at   INTEGER NOT NULL
+);
+)SQL"},
+        {17, R"SQL(
+-- 0017_image_cache
+CREATE TABLE IF NOT EXISTS image_cache (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_hash      TEXT NOT NULL UNIQUE,
+    bytes           INTEGER NOT NULL DEFAULT 0,
+    ocr_text        TEXT NOT NULL DEFAULT '',
+    ocr_confidence  INTEGER NOT NULL DEFAULT 0,
+    classify_kind   TEXT NOT NULL DEFAULT 'unknown',
+    hit_count       INTEGER NOT NULL DEFAULT 0,
+    cached_at       INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    expires_at      INTEGER NOT NULL
+);
+)SQL"},
+        {18, R"SQL(
+-- 0018_user_identity
+ALTER TABLE memory_nodes ADD COLUMN created_by TEXT NOT NULL DEFAULT '';
+ALTER TABLE memory_nodes ADD COLUMN row_version INTEGER NOT NULL DEFAULT 0;
+)SQL"},
+        {19, R"SQL(
+-- 0019_sync_tracking
+CREATE TABLE IF NOT EXISTS sync_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name  TEXT NOT NULL,
+    op          TEXT NOT NULL,
+    rows_in     INTEGER NOT NULL DEFAULT 0,
+    rows_out    INTEGER NOT NULL DEFAULT 0,
+    conflicts   INTEGER NOT NULL DEFAULT 0,
+    elapsed_ms  INTEGER NOT NULL DEFAULT 0,
+    actor       TEXT NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+ALTER TABLE graph_nodes ADD COLUMN row_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE graph_nodes ADD COLUMN created_by TEXT NOT NULL DEFAULT '';
+)SQL"},
     };
 }
 

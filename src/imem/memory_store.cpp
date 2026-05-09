@@ -140,6 +140,9 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
          std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
          expires, zone, core::currentUser()});
+    // Phase 48: initial row_version=1 for sync tracking.
+    int64_t new_id = db_.lastInsertId();
+    try { db_.run("UPDATE memory_nodes SET row_version=1 WHERE id=?", {std::to_string(new_id)}); } catch(...) {}
 
     int64_t id = db_.lastInsertId();
     if (!effective.keywords.empty()) syncKeywords(id, effective.keywords);
@@ -153,7 +156,8 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
 
 bool MemoryStore::update(int64_t id, const std::string& content, const std::string& keywords) {
     int64_t now = nowEpoch();
-    db_.run("UPDATE memory_nodes SET content=?, keywords=?, last_used=? WHERE id=?",
+    db_.run("UPDATE memory_nodes SET content=?, keywords=?, last_used=?, "
+            "row_version=COALESCE(row_version,0)+1 WHERE id=?",
             {content, keywords, std::to_string(now), std::to_string(id)});
     if (!keywords.empty()) syncKeywords(id, keywords);
 
