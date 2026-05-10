@@ -198,3 +198,57 @@ Do:
 - Per-project SQLite — never leaves your machine
 - No cloud sync, no telemetry phoned home
 - Apache-2.0 — fork it, audit it, ship it
+
+<!-- icmg:start -->
+## icmg routing (auto-inserted by `icmg init`)
+
+This project uses **icmg** for token-efficient code navigation. Prefer icmg over raw bash.
+
+### CRITICAL: parallel-first rule
+
+**If you have 2+ independent tasks (independent files, independent checks, independent recalls), ALWAYS run them via `icmg parallel`.** Do NOT run sequentially. This is non-negotiable — sequential runs waste wall-clock and miss the I/O parallelism win (3-6× speedup on typical paths).
+
+```bash
+# Wrong: sequential — waits each
+icmg verify --command "ctest"
+icmg verify --command "cmake --build build"
+icmg run npm test
+
+# Right: parallel — all run concurrently
+icmg parallel \
+    --task "icmg verify --command 'ctest'" \
+    --task "icmg verify --command 'cmake --build build'" \
+    --task "icmg run npm test"
+```
+
+Heuristic: if your next 2+ steps don't share a file write or depend on each other's output, use `icmg parallel`.
+
+### Decision tree
+
+| Want to | Use |
+|---|---|
+| **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default — see rule above) |
+| Read a large file | `icmg context <file>` (graph + symbols + memory) |
+| Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
+| Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
+| Search code | `icmg run grep ...` (auto-filtered) |
+| Recall past decision | `icmg recall "<query>"` |
+| Paraphrase recall | `icmg recall "<query>" --semantic` |
+| Start new task | `icmg pack "<task>"` (4KB context bundle) |
+| Delegate to LLM | `icmg agent "<task>"` (pack→prompt→user-CLI) |
+| Run noisy command | `icmg run <cmd>` (Tkil filter — 60-90% smaller) |
+| Big git diff | `icmg diff-summary --ref HEAD~5` |
+| Errored before? | `icmg explain "<error>"` |
+| List directory | `icmg ls [path]` |
+| Clone existing menu | `icmg parity <ref> <new>` (catch missed handlers) |
+| Generate scaffold | `icmg template extract <ref> --save-as X` then `icmg template apply X --to <new>` |
+
+**Auto-rewrite hook installed.** Raw `grep`, `node`, `cargo build`, `pytest`, etc. auto-redirect through `icmg run`. Bypass with `RAW=1 <cmd>`.
+
+### Persist learnings (always)
+- Fixed a bug? `icmg known-issue add "<pattern>" --fix "<resolution>"`
+- Made a decision? `icmg store --topic decisions-<feature> "<rationale>"`
+- Long-form rationale (post-mortem, ADR)? `icmg memoir add --title T --content-file F`
+
+Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
+<!-- icmg:end -->

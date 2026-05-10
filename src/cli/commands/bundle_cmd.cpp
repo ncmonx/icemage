@@ -8,6 +8,7 @@
 #include "../base_command.hpp"
 #include "../cache_emitter.hpp"
 #include "../think_directive.hpp"
+#include "../auto_zone.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/tool_call_cache.hpp"
 #include <cstdlib>
@@ -386,6 +387,17 @@ public:
         if (task.empty()) { std::cerr << "icmg pack: requires <task>\n"; return 1; }
 
         std::string zone = flagValue(args, "--zone");
+        // Phase 72: auto-zone detect from task keywords when user didn't pass
+        // --zone. Heuristic only; sharpens BM25 IDF without manual flag.
+        // Bypass via --no-auto-zone.
+        if (zone.empty() && !hasFlag(args, "--no-auto-zone")) {
+            std::string inferred = cli::inferZone(task);
+            if (!inferred.empty()) {
+                zone = inferred;
+                std::cerr << "[icmg pack] auto-zone: " << zone
+                          << " (use --no-auto-zone to skip)\n";
+            }
+        }
         size_t cap = 4096;
         try { cap = (size_t)std::stoul(flagValue(args, "--max-bytes", "4096")); } catch (...) {}
         int mem_limit = 5;

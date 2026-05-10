@@ -266,7 +266,16 @@ PROMPT=$(echo "$INPUT" | jq -r '.prompt // .message // empty' 2>/dev/null)
 command -v icmg >/dev/null 2>&1 || exit 0
 
 # Recall memory hits matching prompt keywords (top 3).
+# Phase 72 T9: cross-project fallback — when local hits sparse (<2 lines),
+# try --all-projects to surface "this prompt was solved in project X" cases.
 HITS=$(icmg recall "$PROMPT" --limit 3 2>/dev/null | head -30)
+LOCAL_LINES=$(printf '%s' "$HITS" | wc -l)
+if [ "$LOCAL_LINES" -lt 2 ] && [ "${ICMG_CROSS_PROJECT:-1}" = "1" ]; then
+    XHITS=$(icmg recall "$PROMPT" --all-projects --limit 3 2>/dev/null | head -20)
+    if [ -n "$XHITS" ]; then
+        HITS="${HITS}"$'\n--- cross-project hits (other projects) ---\n'"${XHITS}"
+    fi
+fi
 # Suggest compress when prompt large.
 SZ=${#PROMPT}
 SUGGEST=""
