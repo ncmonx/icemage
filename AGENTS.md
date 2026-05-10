@@ -202,7 +202,26 @@ Do:
 <!-- icmg:start -->
 ## icmg routing (auto-inserted by `icmg init`)
 
-This project uses **icmg** for token-efficient code navigation. Prefer icmg over raw bash.
+This project uses **icmg** for token-efficient code navigation.
+
+### ABSOLUTE RULE — icmg FIRST, ALWAYS
+
+**Before any native tool call (Read / Bash / Grep / Glob / WebFetch), STOP and check the decision tree below.** If an `icmg` command serves the same need, you MUST use icmg. No exceptions, no "small file" excuses, no "just this once."
+
+Order of resolution for every action:
+
+1. **Is there an icmg command for this?** → run it
+2. **No icmg command?** → run native tool
+3. **icmg command failed?** → diagnose with `icmg doctor` first; only fall back to native when icmg explicitly errors
+
+This is enforced at hook level (strict mode auto-on). Native calls that have an icmg equivalent are blocked with a redirect message. Do not waste tokens trying native first — the hook will block, you'll re-issue via icmg, you've burned a turn.
+
+**Common slip-ups that cost tokens:**
+- Reading a big file with native Read instead of `icmg context <file>` → 80%+ saved
+- `grep -r` instead of `icmg run grep ...` → unfiltered noise
+- WebFetch instead of `icmg fetch <url>` → no cache, no reduce
+- `cat large.log` instead of `icmg compress < large.log` → no glossary
+- Running 3 reads sequentially instead of `icmg parallel` → 3-6× wall-clock loss
 
 ### CRITICAL: parallel-first rule
 
