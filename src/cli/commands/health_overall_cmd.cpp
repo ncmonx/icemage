@@ -6,6 +6,8 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include <nlohmann/json.hpp>
+#include <chrono>
+#include <ctime>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -110,6 +112,77 @@ public:
             checks.push_back({"sync", "OK", std::to_string(files) + " snapshot files"});
         } else {
             checks.push_back({"sync", "INFO", "not initialized (icmg sync init)"});
+        }
+
+        // Maintain heavy/idle hint (Phase 74 T3).
+        if (fs::exists(db_path)) {
+            try {
+                core::Db db(db_path);
+                int64_t mem_rows = 0;
+                db.query("SELECT COUNT(*) FROM memory_nodes WHERE deleted_at IS NULL", {},
+                         [&](const core::Row& r){ if (!r.empty()) mem_rows = std::stoll(r[0]); });
+                uintmax_t db_size = fs::file_size(db_path);
+                bool heavy = (db_size > 100ull * 1024 * 1024) || (mem_rows > 50000);
+                std::string detail = std::to_string(db_size / 1024 / 1024) + "MB / "
+                                   + std::to_string(mem_rows) + " rows";
+                if (heavy) detail += " (icmg maintain run)";
+                checks.push_back({"maintain", heavy ? "WARN" : "OK", detail});
+            } catch (...) {}
+        }
+
+        // Mirror status (Phase 74 T7).
+        {
+            fs::path ma = fs::current_path() / ".icmg" / "data.db.mirror-a";
+            fs::path mb = fs::current_path() / ".icmg" / "data.db.mirror-b";
+            int present = (int)fs::exists(ma) + (int)fs::exists(mb);
+            std::time_t newest = 0;
+            for (auto& p : {ma, mb}) {
+                if (!fs::exists(p)) continue;
+                auto ftime = fs::last_write_time(p);
+                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                    ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now());
+                std::time_t t = std::chrono::system_clock::to_time_t(sctp);
+                if (t > newest) newest = t;
+            }
+            if (present == 0) {
+                checks.push_back({"mirror", "INFO",
+                                  "no mirrors (icmg mirror sync)"});
+            } else {
+                std::time_t now = std::time(nullptr);
+                long age_min = newest ? (now - newest) / 60 : 9999;
+                std::string detail = std::to_string(present) + "/2 mirror(s), latest "
+                                   + std::to_string(age_min) + "m old";
+                checks.push_back({"mirror",
+                                  (present == 2 && age_min < 60) ? "OK" : "WARN",
+                                  detail});
+            }
+        }
+
+        // Backup status (Phase 74).
+        fs::path bdir = fs::current_path() / ".icmg" / "backups";
+        if (!fs::exists(bdir)) {
+            checks.push_back({"backup", "INFO",
+                              "no snapshots (icmg backup snapshot)"});
+        } else {
+            int n = 0;
+            std::time_t newest = 0;
+            for (auto& e : fs::directory_iterator(bdir)) {
+                if (!e.is_regular_file()) continue;
+                if (e.path().extension() != ".db") continue;
+                ++n;
+                auto ftime = fs::last_write_time(e.path());
+                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                    ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now());
+                std::time_t t = std::chrono::system_clock::to_time_t(sctp);
+                if (t > newest) newest = t;
+            }
+            std::time_t now = std::time(nullptr);
+            long age_h = newest ? (now - newest) / 3600 : 9999;
+            std::string status = (age_h <= 48) ? "OK" : "WARN";
+            std::string detail = std::to_string(n) + " snap(s), latest "
+                + std::to_string(age_h) + "h old";
+            if (age_h > 48) detail += " (icmg backup auto-on)";
+            checks.push_back({"backup", status, detail});
         }
 
         // Render.

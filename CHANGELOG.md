@@ -2,6 +2,22 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.34.0 — self-protection: snapshot + dual-mirror + integrity gate + hot-cache
+
+Fortress mode. Six-layer durability + speed stack flips on automatically the moment you upgrade. Zero touch, zero excuses for losing work or burning recompute on the same prompt twice.
+
+- **Atomic snapshots** — `icmg backup snapshot` uses native backup API (WAL-safe, never blocks writes). Pyramidal retention (24h / 7d / 4w / 6m) caps disk while preserving history depth. Per-snapshot integrity sidecars detect bit-rot.
+- **Schema-aware restore** — `icmg backup restore latest` rolls the world back to a known-good point. Auto-undo snapshot taken first, schema-version mismatch refused unless forced. Recovery point: minutes.
+- **Ping-pong dual-mirror** — `icmg mirror sync` keeps two hot replicas ready for failover. Disk cost bounded to **2× live** — predictable. `icmg mirror failover` swaps in newest valid mirror in seconds, quarantines the corrupt primary for forensics, audit-logs the swap.
+- **Self-maintenance** — `icmg maintain run` auto-detects HEAVY (DB > 100MB or > 50K rows) and IDLE (no activity > 24h), then chains: telemetry prune → topic-aged prune → decay → consolidate → graph integrity check. Idle-mode soft-deletes only `auto:%/session:%/cache:%` rows below importance 2 — graph nodes and pinned memory untouched. Fully recoverable from any snapshot.
+- **Staged graph integrity** — `icmg graph integrity` walks 7 stages (schema, orphan edges, dead files, orphan symbols, stale mtime, duplicate paths, empty zones). Read-only by default, `--fix` repairs precisely (re-points edges via `UPDATE OR IGNORE`, marks stale for rescan, never destroys without warning).
+- **Hot-context cache** — `icmg compress` and `icmg context` now keyed on file mtime + size; second invocation in same task returns cached output in **~5ms** (15-30× faster cold→hot). Boosts `graph_nodes.access_count` on every hit so hot files climb search ranking. Cache invalidates automatically when files change. `icmg cache stats/list/prune/clear` exposes the layer.
+- **Auto-activate on every upgrade** — `icmg update --apply` post-swap calls `icmg init` which now auto-fires `backup snapshot` + `backup auto-on 1h` + `mirror auto-on 15m` + `maintain auto-on 6h`. First snapshot armed before user types another command. Opt-out flags (`--no-backup` / `--no-mirror` / `--no-maintain`) exist; defaults are sane.
+- **Doctor + health rewired** — integrity FAIL now suggests mirror failover (instant) before backup restore (history). Health surfaces snapshot age, mirror count, heavy/idle flags so drift is visible at a glance.
+- 50/50 ctest. 28 MCP tools.
+
+**Token impact:** ~300-700K saved per active week from cache hits + sharper BM25 + priority boost. Catastrophic save: corrupted DB → mirror failover replaces a 30K-100K-token re-scan with seconds of downtime.
+
 ## 0.33.6 — cross-project federation + autopilot hygiene + auto-zone
 
 - **Cross-project recall.** `icmg cross-recall <prompt>` searches all registered projects for tasks already solved. Each hit tagged `[project-name]`. UserPromptSubmit hook auto-falls-back when local <2 hits.

@@ -18,6 +18,8 @@
 #include "../../core/output_cap.hpp"
 #include "../ref_registry.hpp"
 #include "../pack_delta.hpp"
+#include <chrono>
+#include <ctime>
 #include <unordered_set>
 
 namespace icmg::cli {
@@ -74,6 +76,7 @@ public:
             "  --siblings        Also list test/doc/types sibling files (Phase 67)\n"
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
+            "  --no-cache        Bypass hot-context cache (force recompute)\n"
             "  --json            JSON output\n";
     }
 
@@ -90,6 +93,48 @@ public:
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
+
+        // Phase 74 T5: hot-context cache — re-issue of same `context <file>` w/
+        // same opts within TTL returns cached output instantly. Key includes
+        // file mtime+size so on-disk edits invalidate naturally.
+        bool no_cache = hasFlag(args, "--no-cache") || std::getenv("ICMG_NO_CACHE");
+        std::string ctx_cache_args;
+        if (!no_cache) {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            uintmax_t fsz = fs::exists(file, ec) ? fs::file_size(file, ec) : 0;
+            std::time_t fmt = 0;
+            if (fs::exists(file, ec)) {
+                auto ftime = fs::last_write_time(file, ec);
+                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                    ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now());
+                fmt = std::chrono::system_clock::to_time_t(sctp);
+            }
+            ctx_cache_args =
+                file + "|mtime=" + std::to_string(fmt)
+              + "|sz=" + std::to_string(fsz)
+              + "|cap=" + std::to_string(cap)
+              + "|nosym=" + (no_symbols ? "1" : "0")
+              + "|nomem=" + (no_memory ? "1" : "0")
+              + "|nocontent=" + (hasFlag(args, "--no-content") ? "1" : "0")
+              + "|sibs=" + (hasFlag(args, "--siblings") ? "1" : "0")
+              + "|lines=" + flagValue(args, "--lines");
+            try {
+                core::ToolCallCache tcc(db);
+                auto opt = tcc.lookup("context", ctx_cache_args);
+                if (opt) {
+                    std::cout << *opt;
+                    // Boost graph priority: this file is hot for this session.
+                    try {
+                        db.run("UPDATE graph_nodes SET access_count = access_count + 1, "
+                               "updated_at = strftime('%s','now') WHERE path = ?",
+                               {file});
+                    } catch (...) {}
+                    std::cerr << "[icmg context] cache HIT (no recompute)\n";
+                    return 0;
+                }
+            } catch (...) {}
+        }
         graph::GraphStore store(db);
         imem::MemoryStore mem(db);
 
@@ -297,6 +342,18 @@ public:
         std::string spill;
         std::string capped = core::capOutput(out.str(), cap, spill);
         std::cout << capped;
+
+        // Phase 74 T5: store + boost. Cache 30min default. Hot file = high
+        // priority on next graph search.
+        if (!no_cache && !ctx_cache_args.empty()) {
+            try {
+                core::ToolCallCache tcc(db);
+                tcc.store("context", ctx_cache_args, capped, /*ttl_sec*/ 1800);
+                db.run("UPDATE graph_nodes SET access_count = access_count + 1, "
+                       "updated_at = strftime('%s','now') WHERE path = ?",
+                       {file});
+            } catch (...) {}
+        }
         return 0;
     }
 };

@@ -7,11 +7,13 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/tool_call_cache.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
 
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 
@@ -35,7 +37,8 @@ public:
             "  --force               Compress even if shouldCompress() says no\n"
             "  --stats               Print 30-day telemetry summary, exit\n"
             "  --json                Machine-readable summary\n"
-            "  -o <file>             Write to file instead of stdout\n";
+            "  -o <file>             Write to file instead of stdout\n"
+            "  --no-cache            Bypass tool-call cache (force recompute)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -70,20 +73,58 @@ public:
         }
 
         if (force) opts.threshold_tok = 0;
-        compress::Compressor c(opts);
-        auto r = c.compress(input, kind);
 
-        // Persist glossary + telemetry (best-effort).
+        // Phase 74 T5: hot-context cache — same input + same opts within TTL → hit.
+        // Saves recompression cost when Claude re-checks file mid-task.
+        bool no_cache = hasFlag(args, "--no-cache") || std::getenv("ICMG_NO_CACHE");
+        std::string cache_args =
+            "thr=" + std::to_string(opts.threshold_tok)
+          + "|mode=" + (opts.mode == compress::Mode::Aggressive ? "agg" : "loss")
+          + "|kind=" + kind
+          + "|in_sz=" + std::to_string(input.size())
+          + "|in=" + input;  // FNV-1a inside makeKey hashes the whole thing
+        std::optional<std::string> cached_text;
+        compress::CompressResult r;
+        bool cache_hit = false;
+        if (!no_cache) {
+            try {
+                auto& cfg = core::Config::instance();
+                core::Db db(cfg.projectDbPath("."));
+                core::ToolCallCache tcc(db);
+                auto opt = tcc.lookup("compress", cache_args);
+                if (opt) {
+                    r.text = *opt;
+                    r.skipped = false;
+                    r.bytes_in = (int)input.size();
+                    r.bytes_out = (int)r.text.size();
+                    r.tok_in = r.bytes_in / 4;
+                    r.tok_out = r.bytes_out / 4;
+                    r.elapsed_ms = 0;
+                    cache_hit = true;
+                }
+            } catch (...) {}
+        }
+        if (!cache_hit) {
+            compress::Compressor c(opts);
+            r = c.compress(input, kind);
+        }
+
+        // Persist glossary + telemetry + cache (best-effort).
         try {
             auto& cfg = core::Config::instance();
             core::Db db(cfg.projectDbPath("."));
             compress::GlossaryStore store(db);
-            if (!r.skipped) store.save(r.content_hash, r.glossary);
+            if (!cache_hit && !r.skipped) store.save(r.content_hash, r.glossary);
             store.recordTelemetry("compress", r.bytes_in, r.bytes_out,
                                    r.tok_in, r.tok_out, r.elapsed_ms,
-                                   r.skipped ? "skipped"
-                                             : (opts.mode == compress::Mode::Aggressive
-                                                ? "aggressive" : "lossless"));
+                                   cache_hit ? "cache-hit"
+                                             : (r.skipped ? "skipped"
+                                                          : (opts.mode == compress::Mode::Aggressive
+                                                             ? "aggressive" : "lossless")));
+            if (!cache_hit && !no_cache && !r.skipped) {
+                core::ToolCallCache tcc(db);
+                tcc.store("compress", cache_args, r.text, /*ttl_sec*/ 1800);
+            }
         } catch (...) { /* db unavailable: still print result */ }
 
         // Output.

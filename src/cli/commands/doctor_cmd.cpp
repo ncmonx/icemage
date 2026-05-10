@@ -198,8 +198,11 @@ public:
                          [&](const core::Row& r){ if (!r.empty()) ok = r[0]; });
                 if (ok != "ok") {
                     ++issues;
-                    std::cout << "  ! [db] integrity FAIL — backup " << db_path
-                              << " before any further use.\n";
+                    std::cout << "  ! [db] integrity FAIL — DB corrupt.\n"
+                              << "    1) `icmg mirror failover` (instant; if mirror exists)\n"
+                              << "    2) `icmg backup list` then `icmg backup restore latest`\n"
+                              << "    3) If neither: copy " << db_path
+                              << " then `icmg backup integrity` to confirm.\n";
                 } else if (verb) {
                     std::cout << "  ✓ [db] integrity ok\n";
                 }

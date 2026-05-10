@@ -15,6 +15,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/exec_utils.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
@@ -466,6 +467,9 @@ public:
             "  --no-agents     Skip AGENTS.md update\n"
             "  --no-embedder   Skip embedder sidecar drop\n"
             "  --no-scan       Skip initial graph scan\n"
+            "  --no-backup     Skip backup auto-on (default: enable hourly snapshot)\n"
+            "  --no-maintain   Skip maintain auto-on (default: enable 6h hygiene)\n"
+            "  --no-mirror     Skip mirror auto-on (default: enable 15m dual-mirror)\n"
             "  --force         Overwrite existing files\n"
             "  --strict-read   Hard-deny Read on large non-source files (>20KB);\n"
             "                  source extensions (.cs/.ts/.cpp/...) stay soft-mode\n";
@@ -477,6 +481,9 @@ public:
         bool no_agents   = hasFlag(args, "--no-agents");
         bool no_embedder = hasFlag(args, "--no-embedder");
         bool no_scan     = hasFlag(args, "--no-scan");
+        bool no_backup   = hasFlag(args, "--no-backup");
+        bool no_maintain = hasFlag(args, "--no-maintain");
+        bool no_mirror   = hasFlag(args, "--no-mirror");
         bool force       = hasFlag(args, "--force");
         bool strict_read = hasFlag(args, "--strict-read");
 
@@ -501,6 +508,42 @@ public:
         if (!no_scan) {
             std::cout << "  graph scan: run `icmg graph scan` to populate symbol index\n";
             std::cout << "  embed:      run `icmg embed memory` (requires Python sentence-transformers)\n";
+        }
+
+        // Phase 74 T6: auto-enable self-protection on init (opt-out via --no-backup / --no-maintain).
+        // First snapshot fires synchronously so user has immediate recovery point.
+        if (!no_backup) {
+            std::cout << "  backup:     enabling hourly auto-snapshot...\n";
+            auto r1 = core::safeExecShell("icmg backup snapshot --note init", false, 30000);
+            if (r1.exit_code != 0)
+                std::cerr << "    [warn] initial snapshot failed (continuing)\n";
+            auto r2 = core::safeExecShell("icmg backup auto-on --interval 1h", false, 15000);
+            if (r2.exit_code != 0) {
+                std::cerr << "    [warn] auto-on failed — run manually: icmg backup auto-on\n";
+            } else {
+                std::cout << "    OK: scheduler armed (every 1h)\n";
+            }
+        }
+        if (!no_maintain) {
+            std::cout << "  maintain:   enabling 6h hygiene...\n";
+            auto r = core::safeExecShell("icmg maintain auto-on --interval 6h", false, 15000);
+            if (r.exit_code != 0) {
+                std::cerr << "    [warn] maintain auto-on failed — run manually: icmg maintain auto-on\n";
+            } else {
+                std::cout << "    OK: scheduler armed (every 6h)\n";
+            }
+        }
+        if (!no_mirror) {
+            std::cout << "  mirror:     enabling 15m dual-mirror...\n";
+            auto r1 = core::safeExecShell("icmg mirror sync", false, 30000);
+            if (r1.exit_code != 0)
+                std::cerr << "    [warn] initial mirror sync failed (continuing)\n";
+            auto r2 = core::safeExecShell("icmg mirror auto-on --every 15m", false, 15000);
+            if (r2.exit_code != 0) {
+                std::cerr << "    [warn] mirror auto-on failed — run manually: icmg mirror auto-on\n";
+            } else {
+                std::cout << "    OK: failover armed (refresh every 15m)\n";
+            }
         }
 
         std::cout << "\nDone. " << steps << " file(s) written.\n"

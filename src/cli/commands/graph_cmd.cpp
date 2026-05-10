@@ -1032,6 +1032,7 @@ public:
             "  stats                 Graph statistics\n"
             "  orphans               Find orphan files (no inbound edges)\n"
             "  cycles                Detect circular dependencies\n"
+            "  integrity [--fix]     Staged broken/dead/stale check + repair\n"
             "  communities           Louvain auto-cluster (Phase 26 — suggests zones)\n"
             "  hot                   Show most accessed files\n"
             "  watch [dir]           Start file watcher daemon\n"
