@@ -318,7 +318,7 @@ public:
             "  --memory-limit N      Recall result count (default 5)\n"
             "  --cache-prefix        Wrap output in prompt-cache markers\n"
             "  --auto-cache          Auto-wrap when output >= 4KB (Phase 67)\n"
-            "  --no-compress         Skip auto-compress (Phase 70 — default ON >=6KB)\n"
+            "  --no-compress         Skip auto-compress (Phase 71 — default ON >=1KB)\n"
             "  --compress-aggressive Stronger lossy compress (filler-strip)\n"
             "  --cache-ttl N         Cache TTL seconds (default 3600)\n"
             "  --no-think            Force directive: skip model analysis pass\n"
@@ -604,8 +604,8 @@ public:
         // header so model can interpret aliases. Threshold 6KB (1.5K tok)
         // lower than compressor's internal 8K to trigger more often on pack.
         bool no_compress = hasFlag(args, "--no-compress");
-        size_t comp_threshold = 3000;
-        try { comp_threshold = (size_t)std::stoul(flagValue(args, "--compress-min", "3000")); } catch (...) {}
+        size_t comp_threshold = 1024;
+        try { comp_threshold = (size_t)std::stoul(flagValue(args, "--compress-min", "1024")); } catch (...) {}
         if (!no_compress && capped.size() >= comp_threshold) {
             try {
                 compress::CompressOptions copts;

@@ -135,6 +135,11 @@ SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE" 2>/dev/null || echo 0)
 SUMMARY=$(icmg summarize "$FILE" 2>/dev/null || true)
 [[ -z "$SUMMARY" ]] && exit 0
 
+# Phase 71: also fetch icmg context (graph + symbols + content slice) so model
+# has rich view alongside capped Read. Reduces re-Read pattern when model
+# searches for Edit anchor — anchor often visible in context output already.
+CTX=$(icmg context "$FILE" --max-bytes 2048 --no-content 2>/dev/null || true)
+
 # Phase 70: STRICT mode also uses updatedInput.limit cap (was hard-deny).
 # Hard-deny broke Edit's "Read-first" session requirement. Cap to 50 lines
 # in strict mode (vs 100 default) — still enforces "use icmg" while letting
@@ -147,13 +152,13 @@ if [[ "${ICMG_SHRINK_STRICT:-0}" = "1" ]]; then
         "$(printf '%s' "$FILE" | jq -Rs .)" \
         "$(printf '%s' "Read capped on file ${SIZE}B" | jq -Rs .)" \
         >> "$HOMED/.icmg/strict-denials.jsonl" 2>/dev/null || true
-    STRICT_LIMIT="${ICMG_READ_STRICT_LIMIT:-50}"
-    jq -n --arg f "$FILE" --arg sz "$SIZE" --arg s "$SUMMARY" --argjson lim "$STRICT_LIMIT" '{
+    STRICT_LIMIT="${ICMG_READ_STRICT_LIMIT:-30}"
+    jq -n --arg f "$FILE" --arg sz "$SIZE" --arg s "$SUMMARY" --arg c "$CTX" --argjson lim "$STRICT_LIMIT" '{
         hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "allow",
             updatedInput: {file_path: $f, limit: $lim},
-            additionalContext: ("STRICT: file " + $f + " is " + $sz + " bytes. Read CAPPED to " + ($lim|tostring) + " lines. Use `icmg context " + $f + " --lines A-B` for surgical slice. Use `icmg graph symbol <Name>` for one symbol body.\n\nicmg summarize:\n" + $s)
+            additionalContext: ("STRICT: file " + $f + " is " + $sz + " bytes. Read CAPPED to " + ($lim|tostring) + " lines (Edit-anchor only). For full slice use `icmg context " + $f + " --lines A-B`. For one symbol body use `icmg graph symbol <Name>`.\n\nicmg context (graph + symbols + memory):\n" + $c + "\n\nicmg summarize:\n" + $s)
         }
     }'
     exit 0
@@ -164,13 +169,13 @@ fi
 # Edit tool checks for prior Read of same path; full deny breaks that flow.
 # Default cap: 100 lines (~3KB ≈ 750 tok). User can re-Read with explicit
 # offset+limit if more needed. Aggressive enough to save 80-90% on big files.
-LIMIT="${ICMG_READ_LIMIT:-100}"
-jq -n --arg s "$SUMMARY" --arg f "$FILE" --arg sz "$SIZE" --argjson lim "$LIMIT" '{
+LIMIT="${ICMG_READ_LIMIT:-30}"
+jq -n --arg s "$SUMMARY" --arg c "$CTX" --arg f "$FILE" --arg sz "$SIZE" --argjson lim "$LIMIT" '{
     hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "allow",
         updatedInput: {file_path: $f, limit: $lim},
-        additionalContext: ("Large file " + $f + " (" + $sz + " bytes). Capped Read to " + ($lim|tostring) + " lines via icmg hook. Full slice: `icmg context " + $f + " --lines A-B`. icmg summarize:\n\n" + $s)
+        additionalContext: ("Large file " + $f + " (" + $sz + " bytes). Read CAPPED to " + ($lim|tostring) + " lines (Edit-anchor only). For full slice: `icmg context " + $f + " --lines A-B`. For symbol body: `icmg graph symbol <Name>`.\n\nicmg context (graph + symbols + memory):\n" + $c + "\n\nicmg summarize:\n" + $s)
     }
 }'
 exit 0
@@ -246,6 +251,46 @@ head_part=$(printf '%s' "$out" | head -c 4096)
 tail_part=$(printf '%s' "$out" | tail -c 2048)
 msg=$(printf '%s\n... [truncated, %d bytes total, full at %s] ...\n%s' "$head_part" "$sz" "$spill" "$tail_part")
 jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+)BASH";
+
+// Phase 71: UserPromptSubmit hook — auto-recall memory + suggest compress
+// when prompt contains large pasted text. Forces 4 core features (memory/
+// compress/store/graph) into Claude's awareness on every turn instead of
+// passive existence in DB.
+static const char* PROMPT_RECALL_SH = R"BASH(#!/usr/bin/env bash
+set -uo pipefail
+INPUT=$(cat)
+PROMPT=$(echo "$INPUT" | jq -r '.prompt // .message // empty' 2>/dev/null)
+[ -z "$PROMPT" ] && exit 0
+[ "${#PROMPT}" -lt 20 ] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+
+# Recall memory hits matching prompt keywords (top 3).
+HITS=$(icmg recall "$PROMPT" --limit 3 2>/dev/null | head -30)
+# Suggest compress when prompt large.
+SZ=${#PROMPT}
+SUGGEST=""
+if [ "$SZ" -gt 4000 ]; then
+    SUGGEST="(Large prompt ${SZ}B — model: pipe big paste through icmg compress before pasting next time.)"
+fi
+# Detect path mentions → pre-fetch icmg context.
+FIRSTPATH=$(echo "$PROMPT" | grep -oE '[A-Za-z0-9_./\\-]+\.(cs|ts|tsx|js|jsx|py|cpp|hpp|sql|md|json|yaml|yml)' | head -1)
+CTX=""
+if [ -n "$FIRSTPATH" ] && [ -f "$FIRSTPATH" ]; then
+    CTX=$(icmg context "$FIRSTPATH" --max-bytes 1024 --no-content 2>/dev/null || true)
+fi
+
+[ -z "$HITS" ] && [ -z "$CTX" ] && [ -z "$SUGGEST" ] && exit 0
+MSG=""
+[ -n "$HITS" ] && MSG="${MSG}icmg memory hits (proactively surfaced):\n${HITS}\n\n"
+[ -n "$CTX" ]  && MSG="${MSG}icmg context for ${FIRSTPATH}:\n${CTX}\n\n"
+[ -n "$SUGGEST" ] && MSG="${MSG}${SUGGEST}\n"
+jq -n --arg m "$MSG" '{
+    hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: $m
+    }
+}'
 )BASH";
 
 // Phase 40 T2: PreCompact hook — auto-snapshots session before /compact
@@ -468,6 +513,8 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-precompact-snapshot.py", PRECOMPACT_PY, force);
         // Phase 51 T2: caveman SessionStart hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-caveman-prompt.sh", CAVEMAN_PROMPT_SH, force);
+        // Phase 71: UserPromptSubmit auto-recall + suggest compress.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-prompt-recall.sh", PROMPT_RECALL_SH, force);
 
 #ifndef _WIN32
         // chmod +x on POSIX
@@ -591,6 +638,18 @@ private:
             }
         });
 
+        // Phase 71: UserPromptSubmit — auto-recall memory + auto-context for
+        // path mentions + suggest compress on large pastes. Forces 4 core
+        // features into Claude awareness every turn.
+        cfg["hooks"]["UserPromptSubmit"] = json::array({
+            {
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command", "[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0"}}
+                })}
+            }
+        });
+
         // Phase 40 T2: PreCompact hook — snapshot session before /compact.
         // Phase 67 T5: also distill session into memory primer for next session.
         cfg["hooks"]["PreCompact"] = json::array({
@@ -611,7 +670,7 @@ private:
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.message.content[]?.text // empty' 2>/dev/null | icmg distill auto --min-len 200 2>/dev/null || true"}},
+                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.message.content[]?.text // empty' 2>/dev/null | icmg distill auto --min-len 100 2>/dev/null || true"}},
                     {{"type", "command"},
                      {"command", "INPUT=$(cat); echo \"$INPUT\" | icmg compliance check-thinking --max-words 80 2>/dev/null || true"}},
                     {{"type", "command"},
