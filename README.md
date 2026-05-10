@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![tests](https://img.shields.io/badge/tests-50%2F50%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
-[![commands](https://img.shields.io/badge/CLI%20commands-72%2B-blue)](#)
+[![commands](https://img.shields.io/badge/CLI%20commands-78%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
@@ -197,6 +197,14 @@ TEAM-FRIENDLY         ▸ Memory + graph share via git-tracked JSONL snapshots
 IMAGE-AWARE           ▸ Local OCR for screenshots; 90%+ vs vision API
 HARD ENFORCEMENT      ▸ Hooks block native Read/WebFetch when icmg has it
 SELF-REPAIR           ▸ DLL sha256 auto-rollback, lock recovery, pending-restart
+SELF-PROTECTION       ▸ Atomic snapshots (24h/7d/4w/6m pyramidal) +
+                        ping-pong dual-mirror (2× live, instant failover) +
+                        7-stage graph integrity check + auto on every upgrade
+HOT-CONTEXT CACHE     ▸ Re-issue same icmg context/compress within session →
+                        ~5ms cache hit (15-30× cold→hot). Boosts hot files
+                        in graph rank automatically. Self-invalidating on edit
+SELF-MAINTENANCE      ▸ icmg maintain run auto-detects HEAVY/IDLE state →
+                        prune chain → keeps only active graph in idle mode
 APACHE-2.0            ▸ License preserved on releases
 ```
 
@@ -227,8 +235,13 @@ APACHE-2.0            ▸ License preserved on releases
 | Real session tokens | `icmg context-budget` — covers ALL sources |
 | What changed | `icmg whats-new` — release notes after `update` |
 | Visual graph | `icmg serve` — embedded HTTP dashboard |
+| **DB safety net** | `icmg backup snapshot` / `icmg backup restore latest` — atomic, schema-checked |
+| **Instant failover** | `icmg mirror failover` — swaps in valid mirror in seconds |
+| **Self-clean heavy/idle DB** | `icmg maintain run` — auto-detects state, chains prune + integrity |
+| **Repair broken graph** | `icmg graph integrity --fix` — 7-stage check + targeted repair |
+| **Inspect cache layer** | `icmg cache stats / list / prune` — see what's hot |
 
-Run `icmg --help` for the full list of 70+ subcommands. Each has its own `--help`.
+Run `icmg --help` for the full list of 78+ subcommands. Each has its own `--help`.
 
 ---
 
@@ -333,6 +346,19 @@ icmg is designed to recover from common failure modes on its own. The trade-off:
 | DB schema lag | Migrations apply automatically on next open; backward-compatible |
 | Project graph stale | `icmg context` auto-scans single file inline if not yet indexed |
 | TS/MD/JSON files missing from graph | Auto-detected by extension and indexed on next access |
+| **DB corruption detected** | `icmg mirror failover` swaps in newest valid mirror in seconds; primary quarantined for forensics; audit-logged |
+| **No mirror available** | `icmg backup restore latest` rolls back to most recent atomic snapshot; auto-undo created first |
+| **DB heavy (>100MB or >50K rows)** | `icmg maintain run` chains telemetry-prune → topic-aged prune → decay → consolidate → integrity check |
+| **Project idle (no activity >24h)** | `icmg maintain run --idle-mode` soft-deletes auto/session/cache rows below importance 2; graph + pinned memory untouched |
+
+**Always-on protection (auto-armed on `icmg init` and every upgrade):**
+
+| Layer | Cadence | Disk cost | Purpose |
+|---|---|---|---|
+| Snapshot history | hourly | pyramidal (24h/7d/4w/6m) | Time-travel recovery |
+| Dual mirror | 15 min | 2× live | Instant failover |
+| Hygiene maintain | 6 h | n/a | Bounded growth |
+| Graph integrity | within maintain | n/a | Drift detection |
 
 Most recovery paths take 1–3 seconds. A few (network re-fetch on integrity mismatch, helper-script wait for exit) can take 10–30 seconds. Safety is prioritized over speed — every recovery preserves the previous good state via `.bak` files so manual rollback is always available.
 
