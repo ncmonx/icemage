@@ -126,6 +126,7 @@ void Config::parseJson(const std::string& json) {
 
     while (i < json.size()) {
         skip_ws();
+        if (i >= json.size()) break;
         if (json[i] == '}') break;
         if (json[i] == ',') { ++i; continue; }
 
@@ -141,6 +142,28 @@ void Config::parseJson(const std::string& json) {
         std::string value;
         if (json[i] == '"') {
             value = read_string();
+        } else if (json[i] == '{') {
+            // Phase 73: nested object — recurse, prefix child keys with parent.
+            int depth = 0;
+            size_t start = i;
+            while (i < json.size()) {
+                if (json[i] == '"') { read_string(); continue; }
+                if (json[i] == '{') { ++depth; ++i; continue; }
+                if (json[i] == '}') {
+                    --depth;
+                    ++i;
+                    if (depth == 0) break;
+                    continue;
+                }
+                ++i;
+            }
+            std::string nested = json.substr(start, i - start);
+            Config tmp;
+            tmp.parseJson(nested);
+            for (auto& [k2, v2] : tmp.data_) {
+                if (!key.empty()) data_[key + "." + k2] = v2;
+            }
+            continue;
         } else {
             // number/bool/null — read until , or }
             size_t start = i;

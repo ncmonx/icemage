@@ -43,7 +43,15 @@ public:
 
         if (hasFlag(args, "--stats")) return printStats();
 
+        // Phase 73: respect ~/.icmg/config.json `compress.threshold` and
+        // `compress.mode` (lossless|aggressive). CLI flags override config.
+        // Closes upstream report: hardcoded 8000 default ignored config.
         compress::CompressOptions opts;
+        auto& cfg = core::Config::instance();
+        std::string cfg_mode = cfg.getString("compress.mode", "");
+        if (cfg_mode == "aggressive") opts.mode = compress::Mode::Aggressive;
+        int cfg_threshold = cfg.getInt("compress.threshold", 0);
+        if (cfg_threshold > 0) opts.threshold_tok = cfg_threshold;
         if (hasFlag(args, "--aggressive")) opts.mode = compress::Mode::Aggressive;
         try {
             std::string t = flagValue(args, "--threshold");

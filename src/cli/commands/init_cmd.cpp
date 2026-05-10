@@ -633,6 +633,28 @@ private:
                       "MSG=$(printf '%s\\n... [WebFetch capped from %d to 4KB; use icmg fetch for cached + reduced] ...\\n' \"$HEAD\" \"$SZ\"); "
                       "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
                 })}
+            },
+            // Phase 73: PostToolUse:Read — auto-pipe big Read output through
+            // `icmg compress` so compression layer fires on real content, not
+            // just `icmg pack` calls. Hook already capped Read to 30 lines via
+            // PreToolUse, so output ≥1KB here means real content worth compressing.
+            {
+                {"matcher", "Read"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command",
+                      "INPUT=$(cat); "
+                      "OUT=$(echo \"$INPUT\" | jq -r '.tool_response.content // .tool_response.output // empty' 2>/dev/null); "
+                      "SZ=${#OUT}; "
+                      "[ \"$SZ\" -lt 1024 ] && exit 0; "
+                      "command -v icmg >/dev/null 2>&1 || exit 0; "
+                      "COMPRESSED=$(printf '%s' \"$OUT\" | icmg compress --threshold 256 2>/dev/null); "
+                      "[ -z \"$COMPRESSED\" ] && exit 0; "
+                      "OZ=${#OUT}; CZ=${#COMPRESSED}; "
+                      "[ \"$CZ\" -ge \"$OZ\" ] && exit 0; "
+                      "MSG=$(printf 'Read output auto-compressed (%dB → %dB). Glossary inline; aliases match original tokens.\\n%s' \"$OZ\" \"$CZ\" \"$COMPRESSED\"); "
+                      "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
+                })}
             }
         });
         cfg["hooks"]["PreToolUse"] = pre_array;

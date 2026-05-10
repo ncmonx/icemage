@@ -624,7 +624,9 @@ public:
                 copts.mode = hasFlag(args, "--compress-aggressive")
                               ? compress::Mode::Aggressive
                               : compress::Mode::Lossless;
-                copts.threshold_tok = 1500;  // override compressor's 8K skip
+                // Phase 73: match pack auto-fire threshold. comp_threshold is bytes,
+                // threshold_tok is tokens (~bytes/4). 1024B → ~256 tok.
+                copts.threshold_tok = (int)(comp_threshold / 4);
                 compress::Compressor c(copts);
                 auto cr = c.compress(capped, "pack");
                 if (!cr.skipped && cr.tok_out > 0 && cr.tok_out < cr.tok_in) {
