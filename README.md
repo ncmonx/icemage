@@ -6,7 +6,7 @@
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![tests](https://img.shields.io/badge/tests-50%2F50%20passing-brightgreen)](#)
-[![mcp tools](https://img.shields.io/badge/MCP%20tools-30-blueviolet)](#)
+[![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-72%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
@@ -181,7 +181,7 @@ Strict-mode denials in window: 8
 ```
 ONE BINARY            ▸ ~30 MB Windows .exe, no node_modules / venv / Docker
 LOCAL-FIRST           ▸ Per-project SQLite. Never phones home
-MCP SERVER            ▸ 30 tools — recall, store, graph, sync, fetch, batch …
+MCP SERVER            ▸ 28 tools — recall, store, graph, sync, fetch, batch …
                         Plugs into Claude Code, Cline, Continue, anything MCP
 PROJECT FEDERATION    ▸ icmg cross-recall — "this was done in project X" lookup
                         across all registered projects (memory + receipts)
@@ -389,6 +389,6 @@ See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 ```
                             ◆ icemage
                   context · memory · graph
-              50/50 tests · 30 MCP · 72+ cmds
+              50/50 tests · 28 MCP · 72+ cmds
             cross-project federation · autopilot hygiene
 ```
