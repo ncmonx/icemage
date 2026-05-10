@@ -2,6 +2,38 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.33.6 — cross-project federation + autopilot hygiene + auto-zone
+
+- **Cross-project recall.** `icmg cross-recall <prompt>` searches all registered projects for tasks already solved. Each hit tagged `[project-name]`. UserPromptSubmit hook auto-falls-back when local <2 hits.
+- **Memory hygiene autopilot.** `icmg cron install` schedules weekly Sun 03:00 task (Windows schtasks / POSIX cron) — bundles 5 prune cmds (auto:/session:/fail:/correction: rotation + telemetry trim). Zero-touch DB hygiene.
+- **Auto-zone intelligence.** Pack now infers zone from task keywords across 10 zones (auth/db/graph/imem/tkil/mcp/ui/cli/hooks/compress). Sharper BM25 IDF without manual flag. `--no-auto-zone` opts out.
+- **Batch tests +5.** Schema shape contract, 50-task scaling, special-char escape, 20K body pass-through, directive ordering. 14 total.
+- 50/50 ctest. 30 MCP tools.
+
+## 0.33.5 — force memory/compress/store/graph active
+
+- **UserPromptSubmit hook** auto-injects top-3 memory hits + icmg-context for path mentions + compress suggestion on every prompt. 4 core features always-on.
+- Read cap 100→30 lines + always injects rich icmg-context overlay (graph + symbols + memory). Edit-anchor sufficient.
+- Pack auto-compress threshold 3KB→1KB.
+- Distill min-len 200→100. Stop hook catches more decisions.
+
+## 0.33.4 — coverage extensions
+
+- Read deny→cap-and-allow (Anthropic Edit Read-first session req met + 80–90% saved)
+- Pack auto-compress on outputs ≥3KB (telemetry source `compress-auto`)
+- `icmg context` auto-scan-on-miss for TS/MD/JSON/YAML/TOML/XML/SH/PS1
+- Read repeat-dedup 30min sliding window → 10-line cap
+- Bash output cap 50KB→8KB
+- PostToolUse:Bash\|PowerShell, Glob\|Grep top-50, WebFetch 4KB caps
+- SessionStart token-spent warning when real session >50K
+
+## 0.33.3 — auto-scan + 7-layer dashboard + agent retry + 21 unit tests
+
+- Savings dashboard expanded 3→7 layers (pack receipts, strict denials, fetch cache, image OCR cache)
+- `icmg agent` retries 429/503/504 + rate-limit substrings, exp backoff 2/4/8s
+- CHANGELOG.md consolidated
+- 3 new test files (filter passes, ref registry, pack delta) — 21 cases
+
 ## 0.33.2 — caveman thinking enforcement + dashboard real-total
 
 - Hard fix: `pack` auto-couples no-think+caveman when `~/.icmg/caveman.flag` set
