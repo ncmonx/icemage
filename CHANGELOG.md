@@ -2,6 +2,14 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.37.2 — silent background operations on Windows
+
+Eliminates the blank command-prompt window that appeared on Windows when icmg spawned background helper processes. All detached child processes now carry the `CREATE_NO_WINDOW` flag; the browser-open path in `icmg serve` switches from `start` (cmd.exe relay) to direct `ShellExecute`. Upgrade is transparent — no config change required.
+
+- **Swap-helper window suppressed** — the self-update subprocess that replaces the running binary no longer flashes a blank CMD window.
+- **`icmg serve` browser open** — replaced `start ""` cmd.exe relay with `ShellExecuteA` on Windows; no intermediate console created.
+- 50/50 ctest.
+
 ## 0.37.1 — directory traversal hardening
 
 Graph scanning now skips symbolic links and filesystem junctions entirely. Previously, a directory junction pointing back toward a parent could cause the scanner to recurse without bound — freezing `graph scan` and `graph update` on affected paths. The fix is a single guard applied before any directory is entered: if the entry resolves as a link rather than a true directory, traversal stops there.
@@ -253,4 +261,4 @@ Fortress mode. Six-layer durability + speed stack flips on automatically the mom
 
 Phases 27-46 ship the core: ICM memory + BM25, KGraph (file + symbol nodes), Tkil command filter, AST extractors (C/C++/TS/Py via tree-sitter), embedding sidecar (sentence-transformers fallback to BM25-only), MCP server (28 tools), prompt cache markers, batch API emitter, image OCR via pytesseract sidecar, multi-project registry, abbreviation engine, stored-procedure store, visual graph (Cytoscape.js), self-update from GitHub releases.
 
-See `git log` or per-tag release notes on https://github.com/ncmonx/icm-graph/releases for prior detail.
+See `git log` or per-tag release notes on [github.com/ncmonx/icm-graph/releases](https://github.com/ncmonx/icm-graph/releases) for prior detail.
