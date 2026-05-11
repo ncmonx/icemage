@@ -32,7 +32,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.39.2";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.39.3";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -359,16 +359,24 @@ private:
             std::cerr << "  Rollback FAILED: " << rec.message() << "\n";
         }
 
-        // Phase 52 T3: auto-refresh installed hooks if .claude/hooks exists in cwd.
-        if (fs::exists(fs::current_path() / ".claude" / "hooks")) {
-            std::cout << "Refreshing project hooks (.claude/hooks/icmg-*.sh)...\n";
-            std::string cmd = "\"" + self.string() + "\" init --install-hooks --force "
-                              "--no-agents --no-embedder --no-scan";
-            auto res = core::safeExecShell(cmd, false, 15000);
-            if (res.exit_code == 0) {
-                std::cout << "  Hooks refreshed.\n\n";
+        // Auto-refresh hooks for any project context: .icmg/, .claude/hooks/, or .claude/settings.local.json.
+        {
+            auto cwd = fs::current_path();
+            bool is_project = fs::exists(cwd / ".icmg")
+                           || fs::exists(cwd / ".claude" / "hooks")
+                           || fs::exists(cwd / ".claude" / "settings.local.json");
+            if (is_project) {
+                std::cout << "Refreshing project hooks...\n";
+                std::string cmd = "\"" + self.string() + "\" init --install-hooks --force "
+                                  "--no-agents --no-embedder --no-scan";
+                auto res = core::safeExecShell(cmd, false, 15000);
+                if (res.exit_code == 0) {
+                    std::cout << "  Hooks refreshed.\n\n";
+                } else {
+                    std::cerr << "  Hook refresh skipped (exit=" << res.exit_code << ").\n";
+                }
             } else {
-                std::cerr << "  Hook refresh skipped (exit=" << res.exit_code << ").\n";
+                std::cout << "  Tip: run `icmg update --apply` from a project directory to auto-refresh hooks.\n";
             }
         }
 
