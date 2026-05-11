@@ -34,7 +34,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.40.1";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.40.2";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -419,6 +419,36 @@ private:
                         }
                     }
                 } catch (...) {}
+            }
+        }
+
+        // If a system-wide install path was recorded by `icmg install --system`,
+        // refresh the system binary so all server users get the upgrade automatically.
+        {
+            std::string sentinel = core::icmgGlobalDir() + "/system-path.txt";
+            if (fs::exists(sentinel)) {
+                std::ifstream sf(sentinel);
+                std::string sys_dir;
+                std::getline(sf, sys_dir);
+                while (!sys_dir.empty() &&
+                       (sys_dir.back() == '\n' || sys_dir.back() == '\r' ||
+                        sys_dir.back() == ' '))
+                    sys_dir.pop_back();
+                if (!sys_dir.empty() && fs::exists(sys_dir)) {
+#ifdef _WIN32
+                    fs::path dest_bin = fs::path(sys_dir) / "icmg.exe";
+#else
+                    fs::path dest_bin = fs::path(sys_dir) / "icmg";
+#endif
+                    std::error_code ec;
+                    fs::copy_file(self, dest_bin, fs::copy_options::overwrite_existing, ec);
+                    if (ec) {
+                        std::cerr << "  System binary refresh failed (" << sys_dir
+                                  << "): " << ec.message() << "\n";
+                    } else {
+                        std::cout << "  System binary refreshed: " << dest_bin.string() << "\n";
+                    }
+                }
             }
         }
 

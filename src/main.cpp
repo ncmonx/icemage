@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (show_version) {
-        std::cout << "icmg 0.40.1\n";
+        std::cout << "icmg 0.40.2\n";
         return 0;
     }
 
