@@ -2,6 +2,39 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.40.2 — system-wide install for shared-server deployments
+
+`icmg install --system` installs the binary (and DLLs on Windows) to a system directory shared by all users on a server. The install location is recorded so future `icmg update --apply` also refreshes the shared binary automatically — no per-user reinstall needed.
+
+- **`icmg install --system`** — copy binary + DLLs to `C:\ProgramData\icmg` (Windows) or `/usr/local/bin` (Linux/macOS)
+- **`--path <dir>`** — override the default system directory
+- **`--no-dlls`** — skip DLL copy when they are already in place
+- **`--status`** — show current system install path and binary info
+- **Auto-refresh on upgrade** — `icmg update --apply` reads the install sentinel and refreshes the system binary in the same pass
+- 57/57 ctest.
+
+## 0.40.1 — zero-output-token file copy
+
+`icmg copy --from <src>` copies an existing file to a new destination without generating output tokens for the file content — a 97% output-token reduction per applicable write operation.
+
+- **`icmg copy --from <src> [--lines A-B] [--to dest]`** — clone a file or line range to a new path
+- **`--append`** — append source content to an existing destination file
+- **`--insert-at N`** — splice source content at a specific line number in the destination
+- **`--dry-run`** — preview the operation without writing
+- 56/56 ctest.
+
+## 0.40.0 — plug-and-play setup
+
+Auto-bootstrap on first project entry and global hook refresh on upgrade. New projects with `.claude/` or `.git/` are initialized silently without user interaction.
+
+- **Auto-bootstrap** — on first entry to a project that has `.claude/` or `.git/` but no `.icmg/`, initialization runs silently in the background
+- **Global hook refresh** — `icmg update --apply` iterates all registered projects and refreshes hooks in each
+- 55/55 ctest.
+
+## 0.39.3 — widened hook refresh detection
+
+Hook refresh trigger widened to detect `.icmg/` OR `.claude/hooks/` OR `.claude/settings.local.json`, fixing wflog not activating on fresh installs that had not yet run `icmg init`.
+
 ## 0.37.2 — silent background operations on Windows
 
 Eliminates the blank command-prompt window that appeared on Windows when icmg spawned background helper processes. All detached child processes now carry the `CREATE_NO_WINDOW` flag; the browser-open path in `icmg serve` switches from `start` (cmd.exe relay) to direct `ShellExecute`. Upgrade is transparent — no config change required.
