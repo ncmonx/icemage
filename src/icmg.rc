@@ -18,12 +18,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "ncmonx"
             VALUE "FileDescription",  "Icemage - context, memory, graph CLI"
-            VALUE "FileVersion",      "0.37.0"
+            VALUE "FileVersion",      "0.37.1"
             VALUE "InternalName",     "icmg"
             VALUE "LegalCopyright",   "Apache-2.0"
             VALUE "OriginalFilename", "icmg.exe"
             VALUE "ProductName",      "Icemage"
-            VALUE "ProductVersion",   "0.37.0"
+            VALUE "ProductVersion",   "0.37.1"
         END
     END
     BLOCK "VarFileInfo"

@@ -2,6 +2,13 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.37.1 — directory traversal hardening
+
+Graph scanning now skips symbolic links and filesystem junctions entirely. Previously, a directory junction pointing back toward a parent could cause the scanner to recurse without bound — freezing `graph scan` and `graph update` on affected paths. The fix is a single guard applied before any directory is entered: if the entry resolves as a link rather than a true directory, traversal stops there.
+
+- **Symlink + junction guard** — `graph scan` and `graph update` no longer hang on paths containing symbolic links or NTFS junctions. Traversal skips them cleanly; all real directories and files continue to index normally.
+- 50/50 ctest.
+
 ## 0.37.0 — fast path expansion + daemon scaffold
 
 Read-tool event joins the in-process fast path. Cross-project surfacing and file-context hinting move into the consolidated handler. Persistent-server scaffold lands to reserve architecture for the next round of cold-start elimination.

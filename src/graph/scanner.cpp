@@ -259,7 +259,9 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             std::string name = entry.path().filename().string();
 
             {
-                std::error_code is_dir_ec;
+                std::error_code is_dir_ec, is_sym_ec;
+                // Skip symlinks and NTFS junctions to prevent infinite recursion.
+                if (entry.is_symlink(is_sym_ec)) continue;
                 if (entry.is_directory(is_dir_ec)) {
                     // Check ignore_dirs
                     bool skip = false;
