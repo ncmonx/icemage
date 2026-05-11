@@ -23,6 +23,7 @@ static void setupSchema(icmg::core::Db& db) {
         
         " zone TEXT NOT NULL DEFAULT 'default',"
         " pinned INTEGER NOT NULL DEFAULT 0,"
+        " git_sha TEXT NOT NULL DEFAULT '',"
         " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         ")"
     );

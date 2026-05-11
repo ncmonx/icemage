@@ -482,6 +482,12 @@ END;
 ALTER TABLE tool_call_cache ADD COLUMN agent_id TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_tcc_agent ON tool_call_cache(agent_id, content_hash);
 )SQL"},
+        {23, R"SQL(
+-- 0023_git_sha (Phase 15 gap)
+-- Tag memory nodes with git commit SHA at store time.
+ALTER TABLE memory_nodes ADD COLUMN git_sha TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_memory_nodes_git_sha ON memory_nodes(git_sha);
+)SQL"},
     };
 }
 

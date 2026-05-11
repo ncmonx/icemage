@@ -2,6 +2,7 @@
 #include "scorer.hpp"
 #include "../core/hook_bus.hpp"
 #include "../core/user_identity.hpp"
+#include "../core/exec_utils.hpp"
 #include "../embed/embedder.hpp"
 #include "../embed/embed_store.hpp"
 #include <chrono>
@@ -14,6 +15,15 @@ namespace icmg::imem {
 
 // ---- helpers ----
 
+static std::string captureGitSha() {
+    auto res = core::safeExecShell("git rev-parse --short HEAD 2>/dev/null", false, 3000);
+    if (res.exit_code != 0 || res.out.empty()) return "";
+    std::string sha = res.out;
+    while (!sha.empty() && (sha.back() == '\n' || sha.back() == '\r' || sha.back() == ' '))
+        sha.pop_back();
+    return sha;
+}
+
 int64_t MemoryStore::nowEpoch() const {
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
@@ -21,7 +31,7 @@ int64_t MemoryStore::nowEpoch() const {
 
 MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     // Columns: id, topic, content, keywords, importance, frequency,
-    //          last_used, created_at, expires_at, deleted_at, [zone]
+    //          last_used, created_at, expires_at, deleted_at, zone, pinned, git_sha
     MemoryNode n;
     if (row.size() > 0) n.id          = std::stoll(row[0]);
     if (row.size() > 1) n.topic       = row[1];
@@ -34,8 +44,8 @@ MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     if (row.size() > 8) try { n.expires_at = row[8].empty() ? 0 : std::stoll(row[8]); } catch (...) {}
     if (row.size() > 9) try { n.deleted_at = row[9].empty() ? 0 : std::stoll(row[9]); } catch (...) {}
     if (row.size() > 10 && !row[10].empty()) n.zone = row[10];
-    // Phase 75: pinned column (column 11). Schema lift if absent — keep 0.
-    if (row.size() > 11) try { n.pinned = std::stoi(row[11]); } catch (...) {}
+    if (row.size() > 11) try { n.pinned  = std::stoi(row[11]); } catch (...) {}
+    if (row.size() > 12 && !row[12].empty()) n.git_sha = row[12];
     return n;
 }
 
@@ -133,15 +143,16 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     std::string expires = effective.expires_at > 0 ? std::to_string(effective.expires_at) : "";
 
     std::string zone = effective.zone.empty() ? "default" : effective.zone;
+    std::string git_sha = effective.git_sha.empty() ? captureGitSha() : effective.git_sha;
     // Phase 47 T4: tag created_by from user_identity (env / git config / anonymous).
     db_.run(
         "INSERT INTO memory_nodes(topic,content,keywords,importance,frequency,"
-        "last_used,created_at,expires_at,zone,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "last_used,created_at,expires_at,zone,created_by,git_sha) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         {effective.topic, effective.content, effective.keywords,
          std::to_string(effective.importance),
          std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
-         expires, zone, core::currentUser()});
+         expires, zone, core::currentUser(), git_sha});
     // Phase 48: initial row_version=1 for sync tracking.
     int64_t new_id = db_.lastInsertId();
     try { db_.run("UPDATE memory_nodes SET row_version=1 WHERE id=?", {std::to_string(new_id)}); } catch(...) {}

@@ -19,6 +19,7 @@ static void setupSchema(icmg::core::Db& db) {
            " last_used INTEGER, expires_at INTEGER, deleted_at INTEGER," " created_by TEXT NOT NULL DEFAULT '', row_version INTEGER NOT NULL DEFAULT 0,"
            " zone TEXT NOT NULL DEFAULT 'default',"
            " pinned INTEGER NOT NULL DEFAULT 0,"
+           " git_sha TEXT NOT NULL DEFAULT '',"
            " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')))");
     db.run("CREATE TABLE memory_keywords(memory_id INTEGER, keyword TEXT,"
            " PRIMARY KEY(memory_id, keyword))");

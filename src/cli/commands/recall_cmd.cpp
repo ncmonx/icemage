@@ -51,6 +51,7 @@ public:
             "  --pure          Equivalent to --semantic --alpha 0\n"
             "  --all-projects  Cross-project recall (aggregates from registered projects)\n"
             "  --fuzzy         Fuzzy search fallback\n"
+            "  --at-commit SHA Filter to memories stored at a specific git commit (prefix ok)\n"
             "  --explain       Show score breakdown\n"
             "  --history       Show recent queries\n"
             "  --json          JSON output\n";
@@ -71,8 +72,9 @@ public:
         try { alpha = std::stod(flagValue(args, "--alpha", "0.5")); } catch (...) {}
         if (pure_vec) alpha = 0.0;
         bool all_projects = hasFlag(args, "--all-projects");
-        std::string topic = flagValue(args, "--topic");
-        std::string zone  = flagValue(args, "--zone");
+        std::string topic     = flagValue(args, "--topic");
+        std::string zone      = flagValue(args, "--zone");
+        std::string at_commit = flagValue(args, "--at-commit");
         int limit = 10;
         try { limit = std::stoi(flagValue(args, "--limit", "10")); } catch (...) {}
 
@@ -120,6 +122,16 @@ public:
             results = store.recallSemantic(query, limit, alpha);
         } else {
             results = store.recall(query, limit, fuzzy);
+        }
+
+        // --at-commit: filter to memories whose git_sha starts with the given prefix.
+        if (!at_commit.empty()) {
+            results.erase(
+                std::remove_if(results.begin(), results.end(),
+                    [&](const imem::MemoryNode& n){
+                        return n.git_sha.substr(0, at_commit.size()) != at_commit;
+                    }),
+                results.end());
         }
 
         if (json) {
@@ -189,7 +201,9 @@ private:
             if (!n.keywords.empty())
                 std::cout << "  Keywords: " << n.keywords << "\n";
             std::cout << "  Used: " << n.frequency << "x"
-                      << ", last: " << timeAgo(n.last_used) << "\n\n";
+                      << ", last: " << timeAgo(n.last_used);
+            if (!n.git_sha.empty()) std::cout << "  @" << n.git_sha;
+            std::cout << "\n\n";
         }
     }
 
@@ -231,7 +245,8 @@ private:
             std::cout << "\",\"importance\":" << n.importance
                       << ",\"frequency\":" << n.frequency
                       << ",\"score\":" << std::fixed << std::setprecision(2) << n.score
-                      << "}";
+                      << ",\"git_sha\":\""; escapeJson(std::cout, n.git_sha);
+            std::cout << "\"}";
         }
         std::cout << "\n]\n";
     }

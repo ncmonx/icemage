@@ -17,6 +17,7 @@ struct MemoryNode {
     int64_t     deleted_at  = 0;  // unix epoch, 0 = not deleted
     std::string zone        = "default";  // Phase 17: subsystem partitioning
     int         pinned      = 0;  // Phase 75: 1 = decision-anchor; 10× recall boost
+    std::string git_sha;          // Phase 15: git commit SHA at store time (short, may be empty)
 
     // Computed at query time — not stored in DB
     double      score       = 0.0;
