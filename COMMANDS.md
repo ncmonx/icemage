@@ -491,6 +491,46 @@ icmg store <topic> <content>
 
 ---
 
+## copy — Zero-output-token file copy (Phase 83)
+
+Eliminates Claude output-token cost for file creation from existing sources.
+Instead of Claude generating file content as output tokens, icmg copies
+content directly — cutting output token spend by up to 97% per write.
+
+```
+icmg copy --from <src> [options]
+
+  --from <file>        Source file (required)
+  --lines A-B          Line range, 1-indexed inclusive (default: whole file)
+  --to <file>          Destination (default: stdout)
+  --append             Append to destination instead of overwrite
+  --insert-at N        Insert before line N in destination
+  --dry-run            Preview action without writing
+```
+
+**When to use:**
+- New file that's largely based on an existing template or similar file
+- Duplicate-and-modify pattern (copy scaffold, then apply edits)
+- Appending boilerplate blocks from existing sources
+
+**Token math:** A 150-line file write = ~1,500 output tokens. With `icmg copy` = ~15 tokens for the instruction. **97% output token reduction** per applicable write.
+
+```bash
+# Clone a template file
+icmg copy --from src/template_cmd.cpp --to src/new_cmd.cpp
+
+# Copy lines 1-40 (license + includes) into new test file
+icmg copy --from tests/cli/test_store_cmd.cpp --lines 1-40 --to tests/cli/test_new.cpp
+
+# Append boilerplate block
+icmg copy --from src/base.cpp --lines 100-130 --to src/derived.cpp --append
+
+# Insert scaffold before line 10
+icmg copy --from template.cpp --lines 5-20 --to target.cpp --insert-at 10
+```
+
+---
+
 ## verify — Verification audit trail (Phase 22)
 
 ```

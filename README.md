@@ -5,7 +5,7 @@
 # Icemage <sub><sup>(`icmg`)</sup></sub>
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-55%2F55%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-56%2F56%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-82%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -139,6 +139,7 @@ Read repeat-dedup       ~100% on dup         30-min sliding window
 Pack on-repeat          60–97% smaller       icmg pack --diff
 Symbol-slice context    80%+ per lookup      icmg context --symbol (one fn, not whole file)
 Live stream dedup       real-time lines      icmg run --stream (filter summary at end)
+File copy no-output    97% per write        icmg copy --from (zero output tokens generated)
 Filter ANSI/dedup       30–60% on noisy CLI  npm/cargo/pnpm output
 Caveman mode            ~75% on responses    fragment-style directive
 ─────────────────────────────────────────────────────────────────────
