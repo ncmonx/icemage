@@ -110,6 +110,8 @@ icmg pack "fix the login bug"          # surgical context bundle
 icmg run npm test                      # noise-filtered build output
 icmg compress < big.log                # cut tokens on dumps + diffs
 icmg pack "rename foo.ts"              # auto-think on; thinking off when task is simple
+icmg context src/auth.ts --symbol parseToken  # one function body, 80%+ cut vs full file
+icmg run --stream npm test             # real-time output + noise filter summary at end
 icmg context src/auth.ts --lines 60-95 # surgical read; replaces native Read offset/limit
 icmg fail store "jwt refresh" "X" "Y"  # record failed approach so AI doesn't repeat
 icmg savings                           # see what you saved (console / --html)
@@ -135,6 +137,8 @@ HTML/PDF fetch          70–90% off           icmg fetch reduce + cache
 Screenshot OCR          90–95% off           icmg ingest pytesseract
 Read repeat-dedup       ~100% on dup         30-min sliding window
 Pack on-repeat          60–97% smaller       icmg pack --diff
+Symbol-slice context    80%+ per lookup      icmg context --symbol (one fn, not whole file)
+Live stream dedup       real-time lines      icmg run --stream (filter summary at end)
 Filter ANSI/dedup       30–60% on noisy CLI  npm/cargo/pnpm output
 Caveman mode            ~75% on responses    fragment-style directive
 ─────────────────────────────────────────────────────────────────────
