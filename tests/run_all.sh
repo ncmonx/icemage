@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$ROOT"
 
-export ICMG="${ICMG:-./build/icmg.exe}"
+export ICMG="${ICMG:-$ROOT/build/icmg.exe}"
 
 # Build first
 echo "=== Building ==="
@@ -47,7 +47,7 @@ run_suite() {
 
 run_suite "ICM Memory"           "$SCRIPT_DIR/test_icm.sh"
 run_suite "Graph"                "$SCRIPT_DIR/test_graph.sh"
-run_suite "RTK"                  "$SCRIPT_DIR/test_rtk.sh"
+run_suite "RTK"                  "$SCRIPT_DIR/test_tkil.sh"
 run_suite "Features"             "$SCRIPT_DIR/test_features.sh"
 run_suite "MCP Server"           "$SCRIPT_DIR/test_mcp.sh"
 run_suite "Security"             "$SCRIPT_DIR/test_security.sh"

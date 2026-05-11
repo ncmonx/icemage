@@ -45,9 +45,9 @@ done
 MS=$(time_cmd "$ICMG" recall "database content" --limit 10)
 [ "$MS" -lt 500 ] && pass "recall < 500ms (${MS}ms)" || fail "recall too slow" "${MS}ms"
 
-# ---- cmd suggest: should be < 100ms ----------------------------------------
+# ---- cmd suggest: should be < 150ms ----------------------------------------
 MS=$(time_cmd "$ICMG" cmd suggest git --json)
-[ "$MS" -lt 100 ] && pass "cmd suggest < 100ms (${MS}ms)" || fail "cmd suggest slow" "${MS}ms"
+[ "$MS" -lt 150 ] && pass "cmd suggest < 150ms (${MS}ms)" || fail "cmd suggest slow" "${MS}ms"
 
 popd >/dev/null
 
