@@ -63,11 +63,29 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
 
     std::string sched = scheduleSpecToSchtasksFlags(spec.minutes);
 
+    // Generate a .vbs launcher so Task Scheduler runs the .cmd with a hidden
+    // window. WshShell.Run windowStyle=0 (SW_HIDE) suppresses the cmd.exe
+    // console flash that occurs when schtasks fires a .cmd action directly.
+    std::string vbs_path = spec.wrapper_path;
+    {
+        size_t dot = vbs_path.rfind('.');
+        if (dot != std::string::npos) vbs_path = vbs_path.substr(0, dot);
+        vbs_path += ".vbs";
+    }
+    {
+        std::ofstream vf(vbs_path, std::ios::binary);
+        if (vf) {
+            vf << "CreateObject(\"WScript.Shell\").Run Chr(34) & \""
+               << spec.wrapper_path
+               << "\" & Chr(34), 0, True\r\n";
+        }
+    }
+
     // First attempt: direct schtasks via bash w/ MSYS_NO_PATHCONV.
-    // /TR points to wrapper as single-arg quoted path — no nested quotes.
+    // /TR runs wscript.exe /B (no dialogs) on the .vbs launcher.
     std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Create " + sched
                     + " /TN \"" + spec.task_name + "\""
-                    + " /TR \"\\\"" + spec.wrapper_path + "\\\"\""
+                    + " /TR \"\\\"wscript.exe\\\" /B /NoLogo \\\"" + vbs_path + "\\\"\""
                     + " /F";
     auto res = safeExecShell(cmd, true, 15000);
 
@@ -110,7 +128,7 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
         }
     }
     args << ",'/TN','" << spec.task_name
-         << "','/TR','\"" << spec.wrapper_path << "\"',"
+         << "','/TR','wscript.exe /B /NoLogo \"" << vbs_path << "\"',"
          << "'/F'";
 
     std::string ps_cmd =
@@ -139,7 +157,7 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
               << "    Manual setup (run elevated cmd.exe):\n"
               << "      schtasks /Create " << sched
               << " /TN \"" << spec.task_name << "\""
-              << " /TR \"\\\"" << spec.wrapper_path << "\\\"\""
+              << " /TR \"\\\"wscript.exe\\\" /B /NoLogo \\\"" << vbs_path << "\\\"\""
               << " /F\n";
     return 3;
 }
