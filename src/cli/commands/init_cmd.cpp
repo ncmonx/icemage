@@ -265,61 +265,13 @@ jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additiona
 // compress/store/graph) into Claude's awareness on every turn instead of
 // passive existence in DB.
 static const char* PROMPT_RECALL_SH = R"BASH(#!/usr/bin/env bash
+# Phase 79: delegated to in-process `icmg hook userprompt` —
+# replaces previous chain of 4-5 separate icmg subprocess calls.
+# Saves ~150-250ms per prompt on cold-start fork overhead.
 set -uo pipefail
-INPUT=$(cat)
-PROMPT=$(echo "$INPUT" | jq -r '.prompt // .message // empty' 2>/dev/null)
-[ -z "$PROMPT" ] && exit 0
-[ "${#PROMPT}" -lt 20 ] && exit 0
+[ "${ICMG_NO_PROMPT_HOOK:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
-
-# Recall memory hits matching prompt keywords (top 3).
-# Phase 72 T9: cross-project fallback — when local hits sparse (<2 lines),
-# try --all-projects to surface "this prompt was solved in project X" cases.
-HITS=$(icmg recall "$PROMPT" --limit 3 2>/dev/null | head -30)
-LOCAL_LINES=$(printf '%s' "$HITS" | wc -l)
-if [ "$LOCAL_LINES" -lt 2 ] && [ "${ICMG_CROSS_PROJECT:-1}" = "1" ]; then
-    XHITS=$(icmg recall "$PROMPT" --all-projects --limit 3 2>/dev/null | head -20)
-    if [ -n "$XHITS" ]; then
-        HITS="${HITS}"$'\n--- cross-project hits (other projects) ---\n'"${XHITS}"
-    fi
-fi
-# Suggest compress when prompt large.
-SZ=${#PROMPT}
-SUGGEST=""
-if [ "$SZ" -gt 4000 ]; then
-    SUGGEST="(Large prompt ${SZ}B — model: pipe big paste through icmg compress before pasting next time.)"
-fi
-# Detect path mentions → pre-fetch icmg context.
-FIRSTPATH=$(echo "$PROMPT" | grep -oE '[A-Za-z0-9_./\\-]+\.(cs|ts|tsx|js|jsx|py|cpp|hpp|sql|md|json|yaml|yml)' | head -1)
-CTX=""
-if [ -n "$FIRSTPATH" ] && [ -f "$FIRSTPATH" ]; then
-    CTX=$(icmg context "$FIRSTPATH" --max-bytes 1024 --no-content 2>/dev/null || true)
-fi
-
-# Phase 75: drift check — flag prompts that touch pinned decision anchors.
-# Phase 76: opt-out via ICMG_NO_DRIFT_CHECK=1 (skips ~50-200ms DB lookup).
-DRIFT=""
-if [ "${ICMG_NO_DRIFT_CHECK:-0}" != "1" ]; then
-    if icmg drift check "$PROMPT" 2>/tmp/icmg-drift.out >/dev/null; then
-        : # exit 0 = no conflict
-    else
-        DRIFT=$(cat /tmp/icmg-drift.out 2>/dev/null)
-    fi
-    rm -f /tmp/icmg-drift.out 2>/dev/null
-fi
-
-[ -z "$HITS" ] && [ -z "$CTX" ] && [ -z "$SUGGEST" ] && [ -z "$DRIFT" ] && exit 0
-MSG=""
-[ -n "$DRIFT" ]   && MSG="${MSG}${DRIFT}\n\n"
-[ -n "$HITS" ]    && MSG="${MSG}icmg memory hits (proactively surfaced):\n${HITS}\n\n"
-[ -n "$CTX" ]     && MSG="${MSG}icmg context for ${FIRSTPATH}:\n${CTX}\n\n"
-[ -n "$SUGGEST" ] && MSG="${MSG}${SUGGEST}\n"
-jq -n --arg m "$MSG" '{
-    hookSpecificOutput: {
-        hookEventName: "UserPromptSubmit",
-        additionalContext: $m
-    }
-}'
+exec icmg hook userprompt
 )BASH";
 
 // Phase 40 T2: PreCompact hook — auto-snapshots session before /compact
