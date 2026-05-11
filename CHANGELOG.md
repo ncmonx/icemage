@@ -2,6 +2,18 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.36.0 — fast path: in-process prompt hook
+
+The user-typed-prompt event now skips the shell-and-fork relay entirely. A single in-process handler reads stdin, consults the local store, and writes back rich context — replacing what used to be a chain of separate process spawns. Latency drops noticeably on every keypress that hits Submit.
+
+- **In-process handler** for the prompt-submit event. Drift gate, memory surfacing, and large-paste hinting now resolve in one shot. No bash sub-shells, no jq forks, no per-call cold-start tax.
+- **Early-exit guards** at the very top of the hook script — if the feature is disabled or icmg isn't on PATH, the hook returns in under a millisecond.
+- **Lazy pinned-decision check** — when zero anchors are pinned, the drift logic short-circuits before any scan starts.
+- **JSON output unchanged** — same `hookSpecificOutput.additionalContext` payload the IDE already consumes. Drop-in replacement; existing installs upgrade transparently after `icmg init`.
+- 50/50 ctest.
+
+Measured: prompt-submit hook fires in ~360 ms end-to-end (was ~600–1500 ms via the prior multi-fork chain). Token output identical; only the local pre-roll got faster.
+
 ## 0.35.1 — auto-on bulletproof patch
 
 Patch release. Scheduler installation across **all five auto-on subsystems** now survives shell quoting, path-with-spaces, and elevation gating in one pass. Run `icmg <subsystem> auto-on` once — get a registered task or get a clear actionable instruction. No more silent failures, no more cryptic empty errors.
