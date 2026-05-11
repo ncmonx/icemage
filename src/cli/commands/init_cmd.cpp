@@ -618,25 +618,34 @@ private:
                       "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
                 })}
             },
-            // Phase 73: PostToolUse:Read — auto-pipe big Read output through
-            // `icmg compress` so compression layer fires on real content, not
-            // just `icmg pack` calls. Hook already capped Read to 30 lines via
-            // PreToolUse, so output ≥1KB here means real content worth compressing.
+            // Phase 82 T2: PostToolUse:Read — graph-aware auto-reroute.
+            // If file in graph: emit icmg context (structured, ~80% cut).
+            // Fallback: icmg shrink. Threshold 4KB (ICMG_READ_THRESHOLD env).
             {
                 {"matcher", "Read"},
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"command",
                       "INPUT=$(cat); "
+                      "FILE=$(echo \"$INPUT\" | jq -r '.tool_input.file_path // empty' 2>/dev/null); "
                       "OUT=$(echo \"$INPUT\" | jq -r '.tool_response.content // .tool_response.output // empty' 2>/dev/null); "
                       "SZ=${#OUT}; "
-                      "[ \"$SZ\" -lt 1024 ] && exit 0; "
+                      "THRESH=${ICMG_READ_THRESHOLD:-4096}; "
+                      "[ \"$SZ\" -lt \"$THRESH\" ] && exit 0; "
                       "command -v icmg >/dev/null 2>&1 || exit 0; "
-                      "COMPRESSED=$(printf '%s' \"$OUT\" | icmg compress --threshold 256 2>/dev/null); "
-                      "[ -z \"$COMPRESSED\" ] && exit 0; "
-                      "OZ=${#OUT}; CZ=${#COMPRESSED}; "
-                      "[ \"$CZ\" -ge \"$OZ\" ] && exit 0; "
-                      "MSG=$(printf 'Read output auto-compressed (%dB → %dB). Glossary inline; aliases match original tokens.\\n%s' \"$OZ\" \"$CZ\" \"$COMPRESSED\"); "
+                      "if [ -n \"$FILE\" ] && [ -f \"$FILE\" ]; then "
+                      "  CTX=$(icmg context \"$FILE\" --max-bytes 3000 2>/dev/null); "
+                      "  if [ -n \"$CTX\" ]; then "
+                      "    MSG=$(printf '[Read auto-rerouted to icmg context (%dB → structured)]\\n%s\\nHint: use `icmg context %s` directly.' \"$SZ\" \"$CTX\" \"$FILE\"); "
+                      "    jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'; "
+                      "    exit 0; "
+                      "  fi; "
+                      "fi; "
+                      "SHRUNK=$(printf '%s' \"$OUT\" | icmg shrink --threshold 0 2>/dev/null); "
+                      "[ -z \"$SHRUNK\" ] && exit 0; "
+                      "OZ=${#OUT}; SZ2=${#SHRUNK}; "
+                      "[ \"$SZ2\" -ge \"$OZ\" ] && exit 0; "
+                      "MSG=$(printf 'Read output shrunk (%dB → %dB). Use `icmg context %s` for structured output.\\n%s' \"$OZ\" \"$SZ2\" \"$FILE\" \"$SHRUNK\"); "
                       "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
                 })}
             }

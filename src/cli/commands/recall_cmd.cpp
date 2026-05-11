@@ -5,11 +5,13 @@
 #include "../../core/global_db.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/scorer.hpp"
+#include "../ref_registry.hpp"
 #include <iostream>
 #include <iomanip>
 #include <string>
 #include <chrono>
 #include <algorithm>
+#include <filesystem>
 
 namespace icmg::cli {
 
@@ -52,6 +54,7 @@ public:
             "  --all-projects  Cross-project recall (aggregates from registered projects)\n"
             "  --fuzzy         Fuzzy search fallback\n"
             "  --at-commit SHA Filter to memories stored at a specific git commit (prefix ok)\n"
+            "  --no-dedup      Show nodes already returned this session (default: suppress)\n"
             "  --explain       Show score breakdown\n"
             "  --history       Show recent queries\n"
             "  --json          JSON output\n";
@@ -62,10 +65,11 @@ public:
             usage(); return 0;
         }
 
-        bool history = hasFlag(args, "--history");
-        bool json    = hasFlag(args, "--json");
-        bool explain = hasFlag(args, "--explain");
-        bool fuzzy   = hasFlag(args, "--fuzzy");
+        bool history  = hasFlag(args, "--history");
+        bool json     = hasFlag(args, "--json");
+        bool explain  = hasFlag(args, "--explain");
+        bool fuzzy    = hasFlag(args, "--fuzzy");
+        bool no_dedup = hasFlag(args, "--no-dedup");
         bool semantic = hasFlag(args, "--semantic") || hasFlag(args, "--pure");
         bool pure_vec = hasFlag(args, "--pure");
         double alpha = 0.5;
@@ -122,6 +126,29 @@ public:
             results = store.recallSemantic(query, limit, alpha);
         } else {
             results = store.recall(query, limit, fuzzy);
+        }
+
+        // Phase 82 T4: in-session recall dedup — suppress nodes already returned
+        // this session. Prevents identical results flooding multi-turn context.
+        // Bypass with --no-dedup.
+        if (!no_dedup && !json) {
+            try {
+                RefRegistry refs(std::filesystem::current_path().string());
+                std::vector<imem::MemoryNode> deduped;
+                for (auto& n : results) {
+                    std::string key = std::to_string(n.id);
+                    if (!refs.seen("RECALL", key)) {
+                        refs.getOrAssign("RECALL", key);
+                        deduped.push_back(std::move(n));
+                    }
+                }
+                if (deduped.size() < results.size()) {
+                    size_t suppressed = results.size() - deduped.size();
+                    std::cerr << "[icmg recall] " << suppressed
+                              << " node(s) suppressed (seen this session; use --no-dedup to show)\n";
+                }
+                results = std::move(deduped);
+            } catch (...) {}
         }
 
         // --at-commit: filter to memories whose git_sha starts with the given prefix.

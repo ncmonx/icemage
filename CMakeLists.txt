@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.37.6 LANGUAGES CXX C)
+project(icmg VERSION 0.39.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -291,3 +291,6 @@ add_icmg_test(test_filter_pass tests/tkil/test_filter_pass.cpp)
 add_icmg_test(test_ref_registry tests/cli/test_ref_registry.cpp)
 add_icmg_test(test_pack_delta      tests/cli/test_pack_delta.cpp)
 add_icmg_test(test_update_asset    tests/cli/test_update_asset.cpp)
+add_icmg_test(test_sync_roundtrip  tests/cli/test_sync_roundtrip.cpp)
+add_icmg_test(test_session_state   tests/core/test_session_state.cpp)
+add_icmg_test(test_stream_filter   tests/tkil/test_stream_filter.cpp)

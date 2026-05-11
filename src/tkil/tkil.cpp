@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
 
 namespace icmg::tkil {
 
@@ -46,7 +47,7 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
 }
 
 int Tkil::runFiltered(const std::string& command, bool raw, bool json,
-                     bool dry_run, bool /*stream*/) {
+                     bool dry_run, bool stream) {
     CmdType type = detector_.detect(command);
 
     // A7: dry-run mode
@@ -60,6 +61,46 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
                   << "Filter: " << tname << "Filter\n"
                   << "[To execute: icmg run " << command << "]\n";
         return 0;
+    }
+
+    // Phase 82 T5: real-time streaming — print each line as subprocess emits it.
+    // Filter summary appended at end so filter context (full output) is preserved.
+    if (stream && !json) {
+        auto argv = parseArgv(command);
+        std::string sh_cmd;
+        for (size_t i = 0; i < argv.size(); ++i) {
+            if (i) sh_cmd += ' ';
+            const auto& a = argv[i];
+            bool needs_q = a.empty() ||
+                           a.find_first_of(" \t\"'") != std::string::npos;
+            if (needs_q) { sh_cmd += '"'; sh_cmd += a; sh_cmd += '"'; }
+            else sh_cmd += a;
+        }
+        sh_cmd += " 2>&1";
+        if (FILE* pipe = popen(sh_cmd.c_str(), "r")) {
+            std::string all_out;
+            char buf[4096];
+            while (fgets(buf, sizeof(buf), pipe)) {
+                std::string line(buf);
+                std::cout << line;
+                std::cout.flush();
+                all_out += line;
+            }
+            pclose(pipe);
+            if (!raw) {
+                auto* f = getFilter(type);
+                if (f) {
+                    auto fr2 = f->filter(all_out, command);
+                    if (fr2.original_lines != fr2.filtered_lines)
+                        std::cout << "[stream: " << fr2.filtered_lines << "/"
+                                  << fr2.original_lines << " lines pass filter]\n";
+                }
+            }
+            int nlines = (int)splitLines(all_out).size();
+            recordCommand(command, nlines, nlines);
+            return 0;
+        }
+        // popen failed — fall through to buffered path
     }
 
     // Execute (A1: argv-safe via parseArgv + safeExec)

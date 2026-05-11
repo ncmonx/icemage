@@ -74,6 +74,7 @@ public:
             "  --no-memory       Skip related memory\n"
             "  --no-content      Skip raw file body excerpt (default: include)\n"
             "  --siblings        Also list test/doc/types sibling files (Phase 67)\n"
+            "  --symbol NAME     Return only body of named symbol + immediate deps (80%+ token cut)\n"
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
             "  --no-cache        Bypass hot-context cache (force recompute)\n"
@@ -118,7 +119,8 @@ public:
               + "|nomem=" + (no_memory ? "1" : "0")
               + "|nocontent=" + (hasFlag(args, "--no-content") ? "1" : "0")
               + "|sibs=" + (hasFlag(args, "--siblings") ? "1" : "0")
-              + "|lines=" + flagValue(args, "--lines");
+              + "|lines=" + flagValue(args, "--lines")
+              + "|symbol=" + flagValue(args, "--symbol");
             try {
                 core::ToolCallCache tcc(db);
                 auto opt = tcc.lookup("context", ctx_cache_args);
@@ -156,6 +158,61 @@ public:
                           << " (and on-demand scan didn't index it — check ext support / file size)\n";
                 return 1;
             }
+        }
+
+        // Phase 82 T1: --symbol NAME — return only the named symbol body + deps.
+        // 80%+ token cut: file 500 lines → 20-40 relevant lines.
+        std::string sym_filter = flagValue(args, "--symbol");
+        if (!sym_filter.empty()) {
+            auto kids = store.childrenOf(node->id);
+            graph::GraphNode* sym_node = nullptr;
+            // Case-insensitive substring match.
+            std::string sym_lower = sym_filter;
+            for (auto& c : sym_lower) c = (char)std::tolower((unsigned char)c);
+            for (auto& k : kids) {
+                std::string kl = k.symbol_name;
+                for (auto& c : kl) c = (char)std::tolower((unsigned char)c);
+                if (kl == sym_lower || kl.find(sym_lower) != std::string::npos) {
+                    sym_node = &k; break;
+                }
+            }
+            if (!sym_node) {
+                std::cerr << "icmg context --symbol: '" << sym_filter
+                          << "' not found in " << file << "\n";
+                std::cerr << "Available: ";
+                for (size_t i = 0; i < kids.size() && i < 10; ++i) {
+                    if (i) std::cerr << ", ";
+                    std::cerr << kids[i].symbol_name;
+                }
+                std::cerr << "\n";
+                return 1;
+            }
+            std::ostringstream sym_out;
+            sym_out << "Symbol: [" << sym_node->kind << "] " << sym_node->symbol_name
+                    << "  L" << sym_node->line_start << "-" << sym_node->line_end
+                    << "  " << node->path << "\n";
+            if (!sym_node->context.empty())
+                sym_out << "Context: " << trunc(sym_node->context, 120) << "\n";
+            // Body: read file slice.
+            std::ifstream sf(node->path, std::ios::binary);
+            if (sf) {
+                int cur = 0;
+                std::string ln;
+                sym_out << "\n--- Body ---\n";
+                while (std::getline(sf, ln)) {
+                    ++cur;
+                    if (cur < sym_node->line_start) continue;
+                    if (cur > sym_node->line_end)   break;
+                    sym_out << cur << "\t" << ln << "\n";
+                }
+            }
+            std::string result = sym_out.str();
+            if (result.size() > cap) result = result.substr(0, cap - 3) + "...\n";
+            std::cout << result;
+            if (!no_cache && !ctx_cache_args.empty()) {
+                try { core::ToolCallCache tcc(db); tcc.store("context", ctx_cache_args, result); } catch (...) {}
+            }
+            return 0;
         }
 
         std::ostringstream out;
@@ -584,10 +641,19 @@ public:
             auto syms = store.findSymbol(tok);
             for (auto& s : syms) {
                 if (seen_ids.insert(s.id).second) {
-                    files_section << "### " << s.symbol_name
-                                  << " (" << s.kind << ", L" << s.line_start
-                                  << "-" << s.line_end << ")\n"
-                                  << "Path: " << s.path << "\n\n";
+                    // Phase 82 T3: cross-call session dedup — skip body if
+                    // this file was already emitted in a prior pack this session.
+                    bool already_seen = refs.seen("FILE", s.path);
+                    if (!already_seen) refs.getOrAssign("FILE", s.path);
+                    if (already_seen) {
+                        files_section << "### " << s.symbol_name
+                                      << " [already in context — " << s.path << "]\n";
+                    } else {
+                        files_section << "### " << s.symbol_name
+                                      << " (" << s.kind << ", L" << s.line_start
+                                      << "-" << s.line_end << ")\n"
+                                      << "Path: " << s.path << "\n\n";
+                    }
                     ++file_hits;
                 }
             }
