@@ -519,9 +519,13 @@ private:
                 {"hooks",   json::array({
                     {{"type", "command"}, {"command",
                         std::string("[ -f .claude/hooks/icmg-shrink-read.sh ] && ") +
-                        (strict_read
-                            ? "ICMG_SHRINK_STRICT=1 ICMG_SHRINK_THRESHOLD=20000 ICMG_SHRINK_EXCLUDE='\\.(cs|ts|tsx|js|jsx|py|rb|go|rs|cpp|hpp|c|h|java|kt|sql)$' "
-                            : "") +
+                        // Phase 79: force every Read through icmg context overlay.
+                        // Removed source-ext exclusion that previously let .cpp/.ts/.cs
+                        // bypass cap + overlay. Threshold lowered to 0 so even tiny
+                        // files get the icmg-context hint. Cap at 30 lines covers
+                        // Edit-anchor requirement. Opt-out: ICMG_NO_READ_FORCE=1.
+                        "ICMG_READ_LIMIT=30 ICMG_SHRINK_THRESHOLD=0 " +
+                        (strict_read ? "ICMG_SHRINK_STRICT=1 " : "") +
                         "bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
                 })}
             }
