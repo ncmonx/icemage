@@ -2,6 +2,15 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.40.1 — zero-output-token file copy
+
+`icmg copy` eliminates Claude output-token cost for file creation from existing sources. A 150-line write normally costs ~1,500 output tokens; icmg copy costs ~15 tokens for the instruction — **97% output-token reduction** per applicable write.
+
+- `icmg copy --from <src> [--lines A-B] [--to dest] [--append] [--insert-at N]`
+- Line ranges, append mode, insert-at-line splice, dry-run preview.
+- Per-record TTL (`icmg store --ttl N`) and write-contention handling confirmed active.
+- 56/56 ctest.
+
 ## 0.40.0 — plug-and-play setup
 
 Zero manual steps from download to working. The first icmg command in any project directory (`.claude/` or `.git/` present) auto-installs all hooks. Upgrading refreshes hooks across every registered project at once.
