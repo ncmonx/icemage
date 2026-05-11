@@ -2,78 +2,52 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.40.2 — system-wide install for shared-server deployments
+
+`icmg install --system` installs the binary (and DLLs on Windows) to a system directory shared by all users on a server. The install location is recorded so future `icmg update --apply` also refreshes the shared binary automatically — no per-user reinstall needed.
+
+- **`icmg install --system`** — copy binary + DLLs to `C:\ProgramData\icmg` (Windows) or `/usr/local/bin` (Linux/macOS)
+- **`--path <dir>`** — override the default system directory
+- **`--no-dlls`** — skip DLL copy when they are already in place
+- **`--status`** — show current system install path and binary info
+- **Auto-refresh on upgrade** — `icmg update --apply` reads the install sentinel and refreshes the system binary in the same pass
+- 57/57 ctest.
+
 ## 0.40.1 — zero-output-token file copy
 
-`icmg copy` eliminates Claude output-token cost for file creation from existing sources. A 150-line write normally costs ~1,500 output tokens; icmg copy costs ~15 tokens for the instruction — **97% output-token reduction** per applicable write.
+`icmg copy --from <src>` copies an existing file to a new destination without generating output tokens for the file content — a 97% output-token reduction per applicable write operation.
 
-- `icmg copy --from <src> [--lines A-B] [--to dest] [--append] [--insert-at N]`
-- Line ranges, append mode, insert-at-line splice, dry-run preview.
-- Per-record TTL (`icmg store --ttl N`) and write-contention handling confirmed active.
+- **`icmg copy --from <src> [--lines A-B] [--to dest]`** — clone a file or line range to a new path
+- **`--append`** — append source content to an existing destination file
+- **`--insert-at N`** — splice source content at a specific line number in the destination
+- **`--dry-run`** — preview the operation without writing
 - 56/56 ctest.
 
 ## 0.40.0 — plug-and-play setup
 
-Zero manual steps from download to working. The first icmg command in any project directory (`.claude/` or `.git/` present) auto-installs all hooks. Upgrading refreshes hooks across every registered project at once.
+Auto-bootstrap on first project entry and global hook refresh on upgrade. New projects with `.claude/` or `.git/` are initialized silently without user interaction.
 
-- **Auto-init on first entry** — project without `.icmg/` bootstraps hooks automatically before executing your command.
-- **Global hook refresh on upgrade** — `icmg update --apply` iterates every registered project and refreshes hooks in each.
-- **wflog and session features activate automatically** — no separate activation step.
+- **Auto-bootstrap** — on first entry to a project that has `.claude/` or `.git/` but no `.icmg/`, initialization runs silently in the background
+- **Global hook refresh** — `icmg update --apply` iterates all registered projects and refreshes hooks in each
 - 55/55 ctest.
 
-## 0.39.3 — hook auto-refresh on upgrade
+## 0.39.3 — widened hook refresh detection
 
-`icmg update --apply` now automatically refreshes installed hooks for any project directory — detects `.icmg/`, `.claude/hooks/`, or `.claude/settings.local.json`. Session logging and other hooks stay active after every upgrade without manual intervention. Includes all 0.39.2 fixes.
-
-- **Hook auto-refresh** — upgrade triggers hook reinstall whenever a project context is detected in CWD. Non-project directories get a tip to re-run from a project root.
-- 55/55 ctest.
-
-## 0.39.2 — scheduled task isolation
-
-Background tasks (backup, mirror, maintenance) are now scoped per user on shared servers. Prevents task-name collisions when multiple users run icmg on the same project path.
-
-- **Per-user task names** — task identifiers include a hash of both the project path and the current username.
-- 55/55 ctest.
-
-## 0.39.1 — pack savings reporting fix
-
-`icmg savings` now correctly reports token savings percentage for pack and context operations. Old rows with no baseline are excluded from the calculation.
-
-- **Savings percentage** — CASE-conditional aggregation skips legacy receipt rows, so the reported saving is always accurate.
-- 55/55 ctest.
-
-## 0.39.0 — surgical symbol slice, session dedup, live stream filter
-
-Three high-impact token-reduction features shipped together.
-
-- **Symbol-slice context** — `icmg context <file> --symbol <Name>` extracts only the requested function/class body. 80%+ token reduction versus reading the full file.
-- **Session deduplication** — repeated identical memory hits within a session are suppressed; each unique insight surfaces once.
-- **Live stream filter** — `icmg run --stream <cmd>` pipes real-time output through the Tkil filter as lines arrive, with a summary appended on completion.
-- 55/55 ctest.
-
-## 0.37.6 — git commit SHA tagging on memory store
-
-Memory nodes created during a session are now tagged with the current git commit SHA. Enables point-in-time recall: `icmg recall "<query>" --at-commit <sha>` returns only nodes created at or before that commit.
-
-- **Commit SHA on store** — each `icmg store` call records the HEAD SHA at write time.
-- **At-commit recall** — `--at-commit <sha>` filters by recorded SHA for reproducible context snapshots.
-- 53/53 ctest.
-
-## 0.37.5 — stability patch
-
-Internal version string alignment and minor build fixes. No user-visible behavior changes.
+Hook refresh trigger widened to detect `.icmg/` OR `.claude/hooks/` OR `.claude/settings.local.json`, fixing wflog not activating on fresh installs that had not yet run `icmg init`.
 
 ## 0.37.2 — silent background operations on Windows
 
-Scheduled background tasks (backup, mirror) no longer flash a terminal window on Windows. All child processes launched by the scheduler run fully silent.
+Eliminates the blank command-prompt window that appeared on Windows when icmg spawned background helper processes. All detached child processes now carry the `CREATE_NO_WINDOW` flag; the browser-open path in `icmg serve` switches from `start` (cmd.exe relay) to direct `ShellExecute`. Upgrade is transparent — no config change required.
 
-- **Hidden window flag** — `CREATE_NO_WINDOW` applied to all scheduler-launched processes on Win32.
+- **Swap-helper window suppressed** — the self-update subprocess that replaces the running binary no longer flashes a blank CMD window.
+- **`icmg serve` browser open** — replaced `start ""` cmd.exe relay with `ShellExecuteA` on Windows; no intermediate console created.
 - 50/50 ctest.
 
 ## 0.37.1 — directory traversal hardening
 
-Scanner now skips symbolic links and NTFS junctions during recursive walks, preventing hangs when a project tree contains loop-forming directory links. Upgrade is transparent — no config change required.
+Graph scanning now skips symbolic links and filesystem junctions entirely. Previously, a directory junction pointing back toward a parent could cause the scanner to recurse without bound — freezing `graph scan` and `graph update` on affected paths. The fix is a single guard applied before any directory is entered: if the entry resolves as a link rather than a true directory, traversal stops there.
 
-- **Symlink / junction guard** — directory entries that report as symbolic links are skipped before any recursion step. Closes the hang-on-NTFS-junction report.
+- **Symlink + junction guard** — `graph scan` and `graph update` no longer hang on paths containing symbolic links or NTFS junctions. Traversal skips them cleanly; all real directories and files continue to index normally.
 - 50/50 ctest.
 
 ## 0.37.0 — fast path expansion + daemon scaffold
@@ -320,4 +294,4 @@ Fortress mode. Six-layer durability + speed stack flips on automatically the mom
 
 Phases 27-46 ship the core: ICM memory + BM25, KGraph (file + symbol nodes), Tkil command filter, AST extractors (C/C++/TS/Py via tree-sitter), embedding sidecar (sentence-transformers fallback to BM25-only), MCP server (28 tools), prompt cache markers, batch API emitter, image OCR via pytesseract sidecar, multi-project registry, abbreviation engine, stored-procedure store, visual graph (Cytoscape.js), self-update from GitHub releases.
 
-See `git log` or per-tag release notes on [GitHub Releases](https://github.com/ncmonx/icm-graph/releases) for prior detail.
+See `git log` or per-tag release notes on [github.com/ncmonx/icm-graph/releases](https://github.com/ncmonx/icm-graph/releases) for prior detail.
