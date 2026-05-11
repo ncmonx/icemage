@@ -181,6 +181,24 @@ command -v icmg >/dev/null 2>&1 || exit 0
 exec icmg hook userprompt
 )BASH";
 
+// Stop hook — reminds to log workflow decisions when session had git activity.
+static const char* WFLOG_STOP_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. Fires on session Stop.
+# Reminds to save workflow decisions when session had code changes.
+command -v icmg >/dev/null 2>&1 || exit 0
+HAS_CHANGES=false
+if command -v git >/dev/null 2>&1; then
+    { git diff --quiet HEAD 2>/dev/null && git diff --cached --quiet 2>/dev/null; } || HAS_CHANGES=true
+    if [ "$HAS_CHANGES" = "false" ]; then
+        [ "$(git log --since='4 hours ago' --oneline 2>/dev/null | wc -l)" -gt 0 ] && HAS_CHANGES=true
+    fi
+fi
+[ "$HAS_CHANGES" = "false" ] && exit 0
+LAST=$(icmg wflog recent --limit 1 2>/dev/null | head -1)
+[ -n "$LAST" ] && exit 0
+jq -n '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:"WFLOG: session had changes — log decisions: icmg wflog save --goal \"...\" --decisions \"...\""}}' 2>/dev/null || true
+)BASH";
+
 // Phase 40 T2: PreCompact hook — auto-snapshots session before /compact
 // or auto-compaction wipes context. Runs `icmg session save auto-precompact-<ts>`.
 static const char* PRECOMPACT_PY = R"PY(#!/usr/bin/env python3
@@ -484,6 +502,8 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-caveman-prompt.sh", CAVEMAN_PROMPT_SH, force);
         // Phase 71: UserPromptSubmit auto-recall + suggest compress.
         n += writeFile(root / ".claude" / "hooks" / "icmg-prompt-recall.sh", PROMPT_RECALL_SH, force);
+        // Stop hook: wflog reminder on session end when git has changes.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-wflog-stop.sh", WFLOG_STOP_SH, force);
 
 #ifndef _WIN32
         // chmod +x on POSIX
@@ -673,7 +693,9 @@ private:
                     {{"type", "command"},
                      {"command", "INPUT=$(cat); echo \"$INPUT\" | icmg compliance check-thinking --max-words 80 2>/dev/null || true"}},
                     {{"type", "command"},
-                     {"command", "icmg tool-budget reset 2>/dev/null || true"}}
+                     {"command", "icmg tool-budget reset 2>/dev/null || true"}},
+                    {{"type", "command"},
+                     {"command", "[ -f .claude/hooks/icmg-wflog-stop.sh ] && bash .claude/hooks/icmg-wflog-stop.sh || exit 0"}}
                 })}
             }
         });
