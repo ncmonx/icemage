@@ -2,6 +2,55 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.39.3 — hook auto-refresh on upgrade
+
+`icmg update --apply` now automatically refreshes installed hooks for any project directory — detects `.icmg/`, `.claude/hooks/`, or `.claude/settings.local.json`. Session logging and other hooks stay active after every upgrade without manual intervention. Includes all 0.39.2 fixes.
+
+- **Hook auto-refresh** — upgrade triggers hook reinstall whenever a project context is detected in CWD. Non-project directories get a tip to re-run from a project root.
+- 55/55 ctest.
+
+## 0.39.2 — scheduled task isolation
+
+Background tasks (backup, mirror, maintenance) are now scoped per user on shared servers. Prevents task-name collisions when multiple users run icmg on the same project path.
+
+- **Per-user task names** — task identifiers include a hash of both the project path and the current username.
+- 55/55 ctest.
+
+## 0.39.1 — pack savings reporting fix
+
+`icmg savings` now correctly reports token savings percentage for pack and context operations. Old rows with no baseline are excluded from the calculation.
+
+- **Savings percentage** — CASE-conditional aggregation skips legacy receipt rows, so the reported saving is always accurate.
+- 55/55 ctest.
+
+## 0.39.0 — surgical symbol slice, session dedup, live stream filter
+
+Three high-impact token-reduction features shipped together.
+
+- **Symbol-slice context** — `icmg context <file> --symbol <Name>` extracts only the requested function/class body. 80%+ token reduction versus reading the full file.
+- **Session deduplication** — repeated identical memory hits within a session are suppressed; each unique insight surfaces once.
+- **Live stream filter** — `icmg run --stream <cmd>` pipes real-time output through the Tkil filter as lines arrive, with a summary appended on completion.
+- 55/55 ctest.
+
+## 0.37.6 — git commit SHA tagging on memory store
+
+Memory nodes created during a session are now tagged with the current git commit SHA. Enables point-in-time recall: `icmg recall "<query>" --at-commit <sha>` returns only nodes created at or before that commit.
+
+- **Commit SHA on store** — each `icmg store` call records the HEAD SHA at write time.
+- **At-commit recall** — `--at-commit <sha>` filters by recorded SHA for reproducible context snapshots.
+- 53/53 ctest.
+
+## 0.37.5 — stability patch
+
+Internal version string alignment and minor build fixes. No user-visible behavior changes.
+
+## 0.37.2 — silent background operations on Windows
+
+Scheduled background tasks (backup, mirror) no longer flash a terminal window on Windows. All child processes launched by the scheduler run fully silent.
+
+- **Hidden window flag** — `CREATE_NO_WINDOW` applied to all scheduler-launched processes on Win32.
+- 50/50 ctest.
+
 ## 0.37.1 — directory traversal hardening
 
 Scanner now skips symbolic links and NTFS junctions during recursive walks, preventing hangs when a project tree contains loop-forming directory links. Upgrade is transparent — no config change required.
@@ -253,4 +302,4 @@ Fortress mode. Six-layer durability + speed stack flips on automatically the mom
 
 Phases 27-46 ship the core: ICM memory + BM25, KGraph (file + symbol nodes), Tkil command filter, AST extractors (C/C++/TS/Py via tree-sitter), embedding sidecar (sentence-transformers fallback to BM25-only), MCP server (28 tools), prompt cache markers, batch API emitter, image OCR via pytesseract sidecar, multi-project registry, abbreviation engine, stored-procedure store, visual graph (Cytoscape.js), self-update from GitHub releases.
 
-See `git log` or per-tag release notes on https://github.com/ncmonx/icm-graph/releases for prior detail.
+See `git log` or per-tag release notes on [GitHub Releases](https://github.com/ncmonx/icm-graph/releases) for prior detail.
