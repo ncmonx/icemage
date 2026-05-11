@@ -262,7 +262,7 @@ APACHE-2.0            ▸ License preserved on releases
 
 Run `icmg --help` for the full list of 82+ subcommands. Each has its own `--help`.
 
-> Curious about what's next? *Keep our little secret. Keep away from our blueprint.* The codebase carries hints between the lines.
+> More layers in progress. Concrete designs not published.
 
 ---
 
