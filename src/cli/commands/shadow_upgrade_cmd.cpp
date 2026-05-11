@@ -23,6 +23,7 @@
 #include "../../core/path_utils.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/audit_log.hpp"
+#include "../../core/schedule_helper.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -97,7 +98,7 @@ private:
 
     static const char* currentVersion() {
         // Synced with update_cmd.cpp / main.cpp.
-        return "0.35.0";
+        return "0.35.1";
     }
 
     static std::string repo() { return "ncmonx/icm-graph"; }
@@ -484,17 +485,20 @@ private:
             else if (unit == 'd') hours = n * 24;
         } catch (...) {}
         if (hours < 1) hours = 1;
+        int minutes = hours * 60;
         std::string tn = taskName();
-        std::string cmd = "icmg shadow-upgrade check";
 #ifdef _WIN32
-        // schtasks /SC HOURLY /MO N
-        std::string full = "schtasks /Create /SC HOURLY /MO " + std::to_string(hours)
-                         + " /TN \"" + tn + "\" /TR \"bash -lc '" + cmd + "'\" /F";
-        auto res = core::safeExecShell(full, true, 15000);
-        if (res.exit_code != 0) {
-            std::cerr << "icmg shadow-upgrade auto-on: schtasks failed\n";
-            return 2;
-        }
+        // Phase 78: bulletproof scheduler. Global per-user task; wrapper in ~/.icmg/sched/.
+        fs::path wrapper = globalDir() / "sched" / (tn + ".cmd");
+        fs::create_directories(wrapper.parent_path());
+        std::ofstream wf(wrapper, std::ios::binary);
+        wf << "@echo off\r\n"
+           << "echo === %DATE% %TIME% shadow ===>> \"%USERPROFILE%\\.icmg\\sched\\shadow.log\"\r\n"
+           << "icmg shadow-upgrade check >> \"%USERPROFILE%\\.icmg\\sched\\shadow.log\" 2>&1\r\n";
+        wf.close();
+        core::ScheduleSpec spec{tn, wrapper.string(), minutes, "shadow-upgrade"};
+        int rc = core::registerWindowsSchedule(spec);
+        if (rc != 0) return rc;
 #else
         std::string cron_expr = "0 */" + std::to_string(hours) + " * * *";
         std::string entry = cron_expr + "  " + cmd + "  # " + tn + "\n";
@@ -518,7 +522,7 @@ private:
     int cmdAutoOff(const std::vector<std::string>&) {
         std::string tn = taskName();
 #ifdef _WIN32
-        core::safeExecShell("schtasks /Delete /TN \"" + tn + "\" /F", true, 5000);
+        core::safeExecShell("MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"" + tn + "\" /F", true, 5000);
 #else
         auto cur = core::safeExecShell("crontab -l 2>/dev/null", false, 5000);
         if (cur.exit_code == 0 && !cur.out.empty()) {

@@ -2,6 +2,19 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.35.1 — auto-on bulletproof patch
+
+Patch release. Scheduler installation across **all five auto-on subsystems** now survives shell quoting, path-with-spaces, and elevation gating in one pass. Run `icmg <subsystem> auto-on` once — get a registered task or get a clear actionable instruction. No more silent failures, no more cryptic empty errors.
+
+- **Single-arg scheduler wrappers.** Each auto-on writes a small wrapper file inside the project's hidden directory. The scheduler receives a single path argument — no nested quote escaping, no environmental shell quirks. Path-with-spaces just works.
+- **Self-elevation flow.** When the OS refuses without elevation, icmg now triggers an elevation prompt automatically. Accept once → task registered. Decline → clean fallback printing the exact manual command you can run yourself.
+- **Right schedule type for any interval.** Sub-hour, hour-aligned, and multi-day intervals each route to the correct underlying schedule kind. `24h` no longer means an invalid `HOURLY /MO 24` — it becomes proper daily scheduling.
+- **Real error surfacing.** Failed operations now print the actual upstream message instead of empty diagnostics. Elevation-needed errors include a one-line hint pointing at the resolution.
+- **Silent-success bug squashed.** One subsystem was reporting "installed" even on schedule failure. Now every auto-on path verifies before claiming success.
+- 50/50 ctest.
+
+Outcome: a teammate who upgrades on a different machine runs `icmg init` once, approves an elevation prompt once, gets the same protection profile as everyone else on the project — predictably.
+
 ## 0.35.0 — autonomy stack: drift gate + sentinel watchdog + shadow auto-upgrade
 
 The autonomous-tool turn. icmg now defends its own state, watches its own footprint, and upgrades itself in the background — all without asking. Every layer ships with a kill-switch; defaults are sane.

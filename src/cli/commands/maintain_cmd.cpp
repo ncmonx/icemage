@@ -31,6 +31,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/schedule_helper.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -414,19 +415,19 @@ private:
             return 1;
         }
         std::string tn = taskName();
-        std::string cmd = scheduledCommand();
 #ifdef _WIN32
-        std::string sched = "/SC HOURLY /MO " + std::to_string(std::max(1, minutes / 60));
-        std::string full = "schtasks /Create " + sched + " /TN \"" + tn
-                         + "\" /TR \"bash -lc '" + cmd + "'\" /F";
-        auto res = core::safeExecShell(full, true, 15000);
-        if (res.exit_code != 0) {
-            std::cerr << "icmg maintain auto-on: schtasks failed: " << res.err << "\n";
-            return 2;
-        }
-        std::cout << "icmg maintain auto-on: installed task '" << tn << "'\n"
-                  << "  every: " << minutes << " min\n"
-                  << "  cmd:   " << cmd << "\n";
+        // Phase 78: bulletproof scheduler via core::registerWindowsSchedule.
+        fs::path wrapper = projectRoot() / ".icmg" / "sched" / (tn + ".cmd");
+        fs::create_directories(wrapper.parent_path());
+        std::ofstream wf(wrapper, std::ios::binary);
+        wf << "@echo off\r\n"
+           << "cd /d \"" << projectRoot().string() << "\"\r\n"
+           << "echo === %DATE% %TIME% maintain ===>> .icmg\\sched\\sched.log\r\n"
+           << "icmg maintain run >> .icmg\\sched\\sched.log 2>&1\r\n";
+        wf.close();
+        core::ScheduleSpec spec{tn, wrapper.string(), minutes, "maintain"};
+        int rc = core::registerWindowsSchedule(spec);
+        if (rc != 0) return rc;
 #else
         std::string cron_expr;
         if ((minutes % 60) == 0)
@@ -461,7 +462,7 @@ private:
     int cmdAutoOff(const std::vector<std::string>&) {
         std::string tn = taskName();
 #ifdef _WIN32
-        core::safeExecShell("schtasks /Delete /TN \"" + tn + "\" /F", true, 5000);
+        core::safeExecShell("MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"" + tn + "\" /F", true, 5000);
 #else
         auto cur = core::safeExecShell("crontab -l 2>/dev/null", false, 5000);
         if (cur.exit_code == 0 && !cur.out.empty()) {

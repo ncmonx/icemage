@@ -93,7 +93,7 @@ private:
     int doInstall(const std::vector<std::string>& args) {
         std::string time = flagValue(args, "--time", "03:00");
 #ifdef _WIN32
-        std::string cmd = "schtasks /Create /SC WEEKLY /D SUN /ST " + time
+        std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Create /SC WEEKLY /D SUN /ST " + time
                         + " /TN \"icmg-hygiene\" /TR \"bash -lc '"
                         + hygieneCommand() + "'\" /F";
         auto res = core::safeExecShell(cmd, true, 15000);
@@ -138,7 +138,7 @@ private:
     int doUninstall(const std::vector<std::string>& /*args*/) {
 #ifdef _WIN32
         auto res = core::safeExecShell(
-            "schtasks /Delete /TN icmg-hygiene /F", true, 5000);
+            "MSYS_NO_PATHCONV=1 schtasks /Delete /TN icmg-hygiene /F", true, 5000);
         if (res.exit_code != 0) {
             std::cerr << "icmg cron uninstall: not found or failed\n";
             return 1;

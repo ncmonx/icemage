@@ -29,6 +29,7 @@
 #include "../../core/exec_utils.hpp"
 #include "../../core/audit_log.hpp"
 #include "../../core/repair_counter.hpp"
+#include "../../core/schedule_helper.hpp"
 #include "../../core/db.hpp"
 #include "../../core/config.hpp"
 
@@ -405,16 +406,18 @@ private:
         std::string tn = taskName();
         std::string root = projectRoot().string();
 #ifdef _WIN32
-        std::replace(root.begin(), root.end(), '\\', '/');
-#endif
-        std::string cmd = "cd \"" + root + "\" && icmg sentinel run --quiet";
-#ifdef _WIN32
-        std::string sched = (minutes >= 60 && (minutes % 60) == 0)
-            ? "/SC HOURLY /MO " + std::to_string(minutes / 60)
-            : "/SC MINUTE /MO " + std::to_string(minutes);
-        std::string full = "schtasks /Create " + sched + " /TN \"" + tn
-                         + "\" /TR \"bash -lc '" + cmd + "'\" /F";
-        core::safeExecShell(full, true, 15000);
+        // Phase 78: bulletproof scheduler via core::registerWindowsSchedule.
+        fs::path wrapper = projectRoot() / ".icmg" / "sched" / (tn + ".cmd");
+        fs::create_directories(wrapper.parent_path());
+        std::ofstream wf(wrapper, std::ios::binary);
+        wf << "@echo off\r\n"
+           << "cd /d \"" << root << "\"\r\n"
+           << "echo === %DATE% %TIME% sentinel ===>> .icmg\\sched\\sched.log\r\n"
+           << "icmg sentinel run --quiet >> .icmg\\sched\\sched.log 2>&1\r\n";
+        wf.close();
+        core::ScheduleSpec spec{tn, wrapper.string(), minutes, "sentinel"};
+        int rc = core::registerWindowsSchedule(spec);
+        if (rc != 0) return rc;
 #else
         std::string cron_expr = (minutes < 60)
             ? "*/" + std::to_string(minutes) + " * * * *"
@@ -440,7 +443,7 @@ private:
     int cmdAutoOff(const std::vector<std::string>&) {
         std::string tn = taskName();
 #ifdef _WIN32
-        core::safeExecShell("schtasks /Delete /TN \"" + tn + "\" /F", true, 5000);
+        core::safeExecShell("MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"" + tn + "\" /F", true, 5000);
 #else
         auto cur = core::safeExecShell("crontab -l 2>/dev/null", false, 5000);
         if (cur.exit_code == 0 && !cur.out.empty()) {

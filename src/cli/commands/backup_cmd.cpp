@@ -22,6 +22,7 @@
 #include "../../core/exec_utils.hpp"
 #include "../../core/audit_log.hpp"
 #include "../../core/repair_counter.hpp"
+#include "../../core/schedule_helper.hpp"
 
 #include <sqlite3.h>
 #include <algorithm>
@@ -530,25 +531,20 @@ private:
             return 1;
         }
         std::string tn = taskName();
-        std::string cmd = scheduledCommand();
 #ifdef _WIN32
-        // schtasks: /SC MINUTE /MO N for minute interval; /SC HOURLY /MO N for hours.
-        std::string sched;
-        if (minutes >= 60 && (minutes % 60) == 0)
-            sched = "/SC HOURLY /MO " + std::to_string(minutes / 60);
-        else
-            sched = "/SC MINUTE /MO " + std::to_string(minutes);
-        std::string full = "schtasks /Create " + sched + " /TN \"" + tn
-                         + "\" /TR \"bash -lc '" + cmd + "'\" /F";
-        auto res = core::safeExecShell(full, true, 15000);
-        if (res.exit_code != 0) {
-            std::cerr << "icmg backup auto-on: schtasks failed: " << res.err << "\n";
-            return 2;
-        }
-        std::cout << "icmg backup auto-on: installed task '" << tn << "'\n"
-                  << "  interval: every " << minutes << " min\n"
-                  << "  command:  " << cmd << "\n"
-                  << "  Verify:   schtasks /Query /TN " << tn << "\n";
+        // Phase 78: bulletproof flow. Write .cmd wrapper + register via helper.
+        fs::path wrapper = projectRoot() / ".icmg" / "sched" / (tn + ".cmd");
+        fs::create_directories(wrapper.parent_path());
+        std::ofstream wf(wrapper, std::ios::binary);
+        wf << "@echo off\r\n"
+           << "cd /d \"" << projectRoot().string() << "\"\r\n"
+           << "echo === %DATE% %TIME% backup ===>> .icmg\\sched\\sched.log\r\n"
+           << "icmg backup snapshot --note auto-hourly >> .icmg\\sched\\sched.log 2>&1\r\n"
+           << "icmg backup prune >> .icmg\\sched\\sched.log 2>&1\r\n";
+        wf.close();
+        core::ScheduleSpec spec{tn, wrapper.string(), minutes, "backup"};
+        int rc = core::registerWindowsSchedule(spec);
+        if (rc != 0) return rc;
 #else
         // crontab: */N for minutes < 60; 0 */H for hours.
         std::string cron_expr;
@@ -589,7 +585,7 @@ private:
     int cmdAutoOff(const std::vector<std::string>&) {
         std::string tn = taskName();
 #ifdef _WIN32
-        std::string cmd = "schtasks /Delete /TN \"" + tn + "\" /F";
+        std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"" + tn + "\" /F";
         auto res = core::safeExecShell(cmd, true, 5000);
         if (res.exit_code != 0) {
             std::cerr << "icmg backup auto-off: not installed or failed\n";
@@ -637,7 +633,7 @@ private:
         if (flag_set) std::cout << "  interval:  every " << interval_min << " min\n";
 
 #ifdef _WIN32
-        std::string q = "schtasks /Query /TN \"" + tn + "\" /FO LIST 2>nul";
+        std::string q = "MSYS_NO_PATHCONV=1 schtasks /Query /TN \"" + tn + "\" /FO LIST 2>nul";
         auto res = core::safeExecShell(q, false, 5000);
         if (res.exit_code == 0 && !res.out.empty()) {
             std::cout << "  installed: YES\n";
