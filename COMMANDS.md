@@ -142,6 +142,7 @@ icmg budget record <tool> --raw N [--filtered M] [--cmd "..."]
 
 ```
 icmg context <file>
+    [--symbol NAME]     # slice to single symbol body (80%+ token cut vs full file)
     [--depth N]         # neighbor depth (default 1)
     [--no-symbols]      # skip child symbol list
     [--no-memory]       # skip related memory
@@ -150,6 +151,8 @@ icmg context <file>
 ```
 
 Returns: file metadata, imports, used-by, child symbols, top-3 related memory.
+
+`--symbol NAME` slices the output to a single function/class body extracted from the knowledge graph, skipping the rest of the file. Substring and case-insensitive match. Use when you need one function, not the whole module — delivers surgical context at a fraction of the token cost.
 
 ---
 
@@ -380,6 +383,7 @@ icmg recall <query>
     [--all-projects]       # iterate registered projects
     [--fuzzy]              # fuzzy fallback
     [--at-commit SHA]      # filter to memories stored at a specific git commit (prefix ok)
+    [--no-dedup]           # show nodes already returned this session (default: suppress)
     [--explain]            # show ranking detail
     [--history]            # show recent queries instead
     [--json]
@@ -387,6 +391,7 @@ icmg recall <query>
 
 `--semantic` requires the optional embedder to be configured. Falls back gracefully when not.
 `--at-commit` matches memories whose `git_sha` starts with the given prefix (e.g. `abc1234`).
+`--no-dedup` disables in-session deduplication — by default, nodes already surfaced in this session are suppressed to prevent identical results flooding multi-turn context.
 
 ---
 
@@ -417,7 +422,7 @@ icmg run [options] <command...>
   --raw         # no filtering
   --json        # JSON output with metadata
   --dry-run     # show detected filter without running
-  --stream      # streaming filter
+  --stream      # real-time line-by-line output; filter summary appended at end
   --timeout N   # exec timeout in ms (default 60000)
 ```
 

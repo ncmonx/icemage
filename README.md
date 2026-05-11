@@ -5,7 +5,7 @@
 # Icemage <sub><sup>(`icmg`)</sup></sub>
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-52%2F52%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-55%2F55%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-82%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -219,6 +219,15 @@ SHADOW AUTO-UPGRADE   ▸ icmg shadow-upgrade — daily background poll of GitHu
 AUDIT TRAIL           ▸ chain-signed log of every backup/restore/failover/
                         sentinel reaction. icmg repair-history verify walks
                         the chain — tamper-detectable
+SYMBOL SLICE          ▸ icmg context <file> --symbol <Name> — one function body,
+                        not the whole module. 80%+ token cut vs full-file read.
+                        Substring + case-insensitive match. Precision surgical
+SESSION DEDUP         ▸ Recall auto-suppresses nodes already returned this session
+                        — identical results stop flooding multi-turn context.
+                        --no-dedup to override. Zero latency (in-memory set)
+LIVE STREAM FILTER    ▸ icmg run --stream — real-time line-by-line subprocess
+                        output with filter summary appended at end. No buffering
+                        lag; full filter context preserved for summary accuracy
 APACHE-2.0            ▸ License preserved on releases
 ```
 
