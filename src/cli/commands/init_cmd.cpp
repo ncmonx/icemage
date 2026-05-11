@@ -681,7 +681,73 @@ private:
         f << cfg.dump(2) << "\n";
         std::cout << "  + .claude/settings.local.json (hooks installed)\n";
         ++n;
+
+        // Install icmg-first enforcement into global ~/.claude/settings.json
+        // so the rule applies across ALL projects, not just this one.
+        n += installGlobalReadHook(force);
+
         return n;
+    }
+
+    // Writes PreToolUse Read|Glob|Grep icmg-first hook to ~/.claude/settings.json.
+    // Idempotent: skips if already present (unless force).
+    int installGlobalReadHook(bool force) {
+        const char* home = std::getenv("HOME");
+        if (!home) home = std::getenv("USERPROFILE");
+        if (!home) return 0;
+
+        fs::path global_settings = fs::path(home) / ".claude" / "settings.json";
+        if (!fs::exists(global_settings)) return 0;
+
+        json gcfg;
+        try {
+            std::ifstream f(global_settings);
+            f >> gcfg;
+        } catch (...) {
+            gcfg = json::object();
+        }
+
+        if (!gcfg.contains("hooks")) gcfg["hooks"] = json::object();
+        if (!gcfg["hooks"].is_object()) gcfg["hooks"] = json::object();
+
+        const std::string matcher = "Read|Glob|Grep";
+        const std::string hook_cmd =
+            "python3 -c \"import json,sys; sys.stdin.read(); "
+            "print(json.dumps({'hookSpecificOutput':{'hookEventName':'PreToolUse',"
+            "'additionalContext':'ICMG-FIRST RULE: Before Read/Glob/Grep, use icmg first: "
+            "icmg context <file>, icmg pack <task>, icmg graph symbol <Name>, "
+            "icmg recall <query>, icmg graph search <query>. "
+            "Direct tools only if icmg cannot cover it.'}}))\"";
+
+        json& pre = gcfg["hooks"]["PreToolUse"];
+        if (!pre.is_array()) pre = json::array();
+
+        // Check for existing entry.
+        for (auto& entry : pre) {
+            if (entry.contains("matcher") && entry["matcher"] == matcher) {
+                if (!force) {
+                    std::cout << "  = ~/.claude/settings.json icmg-first hook (exists; --force to overwrite)\n";
+                    return 0;
+                }
+                entry["hooks"] = json::array({{{"type", "command"}, {"command", hook_cmd}, {"shell", "bash"}}});
+                std::ofstream out(global_settings);
+                out << gcfg.dump(2) << "\n";
+                std::cout << "  + ~/.claude/settings.json (icmg-first Read|Glob|Grep hook updated)\n";
+                return 1;
+            }
+        }
+
+        pre.push_back({
+            {"matcher", matcher},
+            {"hooks", json::array({
+                {{"type", "command"}, {"command", hook_cmd}, {"shell", "bash"}}
+            })}
+        });
+
+        std::ofstream out(global_settings);
+        out << gcfg.dump(2) << "\n";
+        std::cout << "  + ~/.claude/settings.json (icmg-first Read|Glob|Grep hook installed)\n";
+        return 1;
     }
 
     int installAgents(const fs::path& root, bool force) {
