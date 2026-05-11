@@ -379,12 +379,14 @@ icmg recall <query>
     [--pure]               # vector only
     [--all-projects]       # iterate registered projects
     [--fuzzy]              # fuzzy fallback
+    [--at-commit SHA]      # filter to memories stored at a specific git commit (prefix ok)
     [--explain]            # show ranking detail
     [--history]            # show recent queries instead
     [--json]
 ```
 
 `--semantic` requires the optional embedder to be configured. Falls back gracefully when not.
+`--at-commit` matches memories whose `git_sha` starts with the given prefix (e.g. `abc1234`).
 
 ---
 

@@ -253,6 +253,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Search code | `icmg run grep ...` (auto-filtered) |
 | Recall past decision | `icmg recall "<query>"` |
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
+| Recall at specific commit | `icmg recall "<query>" --at-commit <sha>` |
 | Start new task | `icmg pack "<task>"` (4KB context bundle) |
 | Delegate to LLM | `icmg agent "<task>"` (pack→prompt→user-CLI) |
 | Run noisy command | `icmg run <cmd>` (Tkil filter — 60-90% smaller) |
@@ -271,6 +272,3 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 
 Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
 <!-- icmg:end -->
-
-
-
