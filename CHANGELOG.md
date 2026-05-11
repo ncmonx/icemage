@@ -2,6 +2,13 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.37.1 — directory traversal hardening
+
+Scanner now skips symbolic links and NTFS junctions during recursive walks, preventing hangs when a project tree contains loop-forming directory links. Upgrade is transparent — no config change required.
+
+- **Symlink / junction guard** — directory entries that report as symbolic links are skipped before any recursion step. Closes the hang-on-NTFS-junction report.
+- 50/50 ctest.
+
 ## 0.37.0 — fast path expansion + daemon scaffold
 
 Read-tool event joins the in-process fast path. Cross-project surfacing and file-context hinting move into the consolidated handler. Persistent-server scaffold lands to reserve architecture for the next round of cold-start elimination.
