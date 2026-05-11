@@ -13,7 +13,10 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/config.hpp"
+#include "../../core/db.hpp"
 #include "../../compress/compressor.hpp"
+#include "../../compress/glossary_store.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -268,6 +271,12 @@ public:
             std::cerr << "[icmg shrink: compress] " << r.tok_in << "→" << r.tok_out
                       << " tok (" << (r.tok_in > 0 ? 100 - 100 * r.tok_out / r.tok_in : 0)
                       << "% saved)\n";
+            try {
+                core::Db db(core::Config::instance().projectDbPath("."));
+                compress::GlossaryStore store(db);
+                store.recordTelemetry("shrink", r.bytes_in, r.bytes_out,
+                                      r.tok_in, r.tok_out, r.elapsed_ms, "compress");
+            } catch (...) {}
             return 0;
         }
         else                            k = detect(input);
@@ -286,6 +295,14 @@ public:
                   << input.size() << "B → " << out.size() << "B ("
                   << (input.size() > 0 ? 100 - 100 * out.size() / input.size() : 0)
                   << "% off)\n";
+        try {
+            int tok_in  = (int)input.size() / 4;
+            int tok_out = (int)out.size()   / 4;
+            core::Db db(core::Config::instance().projectDbPath("."));
+            compress::GlossaryStore store(db);
+            store.recordTelemetry("shrink", (int)input.size(), (int)out.size(),
+                                  tok_in, tok_out, 0, label);
+        } catch (...) {}
         return 0;
     }
 };
