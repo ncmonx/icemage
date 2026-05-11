@@ -20,7 +20,7 @@ The autonomous-tool turn. icmg now defends its own state, watches its own footpr
 
 **Token impact:** drift-check at every prompt costs ~50-200ms but blocks 3-5K-token stance-flip turns. Pinned 10× boost means principles surface ahead of recency-only ranking. Combined with v0.34's hot-cache (~5ms re-issue) → multi-thousand-token saves per active session, compounding across the week.
 
-Hints for next horizons: deeper memory operators, multi-host posture, hands-free recovery protocols. *Keep our little secret. Keep away from our blueprint.*
+More layers in progress under the hood — focus on memory operators, multi-host posture, and hands-free recovery. Concrete designs not published.
 
 ## 0.34.0 — self-protection: snapshot + dual-mirror + integrity gate + hot-cache
 
