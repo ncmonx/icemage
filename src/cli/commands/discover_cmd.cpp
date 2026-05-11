@@ -12,6 +12,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -197,10 +198,11 @@ public:
             std::string self = locateSelf();
             std::string cmd = "\"" + self + "\" init --no-agents --no-embedder --force";
             std::cout << "  installing bash-rewrite hook via `icmg init`...\n";
-            int rc = std::system(cmd.c_str());
-            if (rc == 0) std::cout << "  Done. Restart your AI agent to pick up new hook.\n";
-            else         std::cout << "  init failed (exit=" << rc << ")\n";
-            return rc;
+            auto res = core::safeExecShell(cmd, true, 60000);
+            if (!res.out.empty()) std::cout << res.out;
+            if (res.exit_code == 0) std::cout << "  Done. Restart your AI agent to pick up new hook.\n";
+            else                   std::cout << "  init failed (exit=" << res.exit_code << ")\n";
+            return res.exit_code;
         }
         return 0;
     }

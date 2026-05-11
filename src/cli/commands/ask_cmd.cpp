@@ -11,6 +11,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/exec_utils.hpp"
 #include "../../embed/embedder.hpp"
 #include "help_corpus.hpp"
 #include <iostream>
@@ -139,8 +140,9 @@ public:
                     return 0;
                 }
             }
-            int rc = std::system(scored[0].command.c_str());
-            return (rc == 0) ? 0 : 1;
+            auto res = core::safeExecShell(scored[0].command, true, 60000);
+            if (!res.out.empty()) std::cout << res.out;
+            return (res.exit_code == 0) ? 0 : 1;
         }
         std::cout << "\nRun any: copy the command above. Use --exec for top-1 auto-run.\n";
         return 0;

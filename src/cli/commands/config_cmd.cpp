@@ -5,7 +5,18 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
+#ifdef _WIN32
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <shellapi.h>
+#endif
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -213,11 +224,19 @@ private:
         }
         const char* ed = std::getenv("EDITOR");
 #ifdef _WIN32
-        std::string cmd = std::string(ed ? ed : "notepad") + " \"" + path.string() + "\"";
+        if (!ed) {
+            // ShellExecuteA opens notepad without spawning a cmd.exe relay.
+            ShellExecuteA(nullptr, "open", path.string().c_str(),
+                          nullptr, nullptr, SW_SHOWNORMAL);
+            return 0;
+        }
+        std::string cmd = std::string(ed) + " \"" + path.string() + "\"";
 #else
         std::string cmd = std::string(ed ? ed : "vi") + " '" + path.string() + "'";
 #endif
-        return std::system(cmd.c_str());
+        auto res = core::safeExecShell(cmd, true, 120000);
+        if (!res.out.empty()) std::cout << res.out;
+        return res.exit_code;
     }
 };
 

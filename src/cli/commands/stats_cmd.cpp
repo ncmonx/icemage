@@ -1,5 +1,6 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../graph/graph_store.hpp"
@@ -235,7 +236,9 @@ public:
 #else
         std::string cmd = "grep -rn -- \"" + pattern + "\" \"" + dir + "\"";
 #endif
-        return std::system(cmd.c_str());
+        auto res = core::safeExecShell(cmd, true, 30000);
+        if (!res.out.empty()) std::cout << res.out;
+        return res.exit_code;
     }
 };
 
