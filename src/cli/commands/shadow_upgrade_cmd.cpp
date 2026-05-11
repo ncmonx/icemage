@@ -471,8 +471,11 @@ private:
     // ---- auto-on / off --------------------------------------------------
 
     static std::string taskName() {
-        // Global task — one per user, not per project (binary is per-user).
-        return "icmg-shadow-upgrade";
+        // One per user (not per project). Include username for multi-user servers.
+        const char* u = std::getenv("USERNAME");
+        if (!u) u = std::getenv("USER");
+        std::string suffix = (u && *u) ? (std::string("-") + u) : "";
+        return "icmg-shadow-upgrade" + suffix;
     }
 
     int cmdAutoOn(const std::vector<std::string>& args) {

@@ -493,12 +493,8 @@ private:
     // Stable per-project task name. Uses last 8 chars of root path hash
     // (FNV-1a 32-bit) so concurrent projects don't collide.
     static std::string taskName() {
-        std::string s = projectRoot().string();
-        uint32_t h = 2166136261u;
-        for (char c : s) { h ^= (uint8_t)c; h *= 16777619u; }
-        std::ostringstream o;
-        o << "icmg-backup-" << std::hex << std::setw(8) << std::setfill('0') << h;
-        return o.str();
+        // path + username → unique per project AND per user on shared servers
+        return "icmg-backup-" + core::icmgTaskHash(projectRoot().string());
     }
 
     // Cmd executed by scheduler. Snapshot + prune; absolute paths.

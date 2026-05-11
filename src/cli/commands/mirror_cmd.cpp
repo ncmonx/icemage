@@ -312,12 +312,8 @@ private:
     // ---- auto schedule ---------------------------------------------------
 
     static std::string taskName() {
-        std::string p = projectRoot().string();
-        uint32_t h = 2166136261u;
-        for (char c : p) { h ^= (uint8_t)c; h *= 16777619u; }
-        std::ostringstream o;
-        o << "icmg-mirror-" << std::hex << std::setw(8) << std::setfill('0') << h;
-        return o.str();
+        // path + username → unique per project AND per user on shared servers
+        return "icmg-mirror-" + core::icmgTaskHash(projectRoot().string());
     }
 
     static std::string scheduledCommand() {

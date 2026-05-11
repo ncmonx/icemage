@@ -381,12 +381,8 @@ private:
     // ---- auto-on/off/status (mirrors backup_cmd pattern) -----------------
 
     static std::string taskName() {
-        std::string p = projectRoot().string();
-        uint32_t h = 2166136261u;
-        for (char c : p) { h ^= (uint8_t)c; h *= 16777619u; }
-        std::ostringstream o;
-        o << "icmg-maintain-" << std::hex << std::setw(8) << std::setfill('0') << h;
-        return o.str();
+        // path + username → unique per project AND per user on shared servers
+        return "icmg-maintain-" + core::icmgTaskHash(projectRoot().string());
     }
 
     static std::string scheduledCommand() {

@@ -22,6 +22,12 @@ struct ScheduleSpec {
     std::string label;         // friendly name for logs ("backup", "sentinel"...)
 };
 
+// Compute stable per-project-per-user task name suffix (8 hex chars).
+// Hashes project path + current username so concurrent users on the same
+// server sharing a project path get distinct task names and don't overwrite
+// each other's scheduled tasks.
+std::string icmgTaskHash(const std::string& project_path);
+
 // Write a Windows .cmd wrapper file to absolute_path.
 // Wrapper contains: @echo off, cd /d <cwd>, echo timestamp banner, run <icmg_cmd>.
 // Returns true on success. Creates parent dir if missing.

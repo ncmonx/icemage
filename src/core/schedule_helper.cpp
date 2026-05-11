@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 
 #ifdef _WIN32
@@ -14,6 +15,20 @@
 namespace fs = std::filesystem;
 
 namespace icmg::core {
+
+std::string icmgTaskHash(const std::string& project_path) {
+    std::string s = project_path;
+    // Include username: prevents task name collision when multiple users
+    // share the same project path on a multi-user server.
+    const char* u = std::getenv("USERNAME");
+    if (!u) u = std::getenv("USER");
+    if (u && *u) { s += '@'; s += u; }
+    uint32_t h = 2166136261u;
+    for (unsigned char c2 : s) { h ^= c2; h *= 16777619u; }
+    std::ostringstream o;
+    o << std::hex << std::setw(8) << std::setfill('0') << h;
+    return o.str();
+}
 
 // Look up the running binary's path. File-local helper.
 static std::string selfExePath() {
