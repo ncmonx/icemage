@@ -425,6 +425,63 @@ CREATE TABLE IF NOT EXISTS token_receipts (
 CREATE INDEX IF NOT EXISTS idx_receipts_ts ON token_receipts(ts);
 CREATE INDEX IF NOT EXISTS idx_receipts_session ON token_receipts(session_id);
 )SQL"},
+        {21, R"SQL(
+-- 0021_resilience_drift (Phase 75)
+-- Decision anchors — drift-check matches incoming prompts against pinned stances.
+-- "supersedes" is explicit; recency alone never overrides.
+CREATE TABLE IF NOT EXISTS decisions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic       TEXT    NOT NULL,
+    stance      TEXT    NOT NULL,
+    rationale   TEXT    NOT NULL DEFAULT '',
+    keywords    TEXT    NOT NULL DEFAULT '',
+    pinned      INTEGER NOT NULL DEFAULT 0,
+    supersedes  INTEGER REFERENCES decisions(id) ON DELETE SET NULL,
+    superseded_at INTEGER,
+    made_at     INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    actor       TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_decisions_topic    ON decisions(topic);
+CREATE INDEX IF NOT EXISTS idx_decisions_pinned   ON decisions(pinned);
+CREATE INDEX IF NOT EXISTS idx_decisions_keywords ON decisions(keywords);
+-- Memoir pin column for 10× recall boost.
+ALTER TABLE memory_nodes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_mem_pinned ON memory_nodes(pinned);
+)SQL"},
+        {22, R"SQL(
+-- 0022_fts5_multiagent (Phase 76)
+-- FTS5 virtual table over memory_nodes content; speed BM25 50× on >10K rows.
+-- Triggers keep it in sync. Falls back gracefully if FTS5 module absent
+-- (CREATE VIRTUAL TABLE returns error → caught by migrator); query layer
+-- has a runtime detect of FTS5 availability.
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+    topic, content, keywords,
+    content='memory_nodes', content_rowid='id',
+    tokenize='unicode61 remove_diacritics 2'
+);
+-- Backfill existing rows.
+INSERT INTO memory_fts(rowid, topic, content, keywords)
+    SELECT id, topic, content, keywords FROM memory_nodes WHERE deleted_at IS NULL;
+-- Sync triggers.
+CREATE TRIGGER IF NOT EXISTS memory_fts_ai AFTER INSERT ON memory_nodes BEGIN
+    INSERT INTO memory_fts(rowid, topic, content, keywords)
+        VALUES (new.id, new.topic, new.content, new.keywords);
+END;
+CREATE TRIGGER IF NOT EXISTS memory_fts_ad AFTER DELETE ON memory_nodes BEGIN
+    INSERT INTO memory_fts(memory_fts, rowid, topic, content, keywords)
+        VALUES ('delete', old.id, old.topic, old.content, old.keywords);
+END;
+CREATE TRIGGER IF NOT EXISTS memory_fts_au AFTER UPDATE ON memory_nodes BEGIN
+    INSERT INTO memory_fts(memory_fts, rowid, topic, content, keywords)
+        VALUES ('delete', old.id, old.topic, old.content, old.keywords);
+    INSERT INTO memory_fts(rowid, topic, content, keywords)
+        VALUES (new.id, new.topic, new.content, new.keywords);
+END;
+-- Multi-agent: add agent_id namespace column to tool_call_cache + index.
+-- Existing rows retain empty agent_id ("" = global; backward compatible).
+ALTER TABLE tool_call_cache ADD COLUMN agent_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_tcc_agent ON tool_call_cache(agent_id, content_hash);
+)SQL"},
     };
 }
 

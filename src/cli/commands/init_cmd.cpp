@@ -129,17 +129,23 @@ printf '%s\t%s\n' "$NOW" "$FILE" >> "$LOG" 2>/dev/null || true
 THRESHOLD="${ICMG_SHRINK_THRESHOLD:-60000}"
 INC="${ICMG_SHRINK_INCLUDE:-}"
 EXC="${ICMG_SHRINK_EXCLUDE:-}"
-[[ -n "$INC" ]] && ! echo "$FILE" | grep -qE "$INC" && exit 0
-[[ -n "$EXC" ]]   && echo "$FILE" | grep -qE "$EXC" && exit 0
 SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE" 2>/dev/null || echo 0)
-[[ "$SIZE" -lt "$THRESHOLD" ]] && exit 0
+# Phase 76: ICMG_READ_FORCE=1 always-route Read → icmg context overlay,
+# regardless of file size or include/exclude pattern. Default-ON since
+# v0.34.1. Opt-out via ICMG_READ_FORCE=0 (or ICMG_NO_READ_FORCE=1).
+FORCE="${ICMG_READ_FORCE:-1}"
+[[ "${ICMG_NO_READ_FORCE:-0}" = "1" ]] && FORCE=0
+if [[ "$FORCE" != "1" ]]; then
+    [[ -n "$INC" ]] && ! echo "$FILE" | grep -qE "$INC" && exit 0
+    [[ -n "$EXC" ]] && echo "$FILE" | grep -qE "$EXC" && exit 0
+    [[ "$SIZE" -lt "$THRESHOLD" ]] && exit 0
+fi
 SUMMARY=$(icmg summarize "$FILE" 2>/dev/null || true)
-[[ -z "$SUMMARY" ]] && exit 0
-
-# Phase 71: also fetch icmg context (graph + symbols + content slice) so model
-# has rich view alongside capped Read. Reduces re-Read pattern when model
-# searches for Edit anchor — anchor often visible in context output already.
+# Phase 76: when FORCE=1, missing summary is OK — icmg context still useful.
+# Only abort when both summary AND context empty (file totally unknown).
 CTX=$(icmg context "$FILE" --max-bytes 2048 --no-content 2>/dev/null || true)
+[[ -z "$SUMMARY" && -z "$CTX" && "$FORCE" != "1" ]] && exit 0
+[[ -z "$SUMMARY" ]] && SUMMARY="(no symbols indexed yet — run \`icmg graph update\`)"
 
 # Phase 70: STRICT mode also uses updatedInput.limit cap (was hard-deny).
 # Hard-deny broke Edit's "Read-first" session requirement. Cap to 50 lines
@@ -290,10 +296,23 @@ if [ -n "$FIRSTPATH" ] && [ -f "$FIRSTPATH" ]; then
     CTX=$(icmg context "$FIRSTPATH" --max-bytes 1024 --no-content 2>/dev/null || true)
 fi
 
-[ -z "$HITS" ] && [ -z "$CTX" ] && [ -z "$SUGGEST" ] && exit 0
+# Phase 75: drift check — flag prompts that touch pinned decision anchors.
+# Phase 76: opt-out via ICMG_NO_DRIFT_CHECK=1 (skips ~50-200ms DB lookup).
+DRIFT=""
+if [ "${ICMG_NO_DRIFT_CHECK:-0}" != "1" ]; then
+    if icmg drift check "$PROMPT" 2>/tmp/icmg-drift.out >/dev/null; then
+        : # exit 0 = no conflict
+    else
+        DRIFT=$(cat /tmp/icmg-drift.out 2>/dev/null)
+    fi
+    rm -f /tmp/icmg-drift.out 2>/dev/null
+fi
+
+[ -z "$HITS" ] && [ -z "$CTX" ] && [ -z "$SUGGEST" ] && [ -z "$DRIFT" ] && exit 0
 MSG=""
-[ -n "$HITS" ] && MSG="${MSG}icmg memory hits (proactively surfaced):\n${HITS}\n\n"
-[ -n "$CTX" ]  && MSG="${MSG}icmg context for ${FIRSTPATH}:\n${CTX}\n\n"
+[ -n "$DRIFT" ]   && MSG="${MSG}${DRIFT}\n\n"
+[ -n "$HITS" ]    && MSG="${MSG}icmg memory hits (proactively surfaced):\n${HITS}\n\n"
+[ -n "$CTX" ]     && MSG="${MSG}icmg context for ${FIRSTPATH}:\n${CTX}\n\n"
 [ -n "$SUGGEST" ] && MSG="${MSG}${SUGGEST}\n"
 jq -n --arg m "$MSG" '{
     hookSpecificOutput: {
@@ -489,6 +508,8 @@ public:
             "  --no-backup     Skip backup auto-on (default: enable hourly snapshot)\n"
             "  --no-maintain   Skip maintain auto-on (default: enable 6h hygiene)\n"
             "  --no-mirror     Skip mirror auto-on (default: enable 15m dual-mirror)\n"
+            "  --no-sentinel   Skip sentinel watchdog (default: enable 15m health check)\n"
+            "  --no-auto-upgrade  Skip shadow upgrade daily check (default: enable)\n"
             "  --force         Overwrite existing files\n"
             "  --strict-read   Hard-deny Read on large non-source files (>20KB);\n"
             "                  source extensions (.cs/.ts/.cpp/...) stay soft-mode\n";
@@ -562,6 +583,24 @@ public:
                 std::cerr << "    [warn] mirror auto-on failed — run manually: icmg mirror auto-on\n";
             } else {
                 std::cout << "    OK: failover armed (refresh every 15m)\n";
+            }
+        }
+        if (!hasFlag(args, "--no-sentinel")) {
+            std::cout << "  sentinel:   enabling 15m watchdog...\n";
+            auto r = core::safeExecShell("icmg sentinel auto-on --every 15m", false, 15000);
+            if (r.exit_code != 0) {
+                std::cerr << "    [warn] sentinel auto-on failed — run manually: icmg sentinel auto-on\n";
+            } else {
+                std::cout << "    OK: watchdog armed (heavy/idle + disk/audit checks)\n";
+            }
+        }
+        if (!hasFlag(args, "--no-auto-upgrade")) {
+            std::cout << "  upgrade:    enabling daily shadow check...\n";
+            auto r = core::safeExecShell("icmg shadow-upgrade auto-on --every 24h", false, 15000);
+            if (r.exit_code != 0) {
+                std::cerr << "    [warn] shadow-upgrade auto-on failed — run manually: icmg shadow-upgrade auto-on\n";
+            } else {
+                std::cout << "    OK: shadow auto-upgrade armed (daily check)\n";
             }
         }
 
@@ -745,13 +784,17 @@ private:
 
         // Phase 40 T2: PreCompact hook — snapshot session before /compact.
         // Phase 67 T5: also distill session into memory primer for next session.
+        // Phase 75: also re-inject AGENTS.md ABSOLUTE RULE + pinned drift anchors
+        //           so post-compact context retains rule scaffolding.
         cfg["hooks"]["PreCompact"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"command", "python3 .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || python .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || true"}},
                     {{"type", "command"},
-                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.transcript // empty' 2>/dev/null | icmg distill session 2>/dev/null || true"}}
+                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.transcript // empty' 2>/dev/null | icmg distill session 2>/dev/null || true"}},
+                    {{"type", "command"},
+                     {"command", "RULE='ABSOLUTE RULE — icmg FIRST. Before any native Read/Bash/Grep/Glob/WebFetch, check icmg equivalent. Strict hooks block redundant native calls. Pinned decisions: $(icmg drift list --limit 5 2>/dev/null | tail -n +3 | head -10)'; jq -n --arg m \"$RULE\" '{hookSpecificOutput:{hookEventName:\"PreCompact\",additionalContext:$m}}'"}}
                 })}
             }
         });

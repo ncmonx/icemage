@@ -27,6 +27,8 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/audit_log.hpp"
+#include "../../core/repair_counter.hpp"
 
 #include <sqlite3.h>
 #include <algorithm>
@@ -219,6 +221,19 @@ private:
             std::cout << "icmg mirror failover: primary OK; no swap needed.\n";
             return 0;
         }
+        // Phase 75: loop guard. If failover fired >3× in last hour, halt.
+        if (!dry) {
+            core::RepairCounter rc;
+            if (!rc.tryRepair("mirror-failover", 3)) {
+                std::cerr << "icmg mirror failover: HALTED — >3 failovers in last hour.\n"
+                          << "  Likely persistent corruption. Investigate manually:\n"
+                          << "    icmg backup integrity\n"
+                          << "    icmg backup list / restore\n"
+                          << "    icmg repair-history\n"
+                          << "  Reset guard: rm ~/.icmg/repair-counter.json\n";
+                return 4;
+            }
+        }
         std::cerr << "icmg mirror failover: primary integrity BAD — searching mirrors...\n";
         // Pick newest valid mirror.
         std::vector<std::pair<fs::path, std::time_t>> cands;
@@ -254,13 +269,21 @@ private:
             std::cout << "icmg mirror failover: swapped in " << p.filename().string()
                       << "\n  Corrupt primary preserved at " << quarantine.filename().string()
                       << "\n  Run `icmg health` to confirm.\n";
-            // Audit.
+            // Phase 75: HMAC-chained audit log.
             try {
-                fs::path log = projectRoot() / ".icmg" / "audit.log";
-                std::ofstream f(log, std::ios::app);
-                f << std::time(nullptr) << " FAILOVER from=" << p.filename().string()
-                  << " quarantined=" << quarantine.filename().string() << "\n";
+                core::AuditLog al((projectRoot() / ".icmg" / "audit.log").string());
+                std::string payload =
+                    "from=" + p.filename().string()
+                    + " quarantined=" + quarantine.filename().string()
+                    + " size=" + std::to_string(fs::file_size(dbPath()));
+                al.append("mirror", "FAILOVER", payload);
             } catch (...) {}
+            // Post-repair self-test: re-verify primary integrity.
+            if (!integrityOk(dbPath())) {
+                std::cerr << "icmg mirror failover: post-swap integrity FAILED — "
+                          << "swapped-in mirror also corrupt. Try `icmg backup restore latest`.\n";
+                return 5;
+            }
             return 0;
         }
         std::cerr << "icmg mirror failover: NO valid mirror found.\n"

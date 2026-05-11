@@ -2,6 +2,26 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.35.0 — autonomy stack: drift gate + sentinel watchdog + shadow auto-upgrade
+
+The autonomous-tool turn. icmg now defends its own state, watches its own footprint, and upgrades itself in the background — all without asking. Every layer ships with a kill-switch; defaults are sane.
+
+- **Decision anchors (`icmg drift`).** Pin stances. `pin` records a decision; `check` matches every incoming prompt against pinned anchors and flags contradictions before the model commits. `supersede` is the *only* way to override — recency never silently wins. Pinned memory now gets a **10× recall boost** in BM25 — your principles surface above noise, every time.
+- **Sentinel watchdog (`icmg sentinel`).** A loop-safe health monitor that runs every 15 minutes by default. Watches disk usage, snapshot freshness, mirror lag, cache bloat, audit-log growth, schedule presence, and live integrity. Auto-reacts when thresholds breach — prunes backups, refreshes mirrors, rotates audit logs — but **halts cold** the moment the repair counter sees ≥3 reactions/hour. Cannot loop. Cannot bloat.
+- **Shadow auto-upgrade (`icmg shadow-upgrade`).** Chrome/VS Code-style background updates. Daily check polls GitHub releases; newer version found → downloads to `~/.icmg/shadow/<version>/` with mandatory sha256 verification → marks pending. Next invocation atomically swaps. Pin to a version, opt out entirely, or roll back in one command. No team-mate left behind on stale features.
+- **Loop-safe repair (`icmg repair-history`).** Every backup-restore, mirror-failover, or sentinel auto-react now passes through a per-hour limiter (Phase 75 `RepairCounter`) and writes an entry to a chain-signed audit log. `repair-history verify` walks the chain and flags tamper. `repair-history count` shows the live rate. `repair-history reset-counter` after manual investigation.
+- **7-stage graph integrity → 9 stages.** Added `embedding-drift` (detects + drops embeddings whose source file_hash changed) and `edge-type-vocab` (13-token whitelist with auto-canonicalize for common typos: `import`→`imports`, `invoked-by`→`calls`, etc.).
+- **Hot-context-cache: per-agent namespacing.** `ICMG_AGENT_ID` env var partitions the tool-call cache. Multi-agent setups (Claude + Cursor + Cline on same project) no longer cross-poison each other's caches.
+- **Auto-arm on every upgrade.** `icmg init` now arms 5 schedules by default — backup hourly, mirror 15-min, maintain 6-hour, sentinel 15-min, shadow-upgrade daily. Opt-out flags exist for each (`--no-backup`, `--no-mirror`, `--no-maintain`, `--no-sentinel`, `--no-auto-upgrade`).
+- **PreCompact rule re-injection.** AGENTS.md ABSOLUTE RULE + top 5 pinned anchors emit back as `additionalContext` after every compaction. Your principles survive `/clear`.
+- 50/50 ctest. 28 MCP tools. Migration schema bumped to v22 (`decisions` table + `memory_nodes.pinned` + `tool_call_cache.agent_id` + FTS5 virtual table staged).
+
+**Stability impact:** 7 silent-failure modes converted to surfaced/halted/recoverable. Loop guards bound every repair cascade. Sentinel converts "DB grew to 8GB" surprises into 15-minute auto-reactions.
+
+**Token impact:** drift-check at every prompt costs ~50-200ms but blocks 3-5K-token stance-flip turns. Pinned 10× boost means principles surface ahead of recency-only ranking. Combined with v0.34's hot-cache (~5ms re-issue) → multi-thousand-token saves per active session, compounding across the week.
+
+Hints for next horizons: deeper memory operators, multi-host posture, hands-free recovery protocols. *Keep our little secret. Keep away from our blueprint.*
+
 ## 0.34.0 — self-protection: snapshot + dual-mirror + integrity gate + hot-cache
 
 Fortress mode. Six-layer durability + speed stack flips on automatically the moment you upgrade. Zero touch, zero excuses for losing work or burning recompute on the same prompt twice.

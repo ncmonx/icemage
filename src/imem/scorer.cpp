@@ -123,7 +123,12 @@ Scorer::ScoreDetail Scorer::scoreDetailed(const std::string& query,
     // Phase 67 T15: age envelope multiplied in. Half-life ~90d on created_at.
     double age_mult = ageDecay(node.created_at);
 
-    d.total = d.bm25 * d.recency * d.freq * d.importance_mult * node.feedback_bias * age_mult;
+    // Phase 75: pinned (decision-anchor) boost. Pinned memory always wins over
+    // recency-only ranking — anti-cognition-drift defense.
+    double pin_mult = node.pinned ? 10.0 : 1.0;
+
+    d.total = d.bm25 * d.recency * d.freq * d.importance_mult
+            * node.feedback_bias * age_mult * pin_mult;
 
     // Matched tokens
     auto q_tokens = tokenize(query);

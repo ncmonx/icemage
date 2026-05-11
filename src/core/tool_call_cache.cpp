@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 
 namespace icmg::core {
@@ -14,8 +15,16 @@ static std::string fnv1a(const std::string& s) {
     return buf;
 }
 
+// Phase 76: per-agent cache namespace. ICMG_AGENT_ID env scopes cache
+// entries; "" (default) = global agent (backward compat).
+static std::string currentAgentId() {
+    const char* a = std::getenv("ICMG_AGENT_ID");
+    return a ? std::string(a) : std::string();
+}
+
 std::string ToolCallCache::makeKey(const std::string& cmd, const std::string& args) {
-    return fnv1a(cmd + std::string("\0", 1) + args);
+    // Include agent_id in key so different agents don't share cache.
+    return fnv1a(currentAgentId() + std::string("\0", 1) + cmd + std::string("\0", 1) + args);
 }
 
 std::optional<std::string> ToolCallCache::lookup(const std::string& cmd,

@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![tests](https://img.shields.io/badge/tests-50%2F50%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
-[![commands](https://img.shields.io/badge/CLI%20commands-78%2B-blue)](#)
+[![commands](https://img.shields.io/badge/CLI%20commands-82%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
@@ -205,6 +205,20 @@ HOT-CONTEXT CACHE     ▸ Re-issue same icmg context/compress within session →
                         in graph rank automatically. Self-invalidating on edit
 SELF-MAINTENANCE      ▸ icmg maintain run auto-detects HEAVY/IDLE state →
                         prune chain → keeps only active graph in idle mode
+DRIFT GATE            ▸ icmg drift pin/check — pinned decisions get 10× recall
+                        boost; every prompt matched against anchors;
+                        contradictions flagged BEFORE the model commits
+SENTINEL WATCHDOG     ▸ icmg sentinel — 15-min health checks; auto-prunes when
+                        disk/cache/audit growth crosses thresholds; halts cold
+                        at ≥3 reactions/hour (loop-safe by design)
+SHADOW AUTO-UPGRADE   ▸ icmg shadow-upgrade — daily background poll of GitHub;
+                        sha256-verified download to ~/.icmg/shadow/<version>/;
+                        atomic swap on next invocation. Chrome-style. No
+                        teammate left behind on stale features. Pin/opt-out
+                        available
+AUDIT TRAIL           ▸ chain-signed log of every backup/restore/failover/
+                        sentinel reaction. icmg repair-history verify walks
+                        the chain — tamper-detectable
 APACHE-2.0            ▸ License preserved on releases
 ```
 
@@ -240,8 +254,15 @@ APACHE-2.0            ▸ License preserved on releases
 | **Self-clean heavy/idle DB** | `icmg maintain run` — auto-detects state, chains prune + integrity |
 | **Repair broken graph** | `icmg graph integrity --fix` — 7-stage check + targeted repair |
 | **Inspect cache layer** | `icmg cache stats / list / prune` — see what's hot |
+| **Pin a decision** | `icmg drift pin --topic X --stance Y` — pinned memory wins recall 10× |
+| **Check prompt drift** | `icmg drift check "<prompt>"` — surfaces conflicts with pinned anchors |
+| **Watchdog health** | `icmg sentinel run` — auto-prunes disk/cache; halt-safe loop guard |
+| **Background upgrade** | `icmg shadow-upgrade check` — daily auto-poll; pin/rollback supported |
+| **Audit trail** | `icmg repair-history tail / verify` — chain-signed event log |
 
-Run `icmg --help` for the full list of 78+ subcommands. Each has its own `--help`.
+Run `icmg --help` for the full list of 82+ subcommands. Each has its own `--help`.
+
+> Curious about what's next? *Keep our little secret. Keep away from our blueprint.* The codebase carries hints between the lines.
 
 ---
 

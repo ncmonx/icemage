@@ -20,6 +20,8 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/audit_log.hpp"
+#include "../../core/repair_counter.hpp"
 
 #include <sqlite3.h>
 #include <algorithm>
@@ -305,6 +307,16 @@ private:
         }
         std::string target = args[0];
         bool force = hasFlag(args, "--force");
+        // Phase 75: loop guard.
+        {
+            core::RepairCounter rc;
+            if (!rc.tryRepair("backup-restore", 3)) {
+                std::cerr << "icmg backup restore: HALTED — >3 restores in last hour.\n"
+                          << "  Investigate root cause before retrying. Reset:\n"
+                          << "    rm ~/.icmg/repair-counter.json\n";
+                return 4;
+            }
+        }
 
         auto snaps = listSnaps();
         if (snaps.empty()) {
@@ -373,6 +385,12 @@ private:
         std::cout << "icmg backup: restored from " << chosen.id << "\n"
                   << "  bytes: " << humanSize(chosen.size) << "\n"
                   << "  Run `icmg health` to confirm integrity.\n";
+        // Phase 75: audit log.
+        try {
+            core::AuditLog al((projectRoot() / ".icmg" / "audit.log").string());
+            al.append("backup", "RESTORE",
+                      "from=" + chosen.id + " size=" + std::to_string(chosen.size));
+        } catch (...) {}
         return 0;
     }
 

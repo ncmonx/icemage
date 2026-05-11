@@ -22,6 +22,7 @@ static void setupSchema(icmg::core::Db& db) {
         " row_version INTEGER NOT NULL DEFAULT 0,"
         
         " zone TEXT NOT NULL DEFAULT 'default',"
+        " pinned INTEGER NOT NULL DEFAULT 0,"
         " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
         ")"
     );

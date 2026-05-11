@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.34.0 LANGUAGES CXX C)
+project(icmg VERSION 0.35.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,7 @@ target_include_directories(sqlite3 PUBLIC third_party/sqlite3)
 target_compile_definitions(sqlite3 PUBLIC
     SQLITE_THREADSAFE=1
     SQLITE_DEFAULT_WAL_SYNCHRONOUS=1
+    SQLITE_ENABLE_FTS5=1
 )
 
 # Third-party: nlohmann/json single header

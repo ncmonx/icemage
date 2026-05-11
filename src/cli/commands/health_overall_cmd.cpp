@@ -54,8 +54,8 @@ public:
                          [&](const core::Row& r){ if (!r.empty()) ok = r[0]; });
                 checks.push_back({"db", ok == "ok" ? "OK" : "FAIL", "integrity=" + ok});
                 int v = db.userVersion();
-                checks.push_back({"schema", v >= 19 ? "OK" : "WARN",
-                                  "user_version=" + std::to_string(v) + " (latest=19)"});
+                checks.push_back({"schema", v >= 22 ? "OK" : "WARN",
+                                  "user_version=" + std::to_string(v) + " (latest=22)"});
                 int64_t rows = 0;
                 for (auto* tbl : {"tool_invocations", "compression_telemetry", "thinking_telemetry"}) {
                     try {

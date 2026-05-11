@@ -108,13 +108,15 @@ public:
                 results.push_back(std::move(r));
             };
 
-            run_stage("schema",          stageSchema);
-            run_stage("orphan-edges",    stageOrphanEdges);
-            run_stage("dead-files",      stageDeadFiles);
-            run_stage("orphan-symbols",  stageOrphanSymbols);
-            run_stage("stale-mtime",     stageStaleMtime);
-            run_stage("duplicate-path",  stageDuplicatePath);
-            run_stage("empty-zone",      stageEmptyZone);
+            run_stage("schema",           stageSchema);
+            run_stage("orphan-edges",     stageOrphanEdges);
+            run_stage("dead-files",       stageDeadFiles);
+            run_stage("orphan-symbols",   stageOrphanSymbols);
+            run_stage("stale-mtime",      stageStaleMtime);
+            run_stage("duplicate-path",   stageDuplicatePath);
+            run_stage("empty-zone",       stageEmptyZone);
+            run_stage("embedding-drift",  stageEmbeddingDrift);
+            run_stage("edge-type-vocab",  stageEdgeTypeVocab);
         } catch (const std::exception& e) {
             std::cerr << "icmg graph integrity: " << e.what() << "\n";
             return 2;
@@ -392,6 +394,115 @@ private:
         if (fix && r.found > 0) {
             db.run("UPDATE graph_nodes SET zone = 'default' WHERE zone IS NULL OR zone = ''");
             r.repaired = r.found;
+        }
+    }
+
+    // --- 8. embedding-drift (Phase 75) -----------------------------------
+    // Detect graph_nodes whose file_hash diverged from any embedding row that
+    // references them. If embeddings table absent, stage skips.
+    static void stageEmbeddingDrift(core::Db& db, Result& r, int sample, bool fix) {
+        bool has_emb = false;
+        try {
+            db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='embeddings'",
+                     {}, [&](const core::Row&){ has_emb = true; });
+        } catch (...) {}
+        if (!has_emb) { r.note = "no embeddings table (skipped)"; return; }
+        // Heuristic: embedding row's content_hash != graph_nodes.file_hash for same path.
+        bool has_path_col = false;
+        try {
+            db.query("SELECT 1 FROM pragma_table_info('embeddings') WHERE name='content_hash'",
+                     {}, [&](const core::Row&){ has_path_col = true; });
+        } catch (...) {}
+        if (!has_path_col) { r.note = "embeddings.content_hash absent (skipped)"; return; }
+        std::string sql =
+            "SELECT g.id, g.path FROM graph_nodes g, embeddings e "
+            "WHERE e.source_kind = 'graph' AND e.source_id = g.id "
+            "  AND g.file_hash IS NOT NULL AND g.file_hash != '' "
+            "  AND e.content_hash IS NOT NULL "
+            "  AND g.file_hash != e.content_hash";
+        std::vector<int64_t> ids;
+        try {
+            db.query(sql, {}, [&](const core::Row& row){
+                if (row.size() < 2) return;
+                try { ids.push_back(std::stoll(row[0])); } catch (...) {}
+                if ((int)r.samples.size() < sample)
+                    addSample(r, "id=" + row[0] + " " + row[1], sample);
+            });
+        } catch (...) {
+            r.note = "schema variant — query skipped";
+            return;
+        }
+        r.found = (int)ids.size();
+        if (fix && r.found > 0) {
+            // Delete drifted embedding rows; user should re-run `icmg embed`.
+            for (auto id : ids)
+                db.run("DELETE FROM embeddings WHERE source_kind='graph' AND source_id=?",
+                       {std::to_string(id)});
+            r.repaired = r.found;
+            r.note = "fix dropped drifted embeddings; run `icmg embed memory`";
+        } else if (r.found > 0) {
+            r.note = "fix drops drifted rows (run `icmg embed memory` after)";
+        }
+    }
+
+    // --- 9. edge-type-vocab (Phase 75) ----------------------------------
+    // graph_edges.edge_type free-form text — typos persist. Whitelist enforced.
+    static void stageEdgeTypeVocab(core::Db& db, Result& r, int sample, bool fix) {
+        // Allowed vocabulary; extend in one place.
+        const std::vector<std::string> allowed = {
+            "imports", "uses", "calls", "extends", "inherits",
+            "contains", "references", "implements", "depends",
+            "owns", "writes", "reads", "tests"
+        };
+        // Build IN-list.
+        std::string in_list;
+        for (size_t i = 0; i < allowed.size(); ++i) {
+            if (i) in_list += ",";
+            in_list += "'" + allowed[i] + "'";
+        }
+        std::vector<std::pair<std::string, int>> bad;
+        try {
+            db.query(
+                "SELECT edge_type, COUNT(*) c FROM graph_edges "
+                "WHERE edge_type NOT IN (" + in_list + ") "
+                "GROUP BY edge_type ORDER BY c DESC",
+                {}, [&](const core::Row& row){
+                    if (row.size() < 2) return;
+                    int c = 0;
+                    try { c = std::stoi(row[1]); } catch (...) {}
+                    bad.push_back({row[0], c});
+                    r.found += c;
+                });
+        } catch (...) {
+            r.note = "edge_type query failed";
+            return;
+        }
+        for (size_t i = 0; i < bad.size() && (int)r.samples.size() < sample; ++i) {
+            addSample(r, bad[i].first + " x" + std::to_string(bad[i].second), sample);
+        }
+        if (fix && r.found > 0) {
+            // Best-effort canonicalize common variants.
+            std::vector<std::pair<std::string, std::string>> fixes = {
+                {"import", "imports"}, {"include", "imports"}, {"requires", "imports"},
+                {"use", "uses"}, {"call", "calls"}, {"invoked-by", "calls"},
+                {"extend", "extends"}, {"inherit", "inherits"},
+                {"contain", "contains"}, {"reference", "references"},
+                {"impl", "implements"}, {"implement", "implements"},
+                {"depend", "depends"}, {"depends-on", "depends"},
+                {"writes-to", "writes"}, {"reads-from", "reads"},
+            };
+            for (auto& [from, to] : fixes) {
+                db.run("UPDATE OR IGNORE graph_edges SET edge_type=? WHERE edge_type=?",
+                       {to, from});
+            }
+            // Recount after canonicalization.
+            int still = 0;
+            db.query("SELECT COUNT(*) FROM graph_edges WHERE edge_type NOT IN ("
+                     + in_list + ")", {},
+                     [&](const core::Row& row){ if (!row.empty()) still = std::stoi(row[0]); });
+            r.repaired = r.found - still;
+            if (still > 0)
+                r.note = std::to_string(still) + " unmappable; manual review";
         }
     }
 };

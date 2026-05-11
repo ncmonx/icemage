@@ -34,6 +34,8 @@ MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     if (row.size() > 8) try { n.expires_at = row[8].empty() ? 0 : std::stoll(row[8]); } catch (...) {}
     if (row.size() > 9) try { n.deleted_at = row[9].empty() ? 0 : std::stoll(row[9]); } catch (...) {}
     if (row.size() > 10 && !row[10].empty()) n.zone = row[10];
+    // Phase 75: pinned column (column 11). Schema lift if absent — keep 0.
+    if (row.size() > 11) try { n.pinned = std::stoi(row[11]); } catch (...) {}
     return n;
 }
 
@@ -194,7 +196,7 @@ int MemoryStore::purge(int days_old) {
 MemoryNode MemoryStore::get(int64_t id) const {
     MemoryNode node;
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned "
               "FROM memory_nodes WHERE id=?",
               {std::to_string(id)},
               [&](const core::Row& r) { node = rowToNode(r); });
@@ -207,7 +209,7 @@ std::vector<MemoryNode> MemoryStore::all() const {
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned "
               "FROM memory_nodes "
               "WHERE deleted_at IS NULL "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
@@ -294,7 +296,7 @@ std::vector<MemoryNode> MemoryStore::recallByTopic(const std::string& topic, int
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned "
               "FROM memory_nodes "
               "WHERE topic LIKE ? AND deleted_at IS NULL "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?) "
