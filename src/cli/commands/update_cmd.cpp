@@ -32,7 +32,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.37.0";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.37.4";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -134,7 +134,7 @@ private:
             }
             r.tag = j.value("tag_name", "");
             // Find platform asset.
-            std::string want = wantedAssetName();
+            std::string want = wantedAssetName(r.tag);
             if (j.contains("assets") && j["assets"].is_array()) {
                 for (auto& a : j["assets"]) {
                     std::string n = a.value("name", "");
@@ -148,11 +148,15 @@ private:
         return r;
     }
 
-    static std::string wantedAssetName() {
+    static std::string wantedAssetName(const std::string& tag = "") {
+        std::string ver = tag;
+        if (!ver.empty() && (ver[0] == 'v' || ver[0] == 'V')) ver.erase(0, 1);
 #ifdef _WIN32
-        return "icmg.exe";
+        return "icmg-" + ver + "-win-x64.zip";
+#elif defined(__APPLE__)
+        return "icmg-" + ver + "-macos-x64.tar.gz";
 #else
-        return "icmg";
+        return "icmg-" + ver + "-linux-x64.tar.gz";
 #endif
     }
 
