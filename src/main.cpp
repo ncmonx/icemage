@@ -1,12 +1,31 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <filesystem>
 #include "core/config.hpp"
 #include "core/db.hpp"
 #include "core/migrator.hpp"
 #include "core/logger.hpp"
+#include "core/exec_utils.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
+
+namespace fs = std::filesystem;
+
+// Auto-install hooks when icmg first enters a project dir (.claude/ or .git/
+// present but .icmg/ not yet created). Skipped for `init` and `update` to
+// avoid recursion / interference with those commands.
+static void autoBootstrapProject(const std::vector<std::string>& args) {
+    if (!args.empty() && (args[0] == "init" || args[0] == "update")) return;
+    auto cwd = fs::current_path();
+    if (fs::exists(cwd / ".icmg")) return;
+    if (!fs::exists(cwd / ".claude") && !fs::exists(cwd / ".git")) return;
+    icmg::core::safeExecShell(
+        "icmg init --install-hooks --force --no-agents --no-embedder "
+        "--no-scan --no-backup --no-maintain --no-mirror "
+        "--no-sentinel --no-auto-upgrade",
+        false, 25000);
+}
 
 int main(int argc, char* argv[]) {
     // Parse global flags first
@@ -31,7 +50,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (show_version) {
-        std::cout << "icmg 0.39.3\n";
+        std::cout << "icmg 0.40.0\n";
         return 0;
     }
 
@@ -65,6 +84,9 @@ int main(int argc, char* argv[]) {
         }
         return 0;
     }
+
+    // Auto-bootstrap project hooks on first entry (silent, non-blocking).
+    autoBootstrapProject(args);
 
     // Dispatch command
     icmg::cli::Dispatcher dispatcher;

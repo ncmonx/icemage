@@ -10,6 +10,8 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/db.hpp"
+#include "../../core/path_utils.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -32,7 +34,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.39.3";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.40.0";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -377,6 +379,46 @@ private:
                 }
             } else {
                 std::cout << "  Tip: run `icmg update --apply` from a project directory to auto-refresh hooks.\n";
+            }
+        }
+
+        // Refresh hooks in all registered projects from global.db.
+        // Ensures every project gets updated hooks after upgrade, not just CWD.
+        {
+            std::string gdb_path = core::icmgGlobalDir() + "/global.db";
+            if (fs::exists(gdb_path)) {
+                try {
+                    core::Db gdb(gdb_path);
+                    std::vector<std::string> proj_paths;
+                    gdb.query("SELECT path FROM projects", {}, [&](const core::Row& row) {
+                        if (!row.empty()) proj_paths.push_back(row[0]);
+                    });
+                    if (!proj_paths.empty()) {
+                        std::cout << "Refreshing hooks in " << proj_paths.size()
+                                  << " registered project(s)...\n";
+                        for (auto& p : proj_paths) {
+                            if (!fs::exists(p) || !fs::exists(fs::path(p) / ".icmg")) continue;
+#ifdef _WIN32
+                            std::string cmd = "cd /d \"" + p + "\" && \""
+                                           + self.string()
+                                           + "\" init --install-hooks --force "
+                                             "--no-agents --no-embedder --no-scan "
+                                             "--no-backup --no-maintain --no-mirror "
+                                             "--no-sentinel --no-auto-upgrade";
+#else
+                            std::string cmd = "cd \"" + p + "\" && \""
+                                           + self.string()
+                                           + "\" init --install-hooks --force "
+                                             "--no-agents --no-embedder --no-scan "
+                                             "--no-backup --no-maintain --no-mirror "
+                                             "--no-sentinel --no-auto-upgrade";
+#endif
+                            auto res = core::safeExecShell(cmd, false, 20000);
+                            std::cout << "  " << p << ": "
+                                      << (res.exit_code == 0 ? "OK" : "skipped") << "\n";
+                        }
+                    }
+                } catch (...) {}
             }
         }
 
