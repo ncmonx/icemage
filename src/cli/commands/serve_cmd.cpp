@@ -26,6 +26,7 @@
   #include <winsock2.h>
   #include <ws2tcpip.h>
   #include <windows.h>
+  #include <shellapi.h>
   #pragma comment(lib, "ws2_32.lib")
   using socket_t = SOCKET;
   static int closesocket_compat(socket_t s) { return closesocket(s); }
@@ -195,8 +196,7 @@ public:
 private:
     static void tryOpenBrowser(const std::string& url) {
 #ifdef _WIN32
-        std::string cmd = "start \"\" \"" + url + "\"";
-        std::system(cmd.c_str());
+        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 #elif defined(__APPLE__)
         std::system(("open " + url).c_str());
 #else

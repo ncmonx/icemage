@@ -445,7 +445,7 @@ private:
         std::vector<char> mut(cmd.begin(), cmd.end());
         mut.push_back(0);
         BOOL ok = CreateProcessA(nullptr, mut.data(), nullptr, nullptr, FALSE,
-                                  DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                                  CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                                   nullptr, nullptr, &si, &pi);
         if (!ok) return false;
         CloseHandle(pi.hThread);
