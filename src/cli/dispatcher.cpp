@@ -230,7 +230,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
 void Dispatcher::printHelp() const {
     std::cout <<
-        "icmg 0.36.0 — unified memory, graph, and Tkil tool\n\n"
+        "icmg 0.37.0 — unified memory, graph, and Tkil tool\n\n"
         "Usage: icmg <command> [options]\n\n"
         "Commands:\n";
     for (auto& [name, desc] : CMDS) {
@@ -246,7 +246,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.36.0\n";
+    std::cout << "icmg 0.37.0\n";
 }
 
 } // namespace icmg::cli

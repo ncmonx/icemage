@@ -98,7 +98,7 @@ private:
 
     static const char* currentVersion() {
         // Synced with update_cmd.cpp / main.cpp.
-        return "0.36.0";
+        return "0.37.0";
     }
 
     static std::string repo() { return "ncmonx/icm-graph"; }

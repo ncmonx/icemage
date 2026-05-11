@@ -2,6 +2,19 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.37.0 — fast path expansion + daemon scaffold
+
+Read-tool event joins the in-process fast path. Cross-project surfacing and file-context hinting move into the consolidated handler. Persistent-server scaffold lands to reserve architecture for the next round of cold-start elimination.
+
+- **Read-event in-process handler** — the pre-read hook now bypasses its multi-fork shell chain entirely. Same overlay, single process, sub-300 ms typical.
+- **Cross-project memory surfacing** — when local store offers few matches, registered sibling projects are queried automatically; results tagged with their project of origin.
+- **Path-mention awareness** — prompts that reference a tracked code path get a small graph-context snippet inlined alongside memory hits.
+- **Daemon scaffold** — new `icmg daemon` surface (start/stop/status/restart) reserves the persistent-server architecture. Background IPC listener arrives in the next iteration; clients keep falling back to per-invocation mode automatically until then.
+- **Read overlay env knobs** — `ICMG_NO_READ_HOOK`, `ICMG_NO_READ_FORCE`, `ICMG_READ_LIMIT`, `ICMG_SHRINK_THRESHOLD` all honored end-to-end.
+- 50/50 ctest.
+
+Combined effect with 0.36.0: prompt-submit + read-event hooks both fire fully in-process. Two of the highest-frequency event paths now share zero shell overhead.
+
 ## 0.36.0 — fast path: in-process prompt hook
 
 The user-typed-prompt event now skips the shell-and-fork relay entirely. A single in-process handler reads stdin, consults the local store, and writes back rich context — replacing what used to be a chain of separate process spawns. Latency drops noticeably on every keypress that hits Submit.

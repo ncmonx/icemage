@@ -86,106 +86,13 @@ exit 0
 )BASH";
 
 static const char* SHRINK_READ_SH = R"BASH(#!/usr/bin/env bash
-# Auto-installed by `icmg init`. PreToolUse:Read — inject `icmg summarize` for large files.
+# Phase 79: delegated to in-process `icmg hook pretooluse-read`.
+# Replaces the previous shell chain (jq + stat + icmg summarize + icmg context)
+# with a single forked process. Saves ~100-300ms per Read on cold-start overhead.
 set -uo pipefail
-INPUT=$(cat)
-FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
-[[ -z "$FILE" ]] && exit 0
-[[ ! -f "$FILE" ]] && exit 0
-
-# Phase 70: repeat-Read dedup — same file Read twice in same session at full
-# range = waste. Track Read history at ~/.icmg/read-log-<session>.txt; if
-# file already Read in last 30min and current Read has no offset/limit,
-# force tiny limit (10 lines) since model already has full content.
-HOMED="${USERPROFILE:-${HOME:-/tmp}}"
-mkdir -p "$HOMED/.icmg" 2>/dev/null || true
-LOG="$HOMED/.icmg/read-log.txt"
-NOW=$(date +%s)
-OFFSET=$(echo "$INPUT" | jq -r '.tool_input.offset // empty' 2>/dev/null)
-LIMIT_IN=$(echo "$INPUT" | jq -r '.tool_input.limit // empty' 2>/dev/null)
-if [[ -z "$OFFSET" && -z "$LIMIT_IN" && -f "$LOG" ]]; then
-    # Find prior Read of same file within 1800s window.
-    while IFS=$'\t' read -r ts path; do
-        [[ "$path" != "$FILE" ]] && continue
-        age=$((NOW - ts))
-        [[ "$age" -gt 1800 ]] && continue
-        # Already Read recently at full range → cap re-Read aggressively.
-        jq -n --arg f "$FILE" --argjson lim 10 '{
-            hookSpecificOutput: {
-                hookEventName: "PreToolUse",
-                permissionDecision: "allow",
-                updatedInput: {file_path: $f, limit: $lim},
-                additionalContext: ("REPEAT-READ dedup: " + $f + " was Read in last 30min. Capped to 10 lines. Use offset+limit for specific re-read.")
-            }
-        }'
-        exit 0
-    done < "$LOG"
-fi
-# Append to log (best-effort, capped at 200 lines via tail).
-printf '%s\t%s\n' "$NOW" "$FILE" >> "$LOG" 2>/dev/null || true
-# Trim log if huge.
-[[ -f "$LOG" ]] && [[ $(wc -l < "$LOG") -gt 200 ]] && tail -100 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
-
-THRESHOLD="${ICMG_SHRINK_THRESHOLD:-60000}"
-INC="${ICMG_SHRINK_INCLUDE:-}"
-EXC="${ICMG_SHRINK_EXCLUDE:-}"
-SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE" 2>/dev/null || echo 0)
-# Phase 76: ICMG_READ_FORCE=1 always-route Read → icmg context overlay,
-# regardless of file size or include/exclude pattern. Default-ON since
-# v0.34.1. Opt-out via ICMG_READ_FORCE=0 (or ICMG_NO_READ_FORCE=1).
-FORCE="${ICMG_READ_FORCE:-1}"
-[[ "${ICMG_NO_READ_FORCE:-0}" = "1" ]] && FORCE=0
-if [[ "$FORCE" != "1" ]]; then
-    [[ -n "$INC" ]] && ! echo "$FILE" | grep -qE "$INC" && exit 0
-    [[ -n "$EXC" ]] && echo "$FILE" | grep -qE "$EXC" && exit 0
-    [[ "$SIZE" -lt "$THRESHOLD" ]] && exit 0
-fi
-SUMMARY=$(icmg summarize "$FILE" 2>/dev/null || true)
-# Phase 76: when FORCE=1, missing summary is OK — icmg context still useful.
-# Only abort when both summary AND context empty (file totally unknown).
-CTX=$(icmg context "$FILE" --max-bytes 2048 --no-content 2>/dev/null || true)
-[[ -z "$SUMMARY" && -z "$CTX" && "$FORCE" != "1" ]] && exit 0
-[[ -z "$SUMMARY" ]] && SUMMARY="(no symbols indexed yet — run \`icmg graph update\`)"
-
-# Phase 70: STRICT mode also uses updatedInput.limit cap (was hard-deny).
-# Hard-deny broke Edit's "Read-first" session requirement. Cap to 50 lines
-# in strict mode (vs 100 default) — still enforces "use icmg" while letting
-# downstream Edit succeed. Logs denial-style entry for visibility.
-if [[ "${ICMG_SHRINK_STRICT:-0}" = "1" ]]; then
-    HOMED="${USERPROFILE:-${HOME:-/tmp}}"
-    mkdir -p "$HOMED/.icmg" 2>/dev/null || true
-    printf '{"ts":%s,"hook":"%s","target":%s,"reason":%s}\n' \
-        "$(date +%s)" "read-strict" \
-        "$(printf '%s' "$FILE" | jq -Rs .)" \
-        "$(printf '%s' "Read capped on file ${SIZE}B" | jq -Rs .)" \
-        >> "$HOMED/.icmg/strict-denials.jsonl" 2>/dev/null || true
-    STRICT_LIMIT="${ICMG_READ_STRICT_LIMIT:-30}"
-    jq -n --arg f "$FILE" --arg sz "$SIZE" --arg s "$SUMMARY" --arg c "$CTX" --argjson lim "$STRICT_LIMIT" '{
-        hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            permissionDecision: "allow",
-            updatedInput: {file_path: $f, limit: $lim},
-            additionalContext: ("STRICT: file " + $f + " is " + $sz + " bytes. Read CAPPED to " + ($lim|tostring) + " lines (Edit-anchor only). For full slice use `icmg context " + $f + " --lines A-B`. For one symbol body use `icmg graph symbol <Name>`.\n\nicmg context (graph + symbols + memory):\n" + $c + "\n\nicmg summarize:\n" + $s)
-        }
-    }'
-    exit 0
-fi
-
-# Phase 70: cap Read via updatedInput.limit instead of deny — satisfies Edit's
-# "must Read first" session requirement while still saving tokens. User-side
-# Edit tool checks for prior Read of same path; full deny breaks that flow.
-# Default cap: 100 lines (~3KB ≈ 750 tok). User can re-Read with explicit
-# offset+limit if more needed. Aggressive enough to save 80-90% on big files.
-LIMIT="${ICMG_READ_LIMIT:-30}"
-jq -n --arg s "$SUMMARY" --arg c "$CTX" --arg f "$FILE" --arg sz "$SIZE" --argjson lim "$LIMIT" '{
-    hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "allow",
-        updatedInput: {file_path: $f, limit: $lim},
-        additionalContext: ("Large file " + $f + " (" + $sz + " bytes). Read CAPPED to " + ($lim|tostring) + " lines (Edit-anchor only). For full slice: `icmg context " + $f + " --lines A-B`. For symbol body: `icmg graph symbol <Name>`.\n\nicmg context (graph + symbols + memory):\n" + $c + "\n\nicmg summarize:\n" + $s)
-    }
-}'
-exit 0
+[ "${ICMG_NO_READ_HOOK:-0}" = "1" ] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+exec icmg hook pretooluse-read
 )BASH";
 
 // Phase 51 T2: SessionStart hook injects caveman directive when flag present.
