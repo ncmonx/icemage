@@ -2,6 +2,15 @@
 
 Token-saving CLI for AI coding sessions. Apache 2.0.
 
+## 0.40.0 — plug-and-play setup
+
+Zero manual steps from download to working. The first icmg command in any project directory (`.claude/` or `.git/` present) auto-installs all hooks. Upgrading refreshes hooks across every registered project at once.
+
+- **Auto-init on first entry** — project without `.icmg/` bootstraps hooks automatically before executing your command.
+- **Global hook refresh on upgrade** — `icmg update --apply` iterates every registered project and refreshes hooks in each.
+- **wflog and session features activate automatically** — no separate activation step.
+- 55/55 ctest.
+
 ## 0.39.3 — hook auto-refresh on upgrade
 
 `icmg update --apply` now automatically refreshes installed hooks for any project directory — detects `.icmg/`, `.claude/hooks/`, or `.claude/settings.local.json`. Session logging and other hooks stay active after every upgrade without manual intervention. Includes all 0.39.2 fixes.
