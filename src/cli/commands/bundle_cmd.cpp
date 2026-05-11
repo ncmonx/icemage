@@ -26,7 +26,7 @@ namespace icmg::cli {
 // Defined in receipt_cmd.cpp — forward decl to avoid extra header.
 void writeTokenReceipt(core::Db& db, const std::string& cmd,
                         const std::string& source, const std::string& label,
-                        int est_tokens);
+                        int est_tokens, int raw_tokens = 0);
 }
 #include "../../graph/graph_store.hpp"
 #include "../../graph/scanner.hpp"
@@ -617,9 +617,13 @@ public:
             out << "\n";
             // Phase 67 T1: receipt — bytes/4 ≈ tokens
             size_t mem_bytes = (size_t)out.tellp() - mem_start;
+            // Raw baseline: full (un-truncated) content of emitted nodes.
+            int mem_raw_tok = 0;
+            for (auto& rm : recalled)
+                mem_raw_tok += (int)((rm.topic.size() + rm.content.size()) / 4) + 4;
             writeTokenReceipt(db, "pack", "memory",
                               "top " + std::to_string(recalled.size()),
-                              (int)(mem_bytes / 4));
+                              (int)(mem_bytes / 4), mem_raw_tok);
         }
 
         // 2. Mentioned files: scan task tokens, look up symbol or file
@@ -662,9 +666,10 @@ public:
             size_t fs_start = out.tellp();
             out << "## Files & Symbols (" << file_hits << ")\n" << files_section.str();
             size_t fs_bytes = (size_t)out.tellp() - fs_start;
+            // Raw baseline: avg full file ~800 tokens vs symbol-slice emitted.
             writeTokenReceipt(db, "pack", "graph",
                               std::to_string(file_hits) + " hit(s)",
-                              (int)(fs_bytes / 4));
+                              (int)(fs_bytes / 4), file_hits * 800);
         }
 
         // Phase 28 T2: detect "like X" / "copy of X" / "modeled on X" -> auto-include

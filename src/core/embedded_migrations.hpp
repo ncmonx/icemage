@@ -488,6 +488,11 @@ CREATE INDEX IF NOT EXISTS idx_tcc_agent ON tool_call_cache(agent_id, content_ha
 ALTER TABLE memory_nodes ADD COLUMN git_sha TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_memory_nodes_git_sha ON memory_nodes(git_sha);
 )SQL"},
+        {24, R"SQL(
+-- 0024_receipt_raw_tokens
+-- Add raw_tokens so savings_cmd can compute pack content savings.
+ALTER TABLE token_receipts ADD COLUMN raw_tokens INTEGER NOT NULL DEFAULT 0;
+)SQL"},
     };
 }
 

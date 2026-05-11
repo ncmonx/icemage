@@ -142,12 +142,13 @@ void writeTokenReceipt(core::Db& db,
                        const std::string& cmd,
                        const std::string& source,
                        const std::string& label,
-                       int est_tokens) {
+                       int est_tokens,
+                       int raw_tokens = 0) {
     try {
-        db.run("INSERT INTO token_receipts (session_id, cmd, source, label, est_tokens) "
-               "VALUES (?, ?, ?, ?, ?)",
+        db.run("INSERT INTO token_receipts (session_id, cmd, source, label, est_tokens, raw_tokens) "
+               "VALUES (?, ?, ?, ?, ?, ?)",
                {"", cmd, source, label.substr(0, 200),
-                std::to_string(est_tokens)});
+                std::to_string(est_tokens), std::to_string(raw_tokens)});
     } catch (...) {}
 }
 

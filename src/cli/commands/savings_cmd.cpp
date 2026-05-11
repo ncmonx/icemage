@@ -146,16 +146,20 @@ public:
         // graph/file hit token cost. Treats whole receipt as "with-icmg actual"
         // since receipts only fire when pack actually used.
         try {
-            db.query("SELECT COUNT(*), COALESCE(SUM(est_tokens),0) FROM token_receipts "
-                     "WHERE ts > ?",
+            db.query(
+                     // total_calls | actual for tracked rows | raw for tracked rows
+                     "SELECT COUNT(*), "
+                     "  COALESCE(SUM(CASE WHEN raw_tokens>0 THEN est_tokens ELSE 0 END),0), "
+                     "  COALESCE(SUM(CASE WHEN raw_tokens>0 THEN raw_tokens ELSE 0 END),0) "
+                     "FROM token_receipts WHERE ts > ?",
                      {std::to_string(cutoff)},
                      [&](const core::Row& r){
-                         if (r.size() < 2) return;
-                         pack_recpt.calls = std::stoll(r[0]);
+                         if (r.size() < 3) return;
+                         pack_recpt.calls         = std::stoll(r[0]);
                          pack_recpt.actual_tokens = std::stoll(r[1]);
-                         // No "without" baseline — pack always-on, no comparable raw.
-                         pack_recpt.raw_tokens = pack_recpt.actual_tokens;
-                         pack_recpt.saved = 0;
+                         pack_recpt.raw_tokens    = std::stoll(r[2]);
+                         pack_recpt.saved         = pack_recpt.raw_tokens - pack_recpt.actual_tokens;
+                         if (pack_recpt.saved < 0) pack_recpt.saved = 0;
                      });
         } catch (...) {}
 
