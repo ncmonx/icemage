@@ -295,7 +295,7 @@ add_icmg_test(test_sync_roundtrip  tests/cli/test_sync_roundtrip.cpp)
 add_icmg_test(test_daemon          tests/cli/test_daemon.cpp)
 add_icmg_test(test_copy_cmd        tests/cli/test_copy_cmd.cpp)
 
-# test_claudemd: standalone — all helpers are static inline, no icmg_lib needed.
+# test_claudemd / test_backup: standalone — helpers are static inline, no icmg_lib needed.
 add_executable(test_claudemd tests/cli/test_claudemd.cpp)
 target_include_directories(test_claudemd PRIVATE tests src third_party)
 if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -304,6 +304,15 @@ if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
 endif()
 add_test(NAME test_claudemd COMMAND test_claudemd)
+
+add_executable(test_backup tests/cli/test_backup.cpp)
+target_include_directories(test_backup PRIVATE tests src third_party)
+if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_link_options(test_backup PRIVATE
+        -static-libgcc -static-libstdc++
+        -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
+endif()
+add_test(NAME test_backup COMMAND test_backup)
 add_icmg_test(test_install_cmd     tests/cli/test_install_cmd.cpp)
 add_icmg_test(test_session_state   tests/core/test_session_state.cpp)
 add_icmg_test(test_stream_filter   tests/tkil/test_stream_filter.cpp)
