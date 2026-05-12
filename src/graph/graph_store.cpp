@@ -1061,4 +1061,24 @@ int GraphStore::edgeCount() const {
     return count;
 }
 
+std::vector<GraphStore::LangStat> GraphStore::langStats() const {
+    std::vector<LangStat> result;
+    const char* sql =
+        "SELECT COALESCE(lang,'generic') AS lang,"
+        "  COUNT(*) FILTER (WHERE kind='file' OR kind IS NULL) AS files,"
+        "  COUNT(*) FILTER (WHERE kind!='file' AND kind IS NOT NULL) AS symbols"
+        " FROM graph_nodes"
+        " GROUP BY lang"
+        " ORDER BY files DESC";
+    db_.query(sql, {}, [&](const core::Row& r) {
+        if (r.size() < 3) return;
+        LangStat s;
+        s.lang = r[0];
+        try { s.files   = std::stoi(r[1]); } catch (...) {}
+        try { s.symbols = std::stoi(r[2]); } catch (...) {}
+        result.push_back(std::move(s));
+    });
+    return result;
+}
+
 } // namespace icmg::graph

@@ -151,6 +151,49 @@ if(ICMG_USE_TREESITTER)
             message(STATUS "icmg: tree-sitter-python ENABLED")
         endif()
 
+        # Phase 82 T2: tree-sitter-go grammar (vendored, no scanner.c needed).
+        set(TS_GO_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-go/src)
+        if(EXISTS ${TS_GO_DIR}/parser.c)
+            add_library(tree_sitter_go STATIC ${TS_GO_DIR}/parser.c)
+            target_include_directories(tree_sitter_go PRIVATE ${TS_GO_DIR} ${TS_INCLUDE})
+            if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+                target_compile_options(tree_sitter_go PRIVATE -w)
+            endif()
+            target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER_GO=1)
+            target_link_libraries(icmg_lib PUBLIC tree_sitter_go)
+            message(STATUS "icmg: tree-sitter-go ENABLED")
+        endif()
+
+        # Phase 82 T2: tree-sitter-rust grammar (vendored, has scanner.c).
+        set(TS_RS_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-rust/src)
+        if(EXISTS ${TS_RS_DIR}/parser.c)
+            set(TS_RS_SOURCES ${TS_RS_DIR}/parser.c)
+            if(EXISTS ${TS_RS_DIR}/scanner.c)
+                list(APPEND TS_RS_SOURCES ${TS_RS_DIR}/scanner.c)
+            endif()
+            add_library(tree_sitter_rust STATIC ${TS_RS_SOURCES})
+            target_include_directories(tree_sitter_rust PRIVATE ${TS_RS_DIR} ${TS_INCLUDE})
+            if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+                target_compile_options(tree_sitter_rust PRIVATE -w)
+            endif()
+            target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER_RS=1)
+            target_link_libraries(icmg_lib PUBLIC tree_sitter_rust)
+            message(STATUS "icmg: tree-sitter-rust ENABLED")
+        endif()
+
+        # Phase 82 T2: tree-sitter-java grammar (vendored, no scanner.c needed).
+        set(TS_JV_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-java/src)
+        if(EXISTS ${TS_JV_DIR}/parser.c)
+            add_library(tree_sitter_java STATIC ${TS_JV_DIR}/parser.c)
+            target_include_directories(tree_sitter_java PRIVATE ${TS_JV_DIR} ${TS_INCLUDE})
+            if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+                target_compile_options(tree_sitter_java PRIVATE -w)
+            endif()
+            target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER_JV=1)
+            target_link_libraries(icmg_lib PUBLIC tree_sitter_java)
+            message(STATUS "icmg: tree-sitter-java ENABLED")
+        endif()
+
         # Copy runtime DLLs next to build outputs (Windows). Resolves
         # 0xc0000135 / "libX.dll not found" at exe launch.
         # libtree-sitter transitively pulls wasmtime + zstd on MSYS2.

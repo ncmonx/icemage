@@ -998,6 +998,147 @@ public:
     }
 };
 
+// ---- graph lang list — language breakdown ----
+class GraphLangListCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-lang-list"; }
+    std::string description() const override { return "Show language breakdown"; }
+
+    int run(const std::vector<std::string>& args) override {
+        bool json_out = hasFlag(args, "--json");
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+
+        auto stats = store.langStats();
+        if (stats.empty()) {
+            if (!json_out) std::cout << "No files indexed. Run: icmg graph update\n";
+            else           std::cout << "[]\n";
+            return 0;
+        }
+
+        if (json_out) {
+            std::cout << "[\n";
+            for (size_t i = 0; i < stats.size(); ++i) {
+                auto& s = stats[i];
+                std::cout << "  {\"lang\":\"" << s.lang
+                          << "\",\"files\":" << s.files
+                          << ",\"symbols\":" << s.symbols << "}"
+                          << (i + 1 < stats.size() ? "," : "") << "\n";
+            }
+            std::cout << "]\n";
+        } else {
+            std::cout << std::left
+                      << std::setw(16) << "Language"
+                      << std::setw(8)  << "Files"
+                      << "Symbols\n"
+                      << std::string(36, '-') << "\n";
+            for (auto& s : stats) {
+                std::cout << std::setw(16) << s.lang
+                          << std::setw(8)  << s.files
+                          << s.symbols << "\n";
+            }
+        }
+        return 0;
+    }
+};
+
+// ---- graph lang status — extractor method per language ----
+class GraphLangStatusCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-lang-status"; }
+    std::string description() const override { return "Show extractor method per language"; }
+
+    int run(const std::vector<std::string>& args) override {
+        (void)args;
+        // Static table: lang → extractor tier. Reflects compiled-in support.
+        struct LangInfo { const char* lang; const char* tier; const char* note; };
+        static const LangInfo LANGS[] = {
+            // Tier A — tree-sitter AST
+#ifdef ICMG_HAS_TREESITTER
+            {"cpp",        "tree-sitter", "functions, structs, classes"},
+            {"c",          "tree-sitter", "functions, structs, enums"},
+#else
+            {"cpp",        "regex",       "functions, classes (tree-sitter off)"},
+            {"c",          "regex",       "functions, structs (tree-sitter off)"},
+#endif
+#ifdef ICMG_HAS_TREESITTER_TS
+            {"typescript", "tree-sitter", "functions, classes, interfaces"},
+            {"javascript", "tree-sitter", "functions, classes (via TS grammar)"},
+#else
+            {"typescript", "regex",       "functions, classes"},
+            {"javascript", "regex",       "functions, classes"},
+#endif
+#ifdef ICMG_HAS_TREESITTER_PY
+            {"python",     "tree-sitter", "functions, classes, methods"},
+#else
+            {"python",     "regex",       "functions, classes"},
+#endif
+#ifdef ICMG_HAS_TREESITTER_GO
+            {"go",         "tree-sitter", "functions, methods, types"},
+#else
+            {"go",         "regex",       "functions, structs, interfaces"},
+#endif
+#ifdef ICMG_HAS_TREESITTER_RS
+            {"rust",       "tree-sitter", "fn, struct, impl, trait"},
+#else
+            {"rust",       "regex",       "fn, struct (basic)"},
+#endif
+#ifdef ICMG_HAS_TREESITTER_JV
+            {"java",       "tree-sitter", "class, method, interface"},
+#else
+            {"java",       "regex",       "class, method"},
+#endif
+            // Tier B — regex
+            {"csharp",     "regex",       "class, method, property"},
+            {"sql",        "regex",       "procedure, function, table"},
+            {"php",        "regex",       "function, class"},
+            {"ruby",       "regex",       "def, class, module"},
+            // Tier C — file index only
+            {"markdown",   "text-only",   "BM25 search, no symbols"},
+            {"yaml",       "text-only",   "BM25 search, no symbols"},
+            {"json",       "text-only",   "BM25 search, no symbols"},
+            {"shell",      "text-only",   "BM25 search, no symbols"},
+            {"powershell", "text-only",   "BM25 search, no symbols"},
+        };
+
+        std::cout << std::left
+                  << std::setw(14) << "Language"
+                  << std::setw(14) << "Extractor"
+                  << "Coverage\n"
+                  << std::string(60, '-') << "\n";
+        for (auto& l : LANGS) {
+            std::cout << std::setw(14) << l.lang
+                      << std::setw(14) << l.tier
+                      << l.note << "\n";
+        }
+        return 0;
+    }
+};
+
+// ---- graph lang — dispatches lang subcommands ----
+class GraphLangCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-lang"; }
+    std::string description() const override { return "Language-aware graph commands"; }
+
+    int run(const std::vector<std::string>& args) override {
+        if (!args.empty()) {
+            std::string compound = "graph-lang-" + args[0];
+            auto& reg = core::Registry<BaseCommand>::instance();
+            if (reg.has(compound)) {
+                auto handler = reg.create(compound);
+                return handler->run(std::vector<std::string>(args.begin() + 1, args.end()));
+            }
+        }
+        std::cout << "Usage: icmg graph lang <subcommand>\n\n"
+                     "Subcommands:\n"
+                     "  list      Language breakdown (files + symbols per lang)\n"
+                     "  status    Extractor method per language\n";
+        return 0;
+    }
+};
+
 // ---- graph (root) — dispatches subcommands or shows help ----
 class GraphRootCommand : public BaseCommand {
 public:
@@ -1038,7 +1179,9 @@ public:
             "  watch [dir]           Start file watcher daemon\n"
             "  stop [dir]            Stop file watcher daemon\n"
             "  watch-status [dir]    Show watcher daemon status\n"
-            "\nOptions (scan/update):\n"
+            "  lang list             Language breakdown (files + symbols per lang)\n"
+            "  lang status           Extractor method per language\n"
+            "\nOptions (scan/update/search/symbol):\n"
             "  --depth N             Max directory depth (default: 20)\n"
             "  --lang L1,L2          Filter by language\n"
             "  --json                JSON output\n";
@@ -1066,5 +1209,8 @@ ICMG_REGISTER_COMMAND("graph-callers",           GraphCallersCommand);
 ICMG_REGISTER_COMMAND("graph-callees",           GraphCalleesCommand);
 ICMG_REGISTER_COMMAND("graph-reverse-impact",    GraphReverseImpactCommand);
 ICMG_REGISTER_COMMAND("graph-transitive-impact", GraphTransitiveImpactCommand);
+ICMG_REGISTER_COMMAND("graph-lang",              GraphLangCommand);
+ICMG_REGISTER_COMMAND("graph-lang-list",         GraphLangListCommand);
+ICMG_REGISTER_COMMAND("graph-lang-status",       GraphLangStatusCommand);
 
 } // namespace icmg::cli

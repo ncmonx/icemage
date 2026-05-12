@@ -82,6 +82,13 @@ public:
     int nodeCount() const;
     int edgeCount() const;
 
+    struct LangStat {
+        std::string lang;
+        int files   = 0;
+        int symbols = 0;
+    };
+    std::vector<LangStat> langStats() const;
+
 private:
     core::Db& db_;
     GraphNode rowToNode(const core::Row& row) const;
