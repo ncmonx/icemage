@@ -10,19 +10,26 @@ permissions:
   contents: read
 
 jobs:
-  validate-docs:
-    name: Validate documentation
+  test:
+    name: Test — documentation integrity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Check required files exist
+      - name: Test required files exist
         run: |
           for f in README.md CHANGELOG.md COMMANDS.md CONTRIBUTING.md LICENSE SECURITY.md; do
-            [ -f "$f" ] && echo "OK: $f" || { echo "MISSING: $f"; exit 1; }
+            [ -f "$f" ] && echo "PASS: $f" || { echo "FAIL: $f missing"; exit 1; }
           done
 
-      - name: Validate workflow YAML syntax
+      - name: Test markdown files are non-empty
+        run: |
+          for f in README.md CHANGELOG.md COMMANDS.md; do
+            lines=$(wc -l < "$f")
+            [ "$lines" -gt 10 ] && echo "PASS: $f ($lines lines)" || { echo "FAIL: $f too short"; exit 1; }
+          done
+
+      - name: Test workflow YAML syntax
         run: |
           python3 -c "
           import yaml, sys, pathlib
@@ -30,40 +37,33 @@ jobs:
           for f in pathlib.Path('.github/workflows').glob('*.yml'):
               try:
                   yaml.safe_load(f.read_text())
-                  print(f'OK: {f}')
+                  print(f'PASS: {f}')
               except yaml.YAMLError as e:
                   errors.append(f'FAIL: {f}: {e}')
           if errors:
               print('\n'.join(errors)); sys.exit(1)
           "
 
-      - name: Check markdown files are non-empty
-        run: |
-          for f in README.md CHANGELOG.md COMMANDS.md; do
-            lines=$(wc -l < "$f")
-            [ "$lines" -gt 10 ] && echo "OK: $f ($lines lines)" || { echo "TOO SHORT: $f"; exit 1; }
-          done
-
-      - name: Verify CHANGELOG is non-trivial
+      - name: Test CHANGELOG is non-trivial
         run: |
           lines=$(wc -l < CHANGELOG.md)
           [ "$lines" -gt 5 ] \
-            && echo "OK: CHANGELOG has $lines lines" \
-            || { echo "FAIL: CHANGELOG too short ($lines lines)"; exit 1; }
+            && echo "PASS: CHANGELOG has $lines lines" \
+            || { echo "FAIL: CHANGELOG too short"; exit 1; }
 
-  validate-security:
-    name: Validate security configuration
+  test-security:
+    name: Test — security configuration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Check SECURITY.md has contact info
+      - name: Test SECURITY.md has contact info
         run: |
           grep -qi "email\|contact\|report\|vulnerability" SECURITY.md \
-            && echo "OK: SECURITY.md has contact info" \
+            && echo "PASS: SECURITY.md has contact info" \
             || { echo "FAIL: SECURITY.md missing contact info"; exit 1; }
 
-      - name: Verify all workflows declare permissions
+      - name: Test all workflows declare permissions
         run: |
           python3 -c "
           import yaml, sys, pathlib
@@ -75,9 +75,23 @@ jobs:
               jobs = doc.get('jobs', {})
               all_jobs = all('permissions' in j for j in jobs.values())
               if not (has_top or all_jobs):
-                  errors.append(f'MISSING permissions: {f}')
+                  errors.append(f'FAIL: missing permissions in {f}')
               else:
-                  print(f'OK: {f}')
+                  print(f'PASS: {f}')
           if errors:
               print('\n'.join(errors)); sys.exit(1)
           "
+
+      - name: Test OpenSSF Best Practices badge present in README
+        run: |
+          grep -q "bestpractices.dev" README.md \
+            && echo "PASS: CII badge found" \
+            || { echo "FAIL: CII badge missing from README"; exit 1; }
+
+      - name: Test fuzz targets exist
+        run: |
+          [ -d ".clusterfuzzlite" ] && echo "PASS: .clusterfuzzlite present" \
+            || { echo "FAIL: .clusterfuzzlite missing"; exit 1; }
+          count=$(ls fuzz/fuzz_*.cpp 2>/dev/null | wc -l)
+          [ "$count" -gt 0 ] && echo "PASS: $count fuzz target(s)" \
+            || { echo "FAIL: no fuzz targets"; exit 1; }
