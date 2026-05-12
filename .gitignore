@@ -37,3 +37,6 @@ session-log.md
 state.md
 PROGRESS.md
 third_party/onnxruntime/lib/
+icmg-*.zip
+icmg-*.sha256
+savings.html
