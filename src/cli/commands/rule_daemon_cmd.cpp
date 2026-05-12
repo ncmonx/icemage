@@ -95,7 +95,7 @@ public:
             si.cb = sizeof(si);
             std::string cmd = "icmg rule-daemon run";
             if (CreateProcessA(nullptr, &cmd[0], nullptr, nullptr, FALSE,
-                               DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                               CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                                nullptr, nullptr, &si, &pi)) {
                 writePid((int)pi.dwProcessId);
                 CloseHandle(pi.hProcess);

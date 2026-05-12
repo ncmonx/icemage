@@ -147,140 +147,252 @@ loadAudit(); loadMemory(); loadGraph();
 
 // v0.42.0: Knowledge browser — context_nodes CRUD dashboard.
 static const char* KNOWLEDGE_HTML = R"HTML(<!doctype html>
-<html><head><meta charset="utf-8"><title>icmg knowledge</title><style>
-body{font:14px sans-serif;max-width:1100px;margin:1.5em auto;padding:0 1em;color:#222}
-h1{border-bottom:2px solid #eee;padding-bottom:.3em}
-.tabs{display:flex;gap:.5em;margin:1em 0}
-.tab{padding:.4em 1em;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#f5f5f5}
-.tab.active{background:#0366d6;color:#fff;border-color:#0366d6}
-table{border-collapse:collapse;width:100%;margin:.5em 0}
-th,td{border:1px solid #ddd;padding:.4em .8em;text-align:left;font-size:13px;vertical-align:top}
-th{background:#f0f0f0}
-.tier-hot{background:#fff8e1}.tier-cold{background:#f0f9ff}.tier-skill{background:#f0fff4}
-.inactive{opacity:.5}
-.btn{padding:.3em .8em;border:0;border-radius:3px;cursor:pointer;font-size:12px;margin-left:.2em}
-.btn-add{background:#28a745;color:#fff}.btn-del{background:#dc3545;color:#fff}
-.btn-tog{background:#6c757d;color:#fff}.btn-edit{background:#0366d6;color:#fff}
-#modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:99}
-.modal-box{background:#fff;border-radius:8px;padding:1.5em;max-width:600px;margin:8% auto;position:relative}
-label{display:block;margin:.5em 0 .2em;font-weight:600}
-input,select,textarea{width:100%;padding:.4em;border:1px solid #ccc;border-radius:4px;box-sizing:border-box}
-textarea{height:120px;font-family:monospace}
-.form-row{display:flex;gap:.5em;margin-top:1em}
-.err{color:#dc3545;font-size:.85em}
+<html><head><meta charset="utf-8"><title>icmg dashboard</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0d1117;color:#c9d1d9;min-height:100vh}
+.hdr{background:#161b22;border-bottom:1px solid #30363d;padding:.75em 1.5em;display:flex;align-items:center;gap:1em}
+.hdr h1{font-size:1.1em;font-weight:700;color:#f0f6fc;letter-spacing:-.01em}
+.hdr .ver{font-size:.8em;color:#8b949e;margin-left:.3em}
+.kpi-bar{display:flex;gap:1em;padding:.75em 1.5em;background:#161b22;border-bottom:1px solid #21262d}
+.kpi{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:.5em .9em;display:flex;flex-direction:column;min-width:110px}
+.kpi .n{font-size:1.6em;font-weight:700;color:#58a6ff;line-height:1.1}
+.kpi .l{font-size:.75em;color:#8b949e;margin-top:.1em}
+.tabs{display:flex;gap:0;padding:0 1.5em;background:#161b22;border-bottom:1px solid #30363d}
+.tab{padding:.6em 1.2em;cursor:pointer;border-bottom:2px solid transparent;color:#8b949e;font-size:.9em;transition:color .15s}
+.tab:hover{color:#c9d1d9}
+.tab.active{color:#58a6ff;border-color:#58a6ff}
+.panel{display:none;padding:1.2em 1.5em}.panel.active{display:block}
+.toolbar{display:flex;gap:.6em;align-items:center;margin-bottom:.8em;flex-wrap:wrap}
+.toolbar input{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:.4em .7em;color:#c9d1d9;font-size:.85em;flex:1;min-width:200px}
+.toolbar input:focus{outline:none;border-color:#58a6ff}
+.toolbar label{color:#8b949e;font-size:.85em;white-space:nowrap;display:flex;align-items:center;gap:.3em}
+.btn{padding:.35em .8em;border:1px solid;border-radius:6px;cursor:pointer;font-size:.82em;font-weight:500;white-space:nowrap;transition:background .15s}
+.btn-primary{background:#238636;border-color:#2ea043;color:#fff}.btn-primary:hover{background:#2ea043}
+.btn-info{background:#1f6feb;border-color:#388bfd;color:#fff}.btn-info:hover{background:#388bfd}
+.btn-warn{background:#b08800;border-color:#d29922;color:#fff}.btn-warn:hover{background:#d29922}
+.btn-danger{background:#b91c1c;border-color:#f85149;color:#fff}.btn-danger:hover{background:#f85149}
+.btn-muted{background:#21262d;border-color:#30363d;color:#8b949e}.btn-muted:hover{background:#30363d}
+table{border-collapse:collapse;width:100%;font-size:.84em}
+th{background:#161b22;color:#8b949e;font-weight:600;text-transform:uppercase;font-size:.75em;letter-spacing:.04em;padding:.5em .8em;text-align:left;border-bottom:1px solid #21262d;white-space:nowrap}
+td{padding:.45em .8em;border-bottom:1px solid #161b22;vertical-align:top}
+tr:hover td{background:#161b22}
+.tier-hot td:first-child{border-left:2px solid #f78166}
+.tier-cold td:first-child{border-left:2px solid #58a6ff}
+.tier-skill td:first-child{border-left:2px solid #3fb950}
+.inactive{opacity:.45}
+.badge{display:inline-block;padding:.15em .5em;border-radius:3px;font-size:.75em;font-weight:600}
+.badge-hot{background:#3d1a1a;color:#f78166}.badge-cold{background:#1c3252;color:#58a6ff}
+.badge-skill{background:#1a3d27;color:#3fb950}.badge-rule{background:#2d2a1a;color:#e3b341}
+.badge-on{background:#1a3d27;color:#3fb950}.badge-off{background:#2d1a1a;color:#8b949e}
+.acts{display:flex;gap:.3em;flex-wrap:nowrap}
+/* Modal */
+#modal{display:none;position:fixed;inset:0;background:rgba(1,4,9,.8);z-index:100;align-items:flex-start;justify-content:center;padding-top:5%}
+#modal.open{display:flex}
+.mbox{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:1.5em;width:min(580px,92vw);max-height:80vh;overflow-y:auto}
+.mbox h2{font-size:1em;font-weight:700;color:#f0f6fc;margin-bottom:1em}
+.frow{margin-bottom:.9em}
+.frow label{display:block;font-size:.8em;font-weight:600;color:#8b949e;margin-bottom:.3em}
+.frow input,.frow select,.frow textarea{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:.4em .7em;color:#c9d1d9;font-size:.85em}
+.frow input:focus,.frow select,.frow textarea:focus{outline:none;border-color:#58a6ff}
+.frow textarea{height:110px;font-family:monospace;resize:vertical}
+.fbtns{display:flex;gap:.5em;margin-top:1.2em}
+.ferr{color:#f85149;font-size:.82em;margin-top:.4em;min-height:1.2em}
+.empty{text-align:center;color:#8b949e;padding:2em;font-size:.9em}
 </style></head><body>
-<h1>icmg knowledge browser</h1>
-<div class="tabs" id="tier-tabs"></div>
-<div style="display:flex;gap:.5em;align-items:center;margin-bottom:.8em">
-  <input id="search" placeholder="Search nodes..." oninput="filterTable()" style="width:40%">
-  <label style="margin:0;font-weight:normal;white-space:nowrap">
-    <input type="checkbox" id="show-inactive" onchange="loadNodes()"> show inactive
-  </label>
-  <button class="btn btn-add" onclick="openAdd()">+ Add node</button>
+<div class="hdr"><h1>icmg<span class="ver">dashboard</span></h1></div>
+<div class="kpi-bar" id="kpis"></div>
+<div class="tabs">
+  <div class="tab active" data-panel="p-knowledge">Knowledge</div>
+  <div class="tab" data-panel="p-skills">Skills</div>
+  <div class="tab" data-panel="p-rules">Rules</div>
 </div>
-<table id="tbl">
-  <thead><tr><th>Key</th><th>Tier</th><th>Title</th><th style="width:30%">Content preview</th><th>On</th><th>Actions</th></tr></thead>
-  <tbody id="tbody"></tbody>
-</table>
-<div id="modal"><div class="modal-box" id="modal-box"></div></div>
+<div class="panel active" id="p-knowledge">
+  <div class="toolbar">
+    <input id="k-search" placeholder="Filter knowledge nodes...">
+    <label><input type="checkbox" id="k-inactive" onchange="loadKnowledge()"> Show inactive</label>
+    <div class="btn btn-primary" onclick="openAdd('knowledge')">+ Add</div>
+  </div>
+  <table><thead><tr><th>Key</th><th>Tier</th><th>Title</th><th style="width:28%">Content</th><th>Active</th><th></th></tr></thead>
+  <tbody id="k-tbody"></tbody></table>
+</div>
+<div class="panel" id="p-skills">
+  <div class="toolbar">
+    <input id="s-search" placeholder="Filter skills...">
+    <label><input type="checkbox" id="s-inactive" onchange="loadSkills()"> Show inactive</label>
+    <div class="btn btn-primary" onclick="openAdd('skill')">+ Add skill</div>
+  </div>
+  <table><thead><tr><th>Key</th><th>Title</th><th style="width:35%">Content</th><th>Active</th><th></th></tr></thead>
+  <tbody id="s-tbody"></tbody></table>
+</div>
+<div class="panel" id="p-rules">
+  <div class="toolbar">
+    <input id="r-search" placeholder="Filter rules...">
+    <label><input type="checkbox" id="r-inactive" onchange="loadRules()"> Show inactive</label>
+  </div>
+  <table><thead><tr><th>Name</th><th>Type</th><th>Priority</th><th style="width:35%">Content</th><th>Active</th><th></th></tr></thead>
+  <tbody id="r-tbody"></tbody></table>
+</div>
+<div id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="mbox" id="mbox"></div>
+</div>
 <script>
-var currentTier='',nodes=[];
-var TIERS=['','hot','cold','skill'];
-var TIER_LABELS=['All','Hot','Cold','Skills'];
-(function(){
-  var tabs=document.getElementById('tier-tabs');
-  TIERS.forEach(function(t,i){
-    var b=document.createElement('button');
-    b.className='tab'+(t===''?' active':'');
-    b.textContent=TIER_LABELS[i];
-    b.onclick=function(){currentTier=t;document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});b.classList.add('active');loadNodes();};
-    tabs.appendChild(b);
-  });
-})();
-function loadNodes(){
-  var url='/api/knowledge/list?tier='+currentTier+(document.getElementById('show-inactive').checked?'&inactive=1':'');
-  fetch(url).then(function(r){return r.json();}).then(function(d){nodes=d;renderTable(d);}).catch(function(){});
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(function(t){
+  t.onclick=function(){
+    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active')});
+    document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('active')});
+    t.classList.add('active');
+    document.getElementById(t.dataset.panel).classList.add('active');
+  };
+});
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function fetchJ(u,opts){return fetch(u,opts).then(function(r){return r.json();});}
+function ce(tag,cls){var e=document.createElement(tag);if(cls)e.className=cls;return e;}
+function tx(e,t){e.textContent=t;return e;}
+function badge(text,cls){return tx(ce('span','badge badge-'+cls),text);}
+function mkBtn(cls,label,fn){var b=ce('button','btn '+cls);b.textContent=label;b.onclick=fn;return b;}
+function clear(id){var e=document.getElementById(id);while(e.firstChild)e.removeChild(e.firstChild);return e;}
+// ── KPIs ─────────────────────────────────────────────────────────────────────
+function loadKpis(){
+  var kpiEl=document.getElementById('kpis');
+  function kpi(n,l,cl){
+    var d=ce('div','kpi');var num=ce('div','n');num.id='kpi-'+cl;num.textContent=n;
+    var lbl=ce('div','l');lbl.textContent=l;d.appendChild(num);d.appendChild(lbl);kpiEl.appendChild(d);
+  }
+  kpi('…','Hot nodes','hot');kpi('…','Cold nodes','cold');kpi('…','Skills','skills');kpi('…','Rules','rules');
+  // hot
+  fetchJ('/api/knowledge/list?tier=hot').then(function(d){document.getElementById('kpi-hot').textContent=d.length;});
+  fetchJ('/api/knowledge/list?tier=cold').then(function(d){document.getElementById('kpi-cold').textContent=d.length;});
+  fetchJ('/api/knowledge/list?tier=skill').then(function(d){document.getElementById('kpi-skills').textContent=d.length;});
+  fetchJ('/api/rules').then(function(d){document.getElementById('kpi-rules').textContent=d.length;});
 }
-function renderTable(data){
-  var q=document.getElementById('search').value.toLowerCase();
-  var tbody=document.getElementById('tbody');
-  while(tbody.firstChild)tbody.removeChild(tbody.firstChild);
-  data.filter(function(n){
+// ── Knowledge tab ─────────────────────────────────────────────────────────────
+var kNodes=[];
+function loadKnowledge(){
+  var inactive=document.getElementById('k-inactive').checked;
+  fetchJ('/api/knowledge/list?tier='+(inactive?'&inactive=1':'')).then(function(d){
+    kNodes=d;renderKnowledge(d);
+  });
+}
+function renderKnowledge(data){
+  var q=document.getElementById('k-search').value.toLowerCase();
+  var tb=clear('k-tbody');
+  var filtered=data.filter(function(n){
     return !q||n.key.includes(q)||n.title.toLowerCase().includes(q)||(n.content||'').toLowerCase().includes(q);
-  }).forEach(function(n){
-    var tr=document.createElement('tr');
-    tr.className='tier-'+n.tier+(n.active?'':' inactive');
-    function td(txt,max){var c=document.createElement('td');c.textContent=max&&txt.length>max?txt.substr(0,max)+'…':txt;return c;}
-    tr.appendChild(td(n.key));tr.appendChild(td(n.tier));tr.appendChild(td(n.title));
-    tr.appendChild(td((n.content||''),80));
-    var ac=document.createElement('td');ac.textContent=n.active?'yes':'no';tr.appendChild(ac);
-    var btns=document.createElement('td');
-    function mkBtn(cls,txt,fn){var b=document.createElement('button');b.className='btn '+cls;b.textContent=txt;b.onclick=fn;btns.appendChild(b);}
-    mkBtn('btn-edit','Edit',function(){openEdit(n);});
-    mkBtn('btn-tog',n.active?'Off':'On',function(){
-      fetch('/api/knowledge/toggle?key='+encodeURIComponent(n.key)+'&active='+(n.active?'0':'1')).then(function(){loadNodes();});
-    });
-    mkBtn('btn-del','Del',function(){
-      if(confirm('Delete "'+n.key+'"?'))
-        fetch('/api/knowledge/delete?key='+encodeURIComponent(n.key),{method:'DELETE'}).then(function(){loadNodes();});
-    });
-    tr.appendChild(btns);tbody.appendChild(tr);
+  });
+  if(!filtered.length){var tr=ce('tr');var td=ce('td');td.colSpan=6;td.className='empty';td.textContent='No nodes found.';tr.appendChild(td);tb.appendChild(tr);return;}
+  filtered.forEach(function(n){
+    var tr=ce('tr','tier-'+n.tier+(n.active?'':' inactive'));
+    function td(txt,max){var c=ce('td');c.textContent=max&&txt&&txt.length>max?txt.substr(0,max)+'…':txt||'';return c;}
+    tr.appendChild(td(n.key));
+    var tierTd=ce('td');tierTd.appendChild(badge(n.tier,n.tier));tr.appendChild(tierTd);
+    tr.appendChild(td(n.title));tr.appendChild(td(n.content||'',90));
+    var activeTd=ce('td');activeTd.appendChild(badge(n.active?'on':'off',n.active?'on':'off'));tr.appendChild(activeTd);
+    var acts=ce('td');var div=ce('div','acts');
+    div.appendChild(mkBtn('btn-info','Edit',function(){openEdit('knowledge',n);}));
+    div.appendChild(mkBtn('btn-warn',n.active?'Disable':'Enable',function(){
+      fetchJ('/api/knowledge/toggle?key='+encodeURIComponent(n.key)+'&active='+(n.active?'0':'1')).then(function(){loadKnowledge();loadKpis();});
+    }));
+    div.appendChild(mkBtn('btn-danger','Del',function(){
+      if(confirm('Delete "'+n.key+'"?'))fetchJ('/api/knowledge/delete?key='+encodeURIComponent(n.key),{method:'DELETE'}).then(function(){loadKnowledge();loadKpis();});
+    }));
+    acts.appendChild(div);tr.appendChild(acts);tb.appendChild(tr);
   });
 }
-function filterTable(){renderTable(nodes);}
-function buildForm(n){
-  var d=document.createElement('div');
-  function row(lbl,el){var l=document.createElement('label');l.textContent=lbl;d.appendChild(l);d.appendChild(el);}
-  var ft=document.createElement('input');ft.id='f-title';ft.value=n.title||'';row('Title',ft);
-  var fs=document.createElement('select');fs.id='f-tier';
-  ['hot','cold','skill'].forEach(function(t){var o=document.createElement('option');o.value=o.textContent=t;if(t===(n.tier||'cold'))o.selected=true;fs.appendChild(o);});
+document.getElementById('k-search').oninput=function(){renderKnowledge(kNodes);};
+// ── Skills tab ────────────────────────────────────────────────────────────────
+var sNodes=[];
+function loadSkills(){
+  var inactive=document.getElementById('s-inactive').checked;
+  fetchJ('/api/knowledge/list?tier=skill'+(inactive?'&inactive=1':'')).then(function(d){
+    sNodes=d;renderSkills(d);
+  });
+}
+function renderSkills(data){
+  var q=document.getElementById('s-search').value.toLowerCase();
+  var tb=clear('s-tbody');
+  var filtered=data.filter(function(n){
+    return !q||n.key.includes(q)||n.title.toLowerCase().includes(q)||(n.content||'').toLowerCase().includes(q);
+  });
+  if(!filtered.length){var tr=ce('tr');var td=ce('td');td.colSpan=5;td.className='empty';td.textContent='No skills indexed. Run: icmg skill index';tr.appendChild(td);tb.appendChild(tr);return;}
+  filtered.forEach(function(n){
+    var tr=ce('tr','tier-skill'+(n.active?'':' inactive'));
+    function td(txt,max){var c=ce('td');c.textContent=max&&txt&&txt.length>max?txt.substr(0,max)+'…':txt||'';return c;}
+    tr.appendChild(td(n.key));tr.appendChild(td(n.title));tr.appendChild(td(n.content||'',100));
+    var activeTd=ce('td');activeTd.appendChild(badge(n.active?'on':'off',n.active?'on':'off'));tr.appendChild(activeTd);
+    var acts=ce('td');var div=ce('div','acts');
+    div.appendChild(mkBtn('btn-warn',n.active?'Disable':'Enable',function(){
+      fetchJ('/api/knowledge/toggle?key='+encodeURIComponent(n.key)+'&active='+(n.active?'0':'1')).then(function(){loadSkills();loadKpis();});
+    }));
+    acts.appendChild(div);tr.appendChild(acts);tb.appendChild(tr);
+  });
+}
+document.getElementById('s-search').oninput=function(){renderSkills(sNodes);};
+// ── Rules tab ─────────────────────────────────────────────────────────────────
+var rRules=[];
+function loadRules(){
+  fetchJ('/api/rules').then(function(d){rRules=d;renderRules(d);});
+}
+function renderRules(data){
+  var q=document.getElementById('r-search').value.toLowerCase();
+  var tb=clear('r-tbody');
+  var inactive=document.getElementById('r-inactive').checked;
+  var filtered=data.filter(function(n){
+    if(!inactive&&!n.active)return false;
+    return !q||n.name.toLowerCase().includes(q)||(n.content||'').toLowerCase().includes(q);
+  });
+  if(!filtered.length){var tr=ce('tr');var td=ce('td');td.colSpan=6;td.className='empty';td.textContent='No rules found. Add with: icmg rule add';tr.appendChild(td);tb.appendChild(tr);return;}
+  filtered.forEach(function(n){
+    var tr=ce('tr'+(n.active?'':' inactive'));
+    function td(txt,max){var c=ce('td');c.textContent=max&&txt&&txt.length>max?txt.substr(0,max)+'…':txt||'';return c;}
+    tr.appendChild(td(n.name));
+    var typeTd=ce('td');typeTd.appendChild(badge(n.rule_type||'rule','rule'));tr.appendChild(typeTd);
+    tr.appendChild(td(String(n.priority||0)));tr.appendChild(td(n.content||'',90));
+    var activeTd=ce('td');activeTd.appendChild(badge(n.active?'on':'off',n.active?'on':'off'));tr.appendChild(activeTd);
+    var acts=ce('td');var div=ce('div','acts');
+    div.appendChild(mkBtn('btn-warn',n.active?'Disable':'Enable',function(){
+      fetchJ('/api/rules/toggle?id='+n.id+'&active='+(n.active?'0':'1'),{method:'POST'}).then(function(){loadRules();loadKpis();});
+    }));
+    acts.appendChild(div);tr.appendChild(acts);tb.appendChild(tr);
+  });
+}
+document.getElementById('r-search').oninput=function(){renderRules(rRules);};
+document.getElementById('r-inactive').onchange=function(){renderRules(rRules);};
+// ── Modal add/edit ────────────────────────────────────────────────────────────
+function openAdd(mode){openEdit(mode,{tier:mode==='skill'?'skill':'cold'});}
+function openEdit(mode,n){
+  var box=clear('mbox');
+  var h=ce('h2');h.textContent=(n.key?'Edit: '+n.key:'Add '+(mode==='skill'?'skill':'node'));box.appendChild(h);
+  function row(lbl,el){var d=ce('div','frow');var l=ce('label');l.textContent=lbl;d.appendChild(l);d.appendChild(el);box.appendChild(d);return el;}
+  var ft=ce('input');ft.value=n.title||'';row('Title',ft);
+  var fs=ce('select');
+  (mode==='skill'?['skill']:['hot','cold','skill']).forEach(function(t){
+    var o=document.createElement('option');o.value=o.textContent=t;if(t===(n.tier||'cold'))o.selected=true;fs.appendChild(o);
+  });
   row('Tier',fs);
-  var fc=document.createElement('textarea');fc.id='f-content';fc.textContent=n.content||'';row('Content',fc);
-  var fg=document.createElement('input');fg.id='f-tags';fg.value=n.tags||'[]';row('Tags (JSON array)',fg);
-  var fo=document.createElement('input');fo.id='f-source';fo.value=n.source||'';row('Source file',fo);
-  var err=document.createElement('div');err.id='f-err';err.className='err';d.appendChild(err);
-  var row2=document.createElement('div');row2.className='form-row';
-  var sb=document.createElement('button');sb.className='btn btn-add';sb.textContent='Save';
-  sb.onclick=function(){submitForm(n.key||'');};row2.appendChild(sb);
-  var cb=document.createElement('button');cb.className='btn';cb.textContent='Cancel';
-  cb.onclick=closeModal;row2.appendChild(cb);
-  d.appendChild(row2);
-  return d;
+  var fc=ce('textarea');fc.textContent=n.content||'';row('Content',fc);
+  var ferr=ce('div','ferr');box.appendChild(ferr);
+  var fbtns=ce('div','fbtns');
+  fbtns.appendChild(mkBtn('btn-primary','Save',function(){
+    var body={title:ft.value,content:fc.value,tier:fs.value};
+    if(n.key)body.key=n.key;
+    var ep=n.key?'/api/knowledge/update':'/api/knowledge/add';
+    fetchJ(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+      .then(function(r){
+        if(r.error){ferr.textContent=r.error;return;}
+        closeModal();if(mode==='skill')loadSkills();else loadKnowledge();loadKpis();
+      }).catch(function(e){ferr.textContent=String(e);});
+  }));
+  fbtns.appendChild(mkBtn('btn-muted','Cancel',closeModal));
+  box.appendChild(fbtns);
+  document.getElementById('modal').classList.add('open');
 }
-function openAdd(){
-  var box=document.getElementById('modal-box');
-  while(box.firstChild)box.removeChild(box.firstChild);
-  var h=document.createElement('h2');h.textContent='Add node';box.appendChild(h);
-  box.appendChild(buildForm({tier:'cold'}));
-  document.getElementById('modal').style.display='block';
-}
-function openEdit(n){
-  var box=document.getElementById('modal-box');
-  while(box.firstChild)box.removeChild(box.firstChild);
-  var h=document.createElement('h2');h.textContent='Edit: '+n.key;box.appendChild(h);
-  box.appendChild(buildForm(n));
-  document.getElementById('modal').style.display='block';
-}
-function submitForm(existingKey){
-  var body={title:document.getElementById('f-title').value,
-            content:document.getElementById('f-content').value,
-            tier:document.getElementById('f-tier').value,
-            tags:document.getElementById('f-tags').value,
-            source:document.getElementById('f-source').value};
-  if(existingKey)body.key=existingKey;
-  var ep=existingKey?'/api/knowledge/update':'/api/knowledge/add';
-  fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-    .then(function(r){return r.json();})
-    .then(function(r){
-      if(r.error){document.getElementById('f-err').textContent=r.error;return;}
-      closeModal();loadNodes();
-    }).catch(function(e){document.getElementById('f-err').textContent=String(e);});
-}
-function closeModal(){document.getElementById('modal').style.display='none';}
-document.getElementById('modal').onclick=function(e){if(e.target===this)closeModal();};
-loadNodes();
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadKpis();loadKnowledge();loadSkills();loadRules();
 </script></body></html>
 )HTML";
+
 
 class ServeCommand : public BaseCommand {
 public:
@@ -370,6 +482,8 @@ private:
             body = KNOWLEDGE_HTML; ctype = "text/html";
         } else if (path.rfind("/api/knowledge", 0) == 0) {
             body = apiKnowledge(cfg, buf.substr(0, sp1), path, buf); ctype = "application/json";
+        } else if (path.rfind("/api/rules", 0) == 0) {
+            body = apiRules(cfg, buf.substr(0, sp1), path); ctype = "application/json";
         } else {
             sendResp(c, 404, "text/plain", "not found"); return;
         }
@@ -597,6 +711,61 @@ private:
         std::string s = h.str();
         send(c, s.data(), (int)s.size(), 0);
     }
+
+    // v0.42.0: rules REST API.
+    // GET  /api/rules              → list all rules
+    // POST /api/rules/toggle?id=N&active=0|1
+    std::string apiRules(core::Config& cfg, const std::string& method,
+                         const std::string& path) {
+        core::Db db(cfg.projectDbPath("."));
+
+        bool is_toggle = (path.find("/api/rules/toggle") == 0);
+
+        if (is_toggle) {
+            auto getId = [&]() -> int {
+                auto q = path.find("id=");
+                if (q == std::string::npos) return 0;
+                try { return std::stoi(path.substr(q + 3)); } catch (...) { return 0; }
+            };
+            auto getActive = [&]() -> int {
+                auto q = path.find("active=");
+                if (q == std::string::npos) return 1;
+                std::string v = path.substr(q + 7, 1);
+                return (v == "1" || v == "t") ? 1 : 0;
+            };
+            int id = getId();
+            if (id <= 0) return "{\"error\":\"missing id\"}";
+            try {
+                db.run("UPDATE rules SET active=? WHERE id=?",
+                       {std::to_string(getActive()), std::to_string(id)});
+            } catch (...) {
+                return "{\"error\":\"db error\"}";
+            }
+            return "{\"ok\":true}";
+        }
+
+        // LIST
+        std::ostringstream o; o << "[";
+        bool first = true;
+        try {
+            db.query("SELECT id,rule_type,name,content,priority,active FROM rules ORDER BY priority DESC,id",
+                     {}, [&](const core::Row& r) {
+                if (r.size() < 6) return;
+                if (!first) o << ","; first = false;
+                int active = 0;
+                try { active = std::stoi(r[5]); } catch (...) {}
+                o << "{\"id\":" << r[0]
+                  << ",\"rule_type\":\"" << esc(r[1])
+                  << "\",\"name\":\"" << esc(r[2])
+                  << "\",\"content\":\"" << esc(r[3])
+                  << "\",\"priority\":" << r[4]
+                  << ",\"active\":" << (active ? "true" : "false") << "}";
+            });
+        } catch (...) {}
+        o << "]";
+        return o.str();
+    }
+
 };
 
 ICMG_REGISTER_COMMAND("serve", ServeCommand);
