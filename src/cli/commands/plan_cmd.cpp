@@ -1,17 +1,19 @@
-// icmg claudemd — CLAUDE.md ↔ context_nodes graph bridge.
+// icmg plan — plan/phase markdown files ↔ context_nodes graph bridge.
 //
 // Subcommands:
-//   import [--file PATH] [--all] [--dry-run]
-//       Parse CLAUDE.md sections → upsert context_nodes.
-//       Auto-detects ~/.claude/CLAUDE.md + ./CLAUDE.md when --file omitted.
-//       --all: scan all registered projects.
-//   list [--tier hot|cold|skill] [--inactive]
-//       Print stored context_nodes.
+//   import [--file PATH] [--dir PATH] [--dry-run] [--slim] [--no-backup]
+//       Parse plan/phase markdown sections → upsert context_nodes.
+//       Auto-detects PROGRESS.md, PLAN.md, PHASES.md, docs/plans/*.md,
+//       .icmg/plans/*.md when --file/--dir omitted.
+//       --slim      After import, replace file with pointer stub.
+//                   Backup saved to .icmg/ before overwrite.
+//       --no-backup Skip backup when used with --slim.
+//   restore [--file PATH]
+//       Restore plan file from latest backup (created by import --slim).
+//   list [--tier hot|cold] [--inactive] [--json]
+//       Print stored plan context_nodes (node_key starts with "plan-").
 //   diff [--file PATH]
-//       Compare live CLAUDE.md sections vs stored nodes (stale/new/changed).
-//   slim [--file PATH] [--out PATH]
-//       Print/write slim pointer-only CLAUDE.md stub.
-//   export — alias for import.
+//       Compare live plan file sections vs stored nodes (stale/new/changed).
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
@@ -47,12 +49,12 @@ static std::string slugify(const std::string& title) {
     return slug;
 }
 
-static bool isHotSection(const std::string& title) {
+static bool isHotPlanSection(const std::string& title) {
     std::string t = title;
     std::transform(t.begin(), t.end(), t.begin(), ::tolower);
     static const char* HOT[] = {
-        "project overview", "overview", "architecture", "coding conventions",
-        "key design", "design decisions", "build instructions", "build"
+        "current", "active", "progress", "status", "next",
+        "in progress", "session log", "phase plan", "overview"
     };
     for (auto h : HOT) {
         if (t.find(h) != std::string::npos) return true;
@@ -114,44 +116,81 @@ static std::string contentHash(const std::string& s) {
     return std::string(buf);
 }
 
+// Collect auto-detected plan file paths
+static std::vector<std::string> autoDetectPlanFiles() {
+    std::vector<std::string> files;
+
+    // Fixed well-known filenames at project root
+    static const char* KNOWN[] = {
+        "PROGRESS.md", "PLAN.md", "PHASES.md"
+    };
+    for (auto name : KNOWN) {
+        if (fs::exists(name)) files.push_back(fs::absolute(name).string());
+    }
+
+    // docs/plans/*.md
+    fs::path docs_plans = fs::path("docs") / "plans";
+    if (fs::exists(docs_plans) && fs::is_directory(docs_plans)) {
+        for (auto& e : fs::directory_iterator(docs_plans)) {
+            if (e.is_regular_file() && e.path().extension() == ".md")
+                files.push_back(e.path().string());
+        }
+    }
+
+    // .icmg/plans/*.md
+    fs::path icmg_plans = fs::path(".icmg") / "plans";
+    if (fs::exists(icmg_plans) && fs::is_directory(icmg_plans)) {
+        for (auto& e : fs::directory_iterator(icmg_plans)) {
+            if (e.is_regular_file() && e.path().extension() == ".md")
+                files.push_back(e.path().string());
+        }
+    }
+
+    return files;
+}
+
 // ---- do* methods ------------------------------------------------------------
 
-// Forward declarations (doImport --slim calls doSlim)
+// Forward declarations
 static int doSlim(ContextNodeStore& store, const std::vector<std::string>& args);
 static int doRestore(const std::vector<std::string>& args);
 
 static int doImport(ContextNodeStore& store, const std::vector<std::string>& args,
                     const std::string& db_path) {
     std::string file_arg;
+    std::string dir_arg;
     bool dry_run   = false;
     bool do_slim   = false;
     bool no_backup = false;
 
     for (size_t i = 0; i < args.size(); ++i) {
-        if (args[i] == "--file" && i + 1 < args.size()) file_arg = args[++i];
+        if      (args[i] == "--file" && i + 1 < args.size()) file_arg = args[++i];
+        else if (args[i] == "--dir"  && i + 1 < args.size()) dir_arg  = args[++i];
         else if (args[i] == "--dry-run")   dry_run   = true;
         else if (args[i] == "--slim")      do_slim   = true;
         else if (args[i] == "--no-backup") no_backup = true;
     }
 
     std::vector<std::string> files;
+
     if (!file_arg.empty()) {
         files.push_back(file_arg);
-    } else {
-        // Auto-detect global + project CLAUDE.md
-        std::string home = std::getenv("USERPROFILE") ? std::getenv("USERPROFILE") :
-                          (std::getenv("HOME") ? std::getenv("HOME") : "");
-        if (!home.empty()) {
-            std::string g = home + "/.claude/CLAUDE.md";
-            if (fs::exists(g)) files.push_back(g);
+    } else if (!dir_arg.empty()) {
+        fs::path dir(dir_arg);
+        if (!fs::exists(dir) || !fs::is_directory(dir)) {
+            std::cerr << "plan import: directory not found: " << dir_arg << "\n";
+            return 1;
         }
-        if (fs::exists("CLAUDE.md")) files.push_back(fs::absolute("CLAUDE.md").string());
-        if (fs::exists(".claude/CLAUDE.md"))
-            files.push_back(fs::absolute(".claude/CLAUDE.md").string());
+        for (auto& e : fs::directory_iterator(dir)) {
+            if (e.is_regular_file() && e.path().extension() == ".md")
+                files.push_back(e.path().string());
+        }
+    } else {
+        files = autoDetectPlanFiles();
     }
 
     if (files.empty()) {
-        std::cerr << "claudemd import: no CLAUDE.md found. Use --file PATH.\n";
+        std::cerr << "plan import: no plan files found. Use --file PATH or --dir PATH.\n";
         return 1;
     }
 
@@ -159,7 +198,7 @@ static int doImport(ContextNodeStore& store, const std::vector<std::string>& arg
     for (auto& fpath : files) {
         std::string text = readFile(fpath);
         if (text.empty()) {
-            std::cerr << "claudemd import: cannot read " << fpath << "\n";
+            std::cerr << "plan import: cannot read " << fpath << "\n";
             continue;
         }
 
@@ -171,14 +210,15 @@ static int doImport(ContextNodeStore& store, const std::vector<std::string>& arg
 
         auto sections = parseSections(text);
         for (auto& sec : sections) {
+            std::string key_suffix = slugify(sec.title);
+            if (key_suffix.empty()) continue;
+
             ContextNode node;
-            node.node_key    = slugify(sec.title);
-            if (node.node_key.empty()) continue;
+            node.node_key    = "plan-" + key_suffix;
             node.title       = sec.title;
             node.content     = sec.content;
-            node.source_file = fpath;
-            node.tier        = isHotSection(sec.title) ? "hot" :
-                               (sec.content.size() > 3000 ? "frozen" : "cold");
+            node.source_file = fs::absolute(fpath).string();
+            node.tier        = isHotPlanSection(sec.title) ? "hot" : "cold";
             node.tags        = "[]";
             node.active      = true;
 
@@ -195,7 +235,6 @@ static int doImport(ContextNodeStore& store, const std::vector<std::string>& arg
 
         // --slim: backup original then overwrite with pointer stub
         if (do_slim && !dry_run && !sections.empty()) {
-            // Determine backup directory (.icmg/ next to file, or ~/.icmg/)
             fs::path file_parent = fs::path(fpath).parent_path();
             fs::path backup_dir;
             fs::path local_icmg = file_parent / ".icmg";
@@ -245,12 +284,19 @@ static int doList(ContextNodeStore& store, const std::vector<std::string>& args)
     bool json_out = false;
 
     for (size_t i = 0; i < args.size(); ++i) {
-        if (args[i] == "--tier" && i + 1 < args.size()) tier = args[++i];
+        if      (args[i] == "--tier" && i + 1 < args.size()) tier = args[++i];
         else if (args[i] == "--inactive") show_inactive = true;
         else if (args[i] == "--json")     json_out = true;
     }
 
-    auto nodes = store.list(tier, !show_inactive);
+    auto all_nodes = store.list(tier, !show_inactive);
+
+    // Filter to plan nodes only (node_key starts with "plan-")
+    std::vector<ContextNode> nodes;
+    for (auto& n : all_nodes) {
+        if (n.node_key.size() >= 5 && n.node_key.substr(0, 5) == "plan-")
+            nodes.push_back(n);
+    }
 
     if (json_out) {
         std::cout << "[\n";
@@ -270,20 +316,20 @@ static int doList(ContextNodeStore& store, const std::vector<std::string>& args)
     std::cout << std::left
               << std::setw(4)  << "ID"
               << std::setw(8)  << "TIER"
-              << std::setw(35) << "NODE_KEY"
+              << std::setw(38) << "NODE_KEY"
               << std::setw(6)  << "ACT"
               << "TITLE\n";
-    std::cout << std::string(70, '-') << "\n";
+    std::cout << std::string(74, '-') << "\n";
 
     for (auto& n : nodes) {
         std::cout << std::left
                   << std::setw(4)  << n.id
                   << std::setw(8)  << n.tier
-                  << std::setw(35) << n.node_key.substr(0, 34)
+                  << std::setw(38) << n.node_key.substr(0, 37)
                   << std::setw(6)  << (n.active ? "yes" : "no")
                   << n.title << "\n";
     }
-    std::cout << "\n" << nodes.size() << " node(s)\n";
+    std::cout << "\n" << nodes.size() << " plan node(s)\n";
     return 0;
 }
 
@@ -292,19 +338,20 @@ static int doDiff(ContextNodeStore& store, const std::vector<std::string>& args)
     for (size_t i = 0; i < args.size(); ++i)
         if (args[i] == "--file" && i + 1 < args.size()) file_arg = args[++i];
 
-    std::string fpath = file_arg.empty() ? "CLAUDE.md" : file_arg;
+    std::string fpath = file_arg.empty() ? "PROGRESS.md" : file_arg;
     if (!fs::exists(fpath)) {
-        std::cerr << "claudemd diff: file not found: " << fpath << "\n";
+        std::cerr << "plan diff: file not found: " << fpath << "\n";
         return 1;
     }
 
     std::string text = readFile(fpath);
     auto live = parseSections(text);
+    std::string fabs = fs::absolute(fpath).string();
 
     bool any = false;
     for (auto& sec : live) {
-        std::string key = slugify(sec.title);
-        if (key.empty()) continue;
+        std::string key = "plan-" + slugify(sec.title);
+        if (slugify(sec.title).empty()) continue;
         auto stored = store.get(key);
         if (!stored) {
             std::cout << "[NEW]     " << key << " — " << sec.title << "\n";
@@ -315,14 +362,14 @@ static int doDiff(ContextNodeStore& store, const std::vector<std::string>& args)
         }
     }
 
-    // Check for removed sections
+    // Check for removed sections (plan nodes from this source file)
     auto all_stored = store.list("", true);
-    std::string fabs = fs::absolute(fpath).string();
     for (auto& n : all_stored) {
+        if (n.node_key.size() < 5 || n.node_key.substr(0, 5) != "plan-") continue;
         if (n.source_file != fabs) continue;
         bool found = false;
         for (auto& sec : live)
-            if (slugify(sec.title) == n.node_key) { found = true; break; }
+            if ("plan-" + slugify(sec.title) == n.node_key) { found = true; break; }
         if (!found) {
             std::cout << "[REMOVED] " << n.node_key << " — " << n.title << "\n";
             any = true;
@@ -336,24 +383,30 @@ static int doDiff(ContextNodeStore& store, const std::vector<std::string>& args)
 static int doSlim(ContextNodeStore& store, const std::vector<std::string>& args) {
     std::string file_arg, out_arg;
     for (size_t i = 0; i < args.size(); ++i) {
-        if (args[i] == "--file" && i + 1 < args.size()) file_arg = args[++i];
+        if      (args[i] == "--file" && i + 1 < args.size()) file_arg = args[++i];
         else if (args[i] == "--out"  && i + 1 < args.size()) out_arg  = args[++i];
     }
 
-    std::string fpath = file_arg.empty() ? "CLAUDE.md" : file_arg;
+    std::string fpath = file_arg.empty() ? "PROGRESS.md" : file_arg;
     std::string text = readFile(fpath);
     auto sections = parseSections(text);
+
+    std::string stem = fs::path(fpath).stem().string();
+
     if (sections.empty() && !fs::exists(fpath)) {
-        // No CLAUDE.md — generate from stored nodes
-        auto nodes = store.list();
+        // No file — generate from stored plan nodes
+        auto all_nodes = store.list();
         std::ostringstream out;
-        out << "# Context Graph (managed by icmg)\n";
-        out << "<!-- icmg-slim: generated by `icmg claudemd import --slim`. Restore: `icmg claudemd restore` -->\n\n";
+        out << "# Plan (managed by icmg)\n";
+        out << "<!-- icmg-slim: generated by `icmg plan import --slim`. Restore: `icmg plan restore --file "
+            << fpath << "` -->\n\n";
         out << "> Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).\n";
-        out << "> Browse: `icmg knowledge list` | `icmg knowledge --html` | restore: `icmg claudemd restore`\n\n";
+        out << "> Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`\n\n";
         out << "## Sections\n\n";
-        for (auto& n : nodes)
+        for (auto& n : all_nodes) {
+            if (n.node_key.size() < 5 || n.node_key.substr(0, 5) != "plan-") continue;
             out << "- `" << n.node_key << "` [" << n.tier << "] " << n.title << "\n";
+        }
         auto slim = out.str();
         if (out_arg.empty()) { std::cout << slim; }
         else {
@@ -365,12 +418,13 @@ static int doSlim(ContextNodeStore& store, const std::vector<std::string>& args)
     }
 
     std::ostringstream out;
-    out << "# Context Graph (managed by icmg)\n";
-    out << "<!-- icmg-slim: generated by `icmg claudemd import --slim`. Restore: `icmg claudemd restore` -->\n\n";
+    out << "# Plan (managed by icmg)\n";
+    out << "<!-- icmg-slim: generated by `icmg plan import --slim`. Restore: `icmg plan restore --file "
+        << fpath << "` -->\n\n";
     out << "> Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).\n";
-    out << "> Browse: `icmg knowledge list` | `icmg knowledge --html` | restore: `icmg claudemd restore`\n\n";
+    out << "> Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`\n\n";
     for (auto& sec : sections) {
-        std::string key = slugify(sec.title);
+        std::string key = "plan-" + slugify(sec.title);
         out << "## " << sec.title << "\n";
         out << "> node: `" << key << "` — `icmg knowledge get " << key << "`\n\n";
     }
@@ -391,8 +445,9 @@ static int doRestore(const std::vector<std::string>& args) {
     for (size_t i = 0; i < args.size(); ++i)
         if (args[i] == "--file" && i + 1 < args.size()) file_arg = args[++i];
 
-    std::string fpath = file_arg.empty() ? "CLAUDE.md" : file_arg;
+    std::string fpath = file_arg.empty() ? "PROGRESS.md" : file_arg;
     fs::path file_parent = fs::path(fpath).parent_path();
+    std::string stem = fs::path(fpath).stem().string();
 
     // Search .icmg/ next to file, then ~/.icmg/
     std::vector<fs::path> search_dirs;
@@ -407,7 +462,8 @@ static int doRestore(const std::vector<std::string>& args) {
         if (!fs::exists(dir)) continue;
         for (auto& e : fs::directory_iterator(dir)) {
             std::string fn = e.path().filename().string();
-            if (fn.find("CLAUDE") != std::string::npos &&
+            // Match backup files for this stem (e.g. "PROGRESS-backup-*.md")
+            if (fn.find(stem) != std::string::npos &&
                 fn.find("backup") != std::string::npos &&
                 e.path().extension() == ".md")
                 backups.push_back(e.path());
@@ -415,7 +471,7 @@ static int doRestore(const std::vector<std::string>& args) {
     }
 
     if (backups.empty()) {
-        std::cerr << "claudemd restore: no backup found (searched";
+        std::cerr << "plan restore: no backup found for '" << stem << "' (searched";
         for (auto& d : search_dirs) std::cerr << " " << d.string();
         std::cerr << ")\n";
         return 1;
@@ -426,7 +482,7 @@ static int doRestore(const std::vector<std::string>& args) {
     std::error_code ec;
     fs::copy_file(latest, fpath, fs::copy_options::overwrite_existing, ec);
     if (ec) {
-        std::cerr << "claudemd restore: " << ec.message() << "\n";
+        std::cerr << "plan restore: " << ec.message() << "\n";
         return 1;
     }
     std::cout << "restored " << fpath << " from " << latest.string() << "\n";
@@ -435,30 +491,35 @@ static int doRestore(const std::vector<std::string>& args) {
 
 // ---- command ----------------------------------------------------------------
 
-class ClaudemdCommand : public BaseCommand {
+class PlanCommand : public BaseCommand {
 public:
-    std::string name()        const override { return "claudemd"; }
-    std::string description() const override { return "CLAUDE.md <-> context_nodes graph bridge"; }
+    std::string name()        const override { return "plan"; }
+    std::string description() const override { return "Plan/phase markdown files <-> context_nodes graph bridge"; }
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg claudemd <subcommand> [options]\n\n"
+            "Usage: icmg plan <subcommand> [options]\n\n"
             "Subcommands:\n"
-            "  import [--file PATH] [--all] [--dry-run] [--slim] [--no-backup]\n"
-            "      Parse CLAUDE.md sections into context_nodes DB.\n"
-            "      Auto-detects ~/.claude/CLAUDE.md + ./CLAUDE.md when omitted.\n"
-            "      --slim      After import, replace CLAUDE.md with pointer stub.\n"
+            "  import [--file PATH] [--dir PATH] [--dry-run] [--slim] [--no-backup]\n"
+            "      Parse plan/phase markdown sections into context_nodes DB.\n"
+            "      Auto-detects PROGRESS.md, PLAN.md, PHASES.md, docs/plans/*.md,\n"
+            "      .icmg/plans/*.md when --file/--dir omitted.\n"
+            "      --slim      After import, replace file with pointer stub.\n"
             "                  Backup saved to .icmg/ before overwrite.\n"
             "      --no-backup Skip backup when used with --slim.\n"
             "  restore [--file PATH]\n"
-            "      Restore CLAUDE.md from latest backup (created by import --slim).\n"
-            "  export      Alias for import.\n"
-            "  list [--tier hot|cold|skill] [--inactive] [--json]\n"
-            "      List stored context nodes.\n"
+            "      Restore plan file from latest backup (default: PROGRESS.md).\n"
+            "  list [--tier hot|cold] [--inactive] [--json]\n"
+            "      List stored plan context_nodes (node_key prefix: plan-).\n"
             "  diff [--file PATH]\n"
             "      Show NEW/CHANGED/REMOVED sections vs stored nodes.\n"
+            "      Default file: PROGRESS.md\n"
             "  slim [--file PATH] [--out PATH]\n"
-            "      Generate pointer-only CLAUDE.md stub (stdout or --out file).\n";
+            "      Generate pointer-only stub (stdout or --out file).\n"
+            "      Default file: PROGRESS.md\n\n"
+            "Hot-tier heuristic: sections whose title contains 'current', 'active',\n"
+            "  'progress', 'status', 'next', 'in progress', 'session log',\n"
+            "  'phase plan', or 'overview' are stored as tier=hot.\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -473,17 +534,17 @@ public:
         const std::string& sub = args[0];
         std::vector<std::string> rest(args.begin() + 1, args.end());
 
-        if (sub == "import" || sub == "export") return doImport(store, rest, cfg.projectDbPath("."));
-        if (sub == "restore")                    return doRestore(rest);
-        if (sub == "list")                       return doList(store, rest);
-        if (sub == "diff")                       return doDiff(store, rest);
-        if (sub == "slim")                       return doSlim(store, rest);
+        if (sub == "import")  return doImport(store, rest, cfg.projectDbPath("."));
+        if (sub == "restore") return doRestore(rest);
+        if (sub == "list")    return doList(store, rest);
+        if (sub == "diff")    return doDiff(store, rest);
+        if (sub == "slim")    return doSlim(store, rest);
 
-        std::cerr << "claudemd: unknown subcommand '" << sub << "'. Try --help.\n";
+        std::cerr << "plan: unknown subcommand '" << sub << "'. Try --help.\n";
         return 1;
     }
 };
 
-ICMG_REGISTER_COMMAND("claudemd", ClaudemdCommand);
+ICMG_REGISTER_COMMAND("plan", PlanCommand);
 
 } // namespace icmg::cli

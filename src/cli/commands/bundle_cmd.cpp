@@ -444,6 +444,8 @@ public:
             "  --thinking-stats      Show 30-day thinking-budget telemetry\n"
             "  --diff                Emit only delta vs previous pack (60-90% smaller on repeats)\n"
             "  --diff-reset          Clear stored last-pack baseline\n"
+            "  --no-diff             Disable auto-diff even when previous pack exists\n"
+            "  --preset NAME         Task-type preset: fix-bug|add-command|release\n"
             "  --ref-ids             Emit [ICMG-MEM-N] anchors; subsequent calls reuse\n"
             "  --prune-audit         Drop memory hits below --prune-min-score (default 1.5)\n"
             "  --prune-min-score N   Threshold for prune-audit (default 1.5)\n"
@@ -498,7 +500,15 @@ public:
             if (!task.empty()) task += " ";
             task += a;
         }
-        if (task.empty()) { std::cerr << "icmg pack: requires <task>\n"; return 1; }
+        // --preset: map task-type shortcut to task string when none provided.
+        std::string preset = flagValue(args, "--preset");
+        if (!preset.empty() && task.empty()) {
+            if      (preset == "fix-bug")      task = "fix bug investigate error debug";
+            else if (preset == "add-command")  task = "add new command feature implementation";
+            else if (preset == "release")      task = "release version changelog public artifact";
+            else                               task = preset;
+        }
+        if (task.empty()) { std::cerr << "icmg pack: requires <task> or --preset\n"; return 1; }
 
         std::string zone = flagValue(args, "--zone");
         // Phase 72: auto-zone detect from task keywords when user didn't pass
@@ -834,9 +844,10 @@ public:
         // Phase 66 T1: differential pack — emit only delta vs last pack
         // saved at .icmg/last-pack.txt. Massive saving when running pack
         // repeatedly during iterative work (typical 60-90% reduction).
-        bool diff_mode = hasFlag(args, "--diff");
-        bool diff_reset = hasFlag(args, "--diff-reset");
         std::filesystem::path last_path = ".icmg/last-pack.txt";
+        bool diff_reset = hasFlag(args, "--diff-reset");
+        bool diff_mode = hasFlag(args, "--diff") ||
+            (!hasFlag(args, "--no-diff") && !diff_reset && std::filesystem::exists(last_path));
         if (diff_reset) {
             std::error_code ec;
             std::filesystem::remove(last_path, ec);
@@ -1104,5 +1115,43 @@ ICMG_REGISTER_COMMAND("pack",         PackCommand);
 ICMG_REGISTER_COMMAND("diff-summary", DiffSummaryCommand);
 ICMG_REGISTER_COMMAND("explain",      ExplainCommand);
 ICMG_REGISTER_COMMAND("session",      SessionCommand);
+
+// =============================================================================
+// context-delta: show changed lines in a file since last git HEAD.
+
+class ContextDeltaCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "context-delta"; }
+    std::string description() const override {
+        return "Show changed lines in file since HEAD (git diff wrapper)";
+    }
+    void usage() const override {
+        std::cout <<
+            "Usage: icmg context-delta <file> [--ref REF]\n\n"
+            "  Show only the changed lines in <file> since last git commit.\n"
+            "  Useful for re-reads: instead of reading full file, see what changed.\n\n"
+            "Options:\n"
+            "  --ref REF   Compare against REF (default: HEAD)\n";
+    }
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty() || args[0] == "--help") { usage(); return 0; }
+        std::string file;
+        for (auto& a : args) {
+            if (!a.empty() && a[0] != '-') { file = a; break; }
+        }
+        if (file.empty()) { std::cerr << "icmg context-delta: requires <file>\n"; return 1; }
+        std::string ref = flagValue(args, "--ref", "HEAD");
+        std::string cmd = "git diff " + ref + " -- \"" + file + "\" 2>/dev/null";
+        auto r = core::safeExecShell(cmd, true, 10000);
+        if (r.exit_code != 0 || r.out.empty()) {
+            std::cout << "No changes in " << file << " since " << ref << ".\n";
+        } else {
+            std::cout << r.out;
+        }
+        return 0;
+    }
+};
+
+ICMG_REGISTER_COMMAND("context-delta", ContextDeltaCommand);
 
 } // namespace icmg::cli

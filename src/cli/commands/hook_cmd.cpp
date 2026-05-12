@@ -30,13 +30,16 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
+#include "../../core/context_node_store.hpp"
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -81,6 +84,61 @@ private:
         std::ostringstream ss;
         ss << std::cin.rdbuf();
         return ss.str();
+    }
+
+    static uint32_t fnv1a32(const std::string& s) {
+        uint32_t h = 2166136261u;
+        size_t n = std::min(s.size(), size_t(128));
+        for (size_t i = 0; i < n; i++) { h ^= (unsigned char)s[i]; h *= 16777619u; }
+        return h;
+    }
+
+    static std::string promptCachePath(uint32_t key) {
+        char buf[9]; std::snprintf(buf, sizeof(buf), "%08x", key);
+        return std::string(core::icmgGlobalDir()) + "/prompt-cache/" + buf + ".txt";
+    }
+
+    static std::string readPromptCache(uint32_t key, int ttl_sec) {
+        std::string path = promptCachePath(key);
+        std::ifstream f(path);
+        if (!f) return "";
+        std::string ts_line;
+        if (!std::getline(f, ts_line)) return "";
+        int64_t ts = 0;
+        try { ts = std::stoll(ts_line); } catch (...) { return ""; }
+        auto now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        if (now - ts > ttl_sec) return "";
+        std::ostringstream ss; ss << f.rdbuf();
+        return ss.str();
+    }
+
+    static void writePromptCache(uint32_t key, const std::string& content) {
+        std::string dir = std::string(core::icmgGlobalDir()) + "/prompt-cache";
+        std::error_code ec; fs::create_directories(dir, ec);
+        std::ofstream f(promptCachePath(key));
+        if (!f) return;
+        auto now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        f << now << "\n" << content;
+    }
+
+    static std::string sessionReadsPath() {
+        return std::string(core::icmgGlobalDir()) + "/session-reads.txt";
+    }
+
+    static bool isFileRead(const std::string& p) {
+        std::ifstream f(sessionReadsPath());
+        if (!f) return false;
+        std::string line;
+        while (std::getline(f, line))
+            if (line == p) return true;
+        return false;
+    }
+
+    static void markFileRead(const std::string& p) {
+        std::ofstream f(sessionReadsPath(), std::ios::app);
+        if (f) f << p << "\n";
     }
 
     // Build the additionalContext payload + emit JSON to stdout.
@@ -295,6 +353,37 @@ private:
                 << "B — pipe big paste through `icmg compress` next time.)\n";
         }
 
+        // 4. Cold context_nodes + skill injection — BM25 min-score 0.15, cached 60s.
+        if (!prompt.empty() && !std::getenv("ICMG_NO_CONTEXT_HOOK")) {
+            uint32_t h = fnv1a32(prompt);
+            std::string cached_ctx = readPromptCache(h, 60);
+            if (!cached_ctx.empty()) {
+                msg << cached_ctx;
+            } else {
+                try {
+                    auto& cfg = core::Config::instance();
+                    core::Db db(cfg.projectDbPath("."));
+                    core::ContextNodeStore cns(db);
+                    auto cold = cns.search(prompt, "cold", 3, 0.15);
+                    auto skill = cns.search(prompt, "skill", 2, 0.15);
+                    std::ostringstream ctx_out;
+                    for (auto& n : cold)
+                        ctx_out << "[ctx:" << n.node_key << "] " << n.title
+                                << "\n" << n.content << "\n\n";
+                    if (!skill.empty()) {
+                        ctx_out << "---\nSuggested skills:";
+                        for (auto& n : skill) ctx_out << " " << n.title << ";";
+                        ctx_out << "\n";
+                    }
+                    std::string result = ctx_out.str();
+                    if (!result.empty()) {
+                        writePromptCache(h, result);
+                        msg << result;
+                    }
+                } catch (...) {}
+            }
+        }
+
         if (msg.tellp() == 0) return 0;
         emitContext(msg.str());
         return 0;
@@ -324,6 +413,22 @@ private:
             }
         } catch (...) { return 0; }
         if (file_path.empty() || !fs::exists(file_path)) return 0;
+
+        // Session dedup — emit reminder if file already read this session.
+        bool already_read = isFileRead(file_path);
+        markFileRead(file_path);
+        if (already_read) {
+            json out;
+            out["hookSpecificOutput"]["hookEventName"] = "PreToolUse";
+            out["hookSpecificOutput"]["permissionDecision"] = "allow";
+            out["hookSpecificOutput"]["updatedInput"]["file_path"] = file_path;
+            out["hookSpecificOutput"]["additionalContext"] =
+                "[dedup] " + file_path + " already read this session. "
+                "Use `icmg context " + file_path + " --lines A-B` for targeted slice, "
+                "or confirm re-read is needed.";
+            std::cout << out.dump() << "\n";
+            return 0;
+        }
 
         // Phase 79: force-icmg-read default ON (toggle off via ICMG_NO_READ_FORCE).
         bool force = std::getenv("ICMG_NO_READ_FORCE") == nullptr;

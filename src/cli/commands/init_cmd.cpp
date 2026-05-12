@@ -218,8 +218,13 @@ exit 0
 // v0.42.0: SessionStart — inject hot context_nodes (always-on sections).
 static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on SessionStart.
-# Injects hot context_nodes (always-relevant CLAUDE.md sections) into session.
+# Pre-warms binary, clears session-reads dedup, injects hot context_nodes.
 command -v icmg >/dev/null 2>&1 || exit 0
+# Pre-warm: load binary + DLLs into OS cache for faster per-turn spawns.
+icmg --version >/dev/null 2>&1 &
+# Clear session dedup file — new session, fresh slate.
+ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
+[ -d "$ICMG_HOME" ] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
 CONTENT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
 [ -z "$CONTENT" ] && exit 0
 jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
@@ -485,13 +490,21 @@ public:
             }
         }
 
-        // v0.42.0 T-03b: auto-import CLAUDE.md(s) into context_nodes on init.
+        // v0.44.0: auto-import + slim CLAUDE.md(s) on init/upgrade.
+        // Skips already-slim files; backup saved to .icmg/ before overwrite.
         {
-            auto r = core::safeExecShell("icmg claudemd import 2>&1", false, 15000);
+            auto r = core::safeExecShell("icmg claudemd import --slim 2>&1", false, 20000);
             if (r.exit_code == 0) {
-                std::cout << "  context-graph: CLAUDE.md sections imported to context_nodes\n";
+                std::cout << "  context-graph: CLAUDE.md imported + slimmed (backup in .icmg/)\n";
             } else {
-                std::cout << "  context-graph: run `icmg claudemd import` to populate context graph\n";
+                std::cout << "  context-graph: run `icmg claudemd import --slim` to slim CLAUDE.md\n";
+            }
+        }
+        // v0.44.0: auto-import plan files (PROGRESS.md, docs/plans/) into context_nodes.
+        {
+            auto r = core::safeExecShell("icmg plan import 2>&1", false, 15000);
+            if (r.exit_code == 0) {
+                std::cout << "  plan-graph:    plan files imported to context_nodes\n";
             }
         }
 
@@ -751,9 +764,7 @@ private:
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0"}},
-                    {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-context-prompt.sh ] && bash .claude/hooks/icmg-context-prompt.sh || exit 0"}}
+                     {"command", "[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0"}}
                 })}
             }
         });

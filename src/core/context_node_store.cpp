@@ -133,6 +133,13 @@ std::vector<ContextNode> ContextNodeStore::search(const std::string& query,
                                                    int limit,
                                                    double min_score) const {
     auto candidates = list(tier_filter, true);
+    // Exclude "frozen" tier from default search — inject only on explicit request.
+    if (tier_filter.empty()) {
+        candidates.erase(
+            std::remove_if(candidates.begin(), candidates.end(),
+                [](const ContextNode& n) { return n.tier == "frozen"; }),
+            candidates.end());
+    }
     if (query.empty()) {
         if (limit > 0 && (int)candidates.size() > limit)
             candidates.resize(limit);
