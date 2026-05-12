@@ -100,4 +100,21 @@ bool RuleDaemonClient::reload() {
     return !raw.empty();
 }
 
+bool RuleDaemonClient::setStrict(bool on) {
+    json req;
+    req["tool"] = "SET_STRICT";
+    req["on"]   = on;
+    auto raw = sendRaw(req.dump());
+    return !raw.empty() && raw.find("OK") != std::string::npos;
+}
+
+bool RuleDaemonClient::getStrict() {
+    auto raw = sendRaw("{\"tool\":\"GET_STRICT\"}");
+    if (raw.empty()) return false;
+    try {
+        auto j = json::parse(raw);
+        return j.value("strict", false);
+    } catch (...) { return false; }
+}
+
 } // namespace icmg::daemon

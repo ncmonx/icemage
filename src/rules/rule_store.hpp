@@ -28,6 +28,23 @@ public:
     // Lookup by id
     std::optional<Rule> get(int64_t id) const;
 
+    // ---- trial / supersession -----------------------------------------------
+
+    // Mark new_id as superseding old_id; set trial_mode=1, lower old priority.
+    // Returns false if either id not found.
+    bool supersede(int64_t new_id, int64_t old_id, int trial_threshold = 5);
+
+    // Increment trial_prompts for all trial rules.
+    // Auto-deletes superseded rule + confirms new rule when threshold reached.
+    // Returns count of auto-confirmed pairs.
+    int  trialTick();
+
+    // Delete new (trial) rule, restore superseded rule's priority.
+    bool revert(int64_t new_rule_id);
+
+    // List all rules in trial mode.
+    std::vector<Rule> trials() const;
+
 private:
     core::Db& db_;
 

@@ -69,6 +69,7 @@ public:
             "  stop    Send SHUTDOWN to daemon, remove PID file.\n"
             "  status  Ping daemon, show PID and pipe path.\n"
             "  reload  Refresh rules from DB without restart.\n"
+            "  strict [on|off|status]  Toggle strict mode (block ALL reads).\n"
             "  run     Run daemon in foreground (used internally by start).\n";
     }
 
@@ -152,6 +153,39 @@ public:
             RuleDaemonClient::reload();
             std::cout << "rule-daemon: rules reloaded\n";
             return 0;
+        }
+
+        if (sub == "strict") {
+            std::string mode = args.size() > 1 ? args[1] : "status";
+            if (mode == "status") {
+                if (!RuleDaemonClient::ping()) {
+                    std::cout << "rule-daemon: not running\n"; return 1;
+                }
+                bool on = RuleDaemonClient::getStrict();
+                std::cout << "strict mode: " << (on ? "ON" : "OFF") << "\n";
+                std::cout << "  ON  — blocks ALL Read/Glob/Grep, no size threshold\n";
+                std::cout << "  OFF — blocks only files >= 500 lines (default)\n";
+                return 0;
+            }
+            if (mode == "on" || mode == "off") {
+                bool on = (mode == "on");
+                if (!RuleDaemonClient::ping()) {
+                    std::cerr << "rule-daemon: not running. Start with: icmg rule-daemon start\n";
+                    return 1;
+                }
+                RuleDaemonClient::setStrict(on);
+                std::cout << "rule-daemon: strict mode " << (on ? "ON" : "OFF") << "\n";
+                if (on) {
+                    std::cout << "  All Read/Glob/Grep calls now blocked.\n";
+                    std::cout << "  Bypass per-call: set env ICMG_STRICT_BYPASS=1\n";
+                    std::cout << "  Turn off: icmg rule-daemon strict off\n";
+                } else {
+                    std::cout << "  Back to threshold mode (warn>=200, block>=500 lines).\n";
+                }
+                return 0;
+            }
+            std::cerr << "rule-daemon strict: unknown mode '" << mode << "'. Use: on|off|status\n";
+            return 1;
         }
 
         std::cerr << "rule-daemon: unknown subcommand '" << sub << "'. Try --help.\n";

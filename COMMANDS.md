@@ -409,7 +409,39 @@ icmg restore <id>
 icmg rule add --type T --name N --content C [--scope-path P] [--priority N] [--active 0|1]
 icmg rule list [--scope-path P]
 icmg rule for <path>             # resolved set at this path
+icmg rule show <id>
 icmg rule remove <id>
+icmg rule enable  <id>
+icmg rule disable <id>
+```
+
+### Trial / supersession lifecycle (v0.43.0)
+
+When adding a stricter rule that replaces an older one, use `supersede` to run a trial period.
+After N prompts without complaint the old rule is auto-deleted.
+
+```
+icmg rule supersede <new_id> <old_id> [--trial N]
+    # new_id supersedes old_id; trial = N quiet prompts before auto-confirm (default 5)
+
+icmg rule status
+    # show all rules in trial with progress bar: [####......] 4/10 prompts
+
+icmg rule revert <new_id>
+    # cancel trial — delete new rule, restore old rule's priority
+
+icmg rule trial-tick
+    # increment trial counters; called automatically by UserPromptSubmit hook
+```
+
+**Flow example:**
+
+```
+icmg rule add --type enforcement --name "strict-no-read" --content '{"warn":0,"block":0}' --priority 100
+# → id = 42  (stricter rule)
+icmg rule supersede 42 37 --trial 10   # old rule was id 37
+icmg rule status                        # watch progress
+# after 10 prompts without user reverting → old rule 37 auto-deleted, rule 42 confirmed
 ```
 
 ---
@@ -954,11 +986,22 @@ icmg rule-daemon start   [--db PATH]
 icmg rule-daemon stop
 icmg rule-daemon status
 icmg rule-daemon reload
+icmg rule-daemon strict [on|off|status]   # v0.43.0: toggle strict mode
 icmg rule-daemon run     # foreground (used internally by start)
 ```
 
 Default thresholds: warn ≥ 200 lines, block ≥ 500 lines. Override via `rules` table (`rule_type='enforcement'`).
 Fails open — if daemon is unreachable, every tool call is ALLOW.
+
+### Strict mode (v0.43.0)
+
+```
+icmg rule-daemon strict on      # block ALL Read/Glob/Grep regardless of size
+icmg rule-daemon strict off     # back to threshold mode (warn≥200, block≥500)
+icmg rule-daemon strict status  # show current mode
+```
+
+Strict mode forces `permissionDecision: deny` for every file read. Bypass per-call with env `ICMG_STRICT_BYPASS=1`.
 
 ---
 

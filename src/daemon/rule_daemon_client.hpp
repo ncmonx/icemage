@@ -25,6 +25,8 @@ public:
 
     // Send RELOAD to daemon (refresh rules from DB).
     static bool reload();
+    static bool setStrict(bool on);
+    static bool getStrict();
 
 private:
     static std::string sendRaw(const std::string& json_msg);

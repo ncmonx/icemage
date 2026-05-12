@@ -493,6 +493,34 @@ CREATE INDEX IF NOT EXISTS idx_memory_nodes_git_sha ON memory_nodes(git_sha);
 -- Add raw_tokens so savings_cmd can compute pack content savings.
 ALTER TABLE token_receipts ADD COLUMN raw_tokens INTEGER NOT NULL DEFAULT 0;
 )SQL"},
+        {25, R"SQL(
+-- 0025_context_nodes (v0.42.0)
+-- Structured CLAUDE.md sections + skill index for targeted BM25 injection.
+CREATE TABLE IF NOT EXISTS context_nodes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_key    TEXT    NOT NULL UNIQUE,
+    title       TEXT    NOT NULL,
+    content     TEXT    NOT NULL,
+    source_file TEXT    NOT NULL DEFAULT '',
+    tier        TEXT    NOT NULL DEFAULT 'cold',
+    tags        TEXT    NOT NULL DEFAULT '[]',
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_context_nodes_tier   ON context_nodes(tier);
+CREATE INDEX IF NOT EXISTS idx_context_nodes_active ON context_nodes(active);
+CREATE INDEX IF NOT EXISTS idx_context_nodes_source ON context_nodes(source_file);
+)SQL"},
+        {26, R"SQL(
+-- 0026_rule_trial (v0.42.1)
+-- Trial/supersession lifecycle for rules.
+ALTER TABLE rules ADD COLUMN supersedes_id   INTEGER;
+ALTER TABLE rules ADD COLUMN trial_mode      INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE rules ADD COLUMN trial_prompts   INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE rules ADD COLUMN trial_threshold INTEGER NOT NULL DEFAULT 5;
+CREATE INDEX IF NOT EXISTS idx_rules_trial ON rules(trial_mode) WHERE trial_mode=1;
+)SQL"},
     };
 }
 

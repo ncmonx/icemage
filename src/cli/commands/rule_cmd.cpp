@@ -38,7 +38,12 @@ public:
             "  show <id>      Show rule by id\n"
             "  remove <id>    Hard-delete rule\n"
             "  enable <id>    Activate rule\n"
-            "  disable <id>   Deactivate rule\n";
+            "  disable <id>   Deactivate rule\n"
+            "  supersede <new_id> <old_id> [--trial N]\n"
+            "      Mark new_id as superseding old_id; runs N-prompt trial.\n"
+            "  status         List rules in trial mode with progress.\n"
+            "  revert <id>    Delete trial rule, restore superseded rule.\n"
+            "  trial-tick     Increment trial counters (called by UserPromptSubmit hook).\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -58,8 +63,12 @@ public:
         if (sub == "apply")   return doApply(resolver, args);
         if (sub == "show")    return doShow(store, args);
         if (sub == "remove")  return doRemove(store, args);
-        if (sub == "enable")  return doSetActive(store, args, true);
-        if (sub == "disable") return doSetActive(store, args, false);
+        if (sub == "enable")     return doSetActive(store, args, true);
+        if (sub == "disable")    return doSetActive(store, args, false);
+        if (sub == "supersede")  return doSupersede(store, args);
+        if (sub == "revert")     return doRevert(store, args);
+        if (sub == "status")     return doTrialStatus(store, args);
+        if (sub == "trial-tick") return doTrialTick(store, args);
 
         std::cerr << "icmg rule: unknown subcommand '" << sub << "'\n";
         usage();
@@ -282,6 +291,95 @@ private:
     }
 
     // ---- helpers -----------------------------------------------------------
+
+    // ---- supersede ---------------------------------------------------------
+    int doSupersede(rules::RuleStore& store, const std::vector<std::string>& args) {
+        int threshold = 5;
+        std::vector<std::string> pos;
+        for (size_t i = 1; i < args.size(); ++i) {
+            if (args[i] == "--trial" && i + 1 < args.size()) {
+                try { threshold = std::stoi(args[++i]); } catch (...) {}
+            } else {
+                pos.push_back(args[i]);
+            }
+        }
+        if (pos.size() < 2) {
+            std::cerr << "icmg rule supersede: requires <new_id> <old_id> [--trial N]\n";
+            return 1;
+        }
+        int64_t new_id = 0, old_id = 0;
+        try { new_id = std::stoll(pos[0]); old_id = std::stoll(pos[1]); } catch (...) {
+            std::cerr << "invalid id\n"; return 1;
+        }
+        if (!store.supersede(new_id, old_id, threshold)) {
+            std::cerr << "supersede failed: rule not found\n"; return 1;
+        }
+        std::cout << "Rule " << new_id << " supersedes " << old_id
+                  << " (trial: " << threshold << " prompts)\n";
+        std::cout << "Use 'icmg rule status' to track progress.\n";
+        std::cout << "Use 'icmg rule revert " << new_id << "' to undo.\n";
+        return 0;
+    }
+
+    // ---- revert ------------------------------------------------------------
+    int doRevert(rules::RuleStore& store, const std::vector<std::string>& args) {
+        if (args.size() < 2) { std::cerr << "icmg rule revert: requires <id>\n"; return 1; }
+        int64_t id = 0;
+        try { id = std::stoll(args[1]); } catch (...) {
+            std::cerr << "invalid id\n"; return 1;
+        }
+        if (!store.revert(id)) {
+            std::cerr << "revert failed: rule " << id << " not found or not in trial\n";
+            return 1;
+        }
+        std::cout << "Reverted rule " << id << ". Superseded rule restored.\n";
+        return 0;
+    }
+
+    // ---- status ------------------------------------------------------------
+    int doTrialStatus(rules::RuleStore& store, const std::vector<std::string>& args) {
+        (void)args;
+        auto trials = store.trials();
+        if (trials.empty()) {
+            std::cout << "No rules in trial. All rules confirmed.\n";
+            return 0;
+        }
+        std::cout << std::left
+                  << std::setw(4) << "ID"
+                  << std::setw(6) << "SUP"
+                  << std::setw(20) << "NAME"
+                  << "PROGRESS\n"
+                  << std::string(60, '-') << "\n";
+        for (auto& r : trials) {
+            int pct = r.trial_threshold > 0
+                      ? (r.trial_prompts * 100) / r.trial_threshold : 0;
+            std::string bar(pct / 10, '#');
+            bar += std::string(10 - (int)bar.size(), '.');
+            std::cout << std::setw(4) << r.id
+                      << std::setw(6) << r.supersedes_id
+                      << std::setw(20) << r.name.substr(0, 19)
+                      << "[" << bar << "] "
+                      << r.trial_prompts << "/" << r.trial_threshold
+                      << " prompts\n";
+        }
+        std::cout << "\n" << trials.size() << " rule(s) in trial.\n";
+        std::cout << "Auto-confirm = delete superseded rule + mark new as confirmed.\n";
+        std::cout << "To cancel: icmg rule revert <id>\n";
+        return 0;
+    }
+
+    // ---- trial-tick --------------------------------------------------------
+    int doTrialTick(rules::RuleStore& store, const std::vector<std::string>& args) {
+        (void)args;
+        int confirmed = store.trialTick();
+        if (confirmed > 0) {
+            std::cout << "trial-tick: " << confirmed << " rule(s) auto-confirmed. "
+                      << "Superseded rules deleted.\n";
+        }
+        // Silent on 0 confirmed (called by hook every prompt)
+        return 0;
+    }
+
     static std::string escJ(const std::string& s) {
         std::string out;
         for (char c : s) {

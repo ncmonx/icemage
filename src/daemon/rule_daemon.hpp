@@ -30,6 +30,7 @@ struct RuleEntry {
     std::string tool;           // "Read" | "Glob" | "Grep" | "*"
     int         threshold_warn  = 200;   // lines
     int         threshold_block = 500;   // lines
+    bool        strict_mode     = false; // block ALL reads regardless of size
     std::string suggest_tmpl;   // e.g. "icmg context {file}"
     bool        active          = true;
 };
@@ -63,7 +64,7 @@ public:
 
 private:
     std::string          db_path_;
-    std::vector<RuleEntry> rules_;
+    mutable std::vector<RuleEntry> rules_;
 
     void loadRules();
 

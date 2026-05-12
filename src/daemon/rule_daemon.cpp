@@ -84,6 +84,7 @@ void RuleDaemon::loadRules() {
                     e.threshold_warn  = j.value("threshold_warn",  200);
                     e.threshold_block = j.value("threshold_block", 500);
                     e.suggest_tmpl    = j.value("suggest", std::string("icmg context {file}"));
+                    e.strict_mode     = j.value("strict", false);
                     e.active          = (r.size() > 2 && r[2] == "1");
                     // Override matching built-in rule
                     for (auto& existing : rules_) {
@@ -140,6 +141,14 @@ RuleDaemon::CheckResult RuleDaemon::checkFile(const std::string& tool,
     }
     if (!rule) return r;
 
+    // Strict mode: block ALL reads regardless of file size
+    if (rule->strict_mode && !file.empty()) {
+        r.action  = "BLOCK";
+        r.suggest = resolveSuggest(rule->suggest_tmpl, file);
+        r.message = "strict mode: use " + r.suggest + " (bypass: ICMG_STRICT_BYPASS=1)";
+        return r;
+    }
+
     int lines = hint_lines;
     if (lines == 0 && !file.empty()) {
         namespace fs = std::filesystem;
@@ -173,6 +182,15 @@ std::string RuleDaemon::evaluateJson(const std::string& request_json) const {
         if (tool == "SHUTDOWN") return "{\"action\":\"SHUTDOWN\"}";
         if (tool == "RELOAD")   return "{\"action\":\"RELOADED\"}";
         if (tool == "PING")     return "{\"action\":\"PONG\"}";
+        if (tool == "SET_STRICT") {
+            bool on = req.value("on", false);
+            for (auto& e : rules_) { e.strict_mode = on; }
+            return std::string("{\"action\":\"OK\",\"strict\":") + (on ? "true" : "false") + "}";
+        }
+        if (tool == "GET_STRICT") {
+            bool on = !rules_.empty() && rules_[0].strict_mode;
+            return std::string("{\"action\":\"OK\",\"strict\":") + (on ? "true" : "false") + "}";
+        }
 
         auto r = checkFile(tool, file, hint_lines);
         json res;
