@@ -982,3 +982,17 @@ Rejected:
 Open:
 - CII-Best-Practices: fill questionnaire at bestpractices.dev/projects/12818 (currently 18%).
 - Code-Review=0: needs 2nd reviewer; unsolvable solo without bot.
+
+## 2026-05-12 20:00 [saved]
+Goal: Phase 82 T1-T3: Go/Rust/Java tree-sitter symbol extractors + graph lang commands.
+Decisions:
+- Java grammar (v14 ABI) needs its own parser.h from tree-sitter-java repo — not the v15 one from tree-sitter-c.
+- Registry method is `reg.reg(key, factory)` not `registerFactory()` — check existing extractors before writing new ones.
+- Go/Rust/Java extractor keys match scanner.cpp ext_to_lang map: "go"/"rust"/"java" — wired automatically.
+- `graph lang status` static table; `graph lang list` queries langStats() DB view; both registered as subcommands.
+Rejected:
+- Merging feat/phase-82 into local main — main is public docs-only; source lives on feature branches in private remote.
+- Using v15 parser.h for Java grammar — causes TSLanguage struct field mismatch at compile time.
+Open:
+- Phase 82 T8 tests (11 fixtures) not yet written.
+- Java grammar still on v14 ABI; monitor tree-sitter-java for v15 update.
