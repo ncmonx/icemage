@@ -220,8 +220,6 @@ static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on SessionStart.
 # Pre-warms binary, clears session-reads dedup, injects hot context_nodes.
 command -v icmg >/dev/null 2>&1 || exit 0
-# Pre-warm: load binary + DLLs into OS cache for faster per-turn spawns.
-icmg --version >/dev/null 2>&1 &
 # Clear session dedup file — new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [ -d "$ICMG_HOME" ] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
