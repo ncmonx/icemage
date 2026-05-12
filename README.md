@@ -20,7 +20,7 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## What's new in v0.42.0
+## What's new in v0.42.1
 
 | Feature | What changed |
 |---|---|
@@ -29,13 +29,15 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 | **Rule enforcement daemon** | Persistent process evaluates every Read/Glob/Grep at 2-5 ms; files over 500 lines blocked with focused alternative |
 | **Knowledge browser** | `icmg knowledge` CRUD CLI + HTML dashboard + REST API at `icmg serve /knowledge` |
 | **Auto-import on init** | `icmg init` now imports CLAUDE.md and indexes skills automatically |
+| **Unified dashboard** | `icmg serve /knowledge` now shows 3 tabs: Knowledge, Skills, and Rules — with KPI strip, CRUD, and enable/disable toggles |
+| **No CMD popup** | Rule enforcement daemon starts silently on Windows — no more console window flash |
 
 ```bash
 icmg claudemd import        # import CLAUDE.md sections into context graph (auto on init)
 icmg skill index            # index skill .md files for BM25 matching
 icmg rule-daemon start      # start enforcement daemon (auto on init)
 icmg knowledge list         # browse context nodes
-icmg knowledge --html       # open dashboard in browser
+icmg knowledge --html       # open unified dashboard (Knowledge / Skills / Rules tabs)
 ```
 
 ## The savings, at a glance
