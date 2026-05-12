@@ -6,6 +6,7 @@
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
+[![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
 [![tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-88%2B-blue)](#)
