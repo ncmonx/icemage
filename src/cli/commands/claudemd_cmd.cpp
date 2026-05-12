@@ -23,6 +23,7 @@
 #include <sstream>
 #include <filesystem>
 #include <algorithm>
+#include <set>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
@@ -138,16 +139,30 @@ static int doImport(ContextNodeStore& store, const std::vector<std::string>& arg
     if (!file_arg.empty()) {
         files.push_back(file_arg);
     } else {
-        // Auto-detect global + project CLAUDE.md
+        std::set<std::string> seen;
+        auto addFile = [&](const fs::path& p) {
+            std::error_code ec2;
+            auto abs = fs::weakly_canonical(p, ec2).string();
+            if (!ec2 && fs::exists(p) && seen.insert(abs).second)
+                files.push_back(abs);
+        };
+        // Global ~/.claude/CLAUDE.md
         std::string home = std::getenv("USERPROFILE") ? std::getenv("USERPROFILE") :
                           (std::getenv("HOME") ? std::getenv("HOME") : "");
-        if (!home.empty()) {
-            std::string g = home + "/.claude/CLAUDE.md";
-            if (fs::exists(g)) files.push_back(g);
+        if (!home.empty()) addFile(fs::path(home) / ".claude" / "CLAUDE.md");
+        // Recursive scan of cwd for all CLAUDE.md files
+        static const std::set<std::string> SKIP = {
+            ".git","build","dist","node_modules","third_party",
+            ".icmg","vendor","__pycache__","target","obj","out",".cache"
+        };
+        std::error_code ec;
+        fs::recursive_directory_iterator it(fs::current_path(), fs::directory_options::skip_permission_denied, ec);
+        for (; !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            if (it->is_directory(ec) && SKIP.count(it->path().filename().string()))
+                it.disable_recursion_pending();
+            else if (!ec && it->is_regular_file(ec) && it->path().filename().string() == "CLAUDE.md")
+                addFile(it->path());
         }
-        if (fs::exists("CLAUDE.md")) files.push_back(fs::absolute("CLAUDE.md").string());
-        if (fs::exists(".claude/CLAUDE.md"))
-            files.push_back(fs::absolute(".claude/CLAUDE.md").string());
     }
 
     if (files.empty()) {
