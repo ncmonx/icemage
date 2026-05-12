@@ -20,6 +20,21 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## What's new in v0.43.0
+
+| Feature | What changed |
+|---|---|
+| **Rule trial/supersession** | Stricter rule can supersede an older one in trial mode; after N quiet prompts the old rule is auto-deleted (`icmg rule supersede/status/revert`) |
+| **Strict enforcement mode** | `icmg rule-daemon strict on` blocks ALL Read/Glob/Grep regardless of file size — no more size-threshold bypass |
+| **Trial auto-confirm** | `icmg rule trial-tick` (wired to UserPromptSubmit hook) counts prompts and auto-confirms rules silently |
+
+```bash
+icmg rule supersede 42 37 --trial 10   # new rule 42 supersedes old rule 37; 10-prompt trial
+icmg rule status                        # progress bar: [####......] 4/10 prompts
+icmg rule-daemon strict on              # block ALL reads, not just large files
+icmg rule-daemon strict off             # back to threshold mode
+```
+
 ## What's new in v0.42.1
 
 | Feature | What changed |
