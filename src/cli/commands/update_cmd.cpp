@@ -34,7 +34,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.43.0";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.43.1";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -248,6 +248,94 @@ private:
         return {};
     }
 
+    // Extract icmg binary from downloaded asset (zip on Win, tar.gz on POSIX).
+    // Copies extracted binary to dest_exe; copies DLLs/.so into dll_dir.
+    // Returns true on success.
+    static bool extractFromAsset(const fs::path& asset, const fs::path& dest_exe,
+                                  const fs::path& dll_dir) {
+#ifdef _WIN32
+        // Use tar.exe (ships with Windows 10+ / Server 2019+).
+        fs::path tmp_dir = fs::temp_directory_path()
+                         / ("icmg_ex_" + std::to_string(GetCurrentProcessId()));
+        fs::create_directories(tmp_dir);
+
+        std::string a = asset.string(), d = tmp_dir.string();
+        for (auto& c : a) if (c == '\\') c = '/';
+        for (auto& c : d) if (c == '\\') c = '/';
+        std::string cmd = "tar -xf \"" + a + "\" -C \"" + d + "\"";
+        auto res = core::safeExecShell(cmd, false, 30000);
+        if (res.exit_code != 0) {
+            std::cerr << "icmg update: extraction failed\n  " << res.err << "\n";
+            fs::remove_all(tmp_dir);
+            return false;
+        }
+
+        fs::path extracted_exe = tmp_dir / "icmg.exe";
+        if (!fs::exists(extracted_exe)) {
+            std::cerr << "icmg update: icmg.exe not found in archive\n";
+            fs::remove_all(tmp_dir);
+            return false;
+        }
+
+        std::error_code ec;
+        fs::rename(extracted_exe, dest_exe, ec);
+        if (ec) {
+            fs::copy_file(extracted_exe, dest_exe,
+                          fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                std::cerr << "icmg update: cannot stage binary: " << ec.message() << "\n";
+                fs::remove_all(tmp_dir);
+                return false;
+            }
+        }
+
+        // Update DLLs alongside binary (non-fatal if locked by running process).
+        for (auto& entry : fs::directory_iterator(tmp_dir)) {
+            if (entry.path().extension() == ".dll") {
+                fs::path dst = dll_dir / entry.path().filename();
+                fs::copy_file(entry.path(), dst,
+                              fs::copy_options::overwrite_existing, ec);
+                if (ec)
+                    std::cerr << "icmg update: skipped DLL (locked?): "
+                              << entry.path().filename().string() << "\n";
+            }
+        }
+        fs::remove_all(tmp_dir);
+        return true;
+#else
+        // POSIX: .tar.gz
+        fs::path tmp_dir = fs::temp_directory_path()
+                         / ("icmg_ex_" + std::to_string(getpid()));
+        fs::create_directories(tmp_dir);
+        std::string cmd = "tar -xzf \"" + asset.string()
+                        + "\" -C \"" + tmp_dir.string() + "\"";
+        auto res = core::safeExecShell(cmd, false, 30000);
+        if (res.exit_code != 0) {
+            fs::remove_all(tmp_dir);
+            return false;
+        }
+        // Binary may be at root or inside a subdirectory.
+        fs::path extracted_exe;
+        for (auto& e : fs::recursive_directory_iterator(tmp_dir)) {
+            auto fn = e.path().filename().string();
+            if (fn == "icmg" || fn == "icmg.exe") { extracted_exe = e.path(); break; }
+        }
+        if (extracted_exe.empty()) { fs::remove_all(tmp_dir); return false; }
+        std::error_code ec;
+        fs::rename(extracted_exe, dest_exe, ec);
+        if (ec) {
+            fs::copy_file(extracted_exe, dest_exe,
+                          fs::copy_options::overwrite_existing, ec);
+            if (ec) { fs::remove_all(tmp_dir); return false; }
+        }
+        fs::permissions(dest_exe,
+            fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+            fs::perm_options::add, ec);
+        fs::remove_all(tmp_dir);
+        return true;
+#endif
+    }
+
     int doApply(const Release& r, bool skip_verify, bool no_auto_rollback = false) {
         if (r.asset_url.empty()) {
             std::cerr << "icmg update: no platform asset on release " << r.tag << "\n";
@@ -255,7 +343,12 @@ private:
         }
         fs::path self = selfPath();
         fs::path bak  = self; bak += ".bak";
-        fs::path tmp  = self; tmp += ".new";
+        fs::path tmp  = self; tmp += ".new";  // staged binary (extracted exe)
+#ifdef _WIN32
+        fs::path zip  = self; zip += ".download.zip";
+#else
+        fs::path zip  = self; zip += ".download.tar.gz";
+#endif
 
         // Test writability — system installs (read-only paths) refuse upgrade.
         std::ofstream test(tmp);
@@ -267,23 +360,32 @@ private:
         test.close();
         fs::remove(tmp);
 
-        std::cout << "Downloading " << r.asset_url << " -> " << tmp.string() << "\n";
-        std::string sh_tmp = tmp.string();
-        for (auto& c : sh_tmp) if (c == '\\') c = '/';  // bash-c safe
-        std::string cmd = "curl -sL --max-time 120 -o \"" + sh_tmp + "\" \""
+        // Download the release asset (zip/tar.gz) to a separate path.
+        std::cout << "Downloading " << r.asset_url << " ...\n";
+        std::string sh_zip = zip.string();
+        for (auto& c : sh_zip) if (c == '\\') c = '/';
+        std::string cmd = "curl -sL --max-time 120 -o \"" + sh_zip + "\" \""
                         + r.asset_url + "\"";
         auto res = core::safeExecShell(cmd, false, 130000);
-        if (res.exit_code != 0 || !fs::exists(tmp) || fs::file_size(tmp) < 1024) {
+        if (res.exit_code != 0 || !fs::exists(zip) || fs::file_size(zip) < 1024) {
             std::cerr << "icmg update: download failed (exit=" << res.exit_code << ")\n";
-            fs::remove(tmp);
+            fs::remove(zip);
             return 5;
         }
 
-        // Phase 50 T1: integrity verify before swap.
-        if (!verifySha256(tmp, r.asset_url, skip_verify)) {
-            fs::remove(tmp);
+        // Phase 50 T1: integrity verify on the archive.
+        if (!verifySha256(zip, r.asset_url, skip_verify)) {
+            fs::remove(zip);
             return 8;
         }
+
+        // Extract binary (and DLLs on Windows) from archive.
+        std::cout << "Extracting...\n";
+        if (!extractFromAsset(zip, tmp, self.parent_path())) {
+            fs::remove(zip);
+            return 9;
+        }
+        fs::remove(zip);
 
         std::error_code ec;
         // Backup current.
