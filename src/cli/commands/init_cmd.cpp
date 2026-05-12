@@ -527,6 +527,13 @@ public:
                 std::cout << "  plan-graph:    plan files imported to context_nodes\n";
             }
         }
+        // v0.45.1: auto-index skill files so Claude discovers icmg features via BM25.
+        {
+            auto r = core::safeExecShell("icmg skill index 2>&1", false, 30000);
+            if (r.exit_code == 0) {
+                std::cout << "  skill-index:   skill files indexed for feature discovery\n";
+            }
+        }
 
         // Phase 74 T6: auto-enable self-protection on init (opt-out via --no-backup / --no-maintain).
         // First snapshot fires synchronously so user has immediate recovery point.

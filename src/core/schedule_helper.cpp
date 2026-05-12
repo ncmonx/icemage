@@ -78,21 +78,44 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
 
     std::string sched = scheduleSpecToSchtasksFlags(spec.minutes);
 
-    // Generate a .vbs launcher so Task Scheduler runs the .cmd with a hidden
-    // window. WshShell.Run windowStyle=0 (SW_HIDE) suppresses the cmd.exe
-    // console flash that occurs when schtasks fires a .cmd action directly.
-    std::string vbs_path = spec.wrapper_path;
+    // Generate a .ps1 + .vbs launcher pair so Task Scheduler fires icmg
+    // with no visible console window.
+    //
+    // Chain: wscript.exe (SW_HIDE) → powershell.exe (-WindowStyle Hidden)
+    //        → Start-Process cmd.exe -NoNewWindow → icmg.exe (inherits
+    //          hidden console from cmd; CREATE_NO_WINDOW prevents popup).
+    //
+    // SW_HIDE alone on cmd.exe is insufficient on Windows 11: the OS still
+    // allocates a visible console briefly. Routing via PowerShell
+    // Start-Process -NoNewWindow suppresses the allocation entirely.
+    std::string base_path = spec.wrapper_path;
     {
-        size_t dot = vbs_path.rfind('.');
-        if (dot != std::string::npos) vbs_path = vbs_path.substr(0, dot);
-        vbs_path += ".vbs";
+        size_t dot = base_path.rfind('.');
+        if (dot != std::string::npos) base_path = base_path.substr(0, dot);
+    }
+    std::string ps1_path = base_path + ".ps1";
+    std::string vbs_path = base_path + ".vbs";
+    {
+        // Escape single quotes in path for PowerShell string literal.
+        std::string cmd_escaped = spec.wrapper_path;
+        for (size_t i = 0; (i = cmd_escaped.find('\'', i)) != std::string::npos; i += 2)
+            cmd_escaped.replace(i, 1, "''");
+        std::ofstream pf(ps1_path, std::ios::binary);
+        if (pf) {
+            pf << "Start-Process -FilePath 'cmd.exe'"
+               << " -ArgumentList '/c','" << cmd_escaped << "'"
+               << " -NoNewWindow -Wait\r\n";
+        }
     }
     {
         std::ofstream vf(vbs_path, std::ios::binary);
         if (vf) {
-            vf << "CreateObject(\"WScript.Shell\").Run Chr(34) & \""
-               << spec.wrapper_path
-               << "\" & Chr(34), 0, True\r\n";
+            // Chr(34) = double-quote; avoids VBS escape complexity with paths.
+            vf << "CreateObject(\"WScript.Shell\").Run"
+               << " \"powershell.exe -NoProfile -NonInteractive"
+               << " -ExecutionPolicy Bypass -WindowStyle Hidden -File \""
+               << " & Chr(34) & \"" << ps1_path << "\" & Chr(34),"
+               << " 0, True\r\n";
         }
     }
 
