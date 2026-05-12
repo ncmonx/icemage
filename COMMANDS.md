@@ -897,6 +897,103 @@ Called automatically by `icmg update --apply` post-install. AI agents reading th
 
 ---
 
+## claudemd — CLAUDE.md context graph integration (v0.42.0)
+
+Import CLAUDE.md sections into the context-node graph for BM25-powered on-demand injection.
+
+```
+icmg claudemd import [--file PATH] [--dry-run]
+icmg claudemd diff  [--file PATH]
+icmg claudemd slim  [--file PATH]
+```
+
+| Subcommand | Description |
+|---|---|
+| `import` | Parse sections, upsert into context_nodes; auto-detects global `~/.claude/CLAUDE.md` + project `./CLAUDE.md` |
+| `diff` | Show sections where stored content differs from live file |
+| `slim` | Print a pointer-only stub that replaces the full CLAUDE.md in session start |
+
+Auto-import runs during `icmg init` — no manual step needed on first setup.
+
+**Tier auto-detection:** sections containing "rule", "always", "never", "critical", "enforce" → `hot`; others → `cold`.
+
+---
+
+## context-node — BM25 context matching (v0.42.0)
+
+Search context_nodes by query; used by the UserPromptSubmit hook for automatic context injection.
+
+```
+icmg context-node match <query> [--tier hot|cold|skill|all] [--top N] [--min-score F] [--fmt text|json|additionalContext]
+icmg context-node get   <node_key>
+```
+
+`--fmt additionalContext` emits Claude Code hook JSON (`hookSpecificOutput.additionalContext`) — used by the session hook directly.
+
+---
+
+## rule-eval — PreToolUse enforcement evaluation (v0.42.0)
+
+Evaluate a single tool call against size rules. Used by the `icmg-rule-enforce.sh` PreToolUse hook.
+
+```
+icmg rule-eval <tool> <file> [--lines N]
+icmg rule-eval ping
+```
+
+Exit codes: `0` = ALLOW/WARN (additionalContext JSON emitted on warn), `2` = BLOCK (permissionDecision deny).
+
+---
+
+## rule-daemon — Rule enforcement daemon lifecycle (v0.42.0)
+
+Persistent daemon process that evaluates PreToolUse events at ~2–5 ms IPC vs 50 ms subprocess per call.
+
+```
+icmg rule-daemon start   [--db PATH]
+icmg rule-daemon stop
+icmg rule-daemon status
+icmg rule-daemon reload
+icmg rule-daemon run     # foreground (used internally by start)
+```
+
+Default thresholds: warn ≥ 200 lines, block ≥ 500 lines. Override via `rules` table (`rule_type='enforcement'`).
+Fails open — if daemon is unreachable, every tool call is ALLOW.
+
+---
+
+## skill — Skill index management (v0.42.0)
+
+Index skill `.md` files from `~/.claude/` and `.claude/` into context_nodes for BM25 suggestion.
+
+```
+icmg skill index  [--dir PATH] [--force]
+icmg skill list   [--json]
+icmg skill search <query>
+```
+
+The UserPromptSubmit hook calls `icmg skill search` and injects top matches as `additionalContext`, surfacing relevant skills automatically.
+
+---
+
+## knowledge — Knowledge browser + CRUD (v0.42.0)
+
+Browse and manage context_nodes (rules, context sections, skills) from the CLI or HTML dashboard.
+
+```
+icmg knowledge list   [--type context|skill|hot|cold|all] [--inactive] [--json]
+icmg knowledge get    <node_key>
+icmg knowledge add    --title TITLE --content TEXT [--tier hot|cold|skill] [--tags JSON] [--source FILE]
+icmg knowledge edit   <node_key> [--title T] [--content C] [--tier T] [--tags J] [--active yes|no]
+icmg knowledge delete <node_key> [--confirm]
+icmg knowledge --html
+```
+
+`--html` opens the interactive dashboard at `http://127.0.0.1:8080/knowledge` (requires `icmg serve`).
+REST API: `GET/POST /api/knowledge`, `GET/PUT/DELETE /api/knowledge/<key>`.
+
+---
+
 ## See Also
 
 - `README.md` — overview + token-efficiency rationale

@@ -199,6 +199,49 @@ LAST=$(icmg wflog recent --limit 1 2>/dev/null | head -1)
 jq -n '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:"WFLOG: session had changes — log decisions: icmg wflog save --goal \"...\" --decisions \"...\""}}' 2>/dev/null || true
 )BASH";
 
+// v0.42.0: PreToolUse rule enforcement — call rule-daemon via `icmg rule-eval`.
+// Blocks Read/Glob/Grep on files >500 lines; warns at >200 lines.
+static const char* RULE_ENFORCE_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. PreToolUse:Read|Glob|Grep enforcement.
+[ "${ICMG_NO_RULE_ENFORCE:-0}" = "1" ] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+INPUT=$(cat)
+TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.pattern // empty' 2>/dev/null)
+[ -z "$TOOL" ] && exit 0
+icmg rule-eval --tool "$TOOL" --file "$FILE" 2>/dev/null
+EXIT=$?
+[ $EXIT -eq 2 ] && exit 2  # BLOCK → hook deny
+exit 0
+)BASH";
+
+// v0.42.0: SessionStart — inject hot context_nodes (always-on sections).
+static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. Fires on SessionStart.
+# Injects hot context_nodes (always-relevant CLAUDE.md sections) into session.
+command -v icmg >/dev/null 2>&1 || exit 0
+CONTENT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
+[ -z "$CONTENT" ] && exit 0
+jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+)BASH";
+
+// v0.42.0: UserPromptSubmit — BM25-match cold context_nodes + skill index per prompt.
+static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. Fires on UserPromptSubmit.
+# Injects relevant cold context_nodes + skill suggestions via BM25 match.
+[ "${ICMG_NO_CONTEXT_HOOK:-0}" = "1" ] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+INPUT=$(cat)
+PROMPT=$(echo "$INPUT" | jq -r '.message // .prompt // empty' 2>/dev/null)
+[ -z "$PROMPT" ] && exit 0
+COLD=$(icmg context-node match "$PROMPT" --tier cold  --top 3 --fmt plain 2>/dev/null)
+SKILL=$(icmg context-node match "$PROMPT" --tier skill --top 2 --fmt plain 2>/dev/null)
+COMBINED="$COLD"
+[ -n "$SKILL" ] && COMBINED=$(printf '%s\n\n---\nSuggested skills:\n%s' "$COLD" "$SKILL")
+[ -z "$COMBINED" ] && exit 0
+jq -n --arg m "$COMBINED" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:$m}}'
+)BASH";
+
 // Phase 40 T2: PreCompact hook — auto-snapshots session before /compact
 // or auto-compaction wipes context. Runs `icmg session save auto-precompact-<ts>`.
 static const char* PRECOMPACT_PY = R"PY(#!/usr/bin/env python3
@@ -427,6 +470,31 @@ public:
             std::cout << "  embed:      run `icmg embed memory` (requires Python sentence-transformers)\n";
         }
 
+        // v0.42.0 T-18: auto-start rule-daemon if not already running.
+        {
+            auto ping = core::safeExecShell("icmg rule-eval --tool PING 2>/dev/null", false, 3000);
+            if (ping.exit_code != 0) {
+                auto r = core::safeExecShell("icmg rule-daemon start 2>&1", false, 5000);
+                if (r.exit_code == 0) {
+                    std::cout << "  rule-daemon: started\n";
+                } else {
+                    std::cout << "  rule-daemon: run `icmg rule-daemon start` to enable enforcement\n";
+                }
+            } else {
+                std::cout << "  rule-daemon: already running\n";
+            }
+        }
+
+        // v0.42.0 T-03b: auto-import CLAUDE.md(s) into context_nodes on init.
+        {
+            auto r = core::safeExecShell("icmg claudemd import 2>&1", false, 15000);
+            if (r.exit_code == 0) {
+                std::cout << "  context-graph: CLAUDE.md sections imported to context_nodes\n";
+            } else {
+                std::cout << "  context-graph: run `icmg claudemd import` to populate context graph\n";
+            }
+        }
+
         // Phase 74 T6: auto-enable self-protection on init (opt-out via --no-backup / --no-maintain).
         // First snapshot fires synchronously so user has immediate recovery point.
         if (!no_backup) {
@@ -504,6 +572,11 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-prompt-recall.sh", PROMPT_RECALL_SH, force);
         // Stop hook: wflog reminder on session end when git has changes.
         n += writeFile(root / ".claude" / "hooks" / "icmg-wflog-stop.sh", WFLOG_STOP_SH, force);
+        // v0.42.0: context graph injection hooks.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-context-session.sh", CONTEXT_SESSION_SH, force);
+        n += writeFile(root / ".claude" / "hooks" / "icmg-context-prompt.sh",  CONTEXT_PROMPT_SH,  force);
+        // v0.42.0: rule enforcement hook.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-rule-enforce.sh", RULE_ENFORCE_SH, force);
 
 #ifndef _WIN32
         // chmod +x on POSIX
@@ -532,6 +605,13 @@ private:
                         std::string("[ -f .claude/hooks/icmg-bash-rewrite.sh ] && ") +
                         (strict_read ? "ICMG_STRICT_BASH=1 " : "") +
                         "bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
+                })}
+            },
+            {
+                {"matcher", "Read|Glob|Grep"},
+                {"hooks",   json::array({
+                    {{"type", "command"}, {"command",
+                        "[ -f .claude/hooks/icmg-rule-enforce.sh ] && bash .claude/hooks/icmg-rule-enforce.sh || exit 0"}}
                 })}
             },
             {
@@ -653,23 +733,27 @@ private:
         cfg["hooks"]["PreToolUse"] = pre_array;
 
         // Phase 51 T2: SessionStart caveman directive.
+        // v0.42.0: also inject hot context_nodes at session start.
         cfg["hooks"]["SessionStart"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}}
+                     {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
+                    {{"type", "command"},
+                     {"command", "[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0"}}
                 })}
             }
         });
 
-        // Phase 71: UserPromptSubmit — auto-recall memory + auto-context for
-        // path mentions + suggest compress on large pastes. Forces 4 core
-        // features into Claude awareness every turn.
+        // Phase 71: UserPromptSubmit — auto-recall memory + auto-context.
+        // v0.42.0: also inject BM25-matched cold context_nodes + skill suggestions.
         cfg["hooks"]["UserPromptSubmit"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0"}}
+                     {"command", "[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0"}},
+                    {{"type", "command"},
+                     {"command", "[ -f .claude/hooks/icmg-context-prompt.sh ] && bash .claude/hooks/icmg-context-prompt.sh || exit 0"}}
                 })}
             }
         });
