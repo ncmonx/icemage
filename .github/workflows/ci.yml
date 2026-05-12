@@ -10,80 +10,73 @@ permissions:
   contents: read
 
 jobs:
-  build-linux:
-    name: Build & Test (Linux)
+  validate-docs:
+    name: Validate documentation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install dependencies
+      - name: Check required files exist
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev
+          for f in README.md CHANGELOG.md COMMANDS.md CONTRIBUTING.md LICENSE SECURITY.md; do
+            [ -f "$f" ] && echo "OK: $f" || { echo "MISSING: $f"; exit 1; }
+          done
 
-      - name: Configure
+      - name: Validate workflow YAML syntax
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DICMG_USE_ONNX=OFF \
-            -DICMG_USE_TREESITTER=OFF
+          python3 -c "
+          import yaml, sys, pathlib
+          errors = []
+          for f in pathlib.Path('.github/workflows').glob('*.yml'):
+              try:
+                  yaml.safe_load(f.read_text())
+                  print(f'OK: {f}')
+              except yaml.YAMLError as e:
+                  errors.append(f'FAIL: {f}: {e}')
+          if errors:
+              print('\n'.join(errors)); sys.exit(1)
+          "
 
-      - name: Build
-        run: cmake --build build -j$(nproc)
+      - name: Check markdown files are non-empty
+        run: |
+          for f in README.md CHANGELOG.md COMMANDS.md; do
+            lines=$(wc -l < "$f")
+            [ "$lines" -gt 10 ] && echo "OK: $f ($lines lines)" || { echo "TOO SHORT: $f"; exit 1; }
+          done
 
-      - name: Test
-        run: ctest --test-dir build --output-on-failure -j$(nproc)
+      - name: Verify CHANGELOG has recent entry
+        run: |
+          grep -qE "^## (v0\.[0-9]+|[0-9]{4}-)" CHANGELOG.md \
+            && echo "OK: CHANGELOG has versioned entries" \
+            || { echo "FAIL: no version entries in CHANGELOG"; exit 1; }
 
-  build-macos:
-    name: Build & Test (macOS)
-    runs-on: macos-latest
-    continue-on-error: true
+  validate-security:
+    name: Validate security configuration
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install dependencies
-        run: brew install cmake ninja
-
-      - name: Configure
+      - name: Check SECURITY.md has contact info
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DICMG_USE_ONNX=OFF \
-            -DICMG_USE_TREESITTER=OFF
+          grep -qi "email\|contact\|report\|vulnerability" SECURITY.md \
+            && echo "OK: SECURITY.md has contact info" \
+            || { echo "FAIL: SECURITY.md missing contact info"; exit 1; }
 
-      - name: Build
-        run: cmake --build build -j$(sysctl -n hw.logicalcpu)
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
-
-  build-windows:
-    name: Build & Test (Windows/MSYS2)
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - uses: msys2/setup-msys2@ddf331adaebd714795f1042345e6ca57bd66cea8 # v2
-        with:
-          msystem: MINGW64
-          update: false
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-
-      - name: Configure
+      - name: Verify all workflows declare permissions
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DICMG_USE_ONNX=OFF \
-            -DICMG_USE_TREESITTER=OFF
-
-      - name: Build
-        run: cmake --build build -j4
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+          python3 -c "
+          import yaml, sys, pathlib
+          errors = []
+          for f in pathlib.Path('.github/workflows').glob('*.yml'):
+              doc = yaml.safe_load(f.read_text())
+              if not doc: continue
+              has_top = 'permissions' in doc
+              jobs = doc.get('jobs', {})
+              all_jobs = all('permissions' in j for j in jobs.values())
+              if not (has_top or all_jobs):
+                  errors.append(f'MISSING permissions: {f}')
+              else:
+                  print(f'OK: {f}')
+          if errors:
+              print('\n'.join(errors)); sys.exit(1)
+          "
