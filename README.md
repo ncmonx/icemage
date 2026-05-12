@@ -20,6 +20,19 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## What's new in v0.44.0
+
+| Feature | What changed |
+|---|---|
+| **CLAUDE.md auto-slim** | After importing project notes into the knowledge graph, replaces the file with a compact pointer stub — cuts session startup context significantly |
+| **Plan graph import** | `icmg plan import` ingests plan and phase markdown files into the knowledge graph; hot sections inject at session start, others surface on-demand |
+| **Smarter context injection** | Per-prompt knowledge lookup now runs in-process with a short result cache — fewer subprocesses, lower latency per turn |
+| **Session read deduplication** | Files already read in a session emit a reminder instead of re-reading — prevents redundant context bloat |
+| **Pack delta mode** | `icmg pack` automatically emits only the delta vs the previous pack when a baseline exists; `--preset fix-bug\|add-command\|release` for quick task setup |
+| **Context delta** | `icmg context-delta <file>` shows only the changed lines in a file since last commit |
+| **Frozen knowledge tier** | Large reference sections are stored but excluded from automatic injection — surfaced only on explicit request |
+| **Fix: orphaned processes** | Removed a background pre-warm spawn that left icmg processes accumulating on Windows across sessions |
+
 ## What's new in v0.43.1
 
 | Feature | What changed |
