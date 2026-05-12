@@ -5,7 +5,7 @@
 # Icemage <sub><sup>(`icmg`)</sup></sub>
 
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-57%2F58%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-88%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -19,6 +19,18 @@ A single binary that makes Claude Code, Cursor, and every other AI coding assist
 If you've ever watched 30K tokens evaporate on a single file read, paid for "thinking" you didn't need, or re-explained the same project context after `/clear` for the fifth time today — this is for you.
 
 ---
+
+## What's new in v0.45.0
+
+| Feature | What changed |
+|---|---|
+| **Daemon IPC server** | `icmg daemon start` launches a persistent background server — hook calls now take ~5 ms instead of ~360 ms cold-start |
+| **Named Pipe / Unix socket** | Windows uses `\.\pipe\icmg-daemon`; Linux/macOS uses a Unix socket — zero-dependency, no port conflicts |
+| **Thin client with fallback** | `icmg daemon client <method>` sends one JSON-RPC call; transparently falls back to direct spawn when daemon is not running |
+| **Hook script migration** | `SessionStart` / `UserPromptSubmit` hook templates now try the daemon first, then fall back — no behaviour change if daemon is stopped |
+| **Windows Defender auto-exclusion** | `icmg init` and `icmg update --apply` automatically add the binary to Defender's process exclusion list — eliminates CPU spikes on frequent spawns |
+| **Fix: Windows extraction** | `icmg update --apply` now extracts the zip via PowerShell `Expand-Archive` — avoids a path-parsing failure under Git Bash / MSYS2 |
+| **Fix: watcher detach** | Graph watch daemon now spawns with `CREATE_NEW_PROCESS_GROUP` — watcher no longer dies when the originating terminal closes |
 
 ## What's new in v0.44.0
 
