@@ -259,15 +259,42 @@ private:
                          / ("icmg_ex_" + std::to_string(GetCurrentProcessId()));
         fs::create_directories(tmp_dir);
 
-        std::string a = asset.string(), d = tmp_dir.string();
-        for (auto& c : a) if (c == '\\') c = '/';
-        for (auto& c : d) if (c == '\\') c = '/';
-        std::string cmd = "tar -xf \"" + a + "\" -C \"" + d + "\"";
-        auto res = core::safeExecShell(cmd, false, 30000);
-        if (res.exit_code != 0) {
-            std::cerr << "icmg update: extraction failed\n  " << res.err << "\n";
-            fs::remove_all(tmp_dir);
-            return false;
+        // PowerShell Expand-Archive via CreateProcessA — avoids two failure modes:
+        //   1. MSYS2/Git Bash tar treats "C:/path" as archive member, not drive letter.
+        //   2. cmd.exe /s /c quoting breaks when -Command arg contains inner quotes.
+        // Forward-slash paths: PowerShell accepts them; no backslash escaping needed.
+        {
+            auto to_fwd = [](std::string s) {
+                for (auto& c : s) if (c == '\\') c = '/'; return s;
+            };
+            auto ps_esc = [](const std::string& s) {
+                std::string r; for (char c : s) { if (c=='\'') r+="''"; else r+=c; } return r;
+            };
+            std::string cl = "powershell.exe -NoProfile -NonInteractive -Command "
+                             "\"Expand-Archive -LiteralPath '" + ps_esc(to_fwd(asset.string())) +
+                             "' -DestinationPath '" + ps_esc(to_fwd(tmp_dir.string())) + "' -Force\"";
+            std::vector<char> cl_buf(cl.begin(), cl.end());
+            cl_buf.push_back('\0');
+            STARTUPINFOA si{}; si.cb = sizeof(si);
+            PROCESS_INFORMATION pi{};
+            bool launched = CreateProcessA(nullptr, cl_buf.data(), nullptr, nullptr,
+                                           FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+            if (!launched) {
+                std::cerr << "icmg update: failed to launch powershell.exe (err="
+                          << GetLastError() << ")\n";
+                fs::remove_all(tmp_dir);
+                return false;
+            }
+            WaitForSingleObject(pi.hProcess, 60000);
+            DWORD ps_exit = 1;
+            GetExitCodeProcess(pi.hProcess, &ps_exit);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            if (ps_exit != 0) {
+                std::cerr << "icmg update: extraction failed (powershell exit=" << ps_exit << ")\n";
+                fs::remove_all(tmp_dir);
+                return false;
+            }
         }
 
         fs::path extracted_exe = tmp_dir / "icmg.exe";
