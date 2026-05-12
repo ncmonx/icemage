@@ -989,8 +989,40 @@ icmg knowledge delete <node_key> [--confirm]
 icmg knowledge --html
 ```
 
-`--html` opens the interactive dashboard at `http://127.0.0.1:8080/knowledge` (requires `icmg serve`).
-REST API: `GET/POST /api/knowledge`, `GET/PUT/DELETE /api/knowledge/<key>`.
+`--html` opens the unified dashboard at `http://127.0.0.1:8080/knowledge` (requires `icmg serve`).
+Dashboard shows 3 tabs — **Knowledge** (hot/cold nodes), **Skills** (indexed skills), **Rules** (stored rules) — with per-tab CRUD and KPI strip.
+REST API: `GET/POST /api/knowledge`, `GET/PUT/DELETE /api/knowledge/<key>`, `GET /api/rules`, `POST /api/rules/toggle`.
+
+---
+
+## serve — Embedded HTTP dashboard (v0.38.0 / unified v0.42.1)
+
+Launch a local read-only dashboard served from the project DB.
+
+```
+icmg serve [--port N] [--host BIND] [--no-open]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--port N` | 8080 | TCP port |
+| `--host BIND` | 127.0.0.1 | Bind address |
+| `--no-open` | off | Skip auto-open browser |
+
+**Endpoints:**
+
+| Path | Description |
+|---|---|
+| `/` | Memory + graph + audit dashboard |
+| `/knowledge` | Unified dark-theme dashboard (3 tabs: Knowledge \| Skills \| Rules) |
+| `/api/audit` | Audit metrics JSON |
+| `/api/memory?n=N` | Last N memory nodes |
+| `/api/graph?n=N` | Top N graph nodes |
+| `/api/recall?q=X` | BM25 recall |
+| `/api/knowledge/list?tier=` | List context nodes (filter by tier) |
+| `/api/knowledge/add\|update\|delete\|toggle` | CRUD for context nodes |
+| `/api/rules` | List all rules |
+| `/api/rules/toggle?id=N&active=0\|1` | Enable/disable a rule |
 
 ---
 

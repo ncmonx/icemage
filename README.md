@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
-[![commands](https://img.shields.io/badge/CLI%20commands-82%2B-blue)](#)
+[![commands](https://img.shields.io/badge/CLI%20commands-88%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
@@ -19,6 +19,24 @@ A single binary that makes Claude Code, Cursor, and every other AI coding assist
 If you've ever watched 30K tokens evaporate on a single file read, paid for "thinking" you didn't need, or re-explained the same project context after `/clear` for the fifth time today — this is for you.
 
 ---
+
+## What's new in v0.42.0
+
+| Feature | What changed |
+|---|---|
+| **Context graph** | CLAUDE.md sections imported as searchable nodes — session starts at ~300 tok instead of ~4 000 tok |
+| **Skill store** | Skills indexed from `~/.claude/` skill files; matching ones surfaced as hints per prompt |
+| **Rule enforcement daemon** | Persistent process evaluates every Read/Glob/Grep at 2-5 ms; files over 500 lines blocked with focused alternative |
+| **Knowledge browser** | `icmg knowledge` CRUD CLI + HTML dashboard + REST API at `icmg serve /knowledge` |
+| **Auto-import on init** | `icmg init` now imports CLAUDE.md and indexes skills automatically |
+
+```bash
+icmg claudemd import        # import CLAUDE.md sections into context graph (auto on init)
+icmg skill index            # index skill .md files for BM25 matching
+icmg rule-daemon start      # start enforcement daemon (auto on init)
+icmg knowledge list         # browse context nodes
+icmg knowledge --html       # open dashboard in browser
+```
 
 ## The savings, at a glance
 
@@ -233,6 +251,18 @@ SESSION DEDUP         ▸ Recall auto-suppresses nodes already returned this ses
 LIVE STREAM FILTER    ▸ icmg run --stream — real-time line-by-line subprocess
                         output with filter summary appended at end. No buffering
                         lag; full filter context preserved for summary accuracy
+CONTEXT GRAPH         ▸ CLAUDE.md sections auto-imported as BM25-searchable nodes.
+                        ~93% less context on session start — only relevant sections
+                        injected per prompt. No manual CLAUDE.md load needed
+SKILL STORE           ▸ Skill .md files indexed into the graph (tier=skill).
+                        Matching skills suggested automatically per prompt via hook.
+                        Never miss an applicable skill again. icmg skill index
+RULE ENFORCEMENT      ▸ Persistent enforcement daemon: rules stored in DB, not hooks.
+                        Read/Glob/Grep calls evaluated at 2-5 ms (10x faster).
+                        Files >=500 lines blocked; focused alternative suggested
+KNOWLEDGE BROWSER     ▸ icmg knowledge list/add/edit/delete — full CRUD on context
+                        graph. HTML dashboard at icmg serve /knowledge.
+                        Toggle nodes active/inactive without deleting
 APACHE-2.0            ▸ License preserved on releases
 ```
 
