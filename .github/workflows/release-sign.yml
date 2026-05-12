@@ -5,13 +5,15 @@ on:
     types: [published]
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   sign:
     name: Sign release artifacts with cosign
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
