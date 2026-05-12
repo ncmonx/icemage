@@ -24,22 +24,23 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## What's new in v0.42.0
+## What's new in v0.45.x
 
 | Feature | What changed |
 |---|---|
-| **Context graph** | CLAUDE.md sections imported as searchable nodes — session starts at ~300 tok instead of ~4 000 tok |
-| **Skill store** | Skills indexed from `~/.claude/` skill files; matching ones surfaced as hints per prompt |
-| **Rule enforcement daemon** | Persistent process evaluates every Read/Glob/Grep at 2-5 ms; files over 500 lines blocked with focused alternative |
-| **Knowledge browser** | `icmg knowledge` CRUD CLI + HTML dashboard + REST API at `icmg serve /knowledge` |
-| **Auto-import on init** | `icmg init` now imports CLAUDE.md and indexes skills automatically |
+| **Daemon IPC** | Daemon now uses named pipe IPC — no more port conflicts; Windows reliability improved |
+| **Rule trial/supersession** | `icmg rule supersede` auto-deletes old rules after N quiet prompts |
+| **Strict enforcement mode** | `icmg rule-daemon strict on` blocks ALL Read/Glob/Grep until rules satisfied |
+| **Unified dashboard** | `/knowledge` tab in `icmg serve` shows Knowledge, Skills, and Rules with live CRUD |
+| **Recursive CLAUDE.md scan** | `icmg claudemd import` now discovers all CLAUDE.md files in subdirs automatically |
+| **Skill auto-index on init** | `icmg init`/upgrade now runs `icmg skill index` so Claude discovers features immediately |
 
 ```bash
-icmg claudemd import        # import CLAUDE.md sections into context graph (auto on init)
-icmg skill index            # index skill .md files for BM25 matching
+icmg claudemd import        # import all CLAUDE.md files (recursive, deduped)
+icmg skill index            # index skill files for BM25 feature discovery
 icmg rule-daemon start      # start enforcement daemon (auto on init)
-icmg knowledge list         # browse context nodes
-icmg knowledge --html       # open dashboard in browser
+icmg rule-daemon strict on  # block Read/Glob/Grep until rules satisfied
+icmg serve                  # open dashboard: knowledge + skills + rules
 ```
 
 ## The savings, at a glance
