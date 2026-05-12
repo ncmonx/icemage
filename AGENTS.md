@@ -193,6 +193,28 @@ Do:
 
 ---
 
+## Context graph workflow (v0.42.0)
+
+On-demand context injection replaces loading the entire CLAUDE.md each session.
+
+**How it works:**
+- `icmg claudemd import` parses CLAUDE.md into sections → context_nodes (tier: hot/cold)
+- `icmg skill index` indexes skill `.md` files → context_nodes (tier: skill)
+- **SessionStart hook** injects all `hot` nodes automatically (~300 tok vs ~4 000 tok full load)
+- **UserPromptSubmit hook** BM25-matches the prompt → injects top `cold` nodes + suggests relevant skills
+
+**Skill suggestions:** when a skill matches your prompt, it surfaces as `additionalContext` before you respond — invoke it via the `Skill` tool as usual.
+
+**Managing knowledge:**
+```
+icmg knowledge list                    # browse all nodes
+icmg knowledge add --title T --content C --tier hot|cold|skill
+icmg knowledge edit <key> --active no  # disable without deleting
+icmg knowledge --html                  # open dashboard in browser
+```
+
+**Rule enforcement:** `icmg rule-daemon start` spawns a persistent process; the `icmg-rule-enforce.sh` PreToolUse hook evaluates every Read/Glob/Grep call at ~2–5 ms. Files ≥ 500 lines are blocked with a `icmg context <file>` suggestion.
+
 ## Local-first guarantees
 
 - Per-project SQLite — never leaves your machine

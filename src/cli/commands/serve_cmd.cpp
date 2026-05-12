@@ -16,7 +16,9 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/context_node_store.hpp"
 #include "../../imem/memory_store.hpp"
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -143,6 +145,143 @@ loadAudit(); loadMemory(); loadGraph();
 </body></html>
 )HTML";
 
+// v0.42.0: Knowledge browser — context_nodes CRUD dashboard.
+static const char* KNOWLEDGE_HTML = R"HTML(<!doctype html>
+<html><head><meta charset="utf-8"><title>icmg knowledge</title><style>
+body{font:14px sans-serif;max-width:1100px;margin:1.5em auto;padding:0 1em;color:#222}
+h1{border-bottom:2px solid #eee;padding-bottom:.3em}
+.tabs{display:flex;gap:.5em;margin:1em 0}
+.tab{padding:.4em 1em;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#f5f5f5}
+.tab.active{background:#0366d6;color:#fff;border-color:#0366d6}
+table{border-collapse:collapse;width:100%;margin:.5em 0}
+th,td{border:1px solid #ddd;padding:.4em .8em;text-align:left;font-size:13px;vertical-align:top}
+th{background:#f0f0f0}
+.tier-hot{background:#fff8e1}.tier-cold{background:#f0f9ff}.tier-skill{background:#f0fff4}
+.inactive{opacity:.5}
+.btn{padding:.3em .8em;border:0;border-radius:3px;cursor:pointer;font-size:12px;margin-left:.2em}
+.btn-add{background:#28a745;color:#fff}.btn-del{background:#dc3545;color:#fff}
+.btn-tog{background:#6c757d;color:#fff}.btn-edit{background:#0366d6;color:#fff}
+#modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:99}
+.modal-box{background:#fff;border-radius:8px;padding:1.5em;max-width:600px;margin:8% auto;position:relative}
+label{display:block;margin:.5em 0 .2em;font-weight:600}
+input,select,textarea{width:100%;padding:.4em;border:1px solid #ccc;border-radius:4px;box-sizing:border-box}
+textarea{height:120px;font-family:monospace}
+.form-row{display:flex;gap:.5em;margin-top:1em}
+.err{color:#dc3545;font-size:.85em}
+</style></head><body>
+<h1>icmg knowledge browser</h1>
+<div class="tabs" id="tier-tabs"></div>
+<div style="display:flex;gap:.5em;align-items:center;margin-bottom:.8em">
+  <input id="search" placeholder="Search nodes..." oninput="filterTable()" style="width:40%">
+  <label style="margin:0;font-weight:normal;white-space:nowrap">
+    <input type="checkbox" id="show-inactive" onchange="loadNodes()"> show inactive
+  </label>
+  <button class="btn btn-add" onclick="openAdd()">+ Add node</button>
+</div>
+<table id="tbl">
+  <thead><tr><th>Key</th><th>Tier</th><th>Title</th><th style="width:30%">Content preview</th><th>On</th><th>Actions</th></tr></thead>
+  <tbody id="tbody"></tbody>
+</table>
+<div id="modal"><div class="modal-box" id="modal-box"></div></div>
+<script>
+var currentTier='',nodes=[];
+var TIERS=['','hot','cold','skill'];
+var TIER_LABELS=['All','Hot','Cold','Skills'];
+(function(){
+  var tabs=document.getElementById('tier-tabs');
+  TIERS.forEach(function(t,i){
+    var b=document.createElement('button');
+    b.className='tab'+(t===''?' active':'');
+    b.textContent=TIER_LABELS[i];
+    b.onclick=function(){currentTier=t;document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});b.classList.add('active');loadNodes();};
+    tabs.appendChild(b);
+  });
+})();
+function loadNodes(){
+  var url='/api/knowledge/list?tier='+currentTier+(document.getElementById('show-inactive').checked?'&inactive=1':'');
+  fetch(url).then(function(r){return r.json();}).then(function(d){nodes=d;renderTable(d);}).catch(function(){});
+}
+function renderTable(data){
+  var q=document.getElementById('search').value.toLowerCase();
+  var tbody=document.getElementById('tbody');
+  while(tbody.firstChild)tbody.removeChild(tbody.firstChild);
+  data.filter(function(n){
+    return !q||n.key.includes(q)||n.title.toLowerCase().includes(q)||(n.content||'').toLowerCase().includes(q);
+  }).forEach(function(n){
+    var tr=document.createElement('tr');
+    tr.className='tier-'+n.tier+(n.active?'':' inactive');
+    function td(txt,max){var c=document.createElement('td');c.textContent=max&&txt.length>max?txt.substr(0,max)+'…':txt;return c;}
+    tr.appendChild(td(n.key));tr.appendChild(td(n.tier));tr.appendChild(td(n.title));
+    tr.appendChild(td((n.content||''),80));
+    var ac=document.createElement('td');ac.textContent=n.active?'yes':'no';tr.appendChild(ac);
+    var btns=document.createElement('td');
+    function mkBtn(cls,txt,fn){var b=document.createElement('button');b.className='btn '+cls;b.textContent=txt;b.onclick=fn;btns.appendChild(b);}
+    mkBtn('btn-edit','Edit',function(){openEdit(n);});
+    mkBtn('btn-tog',n.active?'Off':'On',function(){
+      fetch('/api/knowledge/toggle?key='+encodeURIComponent(n.key)+'&active='+(n.active?'0':'1')).then(function(){loadNodes();});
+    });
+    mkBtn('btn-del','Del',function(){
+      if(confirm('Delete "'+n.key+'"?'))
+        fetch('/api/knowledge/delete?key='+encodeURIComponent(n.key),{method:'DELETE'}).then(function(){loadNodes();});
+    });
+    tr.appendChild(btns);tbody.appendChild(tr);
+  });
+}
+function filterTable(){renderTable(nodes);}
+function buildForm(n){
+  var d=document.createElement('div');
+  function row(lbl,el){var l=document.createElement('label');l.textContent=lbl;d.appendChild(l);d.appendChild(el);}
+  var ft=document.createElement('input');ft.id='f-title';ft.value=n.title||'';row('Title',ft);
+  var fs=document.createElement('select');fs.id='f-tier';
+  ['hot','cold','skill'].forEach(function(t){var o=document.createElement('option');o.value=o.textContent=t;if(t===(n.tier||'cold'))o.selected=true;fs.appendChild(o);});
+  row('Tier',fs);
+  var fc=document.createElement('textarea');fc.id='f-content';fc.textContent=n.content||'';row('Content',fc);
+  var fg=document.createElement('input');fg.id='f-tags';fg.value=n.tags||'[]';row('Tags (JSON array)',fg);
+  var fo=document.createElement('input');fo.id='f-source';fo.value=n.source||'';row('Source file',fo);
+  var err=document.createElement('div');err.id='f-err';err.className='err';d.appendChild(err);
+  var row2=document.createElement('div');row2.className='form-row';
+  var sb=document.createElement('button');sb.className='btn btn-add';sb.textContent='Save';
+  sb.onclick=function(){submitForm(n.key||'');};row2.appendChild(sb);
+  var cb=document.createElement('button');cb.className='btn';cb.textContent='Cancel';
+  cb.onclick=closeModal;row2.appendChild(cb);
+  d.appendChild(row2);
+  return d;
+}
+function openAdd(){
+  var box=document.getElementById('modal-box');
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var h=document.createElement('h2');h.textContent='Add node';box.appendChild(h);
+  box.appendChild(buildForm({tier:'cold'}));
+  document.getElementById('modal').style.display='block';
+}
+function openEdit(n){
+  var box=document.getElementById('modal-box');
+  while(box.firstChild)box.removeChild(box.firstChild);
+  var h=document.createElement('h2');h.textContent='Edit: '+n.key;box.appendChild(h);
+  box.appendChild(buildForm(n));
+  document.getElementById('modal').style.display='block';
+}
+function submitForm(existingKey){
+  var body={title:document.getElementById('f-title').value,
+            content:document.getElementById('f-content').value,
+            tier:document.getElementById('f-tier').value,
+            tags:document.getElementById('f-tags').value,
+            source:document.getElementById('f-source').value};
+  if(existingKey)body.key=existingKey;
+  var ep=existingKey?'/api/knowledge/update':'/api/knowledge/add';
+  fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){return r.json();})
+    .then(function(r){
+      if(r.error){document.getElementById('f-err').textContent=r.error;return;}
+      closeModal();loadNodes();
+    }).catch(function(e){document.getElementById('f-err').textContent=String(e);});
+}
+function closeModal(){document.getElementById('modal').style.display='none';}
+document.getElementById('modal').onclick=function(e){if(e.target===this)closeModal();};
+loadNodes();
+</script></body></html>
+)HTML";
+
 class ServeCommand : public BaseCommand {
 public:
     std::string name()        const override { return "serve"; }
@@ -227,6 +366,10 @@ private:
             body = apiGraph(cfg, parseN(path)); ctype = "application/json";
         } else if (path.rfind("/api/recall", 0) == 0) {
             body = apiRecall(cfg, parseQ(path)); ctype = "application/json";
+        } else if (path == "/knowledge") {
+            body = KNOWLEDGE_HTML; ctype = "text/html";
+        } else if (path.rfind("/api/knowledge", 0) == 0) {
+            body = apiKnowledge(cfg, buf.substr(0, sp1), path, buf); ctype = "application/json";
         } else {
             sendResp(c, 404, "text/plain", "not found"); return;
         }
@@ -316,6 +459,121 @@ private:
               << "\",\"content\":\"" << esc(m.content) << "\"}";
         }
         o << "]"; return o.str();
+    }
+
+    // v0.42.0: knowledge REST API + HTML dashboard.
+    // GET  /api/knowledge/list?tier=&inactive=1
+    // GET  /api/knowledge/get?key=X
+    // POST /api/knowledge/add     body: JSON node
+    // PUT  /api/knowledge/update?key=X  body: JSON fields
+    // DELETE /api/knowledge/delete?key=X
+    std::string apiKnowledge(core::Config& cfg, const std::string& method,
+                              const std::string& path, const std::string& raw_req) {
+        using nlohmann::json;
+        core::Db db(cfg.projectDbPath("."));
+        core::ContextNodeStore store(db);
+
+        // Extract subpath: /api/knowledge/list -> "list"
+        std::string sub;
+        {
+            auto p = path.find("/api/knowledge/");
+            if (p != std::string::npos) sub = path.substr(p + 15);
+            auto q = sub.find('?'); if (q != std::string::npos) sub = sub.substr(0, q);
+        }
+
+        auto getParam = [&](const std::string& key) {
+            auto q = path.find(key + "=");
+            if (q == std::string::npos) return std::string("");
+            std::string val;
+            size_t i = q + key.size() + 1;
+            while (i < path.size() && path[i] != '&' && path[i] != ' ') val += path[i++];
+            return val;
+        };
+
+        // Extract request body (after double CRLF)
+        std::string body_json;
+        {
+            auto pos = raw_req.find("\r\n\r\n");
+            if (pos != std::string::npos) body_json = raw_req.substr(pos + 4);
+        }
+
+        if (sub == "list" || path.rfind("/api/knowledge/list", 0) == 0 ||
+            path == "/api/knowledge") {
+            std::string tier    = getParam("tier");
+            bool inactive       = getParam("inactive") == "1";
+            auto nodes = store.list(tier, !inactive);
+            json arr = json::array();
+            for (auto& n : nodes) {
+                arr.push_back({{"key", n.node_key}, {"title", n.title},
+                               {"tier", n.tier}, {"active", n.active},
+                               {"source", n.source_file}, {"tags", n.tags},
+                               {"content", n.content}});
+            }
+            return arr.dump();
+        }
+
+        if (sub == "get") {
+            auto key = getParam("key");
+            auto node = store.get(key);
+            if (!node) return "{\"error\":\"not found\"}";
+            json j = {{"key", node->node_key}, {"title", node->title},
+                      {"tier", node->tier}, {"active", node->active},
+                      {"source", node->source_file}, {"tags", node->tags},
+                      {"content", node->content}};
+            return j.dump();
+        }
+
+        if ((sub == "add" || sub == "update") && !body_json.empty()) {
+            try {
+                auto j = json::parse(body_json);
+                core::ContextNode node;
+                if (sub == "update") {
+                    auto key = j.value("key", getParam("key"));
+                    auto existing = store.get(key);
+                    if (!existing) return "{\"error\":\"not found\"}";
+                    node = *existing;
+                }
+                if (j.contains("title"))   node.title       = j["title"];
+                if (j.contains("content")) node.content     = j["content"];
+                if (j.contains("tier"))    node.tier        = j["tier"];
+                if (j.contains("tags"))    node.tags        = j["tags"].is_string()
+                    ? j["tags"].get<std::string>() : j["tags"].dump();
+                if (j.contains("source"))  node.source_file = j["source"];
+                if (j.contains("active"))  node.active      = j["active"].get<bool>();
+                if (node.node_key.empty()) {
+                    // Slugify title for new nodes
+                    for (unsigned char c : node.title) {
+                        if (std::isalnum(c)) node.node_key += static_cast<char>(std::tolower(c));
+                        else if (!node.node_key.empty() && node.node_key.back() != '-')
+                            node.node_key += '-';
+                    }
+                    while (!node.node_key.empty() && node.node_key.back() == '-')
+                        node.node_key.pop_back();
+                }
+                store.upsert(node);
+                return "{\"ok\":true,\"key\":\"" + esc(node.node_key) + "\"}";
+            } catch (...) {
+                return "{\"error\":\"invalid JSON body\"}";
+            }
+        }
+
+        if (sub == "delete") {
+            auto key = getParam("key");
+            if (!store.get(key)) return "{\"error\":\"not found\"}";
+            store.remove(key);
+            return "{\"ok\":true}";
+        }
+
+        if (sub == "toggle") {
+            auto key    = getParam("key");
+            auto active = getParam("active");
+            auto node   = store.get(key);
+            if (!node) return "{\"error\":\"not found\"}";
+            store.setActive(key, active != "0" && active != "false");
+            return "{\"ok\":true}";
+        }
+
+        return "{\"error\":\"unknown endpoint\"}";
     }
 
     static std::string esc(const std::string& s) {
