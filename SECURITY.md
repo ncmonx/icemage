@@ -11,7 +11,7 @@
 
 **Do not report security vulnerabilities via public GitHub issues.**
 
-Email: gregtsmart2@gmail.com
+Email: ncmonx@hotmail.com
 
 Include:
 - Description of the vulnerability
