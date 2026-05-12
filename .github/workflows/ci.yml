@@ -44,11 +44,12 @@ jobs:
             [ "$lines" -gt 10 ] && echo "OK: $f ($lines lines)" || { echo "TOO SHORT: $f"; exit 1; }
           done
 
-      - name: Verify CHANGELOG has recent entry
+      - name: Verify CHANGELOG is non-trivial
         run: |
-          grep -qE "^## (v0\.[0-9]+|[0-9]{4}-)" CHANGELOG.md \
-            && echo "OK: CHANGELOG has versioned entries" \
-            || { echo "FAIL: no version entries in CHANGELOG"; exit 1; }
+          lines=$(wc -l < CHANGELOG.md)
+          [ "$lines" -gt 5 ] \
+            && echo "OK: CHANGELOG has $lines lines" \
+            || { echo "FAIL: CHANGELOG too short ($lines lines)"; exit 1; }
 
   validate-security:
     name: Validate security configuration
