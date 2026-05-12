@@ -20,6 +20,100 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## What's new in v0.43.1
+
+| Feature | What changed |
+|---|---|
+| **Fix: ** | Binary now correctly extracted from zip — previously the raw zip was placed as icmg 0.37.0 — unified memory, graph, and Tkil tool
+
+Usage: icmg <command> [options]
+
+Commands:
+  store       Store a memory node
+  recall      Recall memory nodes by query
+  memory      Memory management (list, show, search, stats, purge)
+  graph       Manage knowledge graph (scan, query, visualize)
+  zone        Zone management (partition graph + memory by subsystem)
+  run         Run command through Tkil filter
+  sp          Stored procedure management
+  abbr        Abbreviation management
+  rule        Per-folder rule management
+  data        Structured data (model/view/behavior/schema)
+  project     Multi-project registry
+  cmd         Command frequency tracking
+  stats       Show usage statistics
+  import      Import from ICM/Graphify/JSON/CSV
+  export      Export data
+  doctor      Health check (DB integrity, schema version, config)
+  known-issue Recurring error registry (add/match/list/stats)
+  verify      Run + record verification commands (audit trail + gate)
+  phase       Phase lifecycle (start/verify/ship)
+  design      Design doc registry (register/approve/check)
+  wflog       Queryable session log (save/search/recent/show)
+  context     File context bundle (graph + symbols + memory)
+  pack        Task-context bundle (recall + files + rules)
+  diff-summarySymbol-aware git diff summary
+  explain     Match error against past resolutions
+  session     Snapshot active task context (save/restore/list)
+  summarize   Heuristic file outline (avoid full Read on large files)
+  budget      Token-budget tracker (per-tool savings + hot spots)
+  parallel    Run multiple commands concurrently (subprocess fan-out)
+  filter      Apply Tkil filter to stdin (pipe-style)
+  embed       Build/refresh embeddings (semantic recall index)
+  agent       LLM agent proxy (uses pack + configured CLI)
+  chat        Interactive REPL over LLM agent
+  ls          Token-friendly directory listing
+  init        Bootstrap project (hooks + AGENTS.md routing)
+  memoir      Long-form narrative memory (essays, post-mortems)
+  wiki        Generate Markdown + HTML wiki from graph
+  parity      Symbol parity check between two files
+  template    Manifest-driven scaffold from a reference file
+  wake-up     Session-start briefing (decisions, fixes, phases)
+  discover    Scan transcripts for missed icmg-run opportunities
+  update      Self-update from github releases (--check/--apply/--rollback)
+  feedback    Record recall quality feedback for reranking
+  config      Read/write ~/.icmg/config.json
+  completions Emit shell completion script (bash/zsh/powershell)
+  lint-style  Text-pattern style/UI consistency lint
+  index       Unified maintenance pipeline (scan + embed + consolidate + patterns + decay)
+  review      PR pre-flight gate: parity + lint-style on git-diff
+  pr-summary  Generate markdown PR description from git + verifications
+  ask         Natural-language meta-router: cosine-match question to commands
+  serve       Embedded HTTP dashboard (read-only) — http://127.0.0.1:8080/
+  compress    Semantic prompt compression with reversible glossary (Phase 39)
+  expand      Reverse `icmg compress` output via glossary
+  savings     Token-savings dashboard (with/without comparison + HTML)
+  shrink      Auto-detect content type + intelligent shrink (grep/log/SQL/JSON/generic)
+  whats-new   Show release notes (current or --since X) — call after icmg update
+  fetch       Download URL with content-aware reduction (HTML/JSON/PDF/binary) + cache
+  batch       Emit Anthropic Batch API spec (50% bulk discount)
+  sync        Team sync via git-tracked JSONL (init/push/pull/merge/status)
+  caveman     Toggle caveman directive auto-inject (on/off/status/level)
+  health      Single sanity check (DB / hooks / version / sidecars / telemetry)
+  strict      Toggle hook-level rule enforcement (on/off/status)
+  fail        Anti-pattern memory: store/recall failed approaches
+  lint-claudemdDetect stale file paths / symbol refs in CLAUDE.md / AGENTS.md
+  test-select Pick test files affected by current diff
+  receipt     Itemized token receipts from recent pack/context/recall calls
+  distill     Auto-extract decisions/facts/anti-patterns from response text into memory
+  correction  Track diffs between AI-emitted code and user fixes
+  entropy     File-edit entropy from git history (hot files = bad pack candidates)
+  tool-budget Per-turn tool-call gate (prevents runaway loops)
+  shorten     Heuristic prompt rewriter — strip filler/politeness/redundancy
+  context-budgetReal Claude session token usage from transcript (covers ALL sources)
+  compliance  Track + surface caveman thinking-phase directive violations
+  cron        Install/uninstall weekly memory-hygiene scheduler (Win schtasks / POSIX cron)
+  cross-recallCross-project memory recall — find tasks solved in other projects
+
+Global flags:
+  --verbose, -v   Verbose output
+  --version       Show version
+  --help, -h      Show this help causing "not a valid application" error |
+
+```bash
+icmg update --apply   # now works correctly; downloads zip, extracts icmg.exe + DLLs
+```
+
 ## What's new in v0.43.0
 
 | Feature | What changed |
