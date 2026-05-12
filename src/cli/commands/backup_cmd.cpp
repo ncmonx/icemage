@@ -254,6 +254,9 @@ private:
                   << "  size:  " << humanSize(sz) << "\n";
         if (!sha.empty()) std::cout << "  sha:   " << sha.substr(0, 16) << "...\n";
         if (!note.empty()) std::cout << "  note:  " << note << "\n";
+
+        // Auto-prune: silently enforce default retention after every snapshot.
+        cmdPrune({"--quiet"});
         return 0;
     }
 
@@ -467,22 +470,24 @@ private:
             }
         }
 
+        bool quiet = hasFlag(args, "--quiet");
         int kept = 0, deleted = 0;
         uintmax_t freed = 0;
         for (size_t i = 0; i < snaps.size(); ++i) {
             if (keep[i]) { ++kept; continue; }
             ++deleted;
             freed += snaps[i].size;
-            std::cout << (dry ? "[would-rm] " : "[rm] ") << snaps[i].id << "\n";
+            if (!quiet) std::cout << (dry ? "[would-rm] " : "[rm] ") << snaps[i].id << "\n";
             if (!dry) {
                 fs::remove(snaps[i].file);
                 fs::path shap = snaps[i].file; shap += ".sha256"; fs::remove(shap);
                 fs::path notep = snaps[i].file; notep += ".note";  fs::remove(notep);
             }
         }
-        std::cout << "Prune " << (dry ? "(dry-run)" : "applied")
-                  << ": kept " << kept << ", removed " << deleted
-                  << ", freed " << humanSize(freed) << "\n";
+        if (!quiet)
+            std::cout << "Prune " << (dry ? "(dry-run)" : "applied")
+                      << ": kept " << kept << ", removed " << deleted
+                      << ", freed " << humanSize(freed) << "\n";
         return 0;
     }
 
