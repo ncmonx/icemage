@@ -22,6 +22,12 @@
 #include <sstream>
 #include <iostream>
 #include <string>
+#include <vector>
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  define NOMINMAX
+#  include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -559,6 +565,39 @@ public:
                 std::cout << "    OK: shadow auto-upgrade armed (daily check)\n";
             }
         }
+
+        // v0.45.0: auto-add icmg.exe to Windows Defender exclusion list.
+        // Root cause: icmg spawns on every hook turn → Defender scans each spawn → CPU spike.
+        // Non-fatal: skips silently if elevation unavailable (prints hint).
+#ifdef _WIN32
+        {
+            char self_path[1024];
+            DWORD n = GetModuleFileNameA(nullptr, self_path, sizeof(self_path));
+            if (n > 0 && n < sizeof(self_path)) {
+                std::string exe = self_path;
+                for (auto& c : exe) if (c == '\\') c = '/';
+                std::string cl = "powershell.exe -NoProfile -NonInteractive -Command "
+                                 "\"Add-MpPreference -ExclusionProcess '" + exe + "'\"";
+                std::vector<char> cl_buf(cl.begin(), cl.end());
+                cl_buf.push_back('\0');
+                STARTUPINFOA si{}; si.cb = sizeof(si);
+                PROCESS_INFORMATION pi{};
+                if (CreateProcessA(nullptr, cl_buf.data(), nullptr, nullptr,
+                                   FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+                    WaitForSingleObject(pi.hProcess, 5000);
+                    DWORD ec = 1;
+                    GetExitCodeProcess(pi.hProcess, &ec);
+                    CloseHandle(pi.hProcess);
+                    CloseHandle(pi.hThread);
+                    if (ec == 0)
+                        std::cout << "  defender:   icmg.exe excluded (faster hook spawns)\n";
+                    else
+                        std::cout << "  defender:   exclusion needs elevation"
+                                  << " — run `icmg init` as Administrator once to reduce Defender overhead\n";
+                }
+            }
+        }
+#endif
 
         std::cout << "\nDone. " << steps << " file(s) written.\n"
                   << "Restart your AI agent to pick up new hooks.\n";

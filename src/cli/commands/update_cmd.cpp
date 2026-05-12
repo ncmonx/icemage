@@ -471,6 +471,31 @@ private:
                   << "  Verify: icmg --version\n"
                   << "  Rollback: icmg update --rollback\n\n";
 
+        // Re-add new binary to Windows Defender exclusion after path swap.
+        // New path == same path (atomic rename), but re-add ensures fresh hash is excluded.
+#ifdef _WIN32
+        {
+            std::string exe = self.string();
+            for (auto& c : exe) if (c == '\\') c = '/';
+            std::string cl = "powershell.exe -NoProfile -NonInteractive -Command "
+                             "\"Add-MpPreference -ExclusionProcess '" + exe + "'\"";
+            std::vector<char> cl_buf(cl.begin(), cl.end());
+            cl_buf.push_back('\0');
+            STARTUPINFOA si{}; si.cb = sizeof(si);
+            PROCESS_INFORMATION pi{};
+            if (CreateProcessA(nullptr, cl_buf.data(), nullptr, nullptr,
+                               FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+                WaitForSingleObject(pi.hProcess, 5000);
+                DWORD ec = 1;
+                GetExitCodeProcess(pi.hProcess, &ec);
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                if (ec == 0)
+                    std::cout << "  Defender exclusion refreshed.\n";
+            }
+        }
+#endif
+
         // Phase 53 T1: per-DLL SHA256 verify against release manifest.
         // Phase 56 T2: auto-rollback on mismatch (opt-out via --no-auto-rollback).
         int dll_mismatch = verifyBundledDlls(self, r, skip_verify);
