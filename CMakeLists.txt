@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 3.20)
 project(icmg VERSION 0.42.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -21,7 +21,7 @@ add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE third_party)
 
 # ---------------------------------------------------------------------------
-# icmg_lib — all src/ except main.cpp (shared by binary + tests)
+# icmg_lib â€” all src/ except main.cpp (shared by binary + tests)
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE ALL_SOURCES "src/*.cpp")
 list(FILTER ALL_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
@@ -40,7 +40,7 @@ if(UNIX)
 endif()
 
 # ---------------------------------------------------------------------------
-# Phase 33 — optional backends. Both default OFF; system-detected on opt-in.
+# Phase 33 â€” optional backends. Both default OFF; system-detected on opt-in.
 # ---------------------------------------------------------------------------
 option(ICMG_USE_ONNX        "Build ONNX Runtime embedder backend (Phase 33+)" OFF)
 option(ICMG_USE_TREESITTER  "Build tree-sitter AST symbol extractor (Phase 33+)" OFF)
@@ -106,7 +106,7 @@ if(ICMG_USE_TREESITTER)
     set(TS_C_GRAMMAR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-c/src/parser.c)
     if(TS_INCLUDE AND TS_LIB AND EXISTS ${TS_C_GRAMMAR})
         message(STATUS "icmg: tree-sitter ENABLED (lib: ${TS_LIB}, C grammar vendored)")
-        # Vendored grammar — pure C, no extra deps.
+        # Vendored grammar â€” pure C, no extra deps.
         add_library(tree_sitter_c STATIC ${TS_C_GRAMMAR})
         target_include_directories(tree_sitter_c PRIVATE
             ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-c/src
@@ -198,7 +198,7 @@ add_executable(icmg src/main.cpp ${ICMG_WIN_RESOURCE})
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_link_libraries(icmg PRIVATE
         -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
-    # Static link runtime → portable exe (no mingw DLL deps).
+    # Static link runtime â†’ portable exe (no mingw DLL deps).
     if(WIN32)
         target_link_options(icmg PRIVATE
             -static-libgcc -static-libstdc++
@@ -313,6 +313,15 @@ if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
 endif()
 add_test(NAME test_backup COMMAND test_backup)
+
+add_executable(test_diff_summary tests/cli/test_diff_summary.cpp)
+target_include_directories(test_diff_summary PRIVATE tests src third_party)
+if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_link_options(test_diff_summary PRIVATE
+        -static-libgcc -static-libstdc++
+        -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
+endif()
+add_test(NAME test_diff_summary COMMAND test_diff_summary)
 add_icmg_test(test_install_cmd     tests/cli/test_install_cmd.cpp)
 add_icmg_test(test_session_state   tests/core/test_session_state.cpp)
 add_icmg_test(test_stream_filter   tests/tkil/test_stream_filter.cpp)

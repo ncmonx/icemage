@@ -178,13 +178,13 @@ icmg design list                            # all + status
 
 ---
 
-## diff-summary — Symbol-aware git diff (Phase 19)
+## diff-summary — Symbol-aware git diff (Phase 19/84)
 
 ```
-icmg diff-summary [--ref REF] [--full]
+icmg diff-summary [--ref REF] [--full] [--limit N]
 ```
 
-Per-file enclosing-symbol mapping. `--full` appends raw diff.
+Per-file enclosing-symbol mapping. `--full` appends raw diff. `--limit N` caps file count (default 200).
 
 ---
 
