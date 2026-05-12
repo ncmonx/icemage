@@ -178,13 +178,29 @@ jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additiona
 // compress/store/graph) into Claude's awareness on every turn instead of
 // passive existence in DB.
 static const char* PROMPT_RECALL_SH = R"BASH(#!/usr/bin/env bash
-# Phase 79: delegated to in-process `icmg hook userprompt` —
-# replaces previous chain of 4-5 separate icmg subprocess calls.
-# Saves ~150-250ms per prompt on cold-start fork overhead.
+# Phase 81: try daemon IPC first (~5ms); fall back to direct spawn (~360ms).
+# Daemon must be running: `icmg daemon start`.
 set -uo pipefail
 [ "${ICMG_NO_PROMPT_HOOK:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
-exec icmg hook userprompt
+
+# Read hook input JSON from stdin.
+INPUT=$(cat)
+
+# If jq available and daemon running: extract prompt, send via IPC (~5ms).
+if command -v jq >/dev/null 2>&1; then
+    PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)
+    if [ -n "$PROMPT" ]; then
+        RESULT=$(icmg daemon client hook.userprompt --param "prompt=$PROMPT" 2>/dev/null)
+        if [ -n "$RESULT" ]; then
+            printf '%s' "$RESULT"
+            exit 0
+        fi
+    fi
+fi
+
+# Fallback: direct spawn (~360ms).
+printf '%s' "$INPUT" | exec icmg hook userprompt
 )BASH";
 
 // Stop hook — reminds to log workflow decisions when session had git activity.

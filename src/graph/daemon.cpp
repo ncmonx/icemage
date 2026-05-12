@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <set>
 #include <functional>
+#include <vector>
 
 #if defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
@@ -196,10 +197,13 @@ void Daemon::start(const std::string& root, const std::string& dbPath,
     std::string cmd = std::string("\"") + exe + "\" --daemon-watch \"" + root
                       + "\" --daemon-db \"" + dbPath + "\"";
 
+    std::vector<char> cmd_buf(cmd.begin(), cmd.end());
+    cmd_buf.push_back('\0');
     STARTUPINFOA si = {}; si.cb = sizeof(si);
     PROCESS_INFORMATION pi = {};
-    if (!CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, FALSE,
-                        CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi)) {
+    if (!CreateProcessA(nullptr, cmd_buf.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                        nullptr, nullptr, &si, &pi)) {
         throw DaemonError("Failed to start daemon process");
     }
     writePid(pidPath, pi.dwProcessId);
