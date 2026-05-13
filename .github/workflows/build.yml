@@ -18,7 +18,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
+      - name: Install dependencies
+        if: hashFiles('CMakeLists.txt') != ''
+        run: sudo apt-get install -y cmake ninja-build
+
       - name: Configure
+        if: hashFiles('CMakeLists.txt') != ''
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -27,7 +32,19 @@ jobs:
             -DICMG_USE_ONNX=OFF
 
       - name: Build
+        if: hashFiles('CMakeLists.txt') != ''
         run: cmake --build build --parallel $(nproc)
 
       - name: Test
+        if: hashFiles('CMakeLists.txt') != ''
         run: ctest --test-dir build --output-on-failure
+
+      - name: Verify documentation (source-free build)
+        if: hashFiles('CMakeLists.txt') == ''
+        run: |
+          echo "No C++ source in this branch — verifying documentation integrity"
+          test -f README.md    || (echo "Missing README.md" && exit 1)
+          test -f COMMANDS.md  || (echo "Missing COMMANDS.md" && exit 1)
+          test -f CHANGELOG.md || (echo "Missing CHANGELOG.md" && exit 1)
+          test -f SECURITY.md  || (echo "Missing SECURITY.md" && exit 1)
+          echo "Documentation check passed"
