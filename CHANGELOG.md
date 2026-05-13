@@ -4,6 +4,9 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.52.0 — Cross-session awareness + fail sync-denials + wake-up hook + routing docs
+> `icmg session claim/clear/list` registers active tasks in `~/.icmg/active-work.json` for cross-session visibility. `icmg fail sync-denials` converts strict-denial logs to fail memory (auto-runs on Stop). `icmg init` now installs a SessionStart wake-up hook and auto-enables caveman ultra. AGENTS.md routing table expanded to 39 commands with topic-prefix convention. `PRAGMA mmap_size=256MB` added for read-heavy DB performance. 61/61 tests pass.
+
 ## 0.51.0 — Destructive-op guard + version staleness + security hardening
 > `icmg run` intercepts destructive commands (rm -rf, DROP TABLE, git push --force) with `[y/N]` prompt; `--yes` bypasses. Version staleness check on startup (24h cached, lag≥10 soft-blocks init/graph). `icmg wake-up` filters by `created_by` for multi-user machines. Hook token efficiency: 4KB budget, BM25≥0.15, adaptive depth, 300s context cache, 1-hop BFS. CMD popup suppression on all Windows configs. `icmg init` warns on cloud-sync paths + sets owner-only permissions on `.icmg/`.
 
