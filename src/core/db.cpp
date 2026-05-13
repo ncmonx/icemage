@@ -103,6 +103,8 @@ void Db::applyPragmas() {
     // contending for single-writer lock. 30s gives time to drain queue.
     run("PRAGMA busy_timeout=30000");
     run("PRAGMA cache_size=-8000"); // 8 MB
+    run("PRAGMA page_size=4096");       // effective only on new DBs; no-op on existing
+    run("PRAGMA mmap_size=268435456");  // 256 MB mmap — read pages skip syscall
     // wal_autocheckpoint default 1000 pages is fine; explicit for clarity.
     run("PRAGMA wal_autocheckpoint=1000");
 }

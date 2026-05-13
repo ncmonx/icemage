@@ -8,6 +8,9 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/user_identity.hpp"
+#include <nlohmann/json.hpp>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <ctime>
@@ -133,6 +136,27 @@ public:
                      [&](const core::Row& r){ if (!r.empty()) q_count = std::stoi(r[0]); });
         } catch (...) {}
         out << "\nRecall queries in window: " << q_count << "\n";
+
+        // #1130 T1: active sessions from ~/.icmg/active-work.json
+        {
+            namespace fs = std::filesystem;
+            using nlohmann::json;
+            fs::path awp = fs::path(cfg.globalDbPath()).parent_path() / "active-work.json";
+            if (fs::exists(awp)) {
+                try {
+                    std::ifstream f(awp);
+                    auto j = json::parse(f);
+                    const auto& sessions = j["sessions"];
+                    if (!sessions.empty()) {
+                        out << "\nActive sessions:\n";
+                        for (const auto& s2 : sessions) {
+                            out << "  pid=" << s2.value("pid", int64_t{0})
+                                << "  " << s2.value("task", std::string{}) << "\n";
+                        }
+                    }
+                } catch (...) {}
+            }
+        }
 
         std::string s = out.str();
         if (s.size() > 2048) {

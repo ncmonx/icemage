@@ -250,6 +250,17 @@ CONTENT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
 jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
 )BASH";
 
+// #1084: SessionStart wake-up injection.
+static const char* WAKEUP_SESSION_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. Fires on SessionStart.
+# Injects icmg wake-up briefing at start of every AI session.
+set -uo pipefail
+command -v icmg >/dev/null 2>&1 || exit 0
+CONTENT=$(icmg wake-up 2>/dev/null) || true
+[[ -z "$CONTENT" ]] && exit 0
+jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+)BASH";
+
 // v0.42.0: UserPromptSubmit — BM25-match cold context_nodes + skill index per prompt.
 static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on UserPromptSubmit.
@@ -412,11 +423,35 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Search code | `icmg run grep ...` (auto-filtered) |
 | Recall past decision | `icmg recall "<query>"` |
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
+| Recall across projects | `icmg cross-recall "<query>"` |
 | Start new task | `icmg pack "<task>"` (4KB context bundle) |
 | Delegate to LLM | `icmg agent "<task>"` (pack→prompt→user-CLI) |
 | Run noisy command | `icmg run <cmd>` (Tkil filter — 60-90% smaller) |
 | Big git diff | `icmg diff-summary --ref HEAD~5` |
 | Errored before? | `icmg explain "<error>"` |
+| Fetch URL with cache | `icmg fetch <url>` (cached + token-reduced) |
+| Compress large output | `icmg compress` (pipe or `< file` — glossary output) |
+| Shrink to token budget | `icmg shrink` |
+| Expand compressed text | `icmg expand` |
+| View token savings | `icmg savings` |
+| Session-start briefing | `icmg wake-up` (decisions + phases + fixes) |
+| Browse/manage memories | `icmg memory list/forget/purge` |
+| Anti-pattern recall | `icmg fail recall "<task>"` / `icmg fail store "<task>" "<approach>" "<reason>"` |
+| Cross-session awareness | `icmg session claim/clear/list` |
+| Record verification | `icmg verify --command "<cmd>"` (audit trail) |
+| Manage zones | `icmg zone list/add/scope` |
+| Sync with team | `icmg sync` (git-tracked JSONL) |
+| Scheduled tasks | `icmg cron list/add/remove` |
+| Diagnose icmg issues | `icmg doctor` |
+| System health | `icmg health` |
+| Self-upgrade | `icmg update` |
+| Strict mode | `icmg strict [on/off/status]` |
+| Caveman mode | `icmg caveman [on/off/status]` |
+| Reinit hooks | `icmg init --force` |
+| Batch cache writes | `icmg batch` (cut round-trips) |
+| Release notes | `icmg whats-new` |
+| Interactive REPL | `icmg chat` |
+| File copy silent | `icmg copy --from <src> --to <dst>` |
 | List directory | `icmg ls [path]` |
 | Clone existing menu | `icmg parity <ref> <new>` (catch missed handlers) |
 | Generate scaffold | `icmg template extract <ref> --save-as X` then `icmg template apply X --to <new>` |
@@ -427,6 +462,18 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 - Fixed a bug? `icmg known-issue add "<pattern>" --fix "<resolution>"`
 - Made a decision? `icmg store --topic decisions-<feature> "<rationale>"`
 - Long-form rationale (post-mortem, ADR)? `icmg memoir add --title T --content-file F`
+- Anti-pattern / failed approach? `icmg fail store "<task>" "<approach>" "<reason>"`
+
+### Topic prefix conventions (makes recall deterministic)
+
+| Type | Prefix | Example |
+| --- | --- | --- |
+| Plan | `plan:<feature>` | `icmg store --topic plan:auth-refresh "..."` |
+| Bug | `bug:<symptom>` | `icmg store --topic bug:linker-error "..."` |
+| Decision | `decisions-<area>` | `icmg store --topic decisions-db "..."` |
+| Anti-pattern | use `icmg fail store` | see above |
+
+Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM25).
 
 Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
 <!-- icmg:end -->
@@ -677,6 +724,20 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-precompact-snapshot.py", PRECOMPACT_PY, force);
         // Phase 51 T2: caveman SessionStart hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-caveman-prompt.sh", CAVEMAN_PROMPT_SH, force);
+        // Auto-enable caveman ultra on init if flag absent (never overwrite existing level).
+        {
+            const char* h2 = std::getenv("HOME");
+            if (!h2) h2 = std::getenv("USERPROFILE");
+            if (h2) {
+                fs::path cflag = fs::path(h2) / ".icmg" / "caveman.flag";
+                if (!fs::exists(cflag)) {
+                    fs::create_directories(cflag.parent_path());
+                    std::ofstream ofs(cflag);
+                    ofs << "ultra\n";
+                    std::cout << "  caveman:    ultra mode enabled (~/.icmg/caveman.flag)\n";
+                }
+            }
+        }
         // Phase 71: UserPromptSubmit auto-recall + suggest compress.
         n += writeFile(root / ".claude" / "hooks" / "icmg-prompt-recall.sh", PROMPT_RECALL_SH, force);
         // Stop hook: wflog reminder on session end when git has changes.
@@ -684,6 +745,8 @@ private:
         // v0.42.0: context graph injection hooks.
         n += writeFile(root / ".claude" / "hooks" / "icmg-context-session.sh", CONTEXT_SESSION_SH, force);
         n += writeFile(root / ".claude" / "hooks" / "icmg-context-prompt.sh",  CONTEXT_PROMPT_SH,  force);
+        // #1084: wake-up briefing on SessionStart.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-wakeup-session.sh", WAKEUP_SESSION_SH, force);
         // v0.42.0: rule enforcement hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-rule-enforce.sh", RULE_ENFORCE_SH, force);
 
@@ -849,7 +912,9 @@ private:
                     {{"type", "command"},
                      {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0"}}
+                     {"command", "[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0"}},
+                    {{"type", "command"},
+                     {"command", "[ -f .claude/hooks/icmg-wakeup-session.sh ] && bash .claude/hooks/icmg-wakeup-session.sh || exit 0"}}
                 })}
             }
         });
@@ -890,6 +955,8 @@ private:
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.message.content[]?.text // empty' 2>/dev/null | icmg distill auto --min-len 100 2>/dev/null || true"}},
+                    {{"type", "command"},
+                     {"command", "icmg fail sync-denials 2>/dev/null || true"}},
                     {{"type", "command"},
                      {"command", "INPUT=$(cat); echo \"$INPUT\" | icmg compliance check-thinking --max-words 80 2>/dev/null || true"}},
                     {{"type", "command"},

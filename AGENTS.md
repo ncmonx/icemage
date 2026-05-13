@@ -104,11 +104,35 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Search code | `icmg run grep ...` (auto-filtered) |
 | Recall past decision | `icmg recall "<query>"` |
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
+| Recall across projects | `icmg cross-recall "<query>"` |
 | Start new task | `icmg pack "<task>"` (4KB context bundle) |
 | Delegate to LLM | `icmg agent "<task>"` (pack→prompt→user-CLI) |
 | Run noisy command | `icmg run <cmd>` (Tkil filter — 60-90% smaller) |
 | Big git diff | `icmg diff-summary --ref HEAD~5` |
 | Errored before? | `icmg explain "<error>"` |
+| Fetch URL with cache | `icmg fetch <url>` (cached + token-reduced) |
+| Compress large output | `icmg compress` (pipe or `< file` — glossary output) |
+| Shrink to token budget | `icmg shrink` |
+| Expand compressed text | `icmg expand` |
+| View token savings | `icmg savings` |
+| Session-start briefing | `icmg wake-up` (decisions + phases + fixes) |
+| Browse/manage memories | `icmg memory list/forget/purge` |
+| Anti-pattern recall | `icmg fail recall "<task>"` / `icmg fail store "<task>" "<approach>" "<reason>"` |
+| Cross-session awareness | `icmg session claim/clear/list` |
+| Record verification | `icmg verify --command "<cmd>"` (audit trail) |
+| Manage zones | `icmg zone list/add/scope` |
+| Sync with team | `icmg sync` (git-tracked JSONL) |
+| Scheduled tasks | `icmg cron list/add/remove` |
+| Diagnose icmg issues | `icmg doctor` |
+| System health | `icmg health` |
+| Self-upgrade | `icmg update` |
+| Strict mode | `icmg strict [on/off/status]` |
+| Caveman mode | `icmg caveman [on/off/status]` |
+| Reinit hooks | `icmg init --force` |
+| Batch cache writes | `icmg batch` (cut round-trips) |
+| Release notes | `icmg whats-new` |
+| Interactive REPL | `icmg chat` |
+| File copy silent | `icmg copy --from <src> --to <dst>` |
 | List directory | `icmg ls [path]` |
 | Clone existing menu | `icmg parity <ref> <new>` (catch missed handlers) |
 | Generate scaffold | `icmg template extract <ref> --save-as X` then `icmg template apply X --to <new>` |
@@ -119,6 +143,20 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 - Fixed a bug? `icmg known-issue add "<pattern>" --fix "<resolution>"`
 - Made a decision? `icmg store --topic decisions-<feature> "<rationale>"`
 - Long-form rationale (post-mortem, ADR)? `icmg memoir add --title T --content-file F`
+- Anti-pattern / failed approach? `icmg fail store "<task>" "<approach>" "<reason>"`
+
+### Topic prefix conventions (makes recall deterministic)
+
+| Type | Prefix | Example |
+| --- | --- | --- |
+| Plan | `plan:<feature>` | `icmg store --topic plan:auth-refresh "..."` |
+| Bug | `bug:<symptom>` | `icmg store --topic bug:linker-error "..."` |
+| Decision | `decisions-<area>` | `icmg store --topic decisions-db "..."` |
+| Anti-pattern | use `icmg fail store` | see above |
+
+Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM25).
 
 Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
 <!-- icmg:end -->
+
+

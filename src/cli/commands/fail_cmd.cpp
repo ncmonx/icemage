@@ -13,9 +13,15 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
+#include <nlohmann/json.hpp>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+
+namespace fs = std::filesystem;
+using nlohmann::json;
 
 namespace icmg::cli {
 
@@ -32,7 +38,8 @@ public:
             "Actions:\n"
             "  store <task> <approach> <reason>   Record a failed attempt\n"
             "  recall <task> [--limit N]          List past fails matching task\n"
-            "  list [--limit N]                   Recent failed attempts\n\n"
+            "  list [--limit N]                   Recent failed attempts\n"
+            "  sync-denials                       Auto-convert strict-denial log to fail memory\n\n"
             "Stored as memory_nodes with topic `fail: <task>`. Auto-recalled\n"
             "by `icmg pack` (alongside regular memory) so Claude sees prior\n"
             "failures upfront and avoids repeating them.\n\n"
@@ -109,6 +116,62 @@ public:
                     ++shown;
                 });
             if (shown == 0) std::cout << "No failed attempts recorded.\n";
+            return 0;
+        }
+
+        if (action == "sync-denials") {
+            // #1111 T1: auto-convert ~/.icmg/strict-denials.jsonl to fail memory.
+            // Tracks last-processed byte offset so re-runs are incremental.
+            fs::path global_dir = fs::path(cfg.globalDbPath()).parent_path();
+            fs::path denials_path = global_dir / "strict-denials.jsonl";
+            fs::path offset_path  = global_dir / "sync-denials-offset.txt";
+
+            if (!fs::exists(denials_path)) {
+                std::cout << "icmg fail sync-denials: no denials log found\n";
+                return 0;
+            }
+
+            int64_t last_offset = 0;
+            if (fs::exists(offset_path)) {
+                std::ifstream of(offset_path);
+                of >> last_offset;
+            }
+
+            std::ifstream f(denials_path);
+            f.seekg((std::streamoff)last_offset);
+            std::string line;
+            int stored = 0;
+            int64_t new_offset = last_offset;
+
+            while (std::getline(f, line)) {
+                new_offset = (int64_t)f.tellg();
+                if (line.empty()) continue;
+                try {
+                    auto j = json::parse(line);
+                    std::string hook   = j.value("hook",   std::string{});
+                    std::string target = j.value("target", std::string{});
+                    std::string reason = j.value("reason", std::string{});
+                    if (target.empty() || reason.empty()) continue;
+
+                    imem::MemoryNode mn;
+                    mn.topic      = "fail:hook-violation";
+                    mn.content    = "Blocked [" + hook + "]: " + target
+                                  + ". Use icmg equivalent. Reason: " + reason;
+                    mn.keywords   = "fail hook violation block " + hook;
+                    mn.importance = 2;
+                    mn.zone       = "default";
+                    try { mem.store(mn, /*force=*/false); ++stored; }
+                    catch (...) {}  // duplicate — skip
+                } catch (...) {}
+            }
+
+            if (stored > 0) {
+                std::ofstream of(offset_path);
+                of << new_offset;
+                std::cout << "icmg fail sync-denials: stored " << stored << " violation(s)\n";
+            } else {
+                std::cout << "icmg fail sync-denials: no new violations\n";
+            }
             return 0;
         }
 
