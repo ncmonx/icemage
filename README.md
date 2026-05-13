@@ -263,9 +263,9 @@ AUTO-ZONE             ▸ Pack infers zone from keywords (10 zones); sharper IDF
                         without manual flag — auth/db/graph/imem/tkil/mcp/ui/
                         cli/hooks/compress
 DASHBOARD             ▸ icmg serve → http://127.0.0.1:8080/
-AST-AWARE             ▸ tree-sitter for C/C++/Python/TypeScript/Go/Rust/Java
-                        regex fallback for the rest; `--lang` filter on
-                        `graph update` / `graph search` / `graph symbol`
+AST-AWARE             ▸ tree-sitter for C/C++/Python/TypeScript/Go/Rust/Java/
+                        C#/Ruby/Bash/Kotlin/Lua — exact symbols, line ranges,
+                        body hashes. Regex fallback for the rest
 TEAM-FRIENDLY         ▸ Memory + graph share via git-tracked JSONL snapshots
 IMAGE-AWARE           ▸ Local OCR for screenshots; 90%+ vs vision API
 HARD ENFORCEMENT      ▸ Hooks block native Read/WebFetch when icmg has it
