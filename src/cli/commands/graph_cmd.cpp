@@ -640,12 +640,14 @@ public:
         graph::Scanner::Options opts;
         std::string depth_str = flagValue(args, "--depth", "20");
         try { opts.max_depth = std::stoi(depth_str); } catch (...) {}
+        std::string lang_str = flagValue(args, "--lang");
+        if (!lang_str.empty()) {
+            std::istringstream ss(lang_str);
+            std::string l;
+            while (std::getline(ss, l, ',')) opts.include_langs.push_back(l);
+        }
         bool json_out  = hasFlag(args, "--json");
         bool parallel  = hasFlag(args, "--parallel");
-        // Phase 60: --no-mem-sync skips the expensive ALL-nodes memory sync.
-        // Per-file `graph update <file>` calls were >10min on large graphs
-        // because syncGraphToMemory walks every graph_node. Opt-out for fast
-        // incremental updates; full `graph scan` still syncs by default.
         bool no_mem_sync = hasFlag(args, "--no-mem-sync") || hasFlag(args, "--no-embed");
         std::string since_str = flagValue(args, "--since");
 
