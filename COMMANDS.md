@@ -496,7 +496,10 @@ icmg run [options] <command...>
   --dry-run     # show detected filter without running
   --stream      # real-time line-by-line output; filter summary appended at end
   --timeout N   # exec timeout in ms (default 60000)
+  --yes / -y    # skip destructive-op confirmation prompt (v0.51.0)
 ```
+
+**Destructive-op guard (v0.51.0):** `run` intercepts commands matching `rm -rf`, `Remove-Item`, `rmdir /s`, `DELETE FROM`, `DROP TABLE`, `git push --force`, `git reset --hard`, `git clean -f` and prompts `[y/N]` before executing. Pass `--yes` to bypass. Skipped when target is a known-safe dir (`build/`, `.icmg/`, `tmp/`, `node_modules/`).
 
 **Filter strategies:**
 
@@ -965,6 +968,7 @@ Called automatically by `icmg update --apply` post-install. AI agents reading th
 | 0 | Success |
 | 1 | User error (missing arg, invalid input) |
 | 2 | Gate-style "no records to check" (e.g., `verify gate` with empty table) |
+| 130 | `icmg run` destructive-op aborted by user (v0.51.0) |
 | Other | Underlying command exit (e.g., `icmg run` propagates child exit) |
 
 ---
