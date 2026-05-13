@@ -4,6 +4,30 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.46.0 — Go/Rust/Java symbol extraction + backup restore-from
+> Tree-sitter extractors for Go, Rust, Java (struct/fn/method/interface/enum/trait/class/constructor). `icmg graph update --lang go,rust,java` filters to specific languages. `icmg backup restore-from <file>` restores from any explicit .db path (cross-project / disaster recovery). All 63 tests pass.
+
+## 0.45.1 — OpenSSF hardening
+> node: `plan-0451-openssf-hardening` — `icmg knowledge get plan-0451-openssf-hardening`
+
+## 0.45.0 — daemon IPC + rule-daemon
+> node: `plan-0450-daemon-ipc-rule-daemon` — `icmg knowledge get plan-0450-daemon-ipc-rule-daemon`
+
+## 0.44.0 — context-node match + BM25 skill injection
+> node: `plan-0440-context-node-match-bm25` — `icmg knowledge get plan-0440-context-node-match-bm25`
+
+## 0.43.1 — rule trial + supersession
+> node: `plan-0431-rule-trial-supersession` — `icmg knowledge get plan-0431-rule-trial-supersession`
+
+## 0.43.0 — rule enforcement daemon
+> node: `plan-0430-rule-enforcement-daemon` — `icmg knowledge get plan-0430-rule-enforcement-daemon`
+
+## 0.42.1 — rule trial (v0.42.1)
+> node: `plan-0421-rule-trial` — `icmg knowledge get plan-0421-rule-trial`
+
+## 0.42.0 — context graph: CLAUDE.md injection + skill index
+> node: `plan-0420-context-graph` — `icmg knowledge get plan-0420-context-graph`
+
 ## 0.40.2 — system-wide install for shared-server deployments
 > node: `plan-0402-system-wide-install-for-shared-server-deployments` — `icmg knowledge get plan-0402-system-wide-install-for-shared-server-deployments`
 

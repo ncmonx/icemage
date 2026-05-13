@@ -188,6 +188,27 @@ Per-file enclosing-symbol mapping. `--full` appends raw diff.
 
 ---
 
+## backup — DB snapshot / restore
+
+```
+icmg backup snapshot [--note STR]          # atomic point-in-time copy + sha256
+icmg backup list [--json]                  # enumerate snapshots
+icmg backup restore <id|latest> [--force]  # restore from indexed snapshot
+icmg backup restore-from <file> [--no-undo] # restore from any .db file (cross-project)
+icmg backup verify [<id>]                  # recompute sha256 of snapshot(s)
+icmg backup prune [--keep-hourly N --keep-daily N --keep-weekly N --keep-monthly N]
+icmg backup integrity                      # PRAGMA integrity_check on live DB
+icmg backup auto-on  [--interval Nh]       # schedule periodic snapshot+prune
+icmg backup auto-off                       # remove scheduled task
+icmg backup auto-status                    # show schedule + last run
+```
+
+`restore-from` bypasses snapshot listing — pass an explicit `.db` path.
+Useful when a project is copied to a new location and the live DB is missing
+but the backups folder was copied along.
+
+---
+
 ## doctor — Health check
 
 ```
