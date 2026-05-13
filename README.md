@@ -219,8 +219,9 @@ AUTO-ZONE             ▸ Pack infers zone from keywords (10 zones); sharper IDF
                         without manual flag — auth/db/graph/imem/tkil/mcp/ui/
                         cli/hooks/compress
 DASHBOARD             ▸ icmg serve → http://127.0.0.1:8080/
-AST-AWARE             ▸ tree-sitter for C/C++/Python/TypeScript
-                        regex fallback for the rest
+AST-AWARE             ▸ tree-sitter for C/C++/Python/TypeScript/Go/Rust/Java
+                        regex fallback for the rest; `--lang` filter on
+                        `graph update` / `graph search` / `graph symbol`
 TEAM-FRIENDLY         ▸ Memory + graph share via git-tracked JSONL snapshots
 IMAGE-AWARE           ▸ Local OCR for screenshots; 90%+ vs vision API
 HARD ENFORCEMENT      ▸ Hooks block native Read/WebFetch when icmg has it
@@ -298,6 +299,7 @@ APACHE-2.0            ▸ License preserved on releases
 | Real session tokens | `icmg context-budget` — covers ALL sources |
 | What changed | `icmg whats-new` — release notes after `update` |
 | Visual graph | `icmg serve` — embedded HTTP dashboard |
+| **Index specific language** | `icmg graph update --lang go` — re-scan only Go files; combine: `--lang go,rust,java` |
 | **DB safety net** | `icmg backup snapshot` / `icmg backup restore latest` / `icmg backup restore-from <file>` — atomic, schema-checked; cross-project restore supported |
 | **Instant failover** | `icmg mirror failover` — swaps in valid mirror in seconds |
 | **Self-clean heavy/idle DB** | `icmg maintain run` — auto-detects state, chains prune + integrity |
