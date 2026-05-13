@@ -93,19 +93,6 @@ icmg knowledge list         # browse all context nodes including new command ref
 icmg init --force           # upgrade: re-runs skill index + CLAUDE.md import automatically
 ```
 
-### Previously in v0.46.0
-
-| Feature | What changed |
-| --- | --- |
-| **Go/Rust/Java AST** | First wave of tree-sitter symbol extractors — functions, classes, methods, structs with body hashes |
-| **`--lang` filter** | `icmg graph update --lang go,rust` skips irrelevant files — 60–80% faster on large polyglot repos |
-| **`graph lang list/status`** | Enumerate every supported language + tree-sitter grammar availability at a glance |
-| **`backup restore-from`** | Disaster recovery from any snapshot zip — `icmg backup restore-from icmg-0.46.0-win-x64.zip` |
-
-### Previously in v0.42.0–v0.45.x
-
-Context graph, skill store, rule enforcement daemon, knowledge browser, caveman mode, drift gate, sentinel watchdog, shadow auto-upgrade. See [CHANGELOG](CHANGELOG.md).
-
 ## The savings, at a glance
 
 ```

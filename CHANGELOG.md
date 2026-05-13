@@ -4,6 +4,9 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.51.0 — Destructive-op guard + version staleness + security hardening
+> `icmg run` intercepts destructive commands (rm -rf, DROP TABLE, git push --force) with `[y/N]` prompt; `--yes` bypasses. Version staleness check on startup (24h cached, lag≥10 soft-blocks init/graph). `icmg wake-up` filters by `created_by` for multi-user machines. Hook token efficiency: 4KB budget, BM25≥0.15, adaptive depth, 300s context cache, 1-hop BFS. CMD popup suppression on all Windows configs. `icmg init` warns on cloud-sync paths + sets owner-only permissions on `.icmg/`.
+
 ## 0.48.1 — Health schema check fix
 > `icmg health` schema check now dynamically reads latest migration from `embeddedMigrations()` — no more hardcoded version drift. Reports `OK` when DB matches binary, `WARN` with actionable hint when mismatched.
 
