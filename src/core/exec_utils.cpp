@@ -139,7 +139,8 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
     si.hStdOutput = hOutW;
     si.hStdError  = hErrW;
     si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
-    si.dwFlags    = STARTF_USESTDHANDLES;
+    si.dwFlags    = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
 
     PROCESS_INFORMATION pi{};
     auto t0 = now_ms();
@@ -420,7 +421,8 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     si.hStdOutput = hOutW;
     si.hStdError  = hErrW;
     si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
-    si.dwFlags    = STARTF_USESTDHANDLES;
+    si.dwFlags    = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
 
     PROCESS_INFORMATION pi{};
     auto t0 = now_ms();

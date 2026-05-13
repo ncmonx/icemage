@@ -141,6 +141,23 @@ private:
         if (f) f << p << "\n";
     }
 
+    // T1: Session-dedup for injected memory/context node IDs.
+    // Prevents re-injecting identical node content on every prompt in same session.
+    static std::string sessionInjectedIdsPath() {
+        return std::string(core::icmgGlobalDir()) + "/session-injected-ids.txt";
+    }
+    static bool isNodeInjected(const std::string& id) {
+        std::ifstream f(sessionInjectedIdsPath());
+        if (!f) return false;
+        std::string line;
+        while (std::getline(f, line)) if (line == id) return true;
+        return false;
+    }
+    static void markNodeInjected(const std::string& id) {
+        std::ofstream f(sessionInjectedIdsPath(), std::ios::app);
+        if (f) f << id << "\n";
+    }
+
     // Build the additionalContext payload + emit JSON to stdout.
     static void emitContext(const std::string& msg) {
         json out;
@@ -174,6 +191,23 @@ private:
 
         std::string lp = lower(prompt);
         std::ostringstream msg;
+
+        // T4: Adaptive injection depth — scale limits with prompt complexity.
+        // Short prompts (<150 chars) need minimal context; long ones get full depth.
+        int recall_limit = 5;
+        int ctx_limit    = 3;
+        if      (prompt.size() < 150) { recall_limit = 1; ctx_limit = 1; }
+        else if (prompt.size() < 500) { recall_limit = 3; ctx_limit = 2; }
+
+        // T2: Token budget cap — stop injecting when accumulated output approaches limit.
+        // Estimate: 1 token ≈ 4 chars. Cap at ~1000 tokens (4096 chars).
+        constexpr size_t BUDGET_CHARS = 4096;
+        auto budgetOk = [&]() -> bool {
+            return (size_t)msg.tellp() < BUDGET_CHARS;
+        };
+
+        // T3: BM25 confidence threshold for memory recall — skip noisy low-score hits.
+        constexpr float RECALL_MIN_SCORE = 0.15f;
 
         // 1. Drift check (in-process; only fires if any pinned anchor exists).
         if (!std::getenv("ICMG_NO_DRIFT_CHECK")) {
@@ -227,30 +261,33 @@ private:
             } catch (...) {}
         }
 
-        // 2. Memory recall — top 3 hits (in-process via MemoryStore::recall).
+        // 2. Memory recall — top N hits (adaptive limit, T3 threshold, T1 dedup).
         int local_hits = 0;
-        try {
+        if (budgetOk()) try {
             auto& cfg = core::Config::instance();
             core::Db db(cfg.projectDbPath("."));
             imem::MemoryStore mem(db);
-            auto results = mem.recall(prompt, 3, false);
-            if (!results.empty()) {
-                local_hits = (int)results.size();
-                msg << "icmg memory hits (proactively surfaced):\n";
-                for (auto& m : results) {
-                    std::string topic = m.topic;
-                    if (topic.size() > 80) topic = topic.substr(0, 77) + "...";
-                    msg << "  [" << std::fixed
-                        << static_cast<int>(m.score) << "] "
-                        << topic << "\n";
-                }
-                msg << "\n";
+            auto results = mem.recall(prompt, recall_limit, false);
+            std::ostringstream rec_out;
+            int added = 0;
+            for (auto& m : results) {
+                if (m.score < RECALL_MIN_SCORE) continue;           // T3: threshold
+                std::string nid = std::to_string(m.id);
+                if (isNodeInjected(nid)) continue;                   // T1: dedup
+                markNodeInjected(nid);
+                std::string topic = m.topic;
+                if (topic.size() > 80) topic = topic.substr(0, 77) + "...";
+                rec_out << "  [" << static_cast<int>(m.score) << "] " << topic << "\n";
+                ++added;
+            }
+            if (added > 0) {
+                local_hits = added;
+                msg << "icmg memory hits (proactively surfaced):\n" << rec_out.str() << "\n";
             }
         } catch (...) {}
 
         // 2b. Cross-project recall fallback when local hits sparse.
-        if (local_hits < 2 && std::getenv("ICMG_CROSS_PROJECT") == nullptr) {
-            // Iterate registered projects via global registry DB.
+        if (budgetOk() && local_hits < 2 && std::getenv("ICMG_CROSS_PROJECT") == nullptr) {
             try {
                 std::string gdb = std::string(core::icmgGlobalDir()) + "/global.db";
                 core::Db gd(gdb);
@@ -263,7 +300,7 @@ private:
                 int xhits = 0;
                 std::string cwd = fs::current_path().string();
                 for (auto& [pname, ppath] : projs) {
-                    // Skip current project.
+                    if (!budgetOk() || xhits >= 3) break;
                     if (ppath == cwd) continue;
                     std::string pdb = ppath + "/.icmg/data.db";
                     if (!fs::exists(pdb)) continue;
@@ -272,7 +309,11 @@ private:
                         imem::MemoryStore pm(pd);
                         auto pres = pm.recall(prompt, 2, false);
                         for (auto& m : pres) {
-                            if (xhits >= 3) break;
+                            if (xhits >= 3 || !budgetOk()) break;
+                            if (m.score < RECALL_MIN_SCORE) continue;     // T3
+                            std::string xid = "x:" + pname + ":" + std::to_string(m.id);
+                            if (isNodeInjected(xid)) continue;             // T1
+                            markNodeInjected(xid);
                             std::string topic = m.topic;
                             if (topic.size() > 70) topic = topic.substr(0, 67) + "...";
                             xmsg << "  [" << pname << "][" << (int)m.score
@@ -280,7 +321,6 @@ private:
                             ++xhits;
                         }
                     } catch (...) {}
-                    if (xhits >= 3) break;
                 }
                 if (xhits > 0) {
                     msg << "cross-project recall (other projects):\n"
@@ -290,7 +330,7 @@ private:
         }
 
         // 2c. Path-context — detect file path mentions, emit graph context.
-        {
+        if (budgetOk()) {
             // Match common code file extensions.
             static const std::vector<std::string> exts = {
                 ".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".cpp", ".hpp",
@@ -342,6 +382,79 @@ private:
                         msg << "  → for full slice: `icmg context " << firstpath
                             << " --lines A-B`\n\n";
                     }
+                    // T9: 1-hop BFS — callers/callees via graph_edges (file→symbol→neighbor).
+                    if (budgetOk()) {
+                        std::ostringstream bfs_out;
+                        int bfs_n = 0;
+                        db.query(
+                            "SELECT DISTINCT n2.path, e.edge_type "
+                            "FROM graph_edges e "
+                            "JOIN graph_nodes n1 ON n1.id = e.src "
+                            "JOIN graph_nodes n2 ON n2.id = e.dst "
+                            "WHERE n1.path = ? AND n2.path != ? LIMIT 5",
+                            {firstpath, firstpath},
+                            [&](const core::Row& r){
+                                if (r.size() < 2 || bfs_n >= 5) return;
+                                bfs_out << "  →" << r[1] << ": " << r[0] << "\n";
+                                ++bfs_n;
+                            });
+                        if (bfs_n > 0)
+                            msg << "icmg graph-neighbors (" << firstpath << "):\n"
+                                << bfs_out.str() << "\n";
+                    }
+                } catch (...) {}
+            }
+        }
+
+        // 2d. T9: BFS 1-hop expansion — callers/callees of the path-context file.
+        // Seeds from graph_nodes matching the detected path, expands via graph_edges depth-1.
+        // Skipped if budget is tight or path-context found nothing.
+        if (budgetOk() && !lp.empty()) {
+            // Reuse the firstpath detection from 2c (re-detect quickly).
+            static const std::vector<std::string> bfs_exts = {
+                ".cs",".ts",".tsx",".js",".py",".cpp",".hpp",".c",".h",".go",".rs"
+            };
+            std::string bfspath;
+            for (auto& ext : bfs_exts) {
+                size_t p = lp.find(ext);
+                if (p == std::string::npos) continue;
+                size_t end = p + ext.size(), start = p;
+                while (start > 0) {
+                    char c = prompt[start-1];
+                    if (std::isalnum((unsigned char)c)||c=='_'||c=='/'||c=='\\'||c=='.'||c=='-') --start;
+                    else break;
+                }
+                if (end > start && end - start <= 256) { bfspath = prompt.substr(start, end-start); break; }
+            }
+            if (!bfspath.empty() && fs::exists(bfspath)) {
+                try {
+                    auto& cfg = core::Config::instance();
+                    core::Db db(cfg.projectDbPath("."));
+                    // Get node id for seed file.
+                    int64_t seed_id = 0;
+                    db.query("SELECT id FROM graph_nodes WHERE path = ? LIMIT 1",
+                             {bfspath}, [&](const core::Row& r){
+                                 if (!r.empty()) try { seed_id = std::stoll(r[0]); } catch (...) {}
+                             });
+                    if (seed_id > 0) {
+                        std::ostringstream bfs_out;
+                        int bfs_added = 0;
+                        db.query("SELECT n.path, e.edge_type FROM graph_edges e "
+                                 "JOIN graph_nodes n ON n.id = e.dst "
+                                 "WHERE e.src = ? AND e.edge_type IN ('calls','imports','uses') LIMIT 5",
+                                 {std::to_string(seed_id)},
+                                 [&](const core::Row& r){
+                                     if (r.size() < 2 || !budgetOk()) return;
+                                     std::string bkey = "bfs:" + r[0];
+                                     if (isNodeInjected(bkey)) return;
+                                     markNodeInjected(bkey);
+                                     bfs_out << "  " << r[1] << " → " << r[0] << "\n";
+                                     ++bfs_added;
+                                 });
+                        if (bfs_added > 0)
+                            msg << "icmg bfs-context (1-hop from " << bfspath << "):\n"
+                                << bfs_out.str() << "\n";
+                    }
                 } catch (...) {}
             }
         }
@@ -353,10 +466,10 @@ private:
                 << "B — pipe big paste through `icmg compress` next time.)\n";
         }
 
-        // 4. Cold context_nodes + skill injection — BM25 min-score 0.15, cached 60s.
-        if (!prompt.empty() && !std::getenv("ICMG_NO_CONTEXT_HOOK")) {
+        // 4. Cold context_nodes + skill injection — BM25 min-score 0.15, cached 300s (T12).
+        if (budgetOk() && !prompt.empty() && !std::getenv("ICMG_NO_CONTEXT_HOOK")) {
             uint32_t h = fnv1a32(prompt);
-            std::string cached_ctx = readPromptCache(h, 60);
+            std::string cached_ctx = readPromptCache(h, 300);
             if (!cached_ctx.empty()) {
                 msg << cached_ctx;
             } else {
@@ -364,12 +477,20 @@ private:
                     auto& cfg = core::Config::instance();
                     core::Db db(cfg.projectDbPath("."));
                     core::ContextNodeStore cns(db);
-                    auto cold = cns.search(prompt, "cold", 3, 0.15);
-                    auto skill = cns.search(prompt, "skill", 2, 0.15);
+                    auto cold  = cns.search(prompt, "cold",  ctx_limit, 0.15f);
+                    auto skill = cns.search(prompt, "skill", 2,         0.15f);
                     std::ostringstream ctx_out;
-                    for (auto& n : cold)
+                    for (auto& n : cold) {
+                        if (!budgetOk()) break;
+                        if (isNodeInjected(n.node_key)) continue;        // T1
+                        markNodeInjected(n.node_key);
+                        // T10: compress content — signature only (≤200 chars).
+                        std::string body = n.content.size() > 200
+                                         ? n.content.substr(0, 197) + "..."
+                                         : n.content;
                         ctx_out << "[ctx:" << n.node_key << "] " << n.title
-                                << "\n" << n.content << "\n\n";
+                                << "\n" << body << "\n\n";
+                    }
                     if (!skill.empty()) {
                         ctx_out << "---\nSuggested skills:";
                         for (auto& n : skill) ctx_out << " " << n.title << ";";

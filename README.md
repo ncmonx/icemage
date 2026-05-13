@@ -23,6 +23,23 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## What's new in v0.51.0
+
+| Feature | What changed |
+|---|---|
+| **Destructive-op guard** | `icmg run` intercepts `rm -rf`, `DROP TABLE`, `git push --force` etc. — prompts `[y/N]` before executing; `--yes` bypasses |
+| **Version staleness check** | Startup checks GitHub for latest release (24h cached); warns at lag≥3, soft-blocks `init`/`graph` at lag≥10 |
+| **Wake-up per-user filter** | `icmg wake-up` now filters decisions/fixes by `created_by` — multi-user machines no longer mix context |
+| **Hook token efficiency** | `hook userprompt` now respects 4KB budget cap, BM25≥0.15 threshold, adaptive depth, 300s context cache, 1-hop BFS graph expansion |
+| **CMD popup suppression** | `exec_utils` subprocess launch adds `STARTF_USESHOWWINDOW\|SW_HIDE` — no console flicker on all Windows configs |
+| **Init security** | `icmg init` warns on OneDrive/Dropbox path + sets owner-only permissions on `.icmg/` |
+
+```bash
+icmg run --yes rm -rf build/        # skip destructive prompt for safe dirs
+icmg wake-up                        # now shows [user: email] header
+icmg upgrade                        # resolve version staleness warnings
+```
+
 ## What's new in v0.42.0
 
 | Feature | What changed |

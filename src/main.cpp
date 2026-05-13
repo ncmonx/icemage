@@ -7,6 +7,7 @@
 #include "core/migrator.hpp"
 #include "core/logger.hpp"
 #include "core/exec_utils.hpp"
+#include "core/version_check.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
 
@@ -50,7 +51,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (show_version) {
-        std::cout << "icmg 0.45.0\n";
+        std::cout << "icmg 0.51.0\n";
         return 0;
     }
 
@@ -87,6 +88,18 @@ int main(int argc, char* argv[]) {
 
     // Auto-bootstrap project hooks on first entry (silent, non-blocking).
     autoBootstrapProject(args);
+
+    // Version staleness check (cached — no network hit when cache is fresh).
+    // Skip for MCP mode, version queries, and update commands.
+    if (!args.empty() && args[0] != "update" && args[0] != "upgrade") {
+        auto vstatus = icmg::core::checkVersionStaleness("0.51.0");
+        icmg::core::printVersionWarning(vstatus);
+        if (!args.empty() && icmg::core::isCommandSoftBlocked(args[0], vstatus)) {
+            std::cerr << "[icmg] Command '" << args[0]
+                      << "' is disabled on this stale version. Run: icmg upgrade\n";
+            return 1;
+        }
+    }
 
     // Dispatch command
     icmg::cli::Dispatcher dispatcher;

@@ -24,7 +24,8 @@ using nlohmann::json;
 
 static std::string testIpcPath() {
 #ifdef _WIN32
-    return R"(\\.\pipe\icmg-daemon)";
+    // Use a test-only pipe name that will never collide with the running daemon.
+    return R"(\\.\pipe\icmg-daemon-test-noserver-99)";
 #else
     return "/tmp/icmg-test-daemon-not-running.sock";
 #endif

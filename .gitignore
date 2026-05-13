@@ -28,6 +28,13 @@ third_party/nlohmann/json.hpp
 # AI assistant artifacts
 context-snapshot.json
 
+# Release artifacts (generated, upload to GitHub manually)
+icmg-*.zip
+icmg-*.sha256
+icmg-*.zip.sha256
+dist/
+savings.html
+
 # Claude project + internal planning (not public)
 .claude/
 docs/plans/

@@ -485,6 +485,49 @@ public:
         fs::path root = fs::current_path();
         std::cout << "icmg init: " << root.string() << "\n";
 
+        // T3: Cloud sync path detection — warn if .icmg/ would be synced.
+        {
+            std::string rstr = root.string();
+            for (char& c : rstr) if (c == '\\') c = '/';
+            std::string rl = rstr;
+            for (char& c : rl) c = (char)std::tolower((unsigned char)c);
+            static const char* cloud_markers[] = {
+                "onedrive", "dropbox", "google drive", "googledrive",
+                "icloud", "box sync", "boxsync", nullptr
+            };
+            for (auto** m = cloud_markers; *m; ++m) {
+                if (rl.find(*m) != std::string::npos) {
+                    std::cerr << "  [WARN] Project inside cloud-sync path (" << *m << ").\n"
+                              << "         .icmg/data.db may corrupt under concurrent sync.\n"
+                              << "         Move project out of sync folder or add .icmg to exclusions.\n";
+                    break;
+                }
+            }
+        }
+
+        // T2: Set restrictive permissions on .icmg/ (owner-only, no group/world).
+        {
+            fs::path icmg_dir = root / ".icmg";
+            if (fs::exists(icmg_dir)) {
+                std::error_code ec;
+#ifndef _WIN32
+                fs::permissions(icmg_dir,
+                    fs::perms::owner_all,
+                    fs::perm_options::replace, ec);
+                fs::path db = icmg_dir / "data.db";
+                if (fs::exists(db))
+                    fs::permissions(db,
+                        fs::perms::owner_read | fs::perms::owner_write,
+                        fs::perm_options::replace, ec);
+#else
+                // Windows: icacls to remove inherited + grant owner-only.
+                std::string p = icmg_dir.string();
+                std::string cmd = "icacls \"" + p + "\" /inheritance:r /grant:r \"%USERNAME%\":F /T /Q 2>NUL";
+                std::system(cmd.c_str());
+#endif
+            }
+        }
+
         int steps = 0;
         if (!no_hooks)    { steps += installHooks(root, force, strict_read); }
         if (!no_agents)   { steps += installAgents(root, force); }

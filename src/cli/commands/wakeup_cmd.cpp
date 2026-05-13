@@ -7,6 +7,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/user_identity.hpp"
 #include <iostream>
 #include <sstream>
 #include <ctime>
@@ -35,18 +36,30 @@ public:
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
 
+        // User filter: ICMG_USER env > git config user.email > "anonymous".
+        // "anonymous" = single-user machine → no filter (backward compat).
+        const std::string& cur_user = core::currentUser();
+        bool has_user = (cur_user != "anonymous" && !cur_user.empty());
+        std::string user_filter = has_user ? " AND created_by = ?" : "";
+        std::vector<std::string> user_param_extra = has_user ? std::vector<std::string>{cur_user} : std::vector<std::string>{};
+        auto userParams = [&](std::vector<std::string> base) -> std::vector<std::string> {
+            for (auto& p : user_param_extra) base.push_back(p);
+            return base;
+        };
+
         std::ostringstream out;
         if (pack) out << "# Wake-up bundle\n\n";
         out << "icmg wake-up — " << fmtDate(now) << "\n";
+        if (has_user) out << "[user: " << cur_user << "]\n";
         out << "(window: " << since << ")\n\n";
 
         // Top high-importance recent memories
         out << "Decisions (last 5):\n";
         int n = 0;
         db.query("SELECT id, topic, content, importance FROM memory_nodes "
-                 "WHERE deleted_at IS NULL AND last_used > ? AND importance >= 2 "
-                 "ORDER BY last_used DESC LIMIT 5",
-                 {std::to_string(cutoff)},
+                 "WHERE deleted_at IS NULL AND last_used > ? AND importance >= 2"
+                 + user_filter + " ORDER BY last_used DESC LIMIT 5",
+                 userParams({std::to_string(cutoff)}),
                  [&](const core::Row& r){
                      if (r.size() < 4) return;
                      out << "  [" << r[3] << "] " << trunc(r[1], 60) << "\n";
@@ -59,8 +72,8 @@ public:
         n = 0;
         db.query("SELECT topic, content FROM memory_nodes "
                  "WHERE deleted_at IS NULL AND topic LIKE 'errors-resolved%' "
-                 "AND last_used > ? ORDER BY last_used DESC LIMIT 5",
-                 {std::to_string(cutoff)},
+                 "AND last_used > ?" + user_filter + " ORDER BY last_used DESC LIMIT 5",
+                 userParams({std::to_string(cutoff)}),
                  [&](const core::Row& r){
                      if (r.size() < 2) return;
                      out << "  - " << trunc(r[1], 80) << "\n";
@@ -73,8 +86,8 @@ public:
         n = 0;
         db.query("SELECT topic FROM memory_nodes "
                  "WHERE deleted_at IS NULL AND topic LIKE 'memoir:%' "
-                 "AND last_used > ? ORDER BY last_used DESC LIMIT 3",
-                 {std::to_string(cutoff)},
+                 "AND last_used > ?" + user_filter + " ORDER BY last_used DESC LIMIT 3",
+                 userParams({std::to_string(cutoff)}),
                  [&](const core::Row& r){
                      if (r.empty()) return;
                      out << "  - " << r[0].substr(7) << "\n";

@@ -78,29 +78,31 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
 
     std::string sched = scheduleSpecToSchtasksFlags(spec.minutes);
 
-    // Generate a .vbs launcher so Task Scheduler runs the .cmd with a hidden
-    // window. WshShell.Run windowStyle=0 (SW_HIDE) suppresses the cmd.exe
-    // console flash that occurs when schtasks fires a .cmd action directly.
-    std::string vbs_path = spec.wrapper_path;
+    // Generate a PowerShell launcher (.ps1) so Task Scheduler runs the .cmd
+    // with a fully hidden window. VBS WshShell.Run windowStyle=0 is insufficient
+    // on Windows 11 — icmg.exe (console subsystem) still creates a visible window.
+    // PowerShell Start-Process -WindowStyle Hidden -NoNewWindow is Win11-proven.
+    std::string ps1_path = spec.wrapper_path;
     {
-        size_t dot = vbs_path.rfind('.');
-        if (dot != std::string::npos) vbs_path = vbs_path.substr(0, dot);
-        vbs_path += ".vbs";
+        size_t dot = ps1_path.rfind('.');
+        if (dot != std::string::npos) ps1_path = ps1_path.substr(0, dot);
+        ps1_path += ".ps1";
     }
     {
-        std::ofstream vf(vbs_path, std::ios::binary);
-        if (vf) {
-            vf << "CreateObject(\"WScript.Shell\").Run Chr(34) & \""
-               << spec.wrapper_path
-               << "\" & Chr(34), 0, True\r\n";
+        std::ofstream pf(ps1_path, std::ios::binary);
+        if (pf) {
+            pf << "Start-Process -FilePath $env:ComSpec"
+               << " -ArgumentList '/c `\"" << spec.wrapper_path << "`\"'"
+               << " -WindowStyle Hidden -NoNewWindow -Wait\r\n";
         }
     }
 
     // First attempt: direct schtasks via bash w/ MSYS_NO_PATHCONV.
-    // /TR runs wscript.exe /B (no dialogs) on the .vbs launcher.
+    // /TR runs powershell.exe hidden on the .ps1 launcher — no console flash.
     std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Create " + sched
                     + " /TN \"" + spec.task_name + "\""
-                    + " /TR \"\\\"wscript.exe\\\" /B /NoLogo \\\"" + vbs_path + "\\\"\""
+                    + " /TR \"powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden"
+                      " -ExecutionPolicy Bypass -File \\\"" + ps1_path + "\\\"\""
                     + " /F";
     auto res = safeExecShell(cmd, true, 15000);
 
@@ -143,7 +145,8 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
         }
     }
     args << ",'/TN','" << spec.task_name
-         << "','/TR','wscript.exe /B /NoLogo \"" << vbs_path << "\"',"
+         << "','/TR','powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden"
+            " -ExecutionPolicy Bypass -File \"" << ps1_path << "\"',"
          << "'/F'";
 
     std::string ps_cmd =
@@ -172,7 +175,8 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
               << "    Manual setup (run elevated cmd.exe):\n"
               << "      schtasks /Create " << sched
               << " /TN \"" << spec.task_name << "\""
-              << " /TR \"\\\"wscript.exe\\\" /B /NoLogo \\\"" << vbs_path << "\\\"\""
+              << " /TR \"powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden"
+                 " -ExecutionPolicy Bypass -File \\\"" << ps1_path << "\\\"\""
               << " /F\n";
     return 3;
 }

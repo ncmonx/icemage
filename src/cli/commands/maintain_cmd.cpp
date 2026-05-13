@@ -188,6 +188,15 @@ private:
         State s = detect(size_mb, row_cap, idle_hours);
         bool idle_mode = force_idle || s.idle;
 
+        // Large-DB auto-escalation: age thresholds are useless for new DBs.
+        // When DB exceeds 200 MB, switch to aggressive regardless of user flag.
+        bool large_db = s.db_bytes > (uintmax_t)200 * 1024 * 1024;
+        if (large_db && !aggressive) {
+            aggressive = true;
+            std::cout << "  → auto-aggressive (db=" << (s.db_bytes / 1024 / 1024)
+                      << "MB > 200MB)\n";
+        }
+
         std::cout << "icmg maintain: detect\n"
                   << "  db_size:  " << (s.db_bytes / 1024 / 1024) << " MB\n"
                   << "  mem_rows: " << s.mem_rows << "\n"
@@ -213,11 +222,17 @@ private:
         // Telemetry always trims first (fastest, cheapest).
         steps.push_back("icmg memory prune-telemetry" + dryflag);
 
-        // auto:* topic prune.
-        int auto_age    = aggressive ? 7  : 30;
-        int session_age = aggressive ? 14 : 60;
-        int corr_age    = aggressive ? 60 : 180;
-        int fail_age    = aggressive ? 90 : 365;
+        // graph:* and session-snapshot:* are always safe to prune quickly:
+        // graph nodes auto-refresh from codebase; session snapshots are ephemeral.
+        // Run these before age-based prune so large DBs shed weight fast.
+        steps.push_back("icmg memory prune-old --topic 'graph:%' --older 3d" + dryflag);
+        steps.push_back("icmg memory prune-old --topic 'session-snapshot:%' --older 3d" + dryflag);
+
+        // auto:* topic prune — shorten cycle proportionally for large DBs.
+        int auto_age    = aggressive ? 3  : 30;
+        int session_age = aggressive ? 7  : 60;
+        int corr_age    = aggressive ? 30 : 180;
+        int fail_age    = aggressive ? 60 : 365;
         steps.push_back("icmg memory prune-old --topic 'auto:%' --older "
                         + std::to_string(auto_age) + "d" + dryflag);
         steps.push_back("icmg memory prune-old --topic 'session:%' --older "
