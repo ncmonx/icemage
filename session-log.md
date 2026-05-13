@@ -1,3 +1,4 @@
+warning: unable to find all commit-graph files
 # icmg Session Log
 
 ## 2026-05-11 02:00 [saved]
@@ -996,3 +997,13 @@ Rejected:
 Open:
 - Phase 82 T8 tests (11 fixtures) not yet written.
 - Java grammar still on v14 ABI; monitor tree-sitter-java for v15 update.
+
+## 2026-05-13 [saved]
+Goal: Phase 82 T8: write and pass Go/Rust/Java symbol extractor tests.
+Decisions:
+- Test guard pattern: `#ifdef ICMG_HAS_TREESITTER_*` with `#else ASSERT_TRUE(true)` — matches existing py/ts/c pattern.
+- Register tests in CMakeLists with `add_icmg_test` alongside other treesitter tests.
+Rejected:
+- Integration-only tests without unit fixture strings — harder to debug regressions.
+Open:
+- T6 (--lang filter for graph update) and T7 (MCP extension) not started.
