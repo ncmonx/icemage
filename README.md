@@ -24,24 +24,34 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## What's new in v0.45.x
+## What's new in v0.46.0
 
 | Feature | What changed |
 |---|---|
+| **Go / Rust / Java — full AST extraction** | Tree-sitter grammars for Go, Rust, and Java ship built-in. Functions, structs, methods, interfaces, traits, enums — all indexed on first `graph update`. Your polyglot monorepo finally has a complete symbol graph, not just the C++ parts. |
+| **`--lang` filter on graph commands** | `icmg graph update --lang go,rust` rescans only the files that changed language. `graph search`, `graph symbol`, and `graph list` all accept `--lang` to scope results. No more sifting through 10 languages to find one Go func. |
+| **`graph lang list` + `graph lang status`** | Know exactly what icmg sees: file counts, symbol counts, and extractor method (AST / regex / text-only) per language — in one command. |
+| **`icmg backup restore-from <file>`** | Disaster recovery without ceremony. Point at any `.db` file — from another machine, a manual backup, a copied project — and icmg restores it. Creates `.icmg/` if absent, saves an undo snapshot first, verifies integrity after. One command from broken to running. |
+
+```bash
+icmg graph update --lang go,rust,java   # index only new languages (fast)
+icmg graph lang list                    # Go 47 files 312 symbols / Rust 23 files 187 symbols
+icmg graph lang status                  # Go → tree-sitter (full AST) / YAML → text-only
+icmg graph search "parse token" --lang go
+icmg backup restore-from /path/to/backup.db   # cross-machine / disaster recovery
+icmg backup restore-from backup.db --no-undo  # skip pre-restore snapshot
+```
+
+### Previously in v0.45.x
+
+| Feature | What changed |
+| --- | --- |
 | **Daemon IPC** | Daemon now uses named pipe IPC — no more port conflicts; Windows reliability improved |
 | **Rule trial/supersession** | `icmg rule supersede` auto-deletes old rules after N quiet prompts |
 | **Strict enforcement mode** | `icmg rule-daemon strict on` blocks ALL Read/Glob/Grep until rules satisfied |
 | **Unified dashboard** | `/knowledge` tab in `icmg serve` shows Knowledge, Skills, and Rules with live CRUD |
 | **Recursive CLAUDE.md scan** | `icmg claudemd import` now discovers all CLAUDE.md files in subdirs automatically |
 | **Skill auto-index on init** | `icmg init`/upgrade now runs `icmg skill index` so Claude discovers features immediately |
-
-```bash
-icmg claudemd import        # import all CLAUDE.md files (recursive, deduped)
-icmg skill index            # index skill files for BM25 feature discovery
-icmg rule-daemon start      # start enforcement daemon (auto on init)
-icmg rule-daemon strict on  # block Read/Glob/Grep until rules satisfied
-icmg serve                  # open dashboard: knowledge + skills + rules
-```
 
 ## The savings, at a glance
 
