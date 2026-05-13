@@ -272,8 +272,8 @@ sqlcmd -Q ...  | icmg filter db
 ```
 icmg graph scan [path] [--depth N] [--lang L1,L2] [--json]
 icmg graph update [path] [--lang L1,L2] [--no-mem-sync]
-icmg graph lang list                               # languages + file/symbol counts
-icmg graph lang status                             # extractor method per language
+icmg graph lang list                                   # list all supported languages
+icmg graph lang status                                 # tree-sitter grammar status per lang
 icmg graph context <file> [--json]
 icmg graph related <file>
 icmg graph impact <file>
@@ -282,7 +282,7 @@ icmg graph reverse-impact   <symbol|file> [--depth N] [--types t1,t2]
 icmg graph symbol  <name>                      # find by symbol_name
 icmg graph callers <symbol>                    # incoming calls edges
 icmg graph callees <symbol>                    # outgoing calls edges
-icmg graph search  <query> [--lang L]
+icmg graph search  <query>
 icmg graph list    [--lang L] [--zone Z] [--kind K]   # default kind=file
 icmg graph stats
 icmg graph orphans
@@ -294,9 +294,24 @@ icmg graph watch-status
 ```
 
 **Edge types:** imports, uses, companion, calls, extends, implements.
-
-**Language support (v0.46.0):** Go, Rust, Java — full AST via tree-sitter. C/C++, Python, TypeScript — existing. `--lang` accepts comma-separated values: `go`, `rust`, `java`, `cpp`, `python`, `typescript`.
 **Node kinds:** file, class, interface, struct, record, method, sp.
+
+**Language support (v0.47.0):**
+
+| Language | AST extractor | Symbols extracted |
+| --- | --- | --- |
+| C/C++ | tree-sitter | functions, classes, namespaces |
+| Python | tree-sitter | functions, classes |
+| TypeScript/JS | tree-sitter | functions, classes |
+| Go | tree-sitter | functions, structs, interfaces |
+| Rust | tree-sitter | functions, structs, enums, traits, impl |
+| Java | tree-sitter | classes, methods, constructors, interfaces, enums |
+| **C#** | **tree-sitter** | **classes, structs, interfaces, enums, records, methods, constructors, properties** |
+| **Ruby** | **tree-sitter** | **classes, modules, methods, singleton methods** |
+| **Bash** | **tree-sitter** | **functions** |
+| **Kotlin** | **tree-sitter** | **classes, objects, interfaces, functions** |
+| **Lua** | **tree-sitter** | **functions (global + local)** |
+| SQL, Markdown, YAML, TOML, JSON, XML, PowerShell | regex | tables, headings, keys |
 
 ---
 
