@@ -4,6 +4,15 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.48.1 — Health schema check fix
+> `icmg health` schema check now dynamically reads latest migration from `embeddedMigrations()` — no more hardcoded version drift. Reports `OK` when DB matches binary, `WARN` with actionable hint when mismatched.
+
+## 0.48.0 — Command Gateway
+> `icmg run` is the sole AI shell gateway — all agent shell commands route through it for audit log and blacklist enforcement. Leash hook (ID=50) enforces this mechanically via PreToolUse.
+
+## 0.47.0 — C#/Ruby/Bash/Kotlin/Lua language support
+> Tree-sitter extractors for C#, Ruby, Bash, Kotlin, Lua. Scheduled-task popup fix (no visible console on Win11). All 68 tests pass.
+
 ## 0.46.0 — Go/Rust/Java symbol extraction + backup restore-from
 > Tree-sitter extractors for Go, Rust, Java (struct/fn/method/interface/enum/trait/class/constructor). `icmg graph update --lang go,rust,java` filters to specific languages. `icmg backup restore-from <file>` restores from any explicit .db path (cross-project / disaster recovery). All 63 tests pass.
 
