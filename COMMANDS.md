@@ -178,34 +178,13 @@ icmg design list                            # all + status
 
 ---
 
-## diff-summary — Symbol-aware git diff (Phase 19)
+## diff-summary — Symbol-aware git diff (Phase 19/84)
 
 ```
-icmg diff-summary [--ref REF] [--full]
+icmg diff-summary [--ref REF] [--full] [--limit N]
 ```
 
-Per-file enclosing-symbol mapping. `--full` appends raw diff.
-
----
-
-## backup — DB snapshot / restore
-
-```
-icmg backup snapshot [--note STR]          # atomic point-in-time copy + sha256
-icmg backup list [--json]                  # enumerate snapshots
-icmg backup restore <id|latest> [--force]  # restore from indexed snapshot
-icmg backup restore-from <file> [--no-undo] # restore from any .db file (cross-project)
-icmg backup verify [<id>]                  # recompute sha256 of snapshot(s)
-icmg backup prune [--keep-hourly N --keep-daily N --keep-weekly N --keep-monthly N]
-icmg backup integrity                      # PRAGMA integrity_check on live DB
-icmg backup auto-on  [--interval Nh]       # schedule periodic snapshot+prune
-icmg backup auto-off                       # remove scheduled task
-icmg backup auto-status                    # show schedule + last run
-```
-
-`restore-from` bypasses snapshot listing — pass an explicit `.db` path.
-Useful when a project is copied to a new location and the live DB is missing
-but the backups folder was copied along.
+Per-file enclosing-symbol mapping. `--full` appends raw diff. `--limit N` caps file count (default 200).
 
 ---
 
@@ -271,9 +250,7 @@ sqlcmd -Q ...  | icmg filter db
 
 ```
 icmg graph scan [path] [--depth N] [--lang L1,L2] [--json]
-icmg graph update [path] [--lang L1,L2] [--no-mem-sync]
-icmg graph lang list                                   # list all supported languages
-icmg graph lang status                                 # tree-sitter grammar status per lang
+icmg graph update [path]
 icmg graph context <file> [--json]
 icmg graph related <file>
 icmg graph impact <file>
@@ -295,23 +272,6 @@ icmg graph watch-status
 
 **Edge types:** imports, uses, companion, calls, extends, implements.
 **Node kinds:** file, class, interface, struct, record, method, sp.
-
-**Language support (v0.47.0):**
-
-| Language | AST extractor | Symbols extracted |
-| --- | --- | --- |
-| C/C++ | tree-sitter | functions, classes, namespaces |
-| Python | tree-sitter | functions, classes |
-| TypeScript/JS | tree-sitter | functions, classes |
-| Go | tree-sitter | functions, structs, interfaces |
-| Rust | tree-sitter | functions, structs, enums, traits, impl |
-| Java | tree-sitter | classes, methods, constructors, interfaces, enums |
-| **C#** | **tree-sitter** | **classes, structs, interfaces, enums, records, methods, constructors, properties** |
-| **Ruby** | **tree-sitter** | **classes, modules, methods, singleton methods** |
-| **Bash** | **tree-sitter** | **functions** |
-| **Kotlin** | **tree-sitter** | **classes, objects, interfaces, functions** |
-| **Lua** | **tree-sitter** | **functions (global + local)** |
-| SQL, Markdown, YAML, TOML, JSON, XML, PowerShell | regex | tables, headings, keys |
 
 ---
 
@@ -515,15 +475,18 @@ icmg run [options] <command...>
 
 ---
 
-## session — Snapshot context (Phase 19)
+## session — Cross-session task awareness + context snapshot (Phase 19 + v0.52.0)
 
-```
-icmg session save    <name>
+```bash
+icmg session claim <task>   # register active task in ~/.icmg/active-work.json
+icmg session clear           # remove this process's entry
+icmg session list            # list all registered active sessions
+
+icmg session save    <name>  # snapshot context (Phase 19)
 icmg session restore <name>
-icmg session list
 ```
 
-Backed by topic prefix `session-snapshot`.
+`claim/clear/list` write to `~/.icmg/active-work.json` so `icmg wake-up` can show concurrent tasks from other sessions on the same machine. Backed by topic prefix `session-snapshot` for save/restore.
 
 ---
 
@@ -644,6 +607,16 @@ icmg viz [options]
 
 ---
 
+## wake-up — Session-start briefing (Phase 26 + v0.52.0)
+
+```bash
+icmg wake-up [--since 7d] [--json] [--pack]
+```
+
+Aggregates: last 5 high-importance memories, last 5 `errors-resolved` fixes, last 3 memoirs touched, in-progress phases, failing verifications, recall query count, active cross-session tasks. Hard cap 2KB. Auto-injected at session start by `icmg init` SessionStart hook.
+
+---
+
 ## wflog — Queryable session log (Phase 22)
 
 ```
@@ -732,6 +705,19 @@ icmg diff-summary --ref HEAD~10 | icmg compress > /tmp/pr-context.txt
 | Input contains `<<CACHED>>...<</CACHED>>` sentinel | Pass-through (preserve Anthropic prompt cache) |
 
 **Caveat:** `icmg compress` is *semantic* token reduction, not byte compression. gzip would produce binary that Claude tokenizes as garbage. The glossary approach cuts actual token count while staying reversible.
+
+---
+
+## fail — Anti-pattern memory (Phase 65 + v0.52.0)
+
+```bash
+icmg fail store <task> <approach> <reason>   # record failed attempt
+icmg fail recall <task> [--limit N]          # list past fails for task
+icmg fail list [--limit N]                   # recent failed attempts
+icmg fail sync-denials                       # convert strict-denial log → fail memory
+```
+
+Stored as `memory_nodes` with topic prefix `fail:`. Auto-recalled by `icmg pack` alongside regular memory — Claude sees prior failures upfront, avoids repeating them. `sync-denials` runs automatically on session Stop to convert `~/.icmg/strict-denials.jsonl` entries.
 
 ---
 

