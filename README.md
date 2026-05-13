@@ -298,7 +298,7 @@ APACHE-2.0            ▸ License preserved on releases
 | Real session tokens | `icmg context-budget` — covers ALL sources |
 | What changed | `icmg whats-new` — release notes after `update` |
 | Visual graph | `icmg serve` — embedded HTTP dashboard |
-| **DB safety net** | `icmg backup snapshot` / `icmg backup restore latest` — atomic, schema-checked |
+| **DB safety net** | `icmg backup snapshot` / `icmg backup restore latest` / `icmg backup restore-from <file>` — atomic, schema-checked; cross-project restore supported |
 | **Instant failover** | `icmg mirror failover` — swaps in valid mirror in seconds |
 | **Self-clean heavy/idle DB** | `icmg maintain run` — auto-detects state, chains prune + integrity |
 | **Repair broken graph** | `icmg graph integrity --fix` — 7-stage check + targeted repair |
@@ -418,6 +418,7 @@ icmg is designed to recover from common failure modes on its own. The trade-off:
 | TS/MD/JSON files missing from graph | Auto-detected by extension and indexed on next access |
 | **DB corruption detected** | `icmg mirror failover` swaps in newest valid mirror in seconds; primary quarantined for forensics; audit-logged |
 | **No mirror available** | `icmg backup restore latest` rolls back to most recent atomic snapshot; auto-undo created first |
+| **Project copied to new location (DB missing)** | `icmg backup restore-from .icmg/backups/<id>.db` — restores from explicit file; creates `.icmg/` dir if absent; `--no-undo` skips pre-restore snapshot |
 | **DB heavy (>100MB or >50K rows)** | `icmg maintain run` chains telemetry-prune → topic-aged prune → decay → consolidate → integrity check |
 | **Project idle (no activity >24h)** | `icmg maintain run --idle-mode` soft-deletes auto/session/cache rows below importance 2; graph + pinned memory untouched |
 
