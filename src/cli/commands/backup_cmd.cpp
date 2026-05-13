@@ -54,6 +54,7 @@ public:
             "  snapshot [--note STR]    Atomic point-in-time DB copy + sha256\n"
             "  list [--json]            Show all snapshots (size, age, note)\n"
             "  restore <id|latest>      Restore from snapshot (creates undo first)\n"
+            "  restore-from <file>      Restore from any .db file (manual/cross-project)\n"
             "  verify [<id>]            Recompute sha256 of snapshot(s)\n"
             "  prune [--keep-hourly 24 --keep-daily 7 --keep-weekly 4 --keep-monthly 6]\n"
             "                           Pyramidal retention (default 24h/7d/4w/6m)\n"
@@ -72,7 +73,8 @@ public:
 
         if (sub == "snapshot")  return cmdSnapshot(rest);
         if (sub == "list")      return cmdList(rest);
-        if (sub == "restore")   return cmdRestore(rest);
+        if (sub == "restore")        return cmdRestore(rest);
+        if (sub == "restore-from")  return cmdRestoreFrom(rest);
         if (sub == "verify")    return cmdVerify(rest);
         if (sub == "prune")     return cmdPrune(rest);
         if (sub == "integrity") return cmdIntegrity(rest);
@@ -394,6 +396,71 @@ private:
             core::AuditLog al((projectRoot() / ".icmg" / "audit.log").string());
             al.append("backup", "RESTORE",
                       "from=" + chosen.id + " size=" + std::to_string(chosen.size));
+        } catch (...) {}
+        return 0;
+    }
+
+    // ---- restore-from ----------------------------------------------------
+    // Restore from any explicit .db file — no snapshot listing required.
+    // Use case: project copied to new location; backups present but live DB gone.
+    //   icmg backup restore-from .icmg/backups/20260513-002844.db
+    //   icmg backup restore-from /path/to/backup.db [--no-undo]
+
+    int cmdRestoreFrom(const std::vector<std::string>& args) {
+        if (args.empty() || args[0][0] == '-') {
+            std::cerr << "icmg backup restore-from: missing <file>\n"
+                      << "  Usage: icmg backup restore-from <path-to-db> [--no-undo]\n";
+            return 1;
+        }
+        fs::path src = fs::absolute(args[0]);
+        if (!fs::exists(src)) {
+            std::cerr << "icmg backup restore-from: file not found: " << src << "\n";
+            return 1;
+        }
+        if (src.extension() != ".db") {
+            std::cerr << "icmg backup restore-from: expected a .db file\n";
+            return 1;
+        }
+        bool no_undo = hasFlag(args, "--no-undo");
+
+        fs::path live = dbPath();
+        bool live_exists = fs::exists(live);
+
+        // Ensure .icmg/ directory exists (handles fresh project location).
+        fs::create_directories(live.parent_path());
+
+        // Pre-restore undo snapshot (skip if no live DB or user opted out).
+        if (live_exists && !no_undo) {
+            std::cout << "Creating undo snapshot before restore...\n";
+            std::vector<std::string> undo_args = {"--note", "auto-undo before restore-from " + src.filename().string()};
+            (void)cmdSnapshot(undo_args);
+        }
+
+        // Copy source → temp → live (atomic on same filesystem).
+        fs::path tmp = live; tmp += ".restore-tmp";
+        try {
+            fs::copy_file(src, tmp, fs::copy_options::overwrite_existing);
+            fs::path wal = live; wal += "-wal";
+            fs::path shm = live; shm += "-shm";
+            fs::remove(wal);
+            fs::remove(shm);
+            fs::rename(tmp, live);
+        } catch (const std::exception& e) {
+            std::cerr << "icmg backup restore-from: failed: " << e.what() << "\n";
+            fs::remove(tmp);
+            return 2;
+        }
+
+        uintmax_t sz = 0;
+        try { sz = fs::file_size(live); } catch (...) {}
+        std::cout << "icmg backup: restored from " << src.filename().string() << "\n"
+                  << "  source: " << src.string() << "\n"
+                  << "  bytes:  " << humanSize(sz) << "\n"
+                  << "  Run `icmg health` to confirm integrity.\n";
+        try {
+            core::AuditLog al((projectRoot() / ".icmg" / "audit.log").string());
+            al.append("backup", "RESTORE-FROM",
+                      "from=" + src.string() + " size=" + std::to_string(sz));
         } catch (...) {}
         return 0;
     }
