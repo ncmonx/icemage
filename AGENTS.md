@@ -160,3 +160,29 @@ Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
 <!-- icmg:end -->
 
 
+
+---
+
+## Git Remote Rules (ABSOLUTE — never override)
+
+Two remotes with strict separation:
+
+| Remote | Repo | Contains | Workflow |
+| --- | --- | --- | --- |
+| `private` | ncmonx/icm-graph-src | **ALL files** — src/, tests/, migrations/, CMakeLists.txt, docs/, session-log.md | Push directly to `private/main` — **NO PR** |
+| `origin` | ncmonx/icm-graph | **Docs ONLY** — README.md, CHANGELOG.md, AGENTS.md, COMMANDS.md, .github/ | Use PR workflow |
+
+### CRITICAL prohibitions
+
+- **NEVER** `git merge origin/main` or `git pull origin` while on private — the public repo runs a "strip source code" commit; merging it **deletes all src/**
+- **NEVER** push `src/`, `tests/`, `migrations/`, `CMakeLists.txt`, or `fuzz/` to `origin`
+- **NEVER** open a PR against `private` — push directly
+- Before any `git push` or `git merge`, verify remote name: `private`=source, `origin`=docs
+
+### Recovery if src/ deleted from private
+
+```bash
+# Restore from local feat branch (has full source)
+git checkout -b restore/private-main <feat-branch-tip>
+git push private restore/private-main:main --force
+```
