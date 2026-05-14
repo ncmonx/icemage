@@ -94,53 +94,78 @@ cmake -B build -DICMG_UNITY_BUILD=ON   # faster cold builds (opt-in)
 
 ---
 
-## What it does (single-page tour)
+## 🎬 What it does (single-page tour)
+
+Every token your agent burns goes through **five sequential cuts** — each one shaves a few percent. Stacked, they hit the 85–95% headline.
 
 ```
-                ┌───────────────────────┐
-   YOUR TASK ──▶│  icmg pack "<task>"   │── filtered context bundle
-                └────────────┬──────────┘     (memory + graph + diff)
-                             │
-                             ▼
-                ┌───────────────────────┐
-                │   28 MCP tools        │── Claude Code / Cline / Continue
-                │   recall, store, …    │
-                └────────────┬──────────┘
-                             │
-                             ▼
-                ┌───────────────────────┐
-                │  Hooks intercept      │── Read 100-line cap
-                │  Read / Bash / Edit   │── Bash 8KB cap, ANSI strip
-                │  Glob / Grep / Web    │── Glob top-50, WebFetch 4KB
-                └────────────┬──────────┘
-                             │
-                             ▼
-                ┌───────────────────────┐
-                │   Auto-compress       │── reversible glossary on
-                │   (≥3KB pack)         │   pack output
-                └────────────┬──────────┘
-                             │
-                             ▼
-              SAVINGS DASHBOARD + RECEIPTS + COMPLIANCE TRACKING
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │                          YOUR TASK                                       │
+   └──────────────────────────────┬───────────────────────────────────────────┘
+                                  │
+                  ① BUNDLE        ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │  icmg pack "<task>"  →  memory recall + graph BFS + diff slice           │
+   │  ≈ 4 KB targeted context  (vs 30+ KB of "read every file" Claude does)   │
+   └──────────────────────────────┬───────────────────────────────────────────┘
+                                  │
+                  ② SERVE         ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │  28 MCP tools  →  Claude Code · Cline · Continue · Cursor · anything MCP │
+   │  recall · store · graph · sync · fetch · batch · drift · compliance     │
+   └──────────────────────────────┬───────────────────────────────────────────┘
+                                  │
+                  ③ INTERCEPT     ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │  Hooks gate every native tool call before tokens are billed              │
+   │  Read 100-line cap · Bash 8 KB cap · ANSI strip · Glob top-50 · 4 KB Web │
+   └──────────────────────────────┬───────────────────────────────────────────┘
+                                  │
+                  ④ COMPRESS      ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │  Auto-compress packs ≥ 3 KB  →  reversible glossary inline               │
+   │  Aliases collide with original tokens — lossless round-trip              │
+   └──────────────────────────────┬───────────────────────────────────────────┘
+                                  │
+                  ⑤ ACCOUNT       ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │  SAVINGS DASHBOARD  ·  per-call receipts  ·  compliance & drift tracking │
+   │  $$$ saved per turn, audited and reproducible                            │
+   └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-| 😤 Pain | ✅ Icmg fix |
+### 🩹 The pain we kill, in three categories
+
+**1. Context bloat — the silent killer**
+
+| Pain | Icmg fix |
 | :--- | :--- |
 | Big files inflate every prompt | Surgical context bundles — only what the task actually needs |
-| Noisy command output drowns the model | Output filtering tuned per command type (ANSI strip, dedup ×N, blank collapse) |
+| 30 K tokens of logs / diffs / dumps | Lossless context compression with reversible round-trips |
+| Models "think" 8 K tokens for a one-line rename | Intent-aware directives + caveman mode kill thinking outright |
+| Re-sending the same preamble every turn | Long-lived prompt-cache markers — pay once, reuse cheap |
+| Noisy command output drowns the model | Output filtering per command type (ANSI strip, dedup ×N, blank collapse) |
+
+**2. Memory amnesia — the bug you solved last week**
+
+| Pain | Icmg fix |
+| :--- | :--- |
 | Same bug solved twice | Persistent memory that surfaces past fixes when they apply |
 | `/clear` wipes hard-won context | Snapshots + auto-distill of session decisions |
-| Models "think" 8K tokens for a one-line rename | Intent-aware directives + caveman mode kills thinking outright |
-| Re-sending the same project preamble every turn | Long-lived prompt-cache markers — pay once, reuse cheap |
-| 30K tokens of logs / diffs / dumps | Lossless context compression with reversible round-trips |
 | AI keeps trying the same broken approach | Anti-pattern memory (`icmg fail`) — failures become guardrails |
-| AI "forgets" your CLAUDE.md instructions | Hard-enforcement hooks block disallowed reads/fetches |
-| Native `Read` bypasses everything | Read cap-and-allow hook caps at 30 lines + icmg-context overlay |
 | Same task already solved in another project | `icmg cross-recall` federates memory across all registered projects |
-| DB grows unbounded over months | `icmg cron install` autopilots weekly prune (Windows schtasks / POSIX cron) |
 | Wrong zone wastes BM25 IDF | Auto-zone detect from task keywords (10 zones); no manual `--zone X` |
 
-Each one is a few percent. Stack them and you get the headline number.
+**3. Discipline drift — when the AI ignores its own rules**
+
+| Pain | Icmg fix |
+| :--- | :--- |
+| AI "forgets" your CLAUDE.md instructions | Hard-enforcement hooks block disallowed reads/fetches |
+| Native `Read` bypasses everything | Read cap-and-allow hook caps at 30 lines + icmg-context overlay |
+| DB grows unbounded over months | `icmg cron install` autopilots weekly prune (Windows schtasks / POSIX cron) |
+| Drift between pinned decisions and AI behavior | `icmg drift check` — surfaces conflicts before the model commits |
+
+> 🧮 **Each row is a few percent. Stack them — that's the headline number.**
 
 ---
 
@@ -196,34 +221,46 @@ That's it. Nothing else to configure.
 
 ---
 
-## 📈 Coverage dashboard
+## 📈 Coverage dashboard — receipts, not vibes
 
-`icmg savings` shows exactly where the savings came from, with receipts and cost breakdown:
+Every saving is **logged, attributed, and reproducible**. Run `icmg savings` any time — see exactly which layer cut how many tokens and how many dollars that turned into.
 
+```text
+─────────────────────────────────────────────────────────────────────
+  icmg savings — last 30 days
+─────────────────────────────────────────────────────────────────────
+  LAYER                          CALLS    BEFORE   →   AFTER   SAVED
+─────────────────────────────────────────────────────────────────────
+  Command filter (icmg run)        67    16.6 K   →   16.2 K    2 %
+  Compression   (icmg compress)     1     5.0 K   →    5.0 K    0 %
+  Thinking      (--no-think)       21    31.5 K   →    7.5 K   76 %
+  Pack receipts (memory+graph)     15     9.2 K   →    9.2 K    —
+  Strict denials (read/web/bash)    8    12.0 K   →    0       100 %
+  Fetch cache    (icmg fetch)       3 ✓   7.5 K   →    0       100 %
+  Image OCR cache (icmg ingest)     2 ✓   4.0 K   →    0       100 %
+─────────────────────────────────────────────────────────────────────
+  TOTAL                           117    86  K   →   38  K    56 %
+─────────────────────────────────────────────────────────────────────
+  💵 Cost without icmg : $0.50   (input $0.03 / output $0.47)
+  💵 Cost with    icmg : $0.13   (input $0.02 / output $0.11)
+  💰 You saved         : $0.37   (63.6%)
+─────────────────────────────────────────────────────────────────────
+  📊 Real session tokens : 2,195,587   (icmg-covered 86K = 4%)
+  🚫 Strict-mode denials : 8           (each redirected agent to icmg)
+─────────────────────────────────────────────────────────────────────
 ```
-icmg savings — last 30 days
-================================================================
 
-  Command filter (icmg run)             67 calls       16.6K  →  16.2K   (2% saved)
-  Compression  (icmg compress)           1 calls       5.0K   →  5.0K    (0% saved)
-  Thinking     (--no-think)             21 calls       31.5K  →  7.5K    (76% saved)
-  Pack receipts  (memory+graph)         15 calls       9.2K   →  9.2K
-  Strict denials (read/web/bash)         8 calls       12.0K  →  0       (100% saved)
-  Fetch cache    (icmg fetch)            3 hits        7.5K   →  0       (100% saved)
-  Image OCR cache(icmg ingest)           2 hits        4.0K   →  0       (100% saved)
-----------------------------------------------------------------
-  TOTAL                                117 calls       86K    →  38K     (56% saved)
+### What this view tells you at a glance
 
-Cost without icmg: $0.50  (input $0.03 / output $0.47)
-Cost with    icmg: $0.13  (input $0.02 / output $0.11)
-You saved:         $0.37  (63.6%)
+| Column | What it means |
+| :--- | :--- |
+| **CALLS** | How many times that layer was hit — frequency drives the compound effect |
+| **BEFORE → AFTER** | Token count Claude would have seen vs what it actually saw |
+| **SAVED** | Hard percentage of that layer's tokens that never left your machine |
+| **Real session tokens** | Read straight from the live Claude transcript — surfaces the gap between instrumented ops and total context-window fill |
+| **Strict-mode denials** | Every native call that was blocked + redirected to icmg — proof the rules are enforced |
 
-Real session tokens: 2195587  (icmg-covered 86K = 4%, outside 2.1M)
-Strict-mode denials in window: 8
-  → each block redirected agent to icmg context/fetch
-```
-
-`Real session tokens` row reads the live Claude transcript — surfaces the gap between icmg-instrumented ops and actual context-window fill.
+> 💡 **Try it after one day:** `icmg savings --html` opens a richer dashboard. `icmg savings --json` feeds your own scripts. No telemetry — the data never leaves your machine.
 
 ---
 
@@ -335,34 +372,54 @@ Memory recall sharpens over time. Snapshot restore gets faster. Compression lear
 
 ---
 
-## Architecture (one screen)
+## 🏛️ Architecture — one binary, four surfaces, zero services
+
+No daemon to babysit, no Docker, no `node_modules`. **One ~30 MB executable** exposes four entry points and persists everything in local SQLite. That's the whole architecture.
 
 ```
-                       ┌─────────────────────────────────────┐
-                       │           icmg.exe (single binary)   │
-                       └─────────────────────────────────────┘
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │              🟢  icmg.exe   —  single static binary  (~30 MB)            │
+   └──────────────────────────────────────────────────────────────────────────┘
                                        │
-        ┌──────────────────────────────┼──────────────────────────────┐
-        │                              │                              │
-   ┌─────────┐                  ┌──────────────┐               ┌──────────────┐
-   │   CLI   │                  │  MCP Server  │               │ HTTP Server  │
-   │ 70+ cmd │                  │  (stdio)     │               │ :8080 read   │
-   └────┬────┘                  └──────┬───────┘               └──────────────┘
-        │                              │
-        ▼                              ▼
-   ┌────────────────────────────────────────────┐
-   │   Core: SQLite WAL · BM25 · embedder       │
-   │         tree-sitter · pytesseract sidecar  │
-   └────────────────────────────────────────────┘
-        │
-        ▼
-   ┌────────────────────────────────────────────┐
-   │  ~/.icmg/global.db        — registry        │
-   │  <proj>/.icmg/data.db     — per-project     │
-   │  ~/.icmg/*.flag           — caveman/strict  │
-   │  ~/.icmg/*-log.{jsonl|txt}— receipts        │
-   └────────────────────────────────────────────┘
+            ┌─────────────────┬────────┴────────┬──────────────────┐
+            ▼                 ▼                 ▼                  ▼
+   ┌────────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────────┐
+   │  🖥️  CLI       │ │  🔌  MCP     │ │  🌐  HTTP    │ │  🛡️  Hook handler   │
+   │   99+ subcmds  │ │   28 tools   │ │   :8080      │ │   Read/Bash/Web    │
+   │   pack · run · │ │   stdio JSON │ │   dashboard  │ │   intercept before │
+   │   compress …   │ │   recall …   │ │   read-only  │ │   tokens are billed│
+   └────────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────────┬─────────┘
+            │                │                │                    │
+            └────────────────┴────────┬───────┴────────────────────┘
+                                      ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │  🧠  CORE  (in-process — no IPC, no socket round-trip)                   │
+   │                                                                          │
+   │   SQLite WAL  ·  BM25 lexical  ·  ONNX embedder  ·  tree-sitter AST     │
+   │   pytesseract sidecar  ·  rule-daemon (B3-B6 hook RPC, optional)         │
+   └──────────────────────────────────┬───────────────────────────────────────┘
+                                      │
+                                      ▼
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │  📁  STORAGE  (local-first — never leaves your machine)                  │
+   │                                                                          │
+   │   ~/.icmg/global.db          → cross-project registry, receipts, cron   │
+   │   <proj>/.icmg/<proj>.db     → per-project graph + memory + zones       │
+   │   ~/.icmg/*.flag             → caveman / strict / sentinel state        │
+   │   ~/.icmg/*-log.{jsonl,txt}  → chain-signed audit trail                 │
+   │   ~/.icmg/snapshots/         → 24h/7d/4w/6m pyramidal backups           │
+   └──────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Why this shape matters
+
+| Property | What it buys you |
+| :--- | :--- |
+| **Single binary** | No service discovery, no port conflicts, no version skew between client/server |
+| **In-process core** | Hook callbacks resolve in ~2–5 ms — no socket round-trip, no JSON-RPC overhead |
+| **Per-project DB** | Snapshot, diff, restore, and ship to teammates as a single file |
+| **Audit trail** | Chain-signed events — tamper-detectable, replayable, auditable |
+| **Zero phone-home** | Network calls only happen when you ask: `update`, `fetch`, `embed`, `whats-new` |
 
 ---
 
