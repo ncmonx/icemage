@@ -4,6 +4,9 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.53.2 — Query layer warms under load
+> Internal query layer caches prepared work-units across calls. Repeat queries within the same process now skip per-call prepare cost; identical query patterns finish noticeably faster on hot paths (recall, drift gate, path-context overlay). Bounded cache keeps memory predictable. Behaviour, return shapes, concurrency semantics all unchanged — drop-in upgrade. Fix: pre-existing Windows AV interference on temp-file rename in atomic-write test — now uses copy+delete fallback when scan-window blocks rename. 63/63 tests pass (+1 new prepared-statement regression test).
+
 ## 0.52.0 — Cross-session awareness + fail sync-denials + wake-up hook + routing docs
 > `icmg session claim/clear/list` registers active tasks in `~/.icmg/active-work.json` for cross-session visibility. `icmg fail sync-denials` converts strict-denial logs to fail memory (auto-runs on Stop). `icmg init` now installs a SessionStart wake-up hook and auto-enables caveman ultra. AGENTS.md routing table expanded to 39 commands with topic-prefix convention. `PRAGMA mmap_size=256MB` added for read-heavy DB performance. 61/61 tests pass.
 
