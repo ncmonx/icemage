@@ -76,11 +76,12 @@ TEST("parallel: max_concurrency=0 picks reasonable default") {
 
 TEST("parallel: non-zero exit propagates per-task") {
     std::vector<ParallelTask> ts;
-    ParallelTask t1; t1.command = "true";  ts.push_back(t1);
 #ifdef _WIN32
-    ParallelTask t2; t2.command = "exit 7";   ts.push_back(t2);
+    ParallelTask t1; t1.command = "exit 0"; ts.push_back(t1);
+    ParallelTask t2; t2.command = "exit 7"; ts.push_back(t2);
 #else
-    ParallelTask t2; t2.command = "exit 7";   ts.push_back(t2);
+    ParallelTask t1; t1.command = "true";   ts.push_back(t1);
+    ParallelTask t2; t2.command = "exit 7"; ts.push_back(t2);
 #endif
     auto r = parallel(ts, 2, false);
     ASSERT_EQ((int)r.size(), 2);
