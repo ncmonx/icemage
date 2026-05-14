@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-61%2F62%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-62%2F62%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -467,6 +467,6 @@ See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 ```
                             ◆ icemage
                   context · memory · graph
-              61/62 tests · 28 MCP · 99+ cmds
+              62/62 tests · 28 MCP · 99+ cmds
             cross-project federation · autopilot hygiene
 ```
