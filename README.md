@@ -24,6 +24,21 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🟢 Status
+
+| Aspect | Today |
+|---|---|
+| **Platform** | Windows x64 — daily-driven, battle-tested |
+| **Stability gate** | Pre-1.0 — 63/63 tests gate every release; integrity hashes on every artifact |
+| **Production-stable milestone** | Reached when Linux x64 + macOS arm64/x64 binaries ship alongside Windows |
+| **Self-healing** | Snapshot + dual-mirror + audit log + auto-recovery built into the binary itself |
+
+Windows users today: **safe to depend on for solo + small-team workflows**. The hard part — token economics, integrity, recovery — already works in production. Cross-platform parity is the last gate before the `v1.0` tag.
+
+> 🛣️ **Roadmap:** multi-platform release plan at `docs/plans/2026-05-14-multi-platform-release.md` (8 tasks, GitHub Actions matrix scaffold ready). First cross-platform release ships as `v1.0.0`.
+
+---
+
 ## 🔍 What's new in v0.53.0
 
 | Feature | What changed |
@@ -444,14 +459,22 @@ See [CHANGELOG.md](CHANGELOG.md) for the full ship history (35+ releases, atomic
 
 ---
 
-## Support
+## Fuel the next mile
 
-Solo maintainer, no VC backing. If icmg saved you tokens, consider supporting development:
+icmg is built by one person, MIT-grade rigor, Apache-2.0 license, free forever. The math of running this kind of project is honest:
 
-- 💚 [GitHub Sponsors](https://github.com/sponsors/ncmonx) — recurring or one-time
-- ☕ [Ko-fi](https://ko-fi.com/ncmonx) — quick tip, no signup
+| Cost line | What it funds |
+|---|---|
+| 🖥️ Build + CI server | Multi-platform matrix builds, security scans, reproducible release pipeline |
+| 🤖 AI agent subscriptions | Claude / Cursor / Cline access used to dogfood + accelerate development |
+| 📦 Future infra | macOS code-signing cert (Apple Developer ID), package-mirror CDN as users grow |
 
-Every contribution funds priority feature work and faster bug response.
+If icmg has saved you tokens that would have cost more than a coffee, you're welcome to:
+
+[![Sponsor on GitHub](https://img.shields.io/badge/💚_Sponsor-GitHub-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/ncmonx)
+[![Tip on Ko-fi](https://img.shields.io/badge/☕_Tip-Ko--fi-ff5e5b?style=for-the-badge&logo=ko-fi)](https://ko-fi.com/ncmonx)
+
+No pressure, no nags, no paywalled features. Every line of icmg stays open-source regardless. Support just routes the dev pipeline straight at the next bottleneck — usually multi-platform CI minutes, ANN index work, or a faster recall path.
 
 ---
 

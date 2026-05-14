@@ -4,6 +4,9 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.54.0 — Stop + PreCompact hooks in-process
+> Two session-boundary events fold into single icmg invocation each: `icmg hook stop` replaces 5-bash-fork chain (distill auto / fail-sync / compliance check-thinking / tool-budget / wflog); `icmg hook precompact` folds snapshot + transcript distillation + ABSOLUTE-RULE re-injection (with top-5 pinned anchors). Outer bash + jq parsing layer per command eliminated. JSON output format unchanged — drop-in upgrade. Opt-out via ICMG_NO_STOP_HOOK=1 / ICMG_NO_PRECOMPACT_HOOK=1. PostToolUse:Read auto-compress intentionally left as shell flow because existing implementation does graph-context-first routing. 63/63 tests pass. Measured: ~150-300ms saved per session-boundary event.
+
 ## 0.53.3 — Build pipeline auto-tunes for speed
 > CMake configure-time auto-detection probes for available build accelerators and wires them in transparently when safe. Opt-in flags expose the rest: `-DICMG_USE_LLD=ON` (lld linker, ~30-50% faster link on pure-MSYS without ONNX), `-DICMG_UNITY_BUILD=ON` (merge sources, ~20-40% faster compile). Dev iteration loop documented: `cmake --build build --target icmg` skips ~63 test executable link passes. Measured: cold full build ~7min (was ~20min); incremental main-binary build after single source touch: ~12s. 63/63 tests pass.
 
