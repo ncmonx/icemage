@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.57.0 LANGUAGES CXX C)
+project(icmg VERSION 0.58.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -94,50 +94,76 @@ option(ICMG_USE_TREESITTER  "Build tree-sitter AST symbol extractor (Phase 33+)"
 
 if(ICMG_USE_ONNX)
     set(ORT_INCLUDE ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/include)
-    set(ORT_DLL     ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib/onnxruntime.dll)
+    set(ORT_LIB_DIR ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib)
     set(ORT_VERSION "1.25.1")
-    set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip")
 
-    # Auto-download DLL on Windows if missing (header is already vendored).
-    if(WIN32 AND NOT EXISTS ${ORT_DLL})
-        message(STATUS "icmg: fetching onnxruntime ${ORT_VERSION} (one-time, ~75MB)...")
-        file(DOWNLOAD ${ORT_URL} ${CMAKE_BINARY_DIR}/_ort.zip
+    # v0.58.0 (Phase 84 T2): per-OS archive + library naming.
+    if(WIN32)
+        set(ORT_ARCHIVE "onnxruntime-win-x64-${ORT_VERSION}.zip")
+        set(ORT_LIB_NAME "onnxruntime.dll")
+        set(ORT_LIB_GLOB "*.dll")
+    elseif(APPLE)
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+            set(ORT_ARCHIVE "onnxruntime-osx-arm64-${ORT_VERSION}.tgz")
+        else()
+            set(ORT_ARCHIVE "onnxruntime-osx-x86_64-${ORT_VERSION}.tgz")
+        endif()
+        set(ORT_LIB_NAME "libonnxruntime.${ORT_VERSION}.dylib")
+        set(ORT_LIB_GLOB "*.dylib")
+    elseif(UNIX)
+        set(ORT_ARCHIVE "onnxruntime-linux-x64-${ORT_VERSION}.tgz")
+        set(ORT_LIB_NAME "libonnxruntime.so.${ORT_VERSION}")
+        set(ORT_LIB_GLOB "*.so*")
+    endif()
+    set(ORT_LIB ${ORT_LIB_DIR}/${ORT_LIB_NAME})
+    set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${ORT_ARCHIVE}")
+
+    # Auto-download lib if missing (header is already vendored).
+    if(NOT EXISTS ${ORT_LIB})
+        message(STATUS "icmg: fetching onnxruntime ${ORT_VERSION} for ${CMAKE_SYSTEM_NAME} (one-time, ~75MB)...")
+        file(DOWNLOAD ${ORT_URL} ${CMAKE_BINARY_DIR}/_ort_archive
              SHOW_PROGRESS STATUS _ort_status)
         list(GET _ort_status 0 _ort_rc)
         if(_ort_rc EQUAL 0)
-            file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/_ort.zip
+            file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/_ort_archive
                  DESTINATION ${CMAKE_BINARY_DIR}/_ort_unpack)
-            file(GLOB _ort_dlls
-                 "${CMAKE_BINARY_DIR}/_ort_unpack/onnxruntime-win-x64-${ORT_VERSION}/lib/*.dll")
-            file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib)
-            foreach(_d ${_ort_dlls})
-                file(COPY ${_d} DESTINATION ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib)
+            # Find the libs in extracted tree (archive root name varies per OS).
+            file(GLOB_RECURSE _ort_libs
+                 "${CMAKE_BINARY_DIR}/_ort_unpack/**/lib/${ORT_LIB_GLOB}")
+            file(MAKE_DIRECTORY ${ORT_LIB_DIR})
+            foreach(_d ${_ort_libs})
+                file(COPY ${_d} DESTINATION ${ORT_LIB_DIR})
             endforeach()
-            file(REMOVE_RECURSE ${CMAKE_BINARY_DIR}/_ort_unpack ${CMAKE_BINARY_DIR}/_ort.zip)
+            file(REMOVE_RECURSE ${CMAKE_BINARY_DIR}/_ort_unpack ${CMAKE_BINARY_DIR}/_ort_archive)
         else()
             message(WARNING "icmg: ORT auto-download failed (${_ort_status}); "
                     "fetch manually per third_party/onnxruntime/README.md")
         endif()
     endif()
 
-    if(EXISTS ${ORT_DLL} AND EXISTS ${ORT_INCLUDE}/onnxruntime_c_api.h)
-        message(STATUS "icmg: ONNX backend ENABLED (DLL: ${ORT_DLL})")
+    if(EXISTS ${ORT_LIB} AND EXISTS ${ORT_INCLUDE}/onnxruntime_c_api.h)
+        message(STATUS "icmg: ONNX backend ENABLED (lib: ${ORT_LIB})")
         target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_ONNX=1)
         target_include_directories(icmg_lib PUBLIC ${ORT_INCLUDE})
-        # MinGW gcc can link directly against a Microsoft-built DLL when the
-        # exported symbols use C linkage (which the ORT C API does).
-        target_link_libraries(icmg_lib PUBLIC ${ORT_DLL})
-        # Bundle DLL next to executable.
-        if(WIN32)
-            file(COPY ${ORT_DLL} DESTINATION ${CMAKE_BINARY_DIR})
-            set(ORT_PROVIDERS_DLL ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib/onnxruntime_providers_shared.dll)
-            if(EXISTS ${ORT_PROVIDERS_DLL})
-                file(COPY ${ORT_PROVIDERS_DLL} DESTINATION ${CMAKE_BINARY_DIR})
-            endif()
+        target_link_libraries(icmg_lib PUBLIC ${ORT_LIB})
+        # Bundle runtime libs next to executable.
+        file(GLOB _ort_runtime_libs "${ORT_LIB_DIR}/${ORT_LIB_GLOB}")
+        foreach(_d ${_ort_runtime_libs})
+            file(COPY ${_d} DESTINATION ${CMAKE_BINARY_DIR})
+        endforeach()
+        if(UNIX AND NOT APPLE)
+            # Linux runtime path so the binary finds libonnxruntime.so.X at exec.
+            set_target_properties(icmg_lib PROPERTIES
+                INSTALL_RPATH "$ORIGIN"
+                BUILD_RPATH   "$ORIGIN")
+        elseif(APPLE)
+            set_target_properties(icmg_lib PROPERTIES
+                INSTALL_RPATH "@loader_path"
+                BUILD_RPATH   "@loader_path")
         endif()
     else()
-        message(WARNING "icmg: ICMG_USE_ONNX=ON but ORT DLL/header not found "
-                "(DLL=${ORT_DLL}, header=${ORT_INCLUDE}). "
+        message(WARNING "icmg: ICMG_USE_ONNX=ON but ORT lib/header not found "
+                "(lib=${ORT_LIB}, header=${ORT_INCLUDE}). "
                 "Build proceeds without ONNX backend. "
                 "See third_party/onnxruntime/README.md for manual install.")
     endif()

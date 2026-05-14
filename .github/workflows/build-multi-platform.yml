@@ -1,0 +1,184 @@
+name: Build & Test (multi-platform)
+
+on:
+  push:
+    branches: [main]
+    tags:    ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.os }} / ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-x64
+            runner: windows-latest
+            arch: x64
+          - os: linux-x64
+            runner: ubuntu-latest
+            arch: x64
+          - os: macos-arm64
+            runner: macos-14
+            arch: arm64
+          - os: macos-x64
+            runner: macos-13
+            arch: x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- platform-specific deps -------------------------------------------
+
+      - name: Install deps (Linux)
+        if: startsWith(matrix.runner, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential \
+            libtree-sitter-dev libsqlite3-dev zlib1g-dev
+
+      - name: Install deps (macOS)
+        if: startsWith(matrix.runner, 'macos')
+        run: |
+          brew update
+          brew install cmake ninja tree-sitter sqlite zlib
+
+      - name: Install deps (Windows / MSYS2)
+        if: startsWith(matrix.runner, 'windows')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-tree-sitter
+            mingw-w64-x86_64-sqlite3
+            mingw-w64-x86_64-zlib
+
+      # ---- configure + build ------------------------------------------------
+
+      - name: Configure (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        shell: msys2 {0}
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DICMG_USE_ONNX=ON \
+            -DICMG_USE_TREESITTER=ON
+
+      - name: Configure (Linux/macOS)
+        if: ${{ !startsWith(matrix.runner, 'windows') }}
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DICMG_USE_ONNX=ON \
+            -DICMG_USE_TREESITTER=ON
+
+      - name: Build (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Build (Linux/macOS)
+        if: ${{ !startsWith(matrix.runner, 'windows') }}
+        run: cmake --build build --parallel
+
+      # ---- test -------------------------------------------------------------
+
+      - name: Test (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Test (Linux/macOS)
+        if: ${{ !startsWith(matrix.runner, 'windows') }}
+        run: ctest --test-dir build --output-on-failure
+
+      # ---- package (tags only) ----------------------------------------------
+
+      - name: Package (Windows)
+        if: startsWith(matrix.runner, 'windows') && startsWith(github.ref, 'refs/tags/v')
+        shell: msys2 {0}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          mkdir -p pkg
+          cp build/icmg.exe pkg/
+          # Bundle MSYS2 runtime DLLs that we link against
+          for dll in libtree-sitter-0.26.dll libwinpthread-1.dll libzstd.dll wasmtime.dll; do
+            cp /mingw64/bin/$dll pkg/ 2>/dev/null || true
+          done
+          # Bundle ORT DLLs
+          cp third_party/onnxruntime/lib/*.dll pkg/ 2>/dev/null || true
+          cd pkg
+          7z a -tzip "../icmg-${VERSION}-win-x64.zip" *
+          cd ..
+          sha256sum "icmg-${VERSION}-win-x64.zip" | awk '{print $1 "  icmg-" v "-win-x64.zip"}' v="$VERSION" > "icmg-${VERSION}-win-x64.zip.sha256"
+
+      - name: Package (Linux)
+        if: startsWith(matrix.runner, 'ubuntu') && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          mkdir -p pkg
+          cp build/icmg pkg/
+          cp third_party/onnxruntime/lib/*.so* pkg/ 2>/dev/null || true
+          chmod +x pkg/icmg
+          tar -C pkg -czf "icmg-${VERSION}-linux-x64.tar.gz" .
+          sha256sum "icmg-${VERSION}-linux-x64.tar.gz" > "icmg-${VERSION}-linux-x64.tar.gz.sha256"
+
+      - name: Package (macOS)
+        if: startsWith(matrix.runner, 'macos') && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          ARCH="${{ matrix.arch }}"
+          mkdir -p pkg
+          cp build/icmg pkg/
+          cp third_party/onnxruntime/lib/*.dylib pkg/ 2>/dev/null || true
+          chmod +x pkg/icmg
+          tar -C pkg -czf "icmg-${VERSION}-macos-${ARCH}.tar.gz" .
+          shasum -a 256 "icmg-${VERSION}-macos-${ARCH}.tar.gz" > "icmg-${VERSION}-macos-${ARCH}.tar.gz.sha256"
+
+      - name: Upload artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: icmg-${{ matrix.os }}
+          path: |
+            icmg-*-${{ matrix.arch }}.zip
+            icmg-*-${{ matrix.arch }}.zip.sha256
+            icmg-*-${{ matrix.arch }}.tar.gz
+            icmg-*-${{ matrix.arch }}.tar.gz.sha256
+
+  publish:
+    name: Publish GH Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist/icmg-*.zip
+            dist/icmg-*.zip.sha256
+            dist/icmg-*.tar.gz
+            dist/icmg-*.tar.gz.sha256
+          fail_on_unmatched_files: false
+          generate_release_notes: true

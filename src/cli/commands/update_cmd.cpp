@@ -34,7 +34,7 @@ using nlohmann::json;
 
 namespace icmg::cli {
 
-static const char* CURRENT_VERSION = "0.57.0";   // keep synced with main.cpp / mcp/server.cpp
+static const char* CURRENT_VERSION = "0.58.0";   // keep synced with main.cpp / mcp/server.cpp
 static const char* REPO            = "ncmonx/icm-graph";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -156,7 +156,11 @@ private:
 #ifdef _WIN32
         return "icmg-" + ver + "-win-x64.zip";
 #elif defined(__APPLE__)
+    #if defined(__aarch64__) || defined(__arm64__)
+        return "icmg-" + ver + "-macos-arm64.tar.gz";
+    #else
         return "icmg-" + ver + "-macos-x64.tar.gz";
+    #endif
 #else
         return "icmg-" + ver + "-linux-x64.tar.gz";
 #endif
