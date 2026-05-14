@@ -43,8 +43,47 @@ endif()
 option(ICMG_UNITY_BUILD "Merge .cpp files into batches for faster compilation" OFF)
 
 # ---------------------------------------------------------------------------
-# Third-party: SQLite3 amalgamation
+# Third-party: SQLite3 amalgamation (auto-downloaded if missing — gitignored)
 # ---------------------------------------------------------------------------
+set(SQLITE_AMALGAMATION_VERSION "3470100")  # 3.47.1, year 2024
+set(SQLITE_AMALGAMATION_ZIP "sqlite-amalgamation-${SQLITE_AMALGAMATION_VERSION}.zip")
+set(SQLITE_AMALGAMATION_URL  "https://www.sqlite.org/2024/${SQLITE_AMALGAMATION_ZIP}")
+set(SQLITE_DIR ${CMAKE_SOURCE_DIR}/third_party/sqlite3)
+if(NOT EXISTS ${SQLITE_DIR}/sqlite3.c)
+    message(STATUS "icmg: fetching sqlite3 amalgamation ${SQLITE_AMALGAMATION_VERSION} ...")
+    file(MAKE_DIRECTORY ${SQLITE_DIR})
+    file(DOWNLOAD ${SQLITE_AMALGAMATION_URL} ${CMAKE_BINARY_DIR}/_sqlite.zip
+         SHOW_PROGRESS STATUS _sqlite_status)
+    list(GET _sqlite_status 0 _sqlite_rc)
+    if(_sqlite_rc EQUAL 0)
+        file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/_sqlite.zip
+             DESTINATION ${CMAKE_BINARY_DIR}/_sqlite_unpack)
+        file(GLOB _sqlite_amalg
+             "${CMAKE_BINARY_DIR}/_sqlite_unpack/sqlite-amalgamation-*/sqlite3.[ch]")
+        foreach(_f ${_sqlite_amalg})
+            file(COPY ${_f} DESTINATION ${SQLITE_DIR})
+        endforeach()
+        file(REMOVE_RECURSE ${CMAKE_BINARY_DIR}/_sqlite_unpack ${CMAKE_BINARY_DIR}/_sqlite.zip)
+    else()
+        message(FATAL_ERROR "sqlite3 amalgamation download failed; see ${SQLITE_AMALGAMATION_URL}")
+    endif()
+endif()
+
+# nlohmann/json single-header (gitignored — auto-fetch if missing)
+set(NLOHMANN_JSON_VERSION "3.11.3")
+set(NLOHMANN_JSON_URL "https://github.com/nlohmann/json/releases/download/v${NLOHMANN_JSON_VERSION}/json.hpp")
+set(NLOHMANN_DIR ${CMAKE_SOURCE_DIR}/third_party/nlohmann)
+if(NOT EXISTS ${NLOHMANN_DIR}/json.hpp)
+    message(STATUS "icmg: fetching nlohmann/json v${NLOHMANN_JSON_VERSION} ...")
+    file(MAKE_DIRECTORY ${NLOHMANN_DIR})
+    file(DOWNLOAD ${NLOHMANN_JSON_URL} ${NLOHMANN_DIR}/json.hpp
+         STATUS _nj_status)
+    list(GET _nj_status 0 _nj_rc)
+    if(NOT _nj_rc EQUAL 0)
+        message(FATAL_ERROR "nlohmann/json download failed; fetch manually")
+    endif()
+endif()
+
 add_library(sqlite3 STATIC third_party/sqlite3/sqlite3.c)
 target_include_directories(sqlite3 PUBLIC third_party/sqlite3)
 target_compile_definitions(sqlite3 PUBLIC
