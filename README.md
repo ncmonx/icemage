@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-63%2F63%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-64%2F64%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -29,13 +29,26 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 | Aspect | Today |
 |---|---|
 | **Platform** | Windows x64 — daily-driven, battle-tested |
-| **Stability gate** | Pre-1.0 — 63/63 tests gate every release; integrity hashes on every artifact |
+| **Stability gate** | Pre-1.0 — 64/64 tests gate every release; integrity hashes on every artifact |
 | **Production-stable milestone** | Reached when Linux x64 + macOS arm64/x64 binaries ship alongside Windows |
 | **Self-healing** | Snapshot + dual-mirror + audit log + auto-recovery built into the binary itself |
 
 Windows users today: **safe to depend on for solo + small-team workflows**. The hard part — token economics, integrity, recovery — already works in production. Cross-platform parity is the last gate before the `v1.0` tag.
 
 > 🛣️ **Roadmap:** multi-platform release plan at `docs/plans/2026-05-14-multi-platform-release.md` (8 tasks, GitHub Actions matrix scaffold ready). First cross-platform release ships as `v1.0.0`.
+
+---
+
+## 🚀 What's new in v0.55.0
+
+| Feature | What changed |
+| --- | --- |
+| **Daemon dispatcher map** | `src/daemon/rule_daemon.{hpp,cpp}` now uses `std::unordered_map<string,Handler>` registered in ctor — opcode routing is O(1), extensible without touching the eval loop |
+| **Mutex-protected rules** | `std::mutex rules_mu_` guards all `rules_` r/w (loadRules / checkFile snapshot / SET_STRICT / GET_STRICT) — no more races between concurrent strict-mode toggles and rule evaluation |
+| **Per-request worker threads (POSIX)** | Server loop detaches `std::thread` per `accept()` — slow hook ops (B3-B6) won't starve concurrent rule-eval clients |
+| **+8 daemon tests** | dispatcher PING/RELOAD/SHUTDOWN/SET_STRICT/GET_STRICT roundtrip + malformed-JSON fallback + 16-thread concurrent SET_STRICT + 8-thread concurrent checkFile+SET_STRICT toggler. 64/64 ctest pass |
+
+> 🧱 **Foundation work** — this release prepares `rule_daemon` for hook RPC ops landing in v0.56.0+ (`hook_stop`, `hook_precompact`, `hook_posttool_read`). User-visible behavior unchanged. Full audit: `docs/plans/2026-05-14-phase-b1-daemon-audit.md`.
 
 ---
 
@@ -80,17 +93,6 @@ icmg graph impact src/db.cpp --edge-type imports # filter impact by edge type
 icmg graph impact src/db.cpp --format dot | dot -Tsvg > impact.svg
 icmg graph impact --all src/auth.cpp src/db.cpp  # union impact of two files
 icmg init --force                                 # reinstall hooks + inject full command ref
-```
-
-## 🛠️ What's new in v0.53.1
-
-| Fix | What changed |
-| --- | --- |
-| **Zone glob Windows paths** | Zone patterns (`src/cli/**`) now match Windows absolute paths — nodes no longer mis-tag to `default` on Windows |
-| **Doctor caveman loop** | `icmg doctor` no longer re-warns about caveman hook on every run after auto-reinstall |
-
-```bash
-icmg zone rebuild   # re-tag any mis-classified nodes after upgrade (Windows users)
 ```
 
 ---

@@ -4,6 +4,9 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.55.0 — Daemon dispatcher map + mutex + per-request workers
+> Phase B.B2 — foundation for upcoming hook RPC ops. `src/daemon/rule_daemon.{hpp,cpp}` now routes opcodes through `std::unordered_map<string,Handler>` registered in ctor (O(1) dispatch, extensible without touching the eval loop). `std::mutex rules_mu_` guards all `rules_` reads/writes — checkFile uses snapshot-under-lock pattern; SET_STRICT / GET_STRICT atomic. POSIX server loop detaches `std::thread` per `accept()` so slow hook ops (B3-B6) won't starve concurrent rule-eval clients. User-visible behavior unchanged — wire format + return shapes identical. 64/64 ctest pass (+8 new daemon tests: dispatcher PING/RELOAD/SHUTDOWN/SET_STRICT roundtrip + malformed-JSON fallback + 16-thread concurrent SET_STRICT + 8-thread concurrent checkFile+toggle). B1 audit: `docs/plans/2026-05-14-phase-b1-daemon-audit.md`.
+
 ## 0.54.0 — Stop + PreCompact hooks in-process
 > Two session-boundary events fold into single icmg invocation each: `icmg hook stop` replaces 5-bash-fork chain (distill auto / fail-sync / compliance check-thinking / tool-budget / wflog); `icmg hook precompact` folds snapshot + transcript distillation + ABSOLUTE-RULE re-injection (with top-5 pinned anchors). Outer bash + jq parsing layer per command eliminated. JSON output format unchanged — drop-in upgrade. Opt-out via ICMG_NO_STOP_HOOK=1 / ICMG_NO_PRECOMPACT_HOOK=1. PostToolUse:Read auto-compress intentionally left as shell flow because existing implementation does graph-context-first routing. 63/63 tests pass. Measured: ~150-300ms saved per session-boundary event.
 
