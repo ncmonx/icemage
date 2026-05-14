@@ -983,3 +983,31 @@ Rejected:
 Open:
 - CII-Best-Practices: fill questionnaire at bestpractices.dev/projects/12818 (currently 18%).
 - Code-Review=0: needs 2nd reviewer; unsolvable solo without bot.
+
+## 2026-05-14 09:30 [saved]
+Goal: Fix WAL 65GB bloat + CMD popup + plan BFS graph expansion.
+Decisions:
+- `wal_autocheckpoint` 1000→100 pages (db.cpp): 10x more frequent checkpoint — prevents WAL bloat when concurrent hook writers accumulate.
+- Hook scripts always-overwrite on `icmg init` (init_cmd.cpp): removes stale `&`-backgrounded hooks from old installs automatically, eliminates zombie icmg processes.
+- PS1 Task Scheduler launcher (schedule_helper.cpp): `ProcessStartInfo.CreateNoWindow=$true` + `UseShellExecute=$false` maps to Win32 CREATE_NO_WINDOW — reliably hides console on Win11 console-subsystem apps.
+- BFS plan (12 tasks) saved to `docs/superpowers-optimized/plans/2026-05-14-bfs-expansion.md`; includes COMMANDS_BLOCK auto-injection into AGENTS.md on every `icmg init`.
+Rejected:
+- `Start-Process -WindowStyle Hidden -NoNewWindow` together — contradictory on Win11, still flashes.
+- Gating hook scripts on `--force` flag — leaves old buggy hooks on upgrades.
+Open:
+- Execute BFS plan (12 tasks); execution approach not yet chosen.
+- Run tests + commit WAL/CMD fixes to private/main (pending user permission).
+
+## 2026-05-14 10:30 [saved]
+Goal: Implement BFS expansion (12 tasks) + 3 bug fixes in icmg.
+Decisions:
+- impact() rewritten: accepts edge_types, delegates to closure(reverse=true) — old BFS loop replaced.
+- test_main.hpp does NOT provide main(); each test file needs `int main() { return icmg::test::run_all(); }`.
+- COMMANDS_BLOCK (~50 cmds) injected separately from AGENTS_BLOCK; injectBlock() helper handles both marker pairs.
+- graph-neighbors = closureByLevel(depth=1)[0]; avoids duplicating BFS logic.
+Rejected:
+- Keeping old impact() BFS loop — duplicate of closure(); now unified.
+- Putting COMMANDS_BLOCK inside AGENTS_BLOCK — separate markers allow independent updates.
+Open:
+- Build + ctest -R test_bfs_expand pending user permission.
+- Version bump to v0.53.0 needed before commit.

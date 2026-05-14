@@ -37,6 +37,28 @@ public:
                                   int max_depth,
                                   bool reverse = false);
 
+    // BFS shortest path (forward edges src→dst). Returns ordered path from→to,
+    // empty if unreachable or nodes not found. edge_types empty → all types.
+    std::vector<std::string> shortestPath(const std::string& from,
+                                           const std::string& to,
+                                           const std::vector<std::string>& edge_types = {},
+                                           int max_depth = 30);
+
+    // BFS returning nodes grouped by distance level (level 0 = direct neighbors).
+    // reverse=true walks inbound edges.
+    std::vector<std::vector<GraphNode>> closureByLevel(int64_t start,
+                                                        const std::vector<std::string>& edge_types,
+                                                        int max_depth,
+                                                        bool reverse = false);
+
+    // BFS reverse from both nodes; returns intersection (shared upstream dependencies).
+    std::vector<GraphNode> commonAncestors(const std::string& a,
+                                            const std::string& b,
+                                            int max_depth = 15);
+
+    // Multi-source reverse BFS — union of impact from all paths.
+    std::vector<GraphNode> impactAll(const std::vector<std::string>& paths, int depth = 3);
+
     // Edge CRUD
     void upsertEdge(const GraphEdge& edge);
     std::vector<GraphEdge> edgesFrom(int64_t nodeId);
@@ -46,8 +68,10 @@ public:
     std::vector<GraphNode> related(const std::string& path, int limit = 10);
     std::vector<GraphNode> search(const std::string& query, int limit = 10);
 
-    // Impact analysis (A5): files that depend on `path`
-    std::vector<GraphNode> impact(const std::string& path, int depth = 3);
+    // Impact analysis (A5): files that depend on `path`. edge_types empty → all types.
+    std::vector<GraphNode> impact(const std::string& path,
+                                   int depth = 3,
+                                   const std::vector<std::string>& edge_types = {});
 
     // Orphan detection (A4): nodes with no inbound edges
     std::vector<GraphNode> orphans(const std::vector<std::string>& exclude_patterns = {}) const;

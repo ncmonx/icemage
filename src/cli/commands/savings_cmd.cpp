@@ -94,7 +94,7 @@ public:
         core::Db db(cfg.projectDbPath("."));
         int64_t cutoff = (int64_t)std::time(nullptr) - (int64_t)window_days * 86400;
 
-        Bucket filter, compress, thinking, pack_recpt, strict_block, fetch_cache, image_cache;
+        Bucket filter, compress, thinking, pack_recpt, strict_block, fetch_cache, image_cache, graph_bfs;
 
         try {
             db.query("SELECT COUNT(*), COALESCE(SUM(raw_bytes),0), COALESCE(SUM(filtered_bytes),0), COALESCE(SUM(saved_tokens),0) "
@@ -223,19 +223,47 @@ public:
                      });
         } catch (...) {}
 
+        // v0.53.0: graph BFS savings — each call (graph-path/layers/neighbors/common)
+        // replaces manually reading ~4 source files; estimate 2000 tokens saved/call.
+        {
+            const char* h = std::getenv("USERPROFILE");
+            if (!h) h = std::getenv("HOME");
+            if (h) {
+                std::filesystem::path log = std::filesystem::path(h) / ".icmg" / "bfs-queries.jsonl";
+                if (std::filesystem::exists(log)) {
+                    std::ifstream f(log);
+                    std::string line;
+                    while (std::getline(f, line)) {
+                        auto pos = line.find("\"ts\":");
+                        if (pos == std::string::npos) continue;
+                        try {
+                            int64_t ts = std::stoll(line.substr(pos + 5));
+                            if (ts >= cutoff) ++graph_bfs.calls;
+                        } catch (...) {}
+                    }
+                    graph_bfs.raw_tokens    = graph_bfs.calls * 2000;
+                    graph_bfs.saved         = graph_bfs.calls * 2000;
+                    graph_bfs.actual_tokens = 0;
+                }
+            }
+        }
+
         Bucket total;
         total.calls         = filter.calls + compress.calls + thinking.calls
                             + pack_recpt.calls + strict_block.calls
-                            + fetch_cache.calls + image_cache.calls;
+                            + fetch_cache.calls + image_cache.calls + graph_bfs.calls;
         total.raw_tokens    = filter.raw_tokens + compress.raw_tokens + thinking.raw_tokens
                             + pack_recpt.raw_tokens + strict_block.raw_tokens
-                            + fetch_cache.raw_tokens + image_cache.raw_tokens;
+                            + fetch_cache.raw_tokens + image_cache.raw_tokens
+                            + graph_bfs.raw_tokens;
         total.actual_tokens = filter.actual_tokens + compress.actual_tokens + thinking.actual_tokens
                             + pack_recpt.actual_tokens + strict_block.actual_tokens
-                            + fetch_cache.actual_tokens + image_cache.actual_tokens;
+                            + fetch_cache.actual_tokens + image_cache.actual_tokens
+                            + graph_bfs.actual_tokens;
         total.saved         = filter.saved + compress.saved + thinking.saved
                             + pack_recpt.saved + strict_block.saved
-                            + fetch_cache.saved + image_cache.saved;
+                            + fetch_cache.saved + image_cache.saved
+                            + graph_bfs.saved;
 
         // Cost estimate: filter+compress = input price; thinking = output price.
         // Phase 67 T25: split cost by input vs output rates.
@@ -290,6 +318,7 @@ public:
         if (strict_block.calls > 0) renderRow("Strict denials (read/web/bash)", strict_block);
         if (fetch_cache.calls > 0)  renderRow("Fetch cache    (icmg fetch)", fetch_cache);
         if (image_cache.calls > 0)  renderRow("Image OCR cache(icmg ingest)", image_cache);
+        if (graph_bfs.calls > 0)    renderRow("Graph BFS       (path/layers)", graph_bfs);
         std::cout << std::string(64, '-') << "\n";
         renderRow("TOTAL",                            total);
         std::cout << "\n"

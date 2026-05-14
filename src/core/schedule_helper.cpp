@@ -91,9 +91,17 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
     {
         std::ofstream pf(ps1_path, std::ios::binary);
         if (pf) {
-            pf << "Start-Process -FilePath $env:ComSpec"
-               << " -ArgumentList '/c `\"" << spec.wrapper_path << "`\"'"
-               << " -WindowStyle Hidden -NoNewWindow -Wait\r\n";
+            // ProcessStartInfo.CreateNoWindow = $true maps directly to Win32
+            // CREATE_NO_WINDOW flag — reliable on all Windows versions including Win11.
+            // Start-Process -NoNewWindow + -WindowStyle Hidden are contradictory
+            // and still flash a console on Win11 console-subsystem apps.
+            pf << "$psi = [Diagnostics.ProcessStartInfo]::new($env:ComSpec, '/c `\""
+               << spec.wrapper_path << "`\"')\r\n"
+               << "$psi.CreateNoWindow = $true\r\n"
+               << "$psi.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden\r\n"
+               << "$psi.UseShellExecute = $false\r\n"
+               << "$p = [Diagnostics.Process]::Start($psi)\r\n"
+               << "$p.WaitForExit()\r\n";
         }
     }
 

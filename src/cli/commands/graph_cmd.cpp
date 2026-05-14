@@ -15,6 +15,7 @@
 #include <ctime>
 #include <set>
 #include <sstream>
+#include <fstream>
 #include <filesystem>
 #ifdef _WIN32
   #include <windows.h>
@@ -349,19 +350,43 @@ public:
     std::string description() const override { return "Show files impacted by changing a file"; }
 
     int run(const std::vector<std::string>& args) override {
-        if (args.empty()) { std::cerr << "icmg graph impact: requires <file>\n"; return 1; }
-        std::string file;
-        for (auto& a : args) { if (!a.empty() && a[0] != '-') { file = a; break; } }
+        if (args.empty()) { std::cerr << "icmg graph impact: requires <file> [file2 ...]\n"; return 1; }
+        std::vector<std::string> files;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') files.push_back(a);
+        if (files.empty()) { std::cerr << "icmg graph impact: requires <file>\n"; return 1; }
         int depth = 3;
         try { depth = std::stoi(flagValue(args, "--depth", "3")); } catch (...) {}
-        bool json_out = hasFlag(args, "--json");
+        bool json_out  = hasFlag(args, "--json");
+        bool dot_out   = (flagValue(args, "--format") == "dot");
+        bool multi_all = hasFlag(args, "--all");
+
+        std::string et_str = flagValue(args, "--edge-type");
+        std::vector<std::string> edge_types;
+        if (!et_str.empty()) {
+            std::istringstream iss(et_str);
+            std::string t;
+            while (std::getline(iss, t, ',')) if (!t.empty()) edge_types.push_back(t);
+        }
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
         graph::GraphStore store(db);
 
-        auto affected = store.impact(file, depth);
-        if (json_out) {
+        std::vector<graph::GraphNode> affected;
+        if (multi_all || files.size() > 1) {
+            affected = store.impactAll(files, depth);
+        } else {
+            affected = store.impact(files[0], depth, edge_types);
+        }
+
+        if (dot_out) {
+            std::cout << "digraph impact {\n";
+            std::string src = files.empty() ? "" : files[0];
+            std::cout << "  \"" << src << "\" [shape=box,style=filled,fillcolor=yellow];\n";
+            for (auto& n : affected)
+                std::cout << "  \"" << n.path << "\" -> \"" << src << "\";\n";
+            std::cout << "}\n";
+        } else if (json_out) {
             std::cout << "[";
             for (size_t i = 0; i < affected.size(); ++i) {
                 if (i) std::cout << ",";
@@ -369,7 +394,10 @@ public:
             }
             std::cout << "]\n";
         } else {
-            std::cout << "Impact of changing: " << file << "\n";
+            std::string label = (multi_all || files.size() > 1)
+                ? "Impact of changing multiple files"
+                : "Impact of changing: " + files[0];
+            std::cout << label << "\n";
             std::cout << "  " << affected.size() << " file(s) affected:\n";
             for (auto& n : affected) std::cout << "    " << n.path << "\n";
         }
@@ -998,6 +1026,182 @@ public:
     }
 };
 
+// Append one JSONL line to ~/.icmg/bfs-queries.jsonl for savings telemetry.
+static void recordBfsQuery(const std::string& cmd) {
+    const char* h = std::getenv("USERPROFILE");
+    if (!h) h = std::getenv("HOME");
+    if (!h) return;
+    std::filesystem::path log = std::filesystem::path(h) / ".icmg" / "bfs-queries.jsonl";
+    std::ofstream f(log, std::ios::app);
+    f << "{\"ts\":" << (int64_t)std::time(nullptr) << ",\"cmd\":\"" << cmd << "\"}\n";
+}
+
+// ---- graph-path: shortest dependency path between two nodes ----
+class GraphPathCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-path"; }
+    std::string description() const override { return "Shortest dependency path between two files"; }
+
+    int run(const std::vector<std::string>& args) override {
+        std::vector<std::string> pos;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') pos.push_back(a);
+        if (pos.size() < 2) { std::cerr << "icmg graph path: requires <from> <to>\n"; return 1; }
+        recordBfsQuery("graph-path");
+        int max_depth = 30;
+        try { max_depth = std::stoi(flagValue(args, "--depth", "30")); } catch (...) {}
+        std::string et_str = flagValue(args, "--edge-type");
+        std::vector<std::string> edge_types;
+        if (!et_str.empty()) {
+            std::istringstream iss(et_str);
+            std::string t;
+            while (std::getline(iss, t, ',')) if (!t.empty()) edge_types.push_back(t);
+        }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+
+        auto path = store.shortestPath(pos[0], pos[1], edge_types, max_depth);
+        if (path.empty()) {
+            std::cout << "No path from " << pos[0] << " to " << pos[1] << "\n";
+            return 0;
+        }
+        std::cout << "Shortest path (" << (path.size()-1) << " hop(s)):\n";
+        for (size_t i = 0; i < path.size(); ++i)
+            std::cout << (i ? "  → " : "  ") << path[i] << "\n";
+        return 0;
+    }
+};
+
+// ---- graph-layers: BFS frontier levels grouped by distance ----
+class GraphLayersCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-layers"; }
+    std::string description() const override { return "BFS dependency layers grouped by distance"; }
+
+    int run(const std::vector<std::string>& args) override {
+        std::string target;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') { target = a; break; }
+        if (target.empty()) { std::cerr << "icmg graph layers: requires <file|symbol>\n"; return 1; }
+        recordBfsQuery("graph-layers");
+        int depth = 5;
+        try { depth = std::stoi(flagValue(args, "--depth", "5")); } catch (...) {}
+        bool reverse = hasFlag(args, "--reverse");
+        std::string et_str = flagValue(args, "--edge-type");
+        std::vector<std::string> edge_types;
+        if (!et_str.empty()) {
+            std::istringstream iss(et_str);
+            std::string t;
+            while (std::getline(iss, t, ',')) if (!t.empty()) edge_types.push_back(t);
+        }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+
+        int64_t start = 0;
+        auto syms = store.findSymbol(target);
+        if (!syms.empty()) start = syms[0].id;
+        else { auto f = store.getNode(target); if (f) start = f->id; }
+        if (start == 0) { std::cerr << "icmg graph layers: not found: " << target << "\n"; return 1; }
+
+        auto levels = store.closureByLevel(start, edge_types, depth, reverse);
+        if (levels.empty()) { std::cout << "No dependencies found.\n"; return 0; }
+        std::cout << "Dependency layers for: " << target << "\n";
+        for (size_t lvl = 0; lvl < levels.size(); ++lvl) {
+            std::cout << "  Level " << (lvl+1) << " (" << levels[lvl].size() << " node(s)):\n";
+            for (auto& n : levels[lvl]) std::cout << "    " << n.path << "\n";
+        }
+        return 0;
+    }
+};
+
+// ---- graph-neighbors: direct 1-hop neighbors ----
+class GraphNeighborsCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-neighbors"; }
+    std::string description() const override { return "Direct 1-hop neighbors of a file or symbol"; }
+
+    int run(const std::vector<std::string>& args) override {
+        std::string target;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') { target = a; break; }
+        if (target.empty()) { std::cerr << "icmg graph neighbors: requires <file|symbol>\n"; return 1; }
+        recordBfsQuery("graph-neighbors");
+        bool reverse  = hasFlag(args, "--reverse");
+        bool json_out = hasFlag(args, "--json");
+        std::string et_str = flagValue(args, "--edge-type");
+        std::vector<std::string> edge_types;
+        if (!et_str.empty()) {
+            std::istringstream iss(et_str);
+            std::string t;
+            while (std::getline(iss, t, ',')) if (!t.empty()) edge_types.push_back(t);
+        }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+
+        int64_t start = 0;
+        auto syms = store.findSymbol(target);
+        if (!syms.empty()) start = syms[0].id;
+        else { auto f = store.getNode(target); if (f) start = f->id; }
+        if (start == 0) { std::cerr << "icmg graph neighbors: not found: " << target << "\n"; return 1; }
+
+        auto levels = store.closureByLevel(start, edge_types, 1, reverse);
+        std::vector<graph::GraphNode> neighbors;
+        if (!levels.empty()) neighbors = levels[0];
+
+        if (json_out) {
+            std::cout << "[";
+            for (size_t i = 0; i < neighbors.size(); ++i) {
+                if (i) std::cout << ",";
+                printNodeJson(std::cout, neighbors[i]);
+            }
+            std::cout << "]\n";
+        } else {
+            std::cout << "Neighbors of " << target << " (" << neighbors.size() << "):\n";
+            for (auto& n : neighbors) std::cout << "  " << n.path << "\n";
+        }
+        return 0;
+    }
+};
+
+// ---- graph-common: shared upstream dependencies of two nodes ----
+class GraphCommonCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-common"; }
+    std::string description() const override { return "Common upstream dependencies of two files"; }
+
+    int run(const std::vector<std::string>& args) override {
+        std::vector<std::string> pos;
+        for (auto& a : args) if (!a.empty() && a[0] != '-') pos.push_back(a);
+        if (pos.size() < 2) { std::cerr << "icmg graph common: requires <fileA> <fileB>\n"; return 1; }
+        recordBfsQuery("graph-common");
+        int depth = 15;
+        try { depth = std::stoi(flagValue(args, "--depth", "15")); } catch (...) {}
+        bool json_out = hasFlag(args, "--json");
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+
+        auto common = store.commonAncestors(pos[0], pos[1], depth);
+        if (json_out) {
+            std::cout << "[";
+            for (size_t i = 0; i < common.size(); ++i) {
+                if (i) std::cout << ",";
+                printNodeJson(std::cout, common[i]);
+            }
+            std::cout << "]\n";
+        } else {
+            if (common.empty()) { std::cout << "No common ancestors found.\n"; return 0; }
+            std::cout << "Common ancestors of " << pos[0] << " and " << pos[1] << ":\n";
+            for (auto& n : common) std::cout << "  " << n.path << "\n";
+        }
+        return 0;
+    }
+};
+
 // ---- graph (root) — dispatches subcommands or shows help ----
 class GraphRootCommand : public BaseCommand {
 public:
@@ -1022,25 +1226,34 @@ public:
             "icmg graph — knowledge graph management\n\n"
             "Usage: icmg graph <subcommand> [options]\n\n"
             "Subcommands:\n"
-            "  scan <dir>            Scan directory into graph\n"
-            "  update [dir]          Re-scan current project\n"
-            "  context <file>        Show graph context for a file\n"
-            "  related <file>        Show related files\n"
-            "  impact <file>         Show files impacted by changing a file\n"
-            "  search <query>        Search graph nodes by query\n"
-            "  list                  List all graph nodes\n"
-            "  stats                 Graph statistics\n"
-            "  orphans               Find orphan files (no inbound edges)\n"
-            "  cycles                Detect circular dependencies\n"
-            "  integrity [--fix]     Staged broken/dead/stale check + repair\n"
-            "  communities           Louvain auto-cluster (Phase 26 — suggests zones)\n"
-            "  hot                   Show most accessed files\n"
-            "  watch [dir]           Start file watcher daemon\n"
-            "  stop [dir]            Stop file watcher daemon\n"
-            "  watch-status [dir]    Show watcher daemon status\n"
-            "\nOptions (scan/update):\n"
-            "  --depth N             Max directory depth (default: 20)\n"
-            "  --lang L1,L2          Filter by language\n"
+            "  scan <dir>                    Scan directory into graph\n"
+            "  update [dir]                  Re-scan current project\n"
+            "  context <file>                Show graph context for a file\n"
+            "  related <file>                Show related files\n"
+            "  impact <file> [--edge-type T] Files impacted by changing a file\n"
+            "    --all <f1> <f2> ...         Multi-source impact union\n"
+            "    --format dot                DOT graph output\n"
+            "  path <from> <to>              Shortest dependency path\n"
+            "  layers <file> [--reverse]     BFS layers grouped by distance\n"
+            "  neighbors <file> [--reverse]  Direct 1-hop neighbors\n"
+            "  common <fileA> <fileB>        Shared upstream dependencies\n"
+            "  reverse-impact <file>         Who depends on this file\n"
+            "  transitive-impact <file>      What this file transitively reaches\n"
+            "  search <query>                Search graph nodes by query\n"
+            "  symbol <name>                 Find symbol definition\n"
+            "  callers <symbol>              Who calls this symbol\n"
+            "  callees <symbol>              What this symbol calls\n"
+            "  list                          List all graph nodes\n"
+            "  stats                         Graph statistics\n"
+            "  orphans                       Find orphan files (no inbound edges)\n"
+            "  cycles                        Detect circular dependencies\n"
+            "  hot                           Show most accessed files\n"
+            "  watch [dir]                   Start file watcher daemon\n"
+            "  stop [dir]                    Stop file watcher daemon\n"
+            "  watch-status [dir]            Show watcher daemon status\n"
+            "\nCommon options:\n"
+            "  --depth N             BFS depth (default varies by command)\n"
+            "  --edge-type T1,T2     Filter edges by type (imports,calls,...)\n"
             "  --json                JSON output\n";
         return 0;
     }
@@ -1066,5 +1279,9 @@ ICMG_REGISTER_COMMAND("graph-callers",           GraphCallersCommand);
 ICMG_REGISTER_COMMAND("graph-callees",           GraphCalleesCommand);
 ICMG_REGISTER_COMMAND("graph-reverse-impact",    GraphReverseImpactCommand);
 ICMG_REGISTER_COMMAND("graph-transitive-impact", GraphTransitiveImpactCommand);
+ICMG_REGISTER_COMMAND("graph-path",              GraphPathCommand);
+ICMG_REGISTER_COMMAND("graph-layers",            GraphLayersCommand);
+ICMG_REGISTER_COMMAND("graph-neighbors",         GraphNeighborsCommand);
+ICMG_REGISTER_COMMAND("graph-common",            GraphCommonCommand);
 
 } // namespace icmg::cli

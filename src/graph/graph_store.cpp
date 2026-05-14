@@ -335,6 +335,169 @@ std::vector<int64_t> GraphStore::closure(int64_t start,
     return order;
 }
 
+std::vector<std::string> GraphStore::shortestPath(
+    const std::string& from, const std::string& to,
+    const std::vector<std::string>& edge_types, int max_depth)
+{
+    auto src = getNode(from);
+    auto dst = getNode(to);
+    if (!src || !dst) return {};
+    if (src->id == dst->id) return {from};
+
+    std::string type_clause;
+    std::vector<std::string> params;
+    if (!edge_types.empty()) {
+        type_clause = " AND edge_type IN (";
+        for (size_t i = 0; i < edge_types.size(); ++i) {
+            if (i) type_clause += ",";
+            type_clause += "?";
+            params.push_back(edge_types[i]);
+        }
+        type_clause += ")";
+    }
+
+    std::unordered_map<int64_t, int64_t> parent;
+    std::deque<std::pair<int64_t,int>> q;
+    q.push_back({src->id, 0});
+    parent[src->id] = -1;
+    bool found = false;
+
+    while (!q.empty() && !found) {
+        auto [cur, d] = q.front(); q.pop_front();
+        if (d >= max_depth) continue;
+        std::string sql = "SELECT dst FROM graph_edges WHERE src=?" + type_clause;
+        std::vector<std::string> bind = {std::to_string(cur)};
+        bind.insert(bind.end(), params.begin(), params.end());
+        db_.query(sql, bind, [&](const core::Row& r) {
+            if (r.empty() || found) return;
+            int64_t nb; try { nb = std::stoll(r[0]); } catch (...) { return; }
+            if (parent.count(nb)) return;
+            parent[nb] = cur;
+            if (nb == dst->id) { found = true; return; }
+            q.push_back({nb, d + 1});
+        });
+    }
+    if (!found) return {};
+
+    std::vector<int64_t> ids;
+    int64_t cur = dst->id;
+    while (cur != -1) { ids.push_back(cur); cur = parent.at(cur); }
+    std::reverse(ids.begin(), ids.end());
+
+    std::vector<std::string> result;
+    for (int64_t id : ids) {
+        db_.query("SELECT path FROM graph_nodes WHERE id=?", {std::to_string(id)},
+                  [&](const core::Row& r) { if (!r.empty()) result.push_back(r[0]); });
+    }
+    return result;
+}
+
+std::vector<std::vector<GraphNode>> GraphStore::closureByLevel(
+    int64_t start, const std::vector<std::string>& edge_types,
+    int max_depth, bool reverse)
+{
+    std::string type_clause;
+    std::vector<std::string> params;
+    if (!edge_types.empty()) {
+        type_clause = " AND edge_type IN (";
+        for (size_t i = 0; i < edge_types.size(); ++i) {
+            if (i) type_clause += ",";
+            type_clause += "?";
+            params.push_back(edge_types[i]);
+        }
+        type_clause += ")";
+    }
+    std::string col_pick  = reverse ? "src" : "dst";
+    std::string col_where = reverse ? "dst" : "src";
+
+    std::unordered_set<int64_t> visited;
+    visited.insert(start);
+    std::vector<int64_t> frontier = {start};
+    std::vector<std::vector<GraphNode>> levels;
+
+    for (int d = 0; d < max_depth && !frontier.empty(); ++d) {
+        std::vector<int64_t> next;
+        std::vector<GraphNode> level_nodes;
+        for (int64_t c : frontier) {
+            std::string sql = "SELECT " + col_pick + " FROM graph_edges WHERE "
+                            + col_where + "=?" + type_clause;
+            std::vector<std::string> bind = {std::to_string(c)};
+            bind.insert(bind.end(), params.begin(), params.end());
+            db_.query(sql, bind, [&](const core::Row& r) {
+                if (r.empty()) return;
+                int64_t nb; try { nb = std::stoll(r[0]); } catch (...) { return; }
+                if (!visited.insert(nb).second) return;
+                next.push_back(nb);
+                db_.query(
+                    "SELECT id,path,lang,context,symbols,size_bytes,file_hash,"
+                    "updated_at,access_count,zone,parent_id,kind,symbol_name,"
+                    "signature,line_start,line_end,body_hash FROM graph_nodes WHERE id=?",
+                    {std::to_string(nb)},
+                    [&](const core::Row& nr) { level_nodes.push_back(rowToNode(nr)); });
+            });
+        }
+        if (!level_nodes.empty()) levels.push_back(std::move(level_nodes));
+        frontier = std::move(next);
+    }
+    return levels;
+}
+
+std::vector<GraphNode> GraphStore::commonAncestors(
+    const std::string& a, const std::string& b, int max_depth)
+{
+    auto na = getNode(a);
+    auto nb = getNode(b);
+    if (!na || !nb) return {};
+
+    auto a_ids = closure(na->id, {}, max_depth, /*reverse=*/true);
+    std::unordered_set<int64_t> a_set(a_ids.begin(), a_ids.end());
+
+    auto b_ids = closure(nb->id, {}, max_depth, /*reverse=*/true);
+
+    std::vector<GraphNode> result;
+    for (int64_t id : b_ids) {
+        if (!a_set.count(id)) continue;
+        db_.query(
+            "SELECT id,path,lang,context,symbols,size_bytes,file_hash,"
+            "updated_at,access_count,zone,parent_id,kind,symbol_name,"
+            "signature,line_start,line_end,body_hash FROM graph_nodes WHERE id=?",
+            {std::to_string(id)},
+            [&](const core::Row& r) { result.push_back(rowToNode(r)); });
+    }
+    return result;
+}
+
+std::vector<GraphNode> GraphStore::impactAll(
+    const std::vector<std::string>& paths, int depth)
+{
+    std::unordered_set<int64_t> visited;
+    std::deque<std::pair<int64_t,int>> q;
+    for (auto& p : paths) {
+        auto n = getNode(p);
+        if (!n) continue;
+        if (visited.insert(n->id).second) q.push_back({n->id, 0});
+    }
+    std::vector<GraphNode> result;
+    while (!q.empty()) {
+        auto [cur, d] = q.front(); q.pop_front();
+        if (d >= depth) continue;
+        db_.query("SELECT src FROM graph_edges WHERE dst=?", {std::to_string(cur)},
+                  [&](const core::Row& r) {
+                      if (r.empty()) return;
+                      int64_t nb; try { nb = std::stoll(r[0]); } catch (...) { return; }
+                      if (!visited.insert(nb).second) return;
+                      db_.query(
+                          "SELECT id,path,lang,context,symbols,size_bytes,file_hash,"
+                          "updated_at,access_count,zone,parent_id,kind,symbol_name,"
+                          "signature,line_start,line_end,body_hash FROM graph_nodes WHERE id=?",
+                          {std::to_string(nb)},
+                          [&](const core::Row& nr) { result.push_back(rowToNode(nr)); });
+                      q.push_back({nb, d + 1});
+                  });
+    }
+    return result;
+}
+
 void GraphStore::removeNode(const std::string& path) {
     // Manual cascade (SQLite foreign keys may be off)
     auto node = getNode(path);
@@ -433,31 +596,18 @@ std::vector<GraphNode> GraphStore::search(const std::string& query, int limit) {
 }
 
 // A5: BFS over inbound edges — who depends on `path`
-std::vector<GraphNode> GraphStore::impact(const std::string& path, int depth) {
-    auto start = getNode(path);
-    if (!start) return {};
-
+std::vector<GraphNode> GraphStore::impact(const std::string& path, int depth,
+                                           const std::vector<std::string>& edge_types) {
+    auto node = getNode(path);
+    if (!node) return {};
+    auto ids = closure(node->id, edge_types, depth, /*reverse=*/true);
     std::vector<GraphNode> result;
-    std::unordered_set<int64_t> visited;
-    std::vector<std::pair<int64_t,int>> queue = {{start->id, 0}};
-    visited.insert(start->id);
-
-    while (!queue.empty()) {
-        auto [nodeId, d] = queue.front();
-        queue.erase(queue.begin());
-        if (d >= depth) continue;
-
-        auto inbound = edgesTo(nodeId);
-        for (auto& e : inbound) {
-            if (visited.count(e.src)) continue;
-            visited.insert(e.src);
-            db_.query(
-                "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
-                " FROM graph_nodes WHERE id=?",
-                {std::to_string(e.src)},
-                [&](const core::Row& r) { result.push_back(rowToNode(r)); });
-            queue.push_back({e.src, d+1});
-        }
+    for (int64_t id : ids) {
+        db_.query(
+            "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
+            " FROM graph_nodes WHERE id=?",
+            {std::to_string(id)},
+            [&](const core::Row& r) { result.push_back(rowToNode(r)); });
     }
     return result;
 }

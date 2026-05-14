@@ -105,8 +105,10 @@ void Db::applyPragmas() {
     run("PRAGMA cache_size=-8000"); // 8 MB
     run("PRAGMA page_size=4096");       // effective only on new DBs; no-op on existing
     run("PRAGMA mmap_size=268435456");  // 256 MB mmap — read pages skip syscall
-    // wal_autocheckpoint default 1000 pages is fine; explicit for clarity.
-    run("PRAGMA wal_autocheckpoint=1000");
+    // 100 pages (400KB) — checkpoint frequently so WAL cannot bloat to GBs
+    // if concurrent hook processes hold write locks. Old default (1000) allowed
+    // unbounded growth when double-backgrounded hooks spawned hundreds of writers.
+    run("PRAGMA wal_autocheckpoint=100");
 }
 
 void Db::checkRc(int rc, const std::string& ctx) const {
