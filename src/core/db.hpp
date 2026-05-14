@@ -5,6 +5,8 @@
 #include <functional>
 #include <stdexcept>
 #include <cstdint>
+#include <list>
+#include <unordered_map>
 
 namespace icmg::core {
 
@@ -43,6 +45,27 @@ public:
 
 private:
     sqlite3* db_ = nullptr;
+
+    // Phase A4 (v0.53.2): prepared-statement LRU cache.
+    // Avoids re-prepare cost on hot-path queries (recall, drift, path-context).
+    // Cap = 50. Destructor finalizes all cached stmts.
+    struct LruEntry {
+        std::string sql;
+        sqlite3_stmt* stmt;
+    };
+    mutable std::list<LruEntry> stmt_list_;
+    mutable std::unordered_map<std::string,
+                               std::list<LruEntry>::iterator> stmt_map_;
+    static constexpr size_t kPreparedCap = 50;
+
+    // Get cached prepared stmt or prepare + insert. Resets stmt + clears
+    // bindings before return. Returns nullptr on prepare failure.
+    sqlite3_stmt* getCachedStmt(const std::string& sql) const;
+    // Release stmt back to cache: reset state (does NOT finalize).
+    void releaseCachedStmt(sqlite3_stmt* stmt) const;
+    // Destructor helper: finalize all cached stmts.
+    void clearStmtCache();
+
     void checkRc(int rc, const std::string& ctx) const;
     void applyPragmas();
 };

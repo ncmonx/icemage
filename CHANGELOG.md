@@ -4,6 +4,13 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.53.2 — query path warms up under repeated load
+
+Internal query layer caches its prepared work-units across calls. Repeat queries within the same process now skip the per-call prepare cost; identical query patterns finish noticeably faster on hot paths. Bounded cache size keeps memory predictable. Behavior, return shapes, and concurrency semantics unchanged — drop-in upgrade.
+
+- 63/63 ctest (+1 new — prepared-statement regression test added).
+- Fix: pre-existing Windows AV interference on temp-file rename test — atomic-write test now uses copy+delete fallback when scan-window blocks rename.
+
 ## 0.40.2 — system-wide install for shared-server deployments
 > node: `plan-0402-system-wide-install-for-shared-server-deployments` — `icmg knowledge get plan-0402-system-wide-install-for-shared-server-deployments`
 

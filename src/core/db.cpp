@@ -85,13 +85,74 @@ Db::Db(const std::string& path) {
 }
 
 Db::~Db() {
+    clearStmtCache();
     if (db_) sqlite3_close(db_);
 }
 
-Db::Db(Db&& o) noexcept : db_(o.db_) { o.db_ = nullptr; }
+Db::Db(Db&& o) noexcept
+    : db_(o.db_)
+    , stmt_list_(std::move(o.stmt_list_))
+    , stmt_map_(std::move(o.stmt_map_))
+{
+    o.db_ = nullptr;
+}
 Db& Db::operator=(Db&& o) noexcept {
-    if (this != &o) { if (db_) sqlite3_close(db_); db_ = o.db_; o.db_ = nullptr; }
+    if (this != &o) {
+        clearStmtCache();
+        if (db_) sqlite3_close(db_);
+        db_ = o.db_;
+        stmt_list_ = std::move(o.stmt_list_);
+        stmt_map_  = std::move(o.stmt_map_);
+        o.db_ = nullptr;
+    }
     return *this;
+}
+
+// ---- Phase A4 (v0.53.2): prepared-statement LRU cache ----
+
+void Db::clearStmtCache() {
+    for (auto& e : stmt_list_) {
+        if (e.stmt) sqlite3_finalize(e.stmt);
+    }
+    stmt_list_.clear();
+    stmt_map_.clear();
+}
+
+sqlite3_stmt* Db::getCachedStmt(const std::string& sql) const {
+    auto it = stmt_map_.find(sql);
+    if (it != stmt_map_.end()) {
+        // Cache hit — move to front (MRU) + reset.
+        stmt_list_.splice(stmt_list_.begin(), stmt_list_, it->second);
+        sqlite3_stmt* stmt = it->second->stmt;
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
+        return stmt;
+    }
+    // Cache miss — prepare + insert at front.
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        if (stmt) sqlite3_finalize(stmt);
+        return nullptr;
+    }
+    stmt_list_.push_front({sql, stmt});
+    stmt_map_[sql] = stmt_list_.begin();
+
+    // Evict LRU tail if over cap.
+    while (stmt_list_.size() > kPreparedCap) {
+        auto& back = stmt_list_.back();
+        if (back.stmt) sqlite3_finalize(back.stmt);
+        stmt_map_.erase(back.sql);
+        stmt_list_.pop_back();
+    }
+    return stmt;
+}
+
+void Db::releaseCachedStmt(sqlite3_stmt* stmt) const {
+    if (stmt) {
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
+    }
 }
 
 void Db::applyPragmas() {
@@ -153,16 +214,16 @@ void Db::run(const std::string& sql) {
 }
 
 void Db::run(const std::string& sql, const std::vector<std::string>& params) {
-    sqlite3_stmt* stmt = nullptr;
-    int rc = sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) throw DbError("prepare: " + sql.substr(0, 60) + ": " + sqlite3_errmsg(db_));
+    // Phase A4: use cached prepared stmt — avoids re-prepare on hot path.
+    sqlite3_stmt* stmt = getCachedStmt(sql);
+    if (!stmt) throw DbError("prepare: " + sql.substr(0, 60) + ": " + sqlite3_errmsg(db_));
 
     for (int i = 0; i < (int)params.size(); ++i) {
         sqlite3_bind_text(stmt, i + 1, params[i].c_str(), -1, SQLITE_TRANSIENT);
     }
 
-    rc = stepWithRetry(stmt);
-    sqlite3_finalize(stmt);
+    int rc = stepWithRetry(stmt);
+    releaseCachedStmt(stmt);  // reset, do NOT finalize
     if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
         throw DbError("exec: " + sql.substr(0, 60) + ": " + sqlite3_errmsg(db_));
     }
@@ -171,13 +232,15 @@ void Db::run(const std::string& sql, const std::vector<std::string>& params) {
 void Db::query(const std::string& sql,
                const std::vector<std::string>& params,
                RowCallback cb) {
-    sqlite3_stmt* stmt = nullptr;
-    int rc = sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) throw DbError("prepare query: " + sql.substr(0, 60) + ": " + sqlite3_errmsg(db_));
+    // Phase A4: cached prepared stmt.
+    sqlite3_stmt* stmt = getCachedStmt(sql);
+    if (!stmt) throw DbError("prepare query: " + sql.substr(0, 60) + ": " + sqlite3_errmsg(db_));
 
     for (int i = 0; i < (int)params.size(); ++i) {
         sqlite3_bind_text(stmt, i + 1, params[i].c_str(), -1, SQLITE_TRANSIENT);
     }
+
+    int rc = 0;
 
     // Retry initial step on BUSY/LOCKED. Once we have first row, subsequent
     // steps within same statement won't see contention.
@@ -203,7 +266,7 @@ void Db::query(const std::string& sql,
         rc = sqlite3_step(stmt);
     }
 
-    sqlite3_finalize(stmt);
+    releaseCachedStmt(stmt);  // Phase A4: reset, do NOT finalize
     if (rc != SQLITE_DONE) {
         throw DbError("query step: " + sql.substr(0, 60) + ": " + sqlite3_errmsg(db_));
     }
