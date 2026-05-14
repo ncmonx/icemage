@@ -48,6 +48,17 @@ icmg graph impact --all src/auth.cpp src/db.cpp  # union impact of two files
 icmg init --force                                 # reinstall hooks + inject full command ref
 ```
 
+## 🛠️ What's new in v0.53.1
+
+| Fix | What changed |
+| --- | --- |
+| **Zone glob Windows paths** | Zone patterns (`src/cli/**`) now match Windows absolute paths — nodes no longer mis-tag to `default` on Windows |
+| **Doctor caveman loop** | `icmg doctor` no longer re-warns about caveman hook on every run after auto-reinstall |
+
+```bash
+icmg zone rebuild   # re-tag any mis-classified nodes after upgrade (Windows users)
+```
+
 ---
 
 ## 🚀 What's new in v0.52.0
