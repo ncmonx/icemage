@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-57%2F57%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-62%2F62%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-88%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -22,6 +22,23 @@ A single binary that makes Claude Code, Cursor, and every other AI coding assist
 If you've ever watched 30K tokens evaporate on a single file read, paid for "thinking" you didn't need, or re-explained the same project context after `/clear` for the fifth time today — this is for you.
 
 ---
+
+## What's new in v0.53.0
+
+| Feature | What changed |
+|---|---|
+| **BFS graph expansion** | `icmg pack` now traverses the dependency graph up to 3 hops — surfaces transitive imports without manual file-hunting |
+| **AGENTS.md auto-sync** | `icmg init` injects a live `COMMANDS_BLOCK` into AGENTS.md — sub-agents always see the full command index |
+| **WAL bloat fix** | `wal_autocheckpoint` 1000→100 pages — prevents 65 GB WAL files on high-frequency hook writes |
+| **CMD popup suppression** | All subprocess launches now use `CREATE_NO_WINDOW` — no console flicker on Windows 11 |
+| **Zone glob fix** | Zone patterns (e.g. `src/cli/**`) now match Windows absolute paths — nodes no longer fall to `default` on Windows |
+| **Doctor loop fix** | `icmg doctor` no longer re-warns about caveman hook after auto-reinstall |
+
+```bash
+icmg pack "<task>"          # now includes transitive deps automatically
+icmg init --force           # refreshes AGENTS.md COMMANDS_BLOCK + hooks
+icmg zone rebuild           # re-tag nodes after upgrading (Windows users)
+```
 
 ## What's new in v0.51.0
 

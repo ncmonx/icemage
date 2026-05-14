@@ -42,6 +42,17 @@ TEST("zone resolver: backslash paths normalized") {
     ASSERT_EQ(z.resolveForPath("src\\ui\\Form1.cs"), std::string("ui"));
 }
 
+TEST("zone resolver: windows absolute path matches relative glob") {
+    auto db = makeDb();
+    core::ZoneResolver z(db);
+    z.addRule("cli", "src/cli/**");
+    z.addRule("core", "src/core/**");
+    // Absolute paths as stored on Windows — must resolve to correct zone
+    ASSERT_EQ(z.resolveForPath("D:\\Data Kerja\\proj\\src\\cli\\commands\\foo.cpp"), std::string("cli"));
+    ASSERT_EQ(z.resolveForPath("D:/Data Kerja/proj/src/core/db.cpp"), std::string("core"));
+    ASSERT_EQ(z.resolveForPath("D:/proj/src/other/baz.cpp"), std::string("default"));
+}
+
 TEST("zone resolver: leading ./ stripped") {
     auto db = makeDb();
     core::ZoneResolver z(db);

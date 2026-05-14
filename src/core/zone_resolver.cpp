@@ -96,9 +96,17 @@ bool ZoneResolver::matchGlob(const std::string& glob, const std::string& path) {
     // otherwise → substring match (anchored at any path component boundary).
     if (glob.size() >= 3 && glob.substr(glob.size() - 3) == "/**") {
         std::string prefix = glob.substr(0, glob.size() - 3);
-        return path.size() > prefix.size() &&
-               path.compare(0, prefix.size(), prefix) == 0 &&
-               (path[prefix.size()] == '/' || prefix.empty());
+        // Match at any component boundary — handles Windows absolute paths
+        // e.g. "D:/proj/src/cli/foo.cpp" must match "src/cli/**"
+        size_t pos = 0;
+        while ((pos = path.find(prefix, pos)) != std::string::npos) {
+            bool left_ok  = (pos == 0 || path[pos - 1] == '/');
+            bool right_ok = (pos + prefix.size() < path.size() &&
+                             path[pos + prefix.size()] == '/');
+            if (left_ok && right_ok) return true;
+            ++pos;
+        }
+        return false;
     }
     if (glob.size() >= 2 && glob[0] == '*' && glob[1] == '.') {
         std::string ext = glob.substr(1);  // ".cs"

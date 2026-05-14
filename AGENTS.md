@@ -101,6 +101,13 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Read a large file | `icmg context <file>` (graph + symbols + memory) |
 | Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
+| Shortest path between files | `icmg graph path <from> <to>` |
+| BFS layers by distance | `icmg graph layers <file> [--reverse]` |
+| Direct 1-hop neighbors | `icmg graph neighbors <file> [--reverse]` |
+| Shared upstream deps | `icmg graph common <fileA> <fileB>` |
+| Multi-source impact union | `icmg graph impact --all <f1> <f2>` |
+| Impact as DOT graph | `icmg graph impact <file> --format dot` |
+| Filter by edge type | `icmg graph impact <file> --edge-type imports` |
 | Search code | `icmg run grep ...` (auto-filtered) |
 | Recall past decision | `icmg recall "<query>"` |
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
@@ -161,6 +168,8 @@ Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
 
 
 
+
+
 ---
 
 ## Git Remote Rules (ABSOLUTE — never override)
@@ -186,3 +195,101 @@ Two remotes with strict separation:
 git checkout -b restore/private-main <feat-branch-tip>
 git push private restore/private-main:main --force
 ```
+
+<!-- icmg:commands:start -->
+## icmg command reference (auto-inserted by `icmg init`)
+
+### Graph traversal
+| Command | Description |
+|---|---|
+| `icmg graph scan <dir>` | Scan directory into graph |
+| `icmg graph update [dir]` | Re-scan current project |
+| `icmg graph context <file>` | Graph + symbols bundle for a file |
+| `icmg graph impact <file>` | Who breaks if this file changes |
+| `icmg graph impact <file> --edge-type imports` | Filter by edge type |
+| `icmg graph impact --all <f1> <f2>` | Union impact of multiple files |
+| `icmg graph impact <file> --format dot` | Export impact as DOT graph |
+| `icmg graph reverse-impact <file> --depth 5` | Transitive reverse impact |
+| `icmg graph transitive-impact <file>` | What this file transitively reaches |
+| `icmg graph path <from> <to>` | Shortest dependency path |
+| `icmg graph layers <file> [--reverse]` | BFS layers grouped by distance |
+| `icmg graph neighbors <file> [--reverse]` | Direct 1-hop neighbors |
+| `icmg graph common <fileA> <fileB>` | Shared upstream dependencies |
+| `icmg graph symbol <Name>` | Find symbol definition |
+| `icmg graph callers <symbol>` | Who calls this symbol |
+| `icmg graph callees <symbol>` | What this symbol calls |
+| `icmg graph related <file>` | Related files by edge proximity |
+| `icmg graph search <query>` | Search graph nodes |
+| `icmg graph list` | List all graph nodes |
+| `icmg graph stats` | Node + edge counts |
+| `icmg graph orphans` | Files with no inbound edges |
+| `icmg graph cycles` | Detect circular dependencies |
+| `icmg graph hot` | Most accessed files |
+| `icmg graph watch [dir]` | Start file watcher daemon |
+| `icmg graph stop [dir]` | Stop file watcher daemon |
+
+### Memory
+| Command | Description |
+|---|---|
+| `icmg recall "<query>"` | BM25 memory recall |
+| `icmg recall "<query>" --semantic` | Semantic (ONNX) recall |
+| `icmg cross-recall "<query>"` | Recall across all projects |
+| `icmg store --topic T "<text>"` | Store a memory node |
+| `icmg memory list` | List memory nodes |
+| `icmg memory forget <id>` | Soft-delete a memory |
+| `icmg fail store "<task>" "<approach>" "<reason>"` | Record failed approach |
+| `icmg fail recall "<task>"` | Recall failed approaches |
+| `icmg memoir add --title T --content-file F` | Long-form rationale / ADR |
+
+### Context + token efficiency
+| Command | Description |
+|---|---|
+| `icmg context <file>` | Graph + symbols + memory (80%+ smaller than raw read) |
+| `icmg pack "<task>"` | 4KB context bundle for new tasks |
+| `icmg parallel --task "..." --task "..."` | Run 2+ tasks concurrently (3-6× speedup) |
+| `icmg run <cmd>` | Run noisy command through Tkil filter |
+| `icmg compress` | Pipe or `< file` — glossary-compressed output |
+| `icmg shrink` | Shrink output to token budget |
+| `icmg expand` | Expand compressed text |
+| `icmg fetch <url>` | Cached + token-reduced URL fetch |
+| `icmg diff-summary --ref HEAD~5` | Compressed git diff |
+| `icmg savings` | View cumulative token savings |
+
+### Session + workflow
+| Command | Description |
+|---|---|
+| `icmg wake-up` | Session-start briefing (decisions + phases + fixes) |
+| `icmg session claim/clear/list` | Cross-session awareness |
+| `icmg verify --command "<cmd>"` | Run command + record audit trail |
+| `icmg agent "<task>"` | Delegate to LLM via pack→prompt |
+| `icmg explain "<error>"` | Lookup known error patterns |
+| `icmg known-issue add "<pattern>" --fix "<res>"` | Record a fix |
+| `icmg batch` | Batch cache writes (cut round-trips) |
+
+### Project management
+| Command | Description |
+|---|---|
+| `icmg init [--force]` | Bootstrap project (hooks + AGENTS.md) |
+| `icmg zone list/add/scope` | Manage zones |
+| `icmg sync` | Sync team knowledge (git-tracked JSONL) |
+| `icmg cron list/add/remove` | Scheduled tasks |
+| `icmg plan list` | Browse active plans |
+| `icmg knowledge list` | Browse knowledge nodes |
+| `icmg ls [path]` | List directory |
+| `icmg copy --from <src> --to <dst>` | Silent file copy |
+| `icmg parity <ref> <new>` | Clone existing command menu |
+| `icmg template extract <ref> --save-as X` | Extract scaffold template |
+| `icmg template apply X --to <new>` | Apply scaffold template |
+
+### System
+| Command | Description |
+|---|---|
+| `icmg update` | Self-upgrade |
+| `icmg whats-new` | Release notes |
+| `icmg doctor` | Diagnose icmg issues |
+| `icmg health` | System health check |
+| `icmg strict [on/off/status]` | Toggle strict mode |
+| `icmg caveman [on/off/status]` | Toggle caveman mode |
+| `icmg chat` | Interactive REPL |
+<!-- icmg:commands:end -->
+

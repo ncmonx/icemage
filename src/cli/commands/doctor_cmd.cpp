@@ -151,7 +151,13 @@ public:
                 ++issues;
                 std::cout << "  ! [caveman] flag ON but never fired — hook likely missing.\n";
                 if (!dry) {
-                    fixed += runInitInstallHooks() ? 1 : 0;
+                    bool ok = runInitInstallHooks();
+                    fixed += ok ? 1 : 0;
+                    if (ok) {
+                        // Stamp last-trigger so doctor doesn't re-warn until hook actually fires
+                        std::ofstream ts(last);
+                        ts << "reinstalled\n";
+                    }
                 }
             } else {
                 auto age_days = ageDays(last);

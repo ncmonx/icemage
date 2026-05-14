@@ -1011,3 +1011,37 @@ Rejected:
 Open:
 - Build + ctest -R test_bfs_expand pending user permission.
 - Version bump to v0.53.0 needed before commit.
+
+## 2026-05-14 12:15 [saved]
+Goal: Upgrade icmg to v0.53.0, fix release asset naming, update public docs.
+Decisions:
+- Release assets: `icmg-{ver}-win-x64.zip` + `.sha256` — documented in CLAUDE.md Release workflow section; check prior release before uploading.
+- icmg upgrade path: build locally → copy to `~/bin/icmg.exe`; `update --apply` fails when no asset on release yet.
+- Public README badge 61/62→62/62: PR #24 squash-merged; GitHub About description updated via `gh api PATCH`.
+- `icmg init --force` re-run after upgrade to refresh hooks + AGENTS.md COMMANDS_BLOCK.
+Rejected:
+- Raw `.exe` upload as `icmg-windows-x86_64.exe` — wrong name AND format.
+- Direct push to public `main` — branch protected, requires PR + status checks.
+Open:
+- backup/maintain/mirror/sentinel auto-on failed — run manually if needed.
+
+## 2026-05-14 12:20 [saved]
+Goal: Fix release zip missing DLL — bundle libwinpthread-1.dll.
+Decisions:
+- Only `libwinpthread-1.dll` needed (MinGW thread runtime); detected via `objdump -p icmg.exe | grep "DLL Name"`.
+- CLAUDE.md release checklist updated: stage icmg.exe + dll into temp folder, zip folder contents, not just exe.
+Rejected:
+- Bundling KERNEL32/msvcrt/SHELL32/WS2_32 — Windows built-ins, always present.
+Open:
+- If MinGW updated, re-check DLL deps before next release.
+
+## 2026-05-14 12:35 [saved]
+Goal: Fix v0.53.0 release zip — missing DLLs vs v0.51.0.
+Decisions:
+- Release build MUST use `-DICMG_USE_ONNX=ON -DICMG_USE_TREESITTER=ON`; default-OFF build omits 5 DLLs.
+- 6 DLLs required: libtree-sitter-0.26, libwinpthread-1, libzstd, onnxruntime, onnxruntime_providers_shared, wasmtime — documented in CLAUDE.md with source paths.
+- libzstd/wasmtime/onnxruntime_providers_shared loaded via LoadLibrary — invisible to objdump; must cross-check against prior release zip.
+Rejected:
+- Using objdump alone to determine DLL list — misses dynamically loaded DLLs.
+Open:
+- If MinGW or onnxruntime updated, re-verify DLL list before next release.
