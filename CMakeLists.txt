@@ -1,9 +1,46 @@
 ﻿cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.53.2 LANGUAGES CXX C)
+project(icmg VERSION 0.53.3 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ---------------------------------------------------------------------------
+# Build-speed (v0.53.3): auto-detect ccache + lld, opt-in unity build.
+# ---------------------------------------------------------------------------
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    # Smoke-test: ccache --version. Some MSYS2 builds ship with ABI-broken
+    # ccache.exe (exit 127 on launch). Only enable if it actually runs.
+    execute_process(COMMAND ${CCACHE_PROGRAM} --version
+                    RESULT_VARIABLE _ccache_rc
+                    OUTPUT_QUIET ERROR_QUIET)
+    if(_ccache_rc EQUAL 0)
+        set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+        message(STATUS "icmg: ccache enabled (${CCACHE_PROGRAM}) - incremental builds faster")
+    else()
+        message(STATUS "icmg: ccache found but smoke-test failed (rc=${_ccache_rc}); skipped")
+    endif()
+endif()
+
+# Opt-in lld linker (~30-50% link phase faster). Off by default because
+# MinGW+ONNX direct-DLL-link uses MS export tables lld handles differently
+# (link rc=57). Enable: cmake -B build -DICMG_USE_LLD=ON
+option(ICMG_USE_LLD "Use lld linker instead of ld (faster but breaks MinGW+ONNX direct-DLL link)" OFF)
+if(ICMG_USE_LLD)
+    find_program(LLD_PROGRAM ld.lld)
+    if(LLD_PROGRAM AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        add_link_options(-fuse-ld=lld)
+        message(STATUS "icmg: lld linker enabled (${LLD_PROGRAM}) - link phase faster")
+    else()
+        message(WARNING "icmg: ICMG_USE_LLD=ON but ld.lld not found; falling back to default linker")
+    endif()
+endif()
+
+# Opt-in unity build (merges .cpp into batches; faster compile, occasional
+# ODR collision risk on file-static names). Enable: cmake -B build -DICMG_UNITY_BUILD=ON
+option(ICMG_UNITY_BUILD "Merge .cpp files into batches for faster compilation" OFF)
 
 # ---------------------------------------------------------------------------
 # Third-party: SQLite3 amalgamation
@@ -29,6 +66,16 @@ list(FILTER ALL_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
 add_library(icmg_lib STATIC ${ALL_SOURCES})
 target_include_directories(icmg_lib PUBLIC src third_party)
 target_link_libraries(icmg_lib PUBLIC sqlite3 nlohmann_json)
+
+# Phase build-speed (v0.53.3): unity build opt-in. Compiles 8 .cpp at a time
+# in single TU - reduces front-end parse work ~20-40%. May expose ODR
+# collisions on file-static names; if build fails, set -DICMG_UNITY_BUILD=OFF.
+if(ICMG_UNITY_BUILD)
+    set_target_properties(icmg_lib PROPERTIES
+        UNITY_BUILD ON
+        UNITY_BUILD_BATCH_SIZE 8)
+    message(STATUS "icmg: unity build enabled for icmg_lib (batch=8)")
+endif()
 
 if(WIN32)
     target_link_libraries(icmg_lib PUBLIC ws2_32 shlwapi)

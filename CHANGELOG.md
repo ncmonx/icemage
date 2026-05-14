@@ -4,6 +4,19 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.53.3 — build pipeline auto-tunes for speed
+
+CMake configure-time auto-detection probes for available build accelerators and wires them in transparently when safe to do so. Opt-in flags expose the rest for advanced workflows. New CLAUDE.md section documents the dev iteration loop.
+
+- **Auto-detect ccache** when present + smoke-test passes; silently skipped if the binary fails the launch check (common on partial MSYS2 installs).
+- **Opt-in `-DICMG_USE_LLD=ON`** activates the lld linker (~30-50% faster link). Off by default because it conflicts with MinGW+ONNX direct-DLL link patterns; harmless to opt in on pure-MSYS configs without ONNX.
+- **Opt-in `-DICMG_UNITY_BUILD=ON`** merges sources into compile batches (~20-40% faster compile). Off by default to avoid rare ODR collisions on file-static names.
+- **Dev iteration target**: `cmake --build build --target icmg` builds only the main binary, skipping ~63 test executable link passes. Use this loop for fast inner-iteration; gate full test build before ship.
+- CLAUDE.md `## Build` section now documents the iteration loop + accelerator install commands.
+- 63/63 ctest.
+
+Measured here: cold full build ~416s (down from ~20min observed earlier). Incremental main-binary build after touching one source: **~12s**.
+
 ## 0.53.2 — query path warms up under repeated load
 
 Internal query layer caches its prepared work-units across calls. Repeat queries within the same process now skip the per-call prepare cost; identical query patterns finish noticeably faster on hot paths. Bounded cache size keeps memory predictable. Behavior, return shapes, and concurrency semantics unchanged — drop-in upgrade.
