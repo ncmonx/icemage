@@ -11,10 +11,16 @@
 // Named pipe:
 //   Windows: \\.\pipe\icmg-rule-daemon
 //   POSIX:   ~/.icmg/rule-daemon.sock
+//
+// v0.55.0 (Phase B.B2): dispatcher map + mutex-protected rules + detached
+// worker thread per request — enables future hook RPC ops without starving
+// rule-eval clients.
 
+#include <functional>
+#include <mutex>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 #include <cstdint>
 
 #ifdef _WIN32
@@ -56,6 +62,10 @@ public:
     // Direct rule check without IPC (used by tests + foreground callers).
     CheckResult checkFile(const std::string& tool, const std::string& file, int hint_lines = 0) const;
 
+    // Evaluate one request JSON, return response JSON string.
+    // Public (B2) so tests + future direct callers skip IPC.
+    std::string dispatch(const std::string& request_json) const;
+
     static std::string pipeName();
 
     // Public for tests.
@@ -63,13 +73,16 @@ public:
     static std::string resolveSuggest(const std::string& tmpl, const std::string& file);
 
 private:
-    std::string          db_path_;
+    std::string                    db_path_;
+    mutable std::mutex             rules_mu_;
     mutable std::vector<RuleEntry> rules_;
 
-    void loadRules();
+    // Dispatcher map: op-name → handler (request_json → response_json string).
+    using JsonHandler = std::function<std::string(const std::string&)>;
+    std::unordered_map<std::string, JsonHandler> handlers_;
+    void buildDispatcher();
 
-    // Evaluate one request JSON, return response JSON string (used by IPC loop).
-    std::string evaluateJson(const std::string& request_json) const;
+    void loadRules();
 
 #ifdef _WIN32
     HANDLE pipe_handle_ = INVALID_HANDLE_VALUE;

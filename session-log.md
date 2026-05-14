@@ -1045,3 +1045,22 @@ Rejected:
 - Using objdump alone to determine DLL list — misses dynamically loaded DLLs.
 Open:
 - If MinGW or onnxruntime updated, re-verify DLL list before next release.
+
+## 2026-05-14 22:50 [saved]
+Goal: PR #31 trim README + Phase B.B1 daemon audit done
+Decisions:
+- README "What's new" trimmed to last 3 versions (v0.54.0/0.53.0/0.53.1); older releases moved to CHANGELOG.md pointer. PR #31 squash-merged.
+- B1 audit verdict: rule_daemon dispatcher extensible for control ops but NOT acceptable for hook ops as-is. Single-threaded loop will starve rule clients during slow hook ops (50-500ms).
+- Insert B2 prerequisite refactor: dispatcher std::unordered_map, std::mutex on rules_, detached worker thread per request, length-prefix framing for >4KB responses.
+- Proposed B3-B6 wire: hook_stop / hook_precompact / hook_posttool_read / hook_userprompt — backward-compat with existing PING/RELOAD/SHUTDOWN/SET_STRICT/Read/Glob/Grep ops.
+Rejected: extend daemon hook ops without concurrency refactor — would starve PreToolUse:Read clients during Stop event.
+Open: B2 refactor (~0.5d) → B3-B6 (~0.5-1d each) → v0.55.0. User confirm to proceed.
+
+## 2026-05-14 23:10 [saved]
+Goal: Phase B.B2 implementation BLOCKED on toolchain
+Decisions:
+- B2 code written: dispatcher std::unordered_map, std::mutex rules_mu_ snapshot pattern in checkFile, detached std::thread worker per accept on POSIX path, version bump 0.55.0.
+- 8 new daemon tests (dispatcher PING/RELOAD/SHUTDOWN, SET/GET_STRICT roundtrip, malformed JSON fallback, concurrent SET_STRICT, concurrent checkFile+toggle).
+- BLOCKED: MSYS2 mingw64 toolchain broken — cc1plus.exe exits rc=1 with empty stderr on ANY compile, even trivial int main(). Direct `c++ --version` works, but compile silent-crashes. Build infra issue, NOT code issue. Needs pacman -Syu or reboot to recover.
+Rejected: shipping unverified code — TDD policy + craftsman:verify both forbid commit without passing build/tests.
+Open: user repairs toolchain → resume `cmake --build build` → ctest → commit + PR to public origin/main → tag v0.55.0.

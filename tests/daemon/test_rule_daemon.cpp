@@ -2,9 +2,12 @@
 // Tests run against the evaluate logic directly (no IPC needed).
 #include "../test_main.hpp"
 #include "../../src/daemon/rule_daemon.hpp"
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 // Access evaluate() via a thin test subclass (white-box).
 class TestDaemon : public icmg::daemon::RuleDaemon {
@@ -106,6 +109,105 @@ TEST("rule_daemon: unknown tool → ALLOW") {
     icmg::daemon::RuleDaemon daemon(":memory:");
     auto result = daemon.checkFile("Write", "/any/path.cpp");
     ASSERT_EQ(result.action, std::string("ALLOW"));
+}
+
+// ---- tests: B2 dispatcher + concurrency (v0.55.0) --------------------------
+
+TEST("rule_daemon: dispatch PING returns PONG") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    auto res = daemon.dispatch("{\"tool\":\"PING\"}");
+    ASSERT_TRUE(res.find("PONG") != std::string::npos);
+}
+
+TEST("rule_daemon: dispatch RELOAD returns RELOADED") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    auto res = daemon.dispatch("{\"tool\":\"RELOAD\"}");
+    ASSERT_TRUE(res.find("RELOADED") != std::string::npos);
+}
+
+TEST("rule_daemon: dispatch SHUTDOWN returns SHUTDOWN") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    auto res = daemon.dispatch("{\"tool\":\"SHUTDOWN\"}");
+    ASSERT_TRUE(res.find("SHUTDOWN") != std::string::npos);
+}
+
+TEST("rule_daemon: SET_STRICT then GET_STRICT roundtrip") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    daemon.dispatch("{\"tool\":\"SET_STRICT\",\"on\":true}");
+    auto res = daemon.dispatch("{\"tool\":\"GET_STRICT\"}");
+    ASSERT_TRUE(res.find("\"strict\":true") != std::string::npos);
+
+    daemon.dispatch("{\"tool\":\"SET_STRICT\",\"on\":false}");
+    auto res2 = daemon.dispatch("{\"tool\":\"GET_STRICT\"}");
+    ASSERT_TRUE(res2.find("\"strict\":false") != std::string::npos);
+}
+
+TEST("rule_daemon: dispatch unknown tool falls back to ALLOW") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    auto res = daemon.dispatch("{\"tool\":\"UnknownToolXYZ\"}");
+    ASSERT_TRUE(res.find("ALLOW") != std::string::npos);
+}
+
+TEST("rule_daemon: dispatch malformed JSON falls back to ALLOW") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    auto res = daemon.dispatch("{not-json");
+    ASSERT_TRUE(res.find("ALLOW") != std::string::npos);
+}
+
+TEST("rule_daemon: concurrent SET_STRICT from N threads — no data race + valid final state") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    constexpr int N = 16;
+    constexpr int iters = 200;
+    std::vector<std::thread> workers;
+    for (int t = 0; t < N; ++t) {
+        workers.emplace_back([&daemon, t]() {
+            for (int i = 0; i < iters; ++i) {
+                bool on = ((t + i) % 2) == 0;
+                std::string req = std::string("{\"tool\":\"SET_STRICT\",\"on\":")
+                                + (on ? "true" : "false") + "}";
+                daemon.dispatch(req);
+                daemon.dispatch("{\"tool\":\"GET_STRICT\"}");
+            }
+        });
+    }
+    for (auto& w : workers) w.join();
+    // Final deterministic state.
+    daemon.dispatch("{\"tool\":\"SET_STRICT\",\"on\":true}");
+    auto res = daemon.dispatch("{\"tool\":\"GET_STRICT\"}");
+    ASSERT_TRUE(res.find("\"strict\":true") != std::string::npos);
+}
+
+TEST("rule_daemon: concurrent checkFile + SET_STRICT — no crash, total accounted") {
+    auto path = makeTempFile(600); // BLOCK zone
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    std::atomic<int> blocks{0}, allows{0}, others{0};
+
+    std::thread toggler([&daemon]() {
+        for (int i = 0; i < 500; ++i) {
+            bool on = (i % 2) == 0;
+            std::string req = std::string("{\"tool\":\"SET_STRICT\",\"on\":")
+                            + (on ? "true" : "false") + "}";
+            daemon.dispatch(req);
+        }
+    });
+
+    std::vector<std::thread> readers;
+    for (int t = 0; t < 8; ++t) {
+        readers.emplace_back([&daemon, &path, &blocks, &allows, &others]() {
+            for (int i = 0; i < 200; ++i) {
+                auto r = daemon.checkFile("Read", path);
+                if      (r.action == "BLOCK") ++blocks;
+                else if (r.action == "ALLOW") ++allows;
+                else                          ++others;
+            }
+        });
+    }
+    toggler.join();
+    for (auto& r : readers) r.join();
+
+    int total = blocks.load() + allows.load() + others.load();
+    ASSERT_EQ(total, 8 * 200);
+    std::filesystem::remove(path);
 }
 
 int main() { return icmg::test::run_all(); }
