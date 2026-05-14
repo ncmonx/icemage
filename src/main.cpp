@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (show_version) {
-        std::cout << "icmg 0.53.0\n";
+        std::cout << "icmg 0.53.1\n";
         return 0;
     }
 
@@ -92,7 +92,7 @@ int main(int argc, char* argv[]) {
     // Version staleness check (cached — no network hit when cache is fresh).
     // Skip for MCP mode, version queries, and update commands.
     if (!args.empty() && args[0] != "update" && args[0] != "upgrade") {
-        auto vstatus = icmg::core::checkVersionStaleness("0.53.0");
+        auto vstatus = icmg::core::checkVersionStaleness("0.53.1");
         icmg::core::printVersionWarning(vstatus);
         if (!args.empty() && icmg::core::isCommandSoftBlocked(args[0], vstatus)) {
             std::cerr << "[icmg] Command '" << args[0]
