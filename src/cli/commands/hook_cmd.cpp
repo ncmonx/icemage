@@ -25,6 +25,8 @@
 #include "../../core/db.hpp"
 #include "../../core/path_utils.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/hooks/runners.hpp"
+#include "../../daemon/rule_daemon_client.hpp"
 #include "../../imem/memory_store.hpp"
 
 #ifdef _WIN32
@@ -630,174 +632,42 @@ private:
     int cmdPostToolUseRead();
 };
 
-// ── v0.54.0: Stop / PreCompact / PostToolUse-Read ─────────────────────────────
+// ── v0.56.0: Stop / PreCompact / PostToolUse-Read ─────────────────────────────
 //
-// Consolidate the 5-fork hook chain into single icmg invocation. Reads stdin
-// once, writes to temp, then runs each subcmd via subprocess with stdin
-// redirected. Eliminates outer bash + jq chain (~150-250ms saved per event).
+// Logic extracted to `core/hooks/runners.{hpp,cpp}` (Phase B.B3). Each cmd:
+//   1. Try the rule-daemon RPC path (saves ~30-50ms icmg.exe startup × event).
+//   2. Fall back to inline runner if daemon down or RPC fails.
 //
-// True in-process refactor (lib functions) deferred to next iteration —
-// distill / compliance / tool-budget cmd logic lives in run() methods.
-
-namespace {
-
-// Write stdin content to a temp file in icmgGlobalDir/hook-stdin/<pid>-<event>.
-// Returns path; caller cleans up. Empty string on failure.
-std::string writeStdinTmp(const std::string& event, const std::string& content) {
-    namespace fs = std::filesystem;
-    fs::path dir = fs::path(icmg::core::icmgGlobalDir()) / "hook-stdin";
-    std::error_code ec;
-    fs::create_directories(dir, ec);
-    fs::path p = dir / (event + "-" + std::to_string(ICMG_GETPID()) + "-"
-                      + std::to_string(std::time(nullptr)) + ".json");
-    std::ofstream f(p, std::ios::binary);
-    if (!f) return "";
-    f << content;
-    f.close();
-    return p.string();
-}
-
-// Run `icmg <args>` with stdin from file. Best-effort; exit-code ignored.
-void runWithStdin(const std::string& args_line, const std::string& stdin_path) {
-    std::string cmd = "icmg " + args_line + " < \"" + stdin_path + "\" 2>/dev/null || true";
-    (void)icmg::core::safeExecShell(cmd, false, 30000);
-}
-
-// Run `icmg <args>` without stdin.
-void runNoStdin(const std::string& args_line) {
-    std::string cmd = "icmg " + args_line + " 2>/dev/null || true";
-    (void)icmg::core::safeExecShell(cmd, false, 15000);
-}
-
-} // namespace
+// Single source of truth — daemon handler + inline path call the same runner.
 
 int HookCommand::cmdStop() {
-    if (std::getenv("ICMG_NO_STOP_HOOK")) return 0;
     std::string raw = readStdinAll();
-    if (raw.empty()) return 0;
-
-    std::string tmp = writeStdinTmp("stop", raw);
-    if (tmp.empty()) return 0;
-
-    // Chain: distill auto + fail sync-denials + compliance check-thinking +
-    // tool-budget reset + wflog-stop. Each as subprocess but single outer
-    // icmg invocation eliminates 5-bash-chain overhead.
-    runWithStdin("distill auto --min-len 100", tmp);
-    runNoStdin("fail sync-denials");
-    runWithStdin("compliance check-thinking --max-words 80", tmp);
-    runNoStdin("tool-budget reset");
-
-    std::error_code ec;
-    std::filesystem::remove(tmp, ec);
+    if (icmg::daemon::RuleDaemonClient::callHook("hook_stop", raw)) return 0;
+    icmg::core::hooks::runStopHook(raw);
     return 0;
 }
 
 int HookCommand::cmdPreCompact() {
-    if (std::getenv("ICMG_NO_PRECOMPACT_HOOK")) return 0;
     std::string raw = readStdinAll();
-
-    std::string tmp;
-    if (!raw.empty()) tmp = writeStdinTmp("precompact", raw);
-
-    // Step 1: snapshot via existing Python script (kept for snapshot semantics).
-    namespace fs = std::filesystem;
-    fs::path snap = fs::current_path() / ".claude" / "hooks" / "icmg-precompact-snapshot.py";
-    if (fs::exists(snap)) {
-        std::string cmd = "python3 \"" + snap.string()
-                        + "\" 2>/dev/null || python \"" + snap.string()
-                        + "\" 2>/dev/null || true";
-        (void)core::safeExecShell(cmd, false, 30000);
+    std::string emit;
+    if (icmg::daemon::RuleDaemonClient::callHook("hook_precompact", raw, &emit)) {
+        if (!emit.empty()) std::cout << emit << "\n";
+        return 0;
     }
-
-    // Step 2: distill session content.
-    if (!tmp.empty()) {
-        // distill session reads .transcript field from JSON; extract.
-        try {
-            json j = json::parse(raw);
-            std::string transcript = j.value("transcript", std::string(""));
-            if (!transcript.empty()) {
-                std::string tpath = writeStdinTmp("precompact-transcript", transcript);
-                if (!tpath.empty()) {
-                    runWithStdin("distill session", tpath);
-                    std::error_code ec;
-                    fs::remove(tpath, ec);
-                }
-            }
-        } catch (...) {}
-    }
-
-    // Step 3: re-inject ABSOLUTE RULE + top-5 pinned anchors.
-    std::ostringstream rule;
-    rule << "ABSOLUTE RULE - icmg FIRST. Before any native Read/Bash/Grep/Glob/"
-            "WebFetch, check icmg equivalent.\n";
-    try {
-        auto& cfg = core::Config::instance();
-        core::Db db(cfg.projectDbPath("."));
-        rule << "Pinned decisions:\n";
-        int n = 0;
-        db.query(
-            "SELECT topic, stance FROM decisions WHERE pinned = 1 "
-            "AND superseded_at IS NULL ORDER BY made_at DESC LIMIT 5",
-            {}, [&](const core::Row& r){
-                if (r.size() < 2) return;
-                rule << "  - " << r[0] << ": " << r[1] << "\n";
-                ++n;
-            });
-        if (n == 0) rule << "  (none pinned)\n";
-    } catch (...) {}
-
-    json out;
-    out["hookSpecificOutput"]["hookEventName"] = "PreCompact";
-    out["hookSpecificOutput"]["additionalContext"] = rule.str();
-    std::cout << out.dump() << "\n";
-
-    if (!tmp.empty()) {
-        std::error_code ec;
-        fs::remove(tmp, ec);
-    }
+    auto out = icmg::core::hooks::runPreCompactHook(raw);
+    if (!out.empty()) std::cout << out << "\n";
     return 0;
 }
 
 int HookCommand::cmdPostToolUseRead() {
-    if (std::getenv("ICMG_NO_COMPRESS_HOOK")) return 0;
     std::string raw = readStdinAll();
-    if (raw.empty()) return 0;
-
-    std::string content;
-    try {
-        json j = json::parse(raw);
-        if (j.contains("tool_response")) {
-            auto& tr = j["tool_response"];
-            if (tr.contains("content") && tr["content"].is_string())
-                content = tr["content"].get<std::string>();
-            else if (tr.contains("output") && tr["output"].is_string())
-                content = tr["output"].get<std::string>();
-        }
-    } catch (...) { return 0; }
-
-    if (content.size() < 1024) return 0;
-
-    // Run compress via subprocess (compress lib not exposed as fn yet).
-    std::string tmp = writeStdinTmp("posttooluse-read", content);
-    if (tmp.empty()) return 0;
-
-    std::string cmd = "icmg compress --threshold 256 < \"" + tmp + "\" 2>/dev/null";
-    auto res = core::safeExecShell(cmd, false, 30000);
-    std::error_code ec;
-    std::filesystem::remove(tmp, ec);
-
-    if (res.exit_code != 0 || res.out.empty()) return 0;
-    if (res.out.size() >= content.size()) return 0;  // compress no-op
-
-    std::ostringstream msg;
-    msg << "Read output auto-compressed (" << content.size() << "B -> "
-        << res.out.size() << "B). Glossary inline; aliases match original tokens.\n"
-        << res.out;
-
-    json out;
-    out["hookSpecificOutput"]["hookEventName"] = "PostToolUse";
-    out["hookSpecificOutput"]["additionalContext"] = msg.str();
-    std::cout << out.dump() << "\n";
+    std::string emit;
+    if (icmg::daemon::RuleDaemonClient::callHook("hook_posttool_read", raw, &emit)) {
+        if (!emit.empty()) std::cout << emit << "\n";
+        return 0;
+    }
+    auto out = icmg::core::hooks::runPostToolUseReadHook(raw);
+    if (!out.empty()) std::cout << out << "\n";
     return 0;
 }
 

@@ -2,6 +2,7 @@
 // Tests run against the evaluate logic directly (no IPC needed).
 #include "../test_main.hpp"
 #include "../../src/daemon/rule_daemon.hpp"
+#include "../../src/daemon/rule_daemon_client.hpp"
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -208,6 +209,72 @@ TEST("rule_daemon: concurrent checkFile + SET_STRICT — no crash, total account
     int total = blocks.load() + allows.load() + others.load();
     ASSERT_EQ(total, 8 * 200);
     std::filesystem::remove(path);
+}
+
+// ---- tests: B3-B6 hook RPC + framing (v0.56.0) -----------------------------
+
+TEST("rule_daemon: dispatch hook_stop returns OK") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    // Empty stdin → runner short-circuits, but op still returns OK envelope.
+    auto res = daemon.dispatch("{\"tool\":\"hook_stop\",\"stdin\":\"\"}");
+    ASSERT_TRUE(res.find("\"action\":\"OK\"") != std::string::npos);
+}
+
+TEST("rule_daemon: dispatch hook_precompact returns OK + emit field") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    auto res = daemon.dispatch(
+        "{\"tool\":\"hook_precompact\",\"stdin\":\"{\\\"transcript\\\":\\\"\\\"}\"}");
+    ASSERT_TRUE(res.find("\"action\":\"OK\"") != std::string::npos);
+    // emit field present (PreCompact always returns ABSOLUTE-RULE block).
+    ASSERT_TRUE(res.find("\"emit\"") != std::string::npos);
+}
+
+TEST("rule_daemon: dispatch hook_posttool_read with small content → OK no emit") {
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    // content < 1024 → runner returns "" → no emit field.
+    auto res = daemon.dispatch(
+        "{\"tool\":\"hook_posttool_read\","
+        "\"stdin\":\"{\\\"tool_response\\\":{\\\"content\\\":\\\"short\\\"}}\"}");
+    ASSERT_TRUE(res.find("\"action\":\"OK\"") != std::string::npos);
+}
+
+TEST("rule_daemon: hook ops honor ICMG_NO_STOP_HOOK opt-out") {
+#ifdef _WIN32
+    _putenv_s("ICMG_NO_STOP_HOOK", "1");
+#else
+    setenv("ICMG_NO_STOP_HOOK", "1", 1);
+#endif
+    icmg::daemon::RuleDaemon daemon(":memory:");
+    auto res = daemon.dispatch("{\"tool\":\"hook_stop\",\"stdin\":\"x\"}");
+    ASSERT_TRUE(res.find("\"action\":\"OK\"") != std::string::npos);
+#ifdef _WIN32
+    _putenv_s("ICMG_NO_STOP_HOOK", "");
+#else
+    unsetenv("ICMG_NO_STOP_HOOK");
+#endif
+}
+
+// ---- B5 framing parser tests ----------------------------------------------
+
+TEST("framing: parseFramed strips Content-Length header") {
+    std::string body = "{\"action\":\"OK\"}";
+    std::string wire = "Content-Length: " + std::to_string(body.size())
+                     + "\r\n\r\n" + body;
+    auto out = icmg::daemon::RuleDaemonClient::parseFramed(wire);
+    ASSERT_EQ(out, body);
+}
+
+TEST("framing: parseFramed passes through unframed body") {
+    std::string body = "{\"action\":\"ALLOW\"}";
+    auto out = icmg::daemon::RuleDaemonClient::parseFramed(body);
+    ASSERT_EQ(out, body);
+}
+
+TEST("framing: parseFramed handles malformed header (missing \\r\\n\\r\\n)") {
+    // Header prefix but no terminator — fall back to raw input.
+    std::string wire = "Content-Length: 5\r\n{}";
+    auto out = icmg::daemon::RuleDaemonClient::parseFramed(wire);
+    ASSERT_EQ(out, wire); // unchanged (treated as legacy)
 }
 
 int main() { return icmg::test::run_all(); }

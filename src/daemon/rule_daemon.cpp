@@ -1,5 +1,6 @@
 #include "rule_daemon.hpp"
 #include "../core/db.hpp"
+#include "../core/hooks/runners.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -216,6 +217,53 @@ void RuleDaemon::buildDispatcher() {
         }
         return std::string("{\"action\":\"OK\",\"strict\":") + (on ? "true" : "false") + "}";
     };
+
+    // v0.56.0 (B3-B6): hook RPC ops. Each unwraps {"stdin":"<raw>"}, calls
+    // the corresponding runner in core::hooks, returns {"action":"OK","emit":"..."}.
+    handlers_["hook_stop"] = [](const std::string& body) {
+        std::string stdin_raw;
+        try {
+            auto req = json::parse(body);
+            stdin_raw = req.value("stdin", std::string(""));
+        } catch (...) {}
+        icmg::core::hooks::runStopHook(stdin_raw);
+        return std::string("{\"action\":\"OK\"}");
+    };
+    handlers_["hook_precompact"] = [](const std::string& body) {
+        std::string stdin_raw;
+        try {
+            auto req = json::parse(body);
+            stdin_raw = req.value("stdin", std::string(""));
+        } catch (...) {}
+        auto emit = icmg::core::hooks::runPreCompactHook(stdin_raw);
+        json out;
+        out["action"] = "OK";
+        if (!emit.empty()) out["emit"] = emit;
+        return out.dump();
+    };
+    handlers_["hook_posttool_read"] = [](const std::string& body) {
+        std::string stdin_raw;
+        try {
+            auto req = json::parse(body);
+            stdin_raw = req.value("stdin", std::string(""));
+        } catch (...) {}
+        auto emit = icmg::core::hooks::runPostToolUseReadHook(stdin_raw);
+        json out;
+        out["action"] = "OK";
+        if (!emit.empty()) out["emit"] = emit;
+        return out.dump();
+    };
+}
+
+// ---- response framing (B5) -------------------------------------------------
+// Responses >= 4KB get a `Content-Length: N\r\n\r\n` prefix so the client can
+// distinguish complete payloads from socket-close-terminated short ones.
+// Small responses stay unframed for backward compatibility with v0.55.x clients.
+
+static std::string frameIfLarge(const std::string& body) {
+    constexpr size_t kFrameThreshold = 4096;
+    if (body.size() < kFrameThreshold) return body;
+    return "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
 }
 
 std::string RuleDaemon::dispatch(const std::string& request_json) const {
@@ -283,8 +331,9 @@ void RuleDaemon::servePipe() {
         bool is_shutdown = (response.find("SHUTDOWN") != std::string::npos);
         bool is_reload   = (response.find("RELOADED") != std::string::npos);
 
+        std::string wire = frameIfLarge(response);
         DWORD written = 0;
-        WriteFile(pipe_handle_, response.c_str(), (DWORD)response.size(), &written, nullptr);
+        WriteFile(pipe_handle_, wire.c_str(), (DWORD)wire.size(), &written, nullptr);
         DisconnectNamedPipe(pipe_handle_);
 
         if (is_reload)   reloadRules();
@@ -333,7 +382,8 @@ void RuleDaemon::serveSocket() {
             if (n > 0) {
                 buf[n] = '\0';
                 std::string response = dispatch(std::string(buf, n));
-                send(client, response.c_str(), response.size(), 0);
+                std::string wire = frameIfLarge(response);
+                send(client, wire.c_str(), wire.size(), 0);
                 if (response.find("RELOADED") != std::string::npos) {
                     reloadRules();
                 }
