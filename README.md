@@ -95,42 +95,7 @@ icmg zone rebuild   # re-tag any mis-classified nodes after upgrade (Windows use
 
 ---
 
-## 🚀 What's new in v0.52.0
-
-| Feature | What changed |
-| --- | --- |
-| **Cross-session awareness** | `icmg session claim/clear/list` writes `~/.icmg/active-work.json`; `icmg wake-up` shows concurrent tasks from other sessions on the same machine |
-| **Anti-pattern sync** | `icmg fail sync-denials` converts `~/.icmg/strict-denials.jsonl` hook violations → fail memory nodes; runs automatically on session Stop |
-| **Wake-up SessionStart hook** | `icmg init` now installs a SessionStart hook that injects `icmg wake-up` briefing at the start of every AI session |
-| **Caveman ultra auto-on** | `icmg init` creates `~/.icmg/caveman.flag=ultra` if absent — caveman mode active on first run, no manual step |
-| **Routing table complete** | AGENTS.md routing table expanded from 15 → 39 commands; topic prefix convention (`plan:`, `bug:`, `decisions-`) documented for deterministic recall |
-| **Memory read perf** | `PRAGMA mmap_size=256MB` + `PRAGMA page_size=4096` in all DB opens — read-heavy workloads skip syscall overhead |
-
-```bash
-icmg session claim "working on auth refresh"   # register task for cross-session visibility
-icmg wake-up                                    # now shows Active sessions block
-icmg fail sync-denials                          # convert hook violations to fail memory
-icmg init --force                               # gets wake-up hook + caveman flag
-```
-
----
-
-## ⚡ What's new in v0.51.0
-
-| Feature | What changed |
-|---|---|
-| **Destructive-op guard** | `icmg run` intercepts `rm -rf`, `DROP TABLE`, `git push --force` etc. — prompts `[y/N]` before executing; `--yes` bypasses |
-| **Version staleness check** | Startup checks GitHub for latest release (24h cached); warns at lag≥3, soft-blocks `init`/`graph` at lag≥10 |
-| **Wake-up per-user filter** | `icmg wake-up` now filters decisions/fixes by `created_by` — multi-user machines no longer mix context |
-| **Hook token efficiency** | `hook userprompt` now respects 4KB budget cap, BM25≥0.15 threshold, adaptive depth, 300s context cache, 1-hop BFS graph expansion |
-| **CMD popup suppression** | `exec_utils` subprocess launch adds `STARTF_USESHOWWINDOW\|SW_HIDE` — no console flicker on all Windows configs |
-| **Init security** | `icmg init` warns on OneDrive/Dropbox path + sets owner-only permissions on `.icmg/` |
-
-```bash
-icmg run --yes rm -rf build/        # skip destructive prompt for safe dirs
-icmg wake-up                        # now shows [user: email] header
-icmg upgrade                        # resolve version staleness warnings
-```
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v0.52.x and earlier.
 
 ---
 
