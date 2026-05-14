@@ -4,6 +4,9 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.56.0 — Daemon hook RPC + framing + auto-spawn fallback
+> Phase B.B3-B6 — `icmg hook stop` / `hook precompact` / `hook posttool_read` now route through `rule-daemon` socket when available, eliminating icmg.exe outer fork (~30-50ms × event). Inline runner remains as automatic fallback. New `src/core/hooks/runners.{hpp,cpp}` exposes hook logic as standalone functions; both CLI handler and daemon dispatcher call them — single source of truth. Length-prefix framing (`Content-Length: N\r\n\r\n<body>`) added for responses ≥4KB so arbitrary-size compress payloads route correctly; smaller responses stay unframed (backward-compat with v0.55.x clients). Client `callHook(op, stdin, out_emit)` does one retry after `ensureDaemon()` if first attempt fails. 64/64 ctest pass; test_rule_daemon 25/25 (was 18 in v0.55.0). Plan: `docs/plans/2026-05-14-phase-b3-b6-plan.md`.
+
 ## 0.55.0 — Daemon dispatcher map + mutex + per-request workers
 > Phase B.B2 — foundation for upcoming hook RPC ops. `src/daemon/rule_daemon.{hpp,cpp}` now routes opcodes through `std::unordered_map<string,Handler>` registered in ctor (O(1) dispatch, extensible without touching the eval loop). `std::mutex rules_mu_` guards all `rules_` reads/writes — checkFile uses snapshot-under-lock pattern; SET_STRICT / GET_STRICT atomic. POSIX server loop detaches `std::thread` per `accept()` so slow hook ops (B3-B6) won't starve concurrent rule-eval clients. User-visible behavior unchanged — wire format + return shapes identical. 64/64 ctest pass (+8 new daemon tests: dispatcher PING/RELOAD/SHUTDOWN/SET_STRICT roundtrip + malformed-JSON fallback + 16-thread concurrent SET_STRICT + 8-thread concurrent checkFile+toggle). B1 audit: `docs/plans/2026-05-14-phase-b1-daemon-audit.md`.
 

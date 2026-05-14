@@ -39,6 +39,25 @@ Windows users today: **safe to depend on for solo + small-team workflows**. The 
 
 ---
 
+## ⚡ What's new in v0.56.0
+
+| Feature | What changed |
+| --- | --- |
+| **Daemon hook RPC** | `icmg hook stop` / `hook precompact` / `hook posttool_read` now route through `rule-daemon` socket when available — eliminates icmg.exe outer fork (~30-50ms × event). Inline runner is automatic fallback if daemon down |
+| **Auto-spawn fallback** | `RuleDaemonClient::ensureDaemon()` spawns `icmg rule-daemon start` background daemon on first connect failure; polls 500ms; transparent to caller |
+| **Length-prefix framing** | Responses ≥4KB now prefixed with `Content-Length: N\r\n\r\n` header — supports arbitrary-size compress payloads for `hook_posttool_read`. <4KB stay unframed (backward-compat with v0.55.x clients) |
+| **Shared runner module** | `src/core/hooks/runners.{hpp,cpp}` — both CLI hook handler and daemon RPC handler call the same `runStopHook` / `runPreCompactHook` / `runPostToolUseReadHook` functions. Single source of truth |
+| **+7 daemon tests** | hook_stop / hook_precompact / hook_posttool_read dispatch + ICMG_NO_STOP_HOOK opt-out + framing parser (strip / passthrough / malformed). 64/64 ctest pass; test_rule_daemon 25/25 (was 18) |
+
+```bash
+icmg rule-daemon start    # spawn daemon (auto-invoked on first hook call)
+icmg hook stop            # routes through daemon when up; falls back inline if down
+```
+
+> 🧱 Continues B1→B2→B3-B6 daemon refactor. Plan: `docs/plans/2026-05-14-phase-b3-b6-plan.md`.
+
+---
+
 ## 🚀 What's new in v0.55.0
 
 | Feature | What changed |
@@ -67,32 +86,6 @@ icmg init --force              # reinstall consolidated hooks
 icmg hook stop                 # invoked automatically on session end
 icmg hook precompact           # invoked automatically before compaction
 cmake -B build -DICMG_UNITY_BUILD=ON   # faster cold builds (opt-in)
-```
-
----
-
-## 🔍 What's new in v0.53.0
-
-| Feature | What changed |
-| --- | --- |
-| **BFS graph traversal (4 new cmds)** | `icmg graph path <from> <to>` — shortest dependency path; `graph layers <file> [--reverse]` — deps grouped by distance; `graph neighbors <file>` — direct 1-hop deps; `graph common <a> <b>` — shared upstream dependencies |
-| **Impact edge-type filter** | `icmg graph impact <file> --edge-type imports,calls` — filter to specific edge types only |
-| **Multi-source impact** | `icmg graph impact --all <f1> <f2>` — union impact from multiple files in one call |
-| **DOT graph export** | `icmg graph impact <file> --format dot` — Graphviz DOT output, pipe to `dot -Tsvg` |
-| **WAL bloat fix (critical)** | `wal_autocheckpoint` 1000→100 pages — prevents SQLite WAL growing to GBs under concurrent hook writers |
-| **CMD popup fix (Windows)** | Task Scheduler PS1 launcher uses `ProcessStartInfo.CreateNoWindow=$true` — reliably hides console on Win11 |
-| **Full command reference on init** | `icmg init` injects ~50-command reference table into `AGENTS.md` — Claude knows every command from session 1, no help queries needed |
-| **Graph BFS savings tracking** | `icmg savings` includes Graph BFS row — tracks `path`/`layers`/`neighbors`/`common` calls, estimates 2000 tokens saved per call |
-
-```bash
-icmg graph path src/auth.cpp src/db.cpp          # shortest dependency path
-icmg graph layers src/core/db.cpp --reverse      # who depends on this, by distance level
-icmg graph neighbors src/main.cpp                # direct 1-hop dependencies
-icmg graph common src/auth.cpp src/api.cpp       # shared upstream dependencies
-icmg graph impact src/db.cpp --edge-type imports # filter impact by edge type
-icmg graph impact src/db.cpp --format dot | dot -Tsvg > impact.svg
-icmg graph impact --all src/auth.cpp src/db.cpp  # union impact of two files
-icmg init --force                                 # reinstall hooks + inject full command ref
 ```
 
 ---
