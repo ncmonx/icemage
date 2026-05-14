@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-62%2F62%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-63%2F63%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -36,6 +36,25 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 Windows users today: **safe to depend on for solo + small-team workflows**. The hard part — token economics, integrity, recovery — already works in production. Cross-platform parity is the last gate before the `v1.0` tag.
 
 > 🛣️ **Roadmap:** multi-platform release plan at `docs/plans/2026-05-14-multi-platform-release.md` (8 tasks, GitHub Actions matrix scaffold ready). First cross-platform release ships as `v1.0.0`.
+
+---
+
+## ⚡ What's new in v0.54.0
+
+| Feature | What changed |
+| --- | --- |
+| **In-process Stop hook** | `icmg hook stop` consolidates 4 prior subprocess forks (distill auto / fail sync-denials / compliance check-thinking / tool-budget reset) into one binary call — ~150ms saved per session end |
+| **In-process PreCompact hook** | `icmg hook precompact` collapses snapshot + distill-session + ABSOLUTE-RULE emit into a single fork — ~100-150ms saved per compaction boundary |
+| **Consolidated hook config** | `icmg init` now emits compact Stop/PreCompact blocks — fewer shell layers, faster startup |
+| **Db prepared-statement LRU (v0.53.2)** | `core/db.{hpp,cpp}` caches up to 50 prepared statements; hot-path queries skip re-prepare entirely |
+| **Build pipeline auto-tune (v0.53.3)** | CMake auto-detects `ccache` with smoke-test guard; opt-in `-DICMG_USE_LLD=ON` / `-DICMG_UNITY_BUILD=ON`; cold build ~7min (was ~20min), incremental `--target icmg` ~12s |
+
+```bash
+icmg init --force              # reinstall consolidated hooks
+icmg hook stop                 # invoked automatically on session end
+icmg hook precompact           # invoked automatically before compaction
+cmake -B build -DICMG_UNITY_BUILD=ON   # faster cold builds (opt-in)
+```
 
 ---
 
