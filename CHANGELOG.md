@@ -4,6 +4,18 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 0.54.0 — Stop + PreCompact in-process
+
+Two more session-boundary events fold into a single icmg invocation each. Outer shell-chain overhead disappears; behaviour preserved.
+
+- **`icmg hook stop`** — replaces the 5-command Stop chain (distill auto / fail sync-denials / compliance check-thinking / tool-budget reset / wflog) with one outer fork. Inner sub-step subprocess chain still runs but the bash + jq parsing layer per command is gone.
+- **`icmg hook precompact`** — folds snapshot, transcript distillation, and ABSOLUTE-RULE re-injection (with top-5 pinned decision anchors) into one outer fork.
+- **Schema-safe**: opt-out via `ICMG_NO_STOP_HOOK=1` / `ICMG_NO_PRECOMPACT_HOOK=1`. JSON output format unchanged — drop-in upgrade.
+- **PostToolUse:Read auto-compress** intentionally left as shell flow because the existing implementation does graph-context-first routing that the consolidated handler shouldn't override.
+- 63/63 ctest.
+
+Measured savings: ~150-250ms per Stop event, ~200-300ms per PreCompact. Compounds across long sessions.
+
 ## 0.53.3 — build pipeline auto-tunes for speed
 
 CMake configure-time auto-detection probes for available build accelerators and wires them in transparently when safe to do so. Opt-in flags expose the rest for advanced workflows. New CLAUDE.md section documents the dev iteration loop.

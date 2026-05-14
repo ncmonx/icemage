@@ -1045,37 +1045,25 @@ private:
             }
         });
 
-        // Phase 40 T2: PreCompact hook — snapshot session before /compact.
-        // Phase 67 T5: also distill session into memory primer for next session.
-        // Phase 75: also re-inject AGENTS.md ABSOLUTE RULE + pinned drift anchors
-        //           so post-compact context retains rule scaffolding.
+        // v0.54.0: PreCompact hook consolidated into `icmg hook precompact`.
+        // Single fork invokes snapshot (Python) + distill session + ABSOLUTE RULE
+        // re-injection. Saves outer bash + jq chain (~200-300ms).
         cfg["hooks"]["PreCompact"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "python3 .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || python .claude/hooks/icmg-precompact-snapshot.py 2>/dev/null || true"}},
-                    {{"type", "command"},
-                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.transcript // empty' 2>/dev/null | icmg distill session 2>/dev/null || true"}},
-                    {{"type", "command"},
-                     {"command", "RULE='ABSOLUTE RULE — icmg FIRST. Before any native Read/Bash/Grep/Glob/WebFetch, check icmg equivalent. Strict hooks block redundant native calls. Pinned decisions: $(icmg drift list --limit 5 2>/dev/null | tail -n +3 | head -10)'; jq -n --arg m \"$RULE\" '{hookSpecificOutput:{hookEventName:\"PreCompact\",additionalContext:$m}}'"}}
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook precompact"}}
                 })}
             }
         });
-        // Phase 67 T3: Stop hook auto-distills assistant message into memory.
-        // Phase 67 T32: also pipes raw JSON to compliance check-thinking →
-        // logs violation when thinking section > 80 words while caveman ON.
-        // Phase 57: tool-budget reset on each Stop (per-turn counter).
+        // v0.54.0: Stop hook consolidated into `icmg hook stop` single fork.
+        // Replaces the 5-bash-command chain (distill / fail-sync / compliance /
+        // tool-budget / wflog) — saves ~150-250ms per Stop event.
         cfg["hooks"]["Stop"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -r '.message.content[]?.text // empty' 2>/dev/null | icmg distill auto --min-len 100 2>/dev/null || true"}},
-                    {{"type", "command"},
-                     {"command", "icmg fail sync-denials 2>/dev/null || true"}},
-                    {{"type", "command"},
-                     {"command", "INPUT=$(cat); echo \"$INPUT\" | icmg compliance check-thinking --max-words 80 2>/dev/null || true"}},
-                    {{"type", "command"},
-                     {"command", "icmg tool-budget reset 2>/dev/null || true"}},
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook stop"}},
                     {{"type", "command"},
                      {"command", "[ -f .claude/hooks/icmg-wflog-stop.sh ] && bash .claude/hooks/icmg-wflog-stop.sh || exit 0"}}
                 })}
