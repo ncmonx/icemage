@@ -418,6 +418,8 @@ private:
         std::string cron_expr = (minutes < 60)
             ? "*/" + std::to_string(minutes) + " * * * *"
             : "0 */" + std::to_string(minutes / 60) + " * * *";
+        std::string cmd = "cd " + root
+                        + " && icmg sentinel run --quiet >> .icmg/sched/sched.log 2>&1";
         std::string entry = cron_expr + "  " + cmd + "  # " + tn + "\n";
         auto cur = core::safeExecShell("crontab -l 2>/dev/null", false, 5000);
         std::string tab = cur.exit_code == 0 ? cur.out : "";

@@ -504,6 +504,7 @@ private:
         if (rc != 0) return rc;
 #else
         std::string cron_expr = "0 */" + std::to_string(hours) + " * * *";
+        std::string cmd = "icmg shadow-upgrade check >> \"$HOME/.icmg/sched/shadow.log\" 2>&1";
         std::string entry = cron_expr + "  " + cmd + "  # " + tn + "\n";
         auto cur = core::safeExecShell("crontab -l 2>/dev/null", false, 5000);
         std::string tab = cur.exit_code == 0 ? cur.out : "";
