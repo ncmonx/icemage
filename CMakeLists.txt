@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.59.0 LANGUAGES CXX C)
+project(icmg VERSION 1.0.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -497,6 +497,7 @@ add_icmg_test(test_sync_roundtrip  tests/cli/test_sync_roundtrip.cpp)
 add_icmg_test(test_daemon          tests/cli/test_daemon.cpp)
 add_icmg_test(test_rule_daemon     tests/daemon/test_rule_daemon.cpp)
 add_icmg_test(test_hook_internals  tests/core/test_hook_internals.cpp)
+add_icmg_test(test_hook_cmd        tests/cli/test_hook_cmd.cpp)
 add_icmg_test(test_copy_cmd        tests/cli/test_copy_cmd.cpp)
 
 # test_claudemd / test_backup: standalone — helpers are static inline, no icmg_lib needed.
