@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-66%2F66%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-70%2F70%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -38,6 +38,23 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🚀 What's new in v1.1.0 — perf + enforcement + canonical popup fix
+
+| Feature | What changed |
+| --- | --- |
+| **`icmg bench`** | New command. Subcommands: `recall <q>` / `compress` / `hooks` / `all`. JSON output (`--json`). Foundation for measurable perf claims |
+| **PreToolUse hard-deny** | `permissionDecision: "deny"` returned for `cat` / `head` / `tail` / `grep -r` / `powershell` / `cmd /c` patterns when icmg has equivalent. Forces icmg-first mechanically — text-reminders ignored too often. Bypass per-session: `ICMG_STRICT_BYPASS=1` |
+| **Caveman per-prompt re-inject** | Was: injected only at SessionStart → model drifts after 5-10 turns. Now: prepended to every UserPromptSubmit with 5 intensity tiers (NONE/NOTE/REMINDER/STRONG/FINAL) tied to 24h violation count. Empty block on healthy sessions — zero overhead. Opt-out: `ICMG_CAVEMAN_QUIET=1` |
+| **Resident daemon (`icmg service`)** | **Canonical popup fix.** ONE logon-trigger task replaces 5 per-project schtasks. Internal ticker calls Registry<BaseCommand> directly — zero subprocess fork → no cmd/powershell flash possible. Install: `icmg service install`. Status: `icmg service status` |
+| **Async Stop hook** | `runStopHook` returns within ms — distill/fail-sync/compliance dispatched to detached thread. ICMG_STOP_SYNC=1 retains legacy synchronous path for debug |
+| **Embed cache** | Bulk-load all memory_node embed vectors on first `recallSemantic` call → subsequent recalls hit in-memory map, zero DB roundtrip. Invalidated on store() for write coherence |
+| **Diff-aware recall (`--unseen`)** | New flag returns only entries not yet served this session (per `ICMG_SESSION_ID`); stamps the returned set so a re-recall returns less. Migration 0027 adds `last_returned_session TEXT NULL` |
+| **`icmg skill-index` alias** | Restored (regression fix); forwards to `icmg skill index` |
+
+70/70 ctest pass on Windows + Linux. Stable contract from v1.0.0 preserved — all additions backward-compatible.
+
+---
+
 ## 🚀 What's new in v1.0.0 — production-stable
 
 | Feature | What changed |
@@ -64,21 +81,7 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## 🌐 What's new in v0.58.0
-
-| Feature | What changed |
-| --- | --- |
-| **Multi-platform CI matrix** | GitHub Actions builds + tests on `windows-latest`, `ubuntu-latest`, `macos-14 (arm64)` per push. On tag push, packages per-OS archives + sha256 sidecars and publishes them to the GitHub Release |
-| **Cross-platform CMake** | ORT block per-OS archive naming (zip/tgz) + library glob (`.dll/.dylib/.so*`) + RPATH (`$ORIGIN` / `@loader_path`). Auto-download for SQLite amalgamation + nlohmann/json (previously gitignored, broke fresh-clone builds) |
-| **POSIX-portable callsites** | macOS `_NSGetExecutablePath` via `core::selfExePath()`; Apple ld64 `-force_load` instead of GNU `--whole-archive`; `popen/pclose` (no MSVC `_popen` on POSIX); `<climits>` for `INT_MAX`; const-ref on `fs::path` iterator (libc++ returns temporaries) |
-| **update_cmd OS detect** | `wantedAssetName()` now picks `icmg-VERSION-macos-arm64.tar.gz` on Apple Silicon vs `-macos-x64.tar.gz` on Intel; Linux + Windows asset names unchanged |
-| **Feature parity v0.58.0** | Windows: full (ONNX + tree-sitter). Linux: ONNX-only (tree-sitter via apt is v0.20 ABI vs vendored v0.26 — v0.59.0 will vendor source). macOS arm64: tree-sitter-only (ONNX dylib symlink-extract issue — v0.59.0) |
-
-> 🛣️ **Next gate:** v0.59.0 = vendor libtree-sitter source + fix macOS ORT dylib extract → feature parity all three platforms → **v1.0.0 production-stable tag.**
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v0.57.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v0.58.x and earlier.
 
 ---
 
