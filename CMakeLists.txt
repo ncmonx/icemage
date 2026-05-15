@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.58.0 LANGUAGES CXX C)
+project(icmg VERSION 0.58.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -323,7 +323,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     if(WIN32)
         target_link_options(icmg PRIVATE
             -static-libgcc -static-libstdc++
-            -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
+            -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+            # v0.58.1 popup fix: link as GUI subsystem so Windows does NOT
+            # auto-allocate a console (no flash on Task Scheduler / Explorer
+            # invocation). main() calls AttachConsole(ATTACH_PARENT_PROCESS)
+            # to inherit caller's console when run interactively from cmd/bash.
+            -mwindows)
     endif()
 else()
     target_link_libraries(icmg PRIVATE icmg_lib)

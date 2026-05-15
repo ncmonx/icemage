@@ -78,39 +78,34 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
 
     std::string sched = scheduleSpecToSchtasksFlags(spec.minutes);
 
-    // Generate a PowerShell launcher (.ps1) so Task Scheduler runs the .cmd
-    // with a fully hidden window. VBS WshShell.Run windowStyle=0 is insufficient
-    // on Windows 11 — icmg.exe (console subsystem) still creates a visible window.
-    // PowerShell Start-Process -WindowStyle Hidden -NoNewWindow is Win11-proven.
-    std::string ps1_path = spec.wrapper_path;
+    // v0.58.1: Generate a VBS launcher invoked via wscript.exe. Both wscript
+    // and the new GUI-subsystem icmg.exe are non-console processes — Windows
+    // never allocates a console window in the chain, eliminating the flash
+    // that PowerShell (console-subsystem) caused even with -WindowStyle Hidden.
+    // WshShell.Run(<cmd>, 0, True) hides cmd.exe + waits for exit.
+    std::string vbs_path = spec.wrapper_path;
     {
-        size_t dot = ps1_path.rfind('.');
-        if (dot != std::string::npos) ps1_path = ps1_path.substr(0, dot);
-        ps1_path += ".ps1";
+        size_t dot = vbs_path.rfind('.');
+        if (dot != std::string::npos) vbs_path = vbs_path.substr(0, dot);
+        vbs_path += ".vbs";
     }
     {
-        std::ofstream pf(ps1_path, std::ios::binary);
-        if (pf) {
-            // ProcessStartInfo.CreateNoWindow = $true maps directly to Win32
-            // CREATE_NO_WINDOW flag — reliable on all Windows versions including Win11.
-            // Start-Process -NoNewWindow + -WindowStyle Hidden are contradictory
-            // and still flash a console on Win11 console-subsystem apps.
-            pf << "$psi = [Diagnostics.ProcessStartInfo]::new($env:ComSpec, '/c `\""
-               << spec.wrapper_path << "`\"')\r\n"
-               << "$psi.CreateNoWindow = $true\r\n"
-               << "$psi.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden\r\n"
-               << "$psi.UseShellExecute = $false\r\n"
-               << "$p = [Diagnostics.Process]::Start($psi)\r\n"
-               << "$p.WaitForExit()\r\n";
+        std::ofstream vf(vbs_path, std::ios::binary);
+        if (vf) {
+            // Single-line VBS — invokes the .cmd wrapper with WindowStyle=0
+            // (hidden) and bWaitOnReturn=True (synchronous, scheduler waits).
+            vf << "CreateObject(\"Wscript.Shell\").Run \"cmd /c \"\""
+               << spec.wrapper_path
+               << "\"\"\", 0, True\r\n";
         }
     }
 
-    // First attempt: direct schtasks via bash w/ MSYS_NO_PATHCONV.
-    // /TR runs powershell.exe hidden on the .ps1 launcher — no console flash.
+    // /TR points at wscript.exe directly. wscript is GUI-subsystem — no
+    // console allocated for the launcher itself. //B = batch mode (no UI on
+    // error). //Nologo suppresses banner.
     std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Create " + sched
                     + " /TN \"" + spec.task_name + "\""
-                    + " /TR \"powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden"
-                      " -ExecutionPolicy Bypass -File \\\"" + ps1_path + "\\\"\""
+                    + " /TR \"wscript.exe //B //Nologo \\\"" + vbs_path + "\\\"\""
                     + " /F";
     auto res = safeExecShell(cmd, true, 15000);
 
@@ -153,8 +148,7 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
         }
     }
     args << ",'/TN','" << spec.task_name
-         << "','/TR','powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden"
-            " -ExecutionPolicy Bypass -File \"" << ps1_path << "\"',"
+         << "','/TR','wscript.exe //B //Nologo \"" << vbs_path << "\"',"
          << "'/F'";
 
     std::string ps_cmd =
@@ -183,8 +177,7 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
               << "    Manual setup (run elevated cmd.exe):\n"
               << "      schtasks /Create " << sched
               << " /TN \"" << spec.task_name << "\""
-              << " /TR \"powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden"
-                 " -ExecutionPolicy Bypass -File \\\"" << ps1_path << "\\\"\""
+              << " /TR \"wscript.exe //B //Nologo \\\"" << vbs_path << "\\\"\""
               << " /F\n";
     return 3;
 }
