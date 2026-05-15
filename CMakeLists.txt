@@ -308,8 +308,17 @@ else()
 endif()
 add_executable(icmg src/main.cpp ${ICMG_WIN_RESOURCE})
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_link_libraries(icmg PRIVATE
-        -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+    if(APPLE)
+        # Apple ld64 doesn't support --whole-archive. Use -force_load on the
+        # archive path, and ALSO add icmg_lib as a normal dep so transitive
+        # link libs (sqlite3, ORT, etc.) are picked up.
+        target_link_libraries(icmg PRIVATE
+            -Wl,-force_load,$<TARGET_FILE:icmg_lib>
+            icmg_lib)
+    else()
+        target_link_libraries(icmg PRIVATE
+            -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+    endif()
     # Static link runtime â†’ portable exe (no mingw DLL deps).
     if(WIN32)
         target_link_options(icmg PRIVATE
@@ -337,8 +346,14 @@ enable_testing()
 macro(add_icmg_test name source_file)
     add_executable(${name} ${source_file})
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_link_libraries(${name} PRIVATE
-            -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+        if(APPLE)
+            target_link_libraries(${name} PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:icmg_lib>
+                icmg_lib)
+        else()
+            target_link_libraries(${name} PRIVATE
+                -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+        endif()
         if(WIN32)
             target_link_options(${name} PRIVATE
                 -static-libgcc -static-libstdc++
