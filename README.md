@@ -546,6 +546,42 @@ No pressure, no nags, no paywalled features. Every line of icmg stays open-sourc
 
 ---
 
+## FAQ
+
+**How does icmg compare to Aider's repo-map / Cursor's `@Codebase`?**
+Both build a project index. icmg's difference is per-task bundles (BM25 + cosine over a persistent SQLite memory) instead of a single static map, plus output filtering + reversible glossary compression on every hook event. Designed to compound across all 7 layers, not just context.
+
+**Does icmg send my code anywhere?**
+No. Zero telemetry, zero cloud calls, zero account required. Everything is local SQLite. `icmg config show` lists every external URL the binary would ever hit (release-update check + opt-in WebFetch cache only). You can grep your own memory store.
+
+**Will icmg work with `<MyClient>` (Claude Code / Cursor / Cline / Continue / LM Studio)?**
+Anything that speaks MCP works. `icmg --mcp-server` exposes 28 tools over stdio JSON-RPC. Claude Code also gets the hook integration for free (`icmg init` writes `.claude/settings.local.json`).
+
+**Does it support local LLMs (Ollama / LM Studio / llama.cpp)?**
+Yes — through the same MCP server route. The recall ranking is tokenizer-agnostic; the receipts table's cost coefficients are Claude-tuned but you can override per model in `~/.icmg/config.json`.
+
+**macOS arm64?**
+Source builds cleanly. Prebuilt binary blocked on Apple hardware availability — if you have a Mac and want to ship a PR, the CMake flow is the same as Linux.
+
+**Why C++ and not Rust / Go?**
+Single binary + sub-10 ms hook latency + cold-start matters. C++17 + SQLite + statically-linked MinGW gave the best size/speed tradeoff. Rust v2 may happen if compile-time pain accumulates.
+
+**How does the "popup-free" daemon actually work?**
+`icmg service` is a single Windows logon-trigger task launched via `wscript.exe //B` (GUI subsystem, no console flash). It calls every internal command via `Registry<BaseCommand>` directly — zero subprocess fork. Replaces the 5 per-project schtasks pre-v1.1.0 used. See [v1.1.1](https://github.com/ncmonx/icm-graph/releases/tag/v1.1.1).
+
+**Where do I report bugs / request features?**
+[GitHub issues](https://github.com/ncmonx/icm-graph/issues). Real-world reproductions with `icmg savings --json` output get triaged fastest.
+
+---
+
+## Star history
+
+<a href="https://star-history.com/#ncmonx/icm-graph&Date">
+  <img src="https://api.star-history.com/svg?repos=ncmonx/icm-graph&type=Date" alt="Star history" width="600"/>
+</a>
+
+---
+
 ## License
 
 Apache 2.0. Use it however you want. Attribution appreciated, not required.
