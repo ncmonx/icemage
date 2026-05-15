@@ -1064,3 +1064,50 @@ Decisions:
 - BLOCKED: MSYS2 mingw64 toolchain broken — cc1plus.exe exits rc=1 with empty stderr on ANY compile, even trivial int main(). Direct `c++ --version` works, but compile silent-crashes. Build infra issue, NOT code issue. Needs pacman -Syu or reboot to recover.
 Rejected: shipping unverified code — TDD policy + craftsman:verify both forbid commit without passing build/tests.
 Open: user repairs toolchain → resume `cmake --build build` → ctest → commit + PR to public origin/main → tag v0.55.0.
+
+## 2026-05-15 01:30 [saved]
+Goal: v0.57.0 SHIPPED — Phase B.B7 hook runners fully in-process
+Decisions:
+- internals module: 6 standalone fns (distillAuto, distillSession, complianceCheckThinking, failSyncDenials, toolBudgetReset, compressInPlace) mirror CLI cmd core logic. runners.cpp calls them directly — no subprocess.
+- Eliminates 4 inner forks per Stop event + compress fork in PostToolUse:Read. Net ~200-400ms saved per Stop.
+- Combined with v0.56.0 daemon RPC: ~250-500ms → ~5-10ms per hook event (single socket + zero forks).
+- CLI commands unchanged. 65/65 ctest (+11 new internals tests). Local install upgraded to 0.57.0.
+- PR #35 squash-merged, GH release v0.57.0 published with sha256 + signature bundles.
+Rejected: rewriting PreCompact Python snapshot to C++ — low priority, defer.
+Open: Multi-Platform T1-T8 → v1.0.0 is now obvious next push (Linux x64 + macOS arm64/x64 binaries, ~4-5d).
+
+## 2026-05-15 02:55 [saved]
+Goal: v0.58.0 SHIPPED — first cross-platform release (Win + Linux + macOS arm64)
+Decisions:
+- GH Actions matrix workflow proves Win + Linux + macOS arm64 build/test/package on tag push. macos-x64 dropped (low-capacity runner pool); add back v0.59.0+ if Intel-Mac demand surfaces.
+- CMake auto-download for SQLite amalgamation (3.47.1) + nlohmann/json (3.11.3) — both gitignored, broke fresh-clone CI builds.
+- POSIX-portability sweep: new core::selfExePath(), Apple -force_load (ld64 doesn't know --whole-archive), popen/pclose guards, <climits> for INT_MAX, const fs::path& iter, missing-cmd POSIX cron entries in 5 auto-on cmds.
+- Feature parity caveats: Linux tree-sitter OFF (apt v0.20 vs vendored v0.26 ABI), macOS ONNX OFF (dylib symlink extract). Both → v0.59.0.
+- update_cmd wantedAssetName() picks macos-arm64 vs macos-x64 via __aarch64__.
+- Win package step: PowerShell Compress-Archive (no 7z in MSYS2 MINGW64).
+- Total CI iterations to green: 8 (each ~5min). Most cost = warnings-to-errors NOT — were all real cross-platform bugs (compile + link + runtime).
+- Private GH release: workflow auto-publishes 6 artifacts. Public: manually mirrored via gh release create.
+Rejected: macOS codesigning (Apple Developer ID required, defer indefinitely; Gatekeeper override documented).
+Open: v0.59.0 = vendor libtree-sitter + shell-tar macOS ORT extract → feature parity → v1.0.0.
+
+## 2026-05-15 04:15 [saved]
+Goal: v0.58.1 HOTFIX SHIPPED — console popup eliminated
+Decisions:
+- Root cause: icmg.exe was /SUBSYSTEM:CONSOLE — Win auto-allocates console for any console-subsystem app launched headless (Task Scheduler, Explorer), even with -WindowStyle Hidden. Combined with PowerShell launcher (also console-subsystem) multiple flickers per cycle.
+- Two-part fix: (1) icmg.exe linked /SUBSYSTEM:WINDOWS via -mwindows. main() calls AttachConsole(ATTACH_PARENT_PROCESS) + selective freopen_s of CONOUT$/CONIN$ when no inherited stdio handle (cmd.exe). Inherited pipes (bash/mintty/redirects) preserved → no clobber. (2) schedule_helper drops .ps1, emits .vbs wrapper invoked via wscript.exe //B //Nologo. wscript IS GUI-subsystem → no console flash anywhere in chain.
+- Verified: ./build/icmg --version works from bash AND cmd.exe. cmd /c .icmg\sched\backup-hourly.cmd silent (no flash). 65/65 ctest. CI matrix Win + Linux + macOS arm64 all green. Private + public GH release published with 3-platform binaries.
+- User-action note: existing PS1/CMD tasks remain registered; run `icmg init --force` per project to convert.
+Rejected: previous session-log claim "WshShell.Run windowStyle=0 insufficient on Win11" — actually root cause was console-subsystem icmg.exe, not VBS approach. With GUI-subsystem icmg.exe, VBS WshShell.Run works correctly.
+Open: v0.59.0 = vendor libtree-sitter source + fix macOS ORT dylib extract → feature parity → v1.0.0.
+
+## 2026-05-15 05:00 [saved]
+Goal: v0.59.0 SHIPPED (Win-only) + matrix-CI disabled for solo-dev cost
+Decisions:
+- libtree-sitter vendored from source v0.26.0 via CMake (curl -fsSLk, MSYS2 cert chain unreliable for file(DOWNLOAD)). Static tree_sitter_runtime built from lib/src/lib.c. ABI matches LANGUAGE_VERSION 15 grammars.
+- macOS ORT extract: tar -xzf + cp -RP preserves .dylib symlink chain (was broken by file(ARCHIVE_EXTRACT)).
+- Win bundle slimmed: 4 DLLs → 1 (only libwinpthread-1.dll).
+- Matrix-CI workflow disabled (.yml.disabled) — solo-dev free-tier Actions minutes exhausted from many iterations. Releases now ship Win-only via local build + manual gh release upload. Linux/macOS users build from source. Pre-v0.58.0 pattern restored.
+- Public release v0.59.0 created with Win zip + sha256 + signature bundles. PR #37 squash-merged.
+- v0.58.1 popup hotfix CHANGELOG entry backfilled.
+Rejected: paid Actions minutes (no plan to spend); waiting for CI billing refresh; releasing without CI verification on Linux/macOS (would block indefinitely).
+Open: v1.0.0 gate requires full-platform binary distribution → self-hosted runner setup OR migrate CI to free alternative OR defer 1.0.0 tag.

@@ -24,6 +24,12 @@ compile_commands.json
 third_party/sqlite3/sqlite3.c
 third_party/sqlite3/sqlite3.h
 third_party/nlohmann/json.hpp
+third_party/tree-sitter-lib/
+third_party/tree-sitter-php/
+
+# Local experiments
+build_test/
+nul
 
 # AI assistant artifacts
 context-snapshot.json
