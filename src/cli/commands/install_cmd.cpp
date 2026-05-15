@@ -10,6 +10,7 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/path_utils.hpp"
+#include "../../core/service_install.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -187,6 +188,19 @@ private:
         // Save sentinel
         writeSystemPath(dest_dir);
         std::cout << "\nSystem install complete: " << dest_dir << "\n";
+
+        // v1.1.1: register resident service + clean legacy autopilot schtasks.
+        if (!std::getenv("ICMG_SKIP_SERVICE")) {
+            std::string serr;
+            if (core::installResidentService(&serr)) {
+                std::cout << "  + icmg service: logon-trigger installed\n";
+            } else if (!serr.empty()) {
+                std::cerr << "  ! icmg service install skipped: " << serr << "\n";
+            }
+            int removed = core::cleanupLegacySchtasks();
+            if (removed > 0)
+                std::cout << "  + icmg service: cleaned " << removed << " legacy schtasks\n";
+        }
 
         // PATH hint
         bool on_path = isOnPath(dest_dir);

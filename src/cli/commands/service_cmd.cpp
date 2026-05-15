@@ -16,6 +16,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/path_utils.hpp"
 #include "../../core/service_loop.hpp"
+#include "../../core/service_install.hpp"
 #include "../../core/exec_utils.hpp"
 
 #include <nlohmann/json.hpp>
@@ -127,32 +128,21 @@ private:
     }
 
     int doInstall() {
+        std::string err;
+        bool ok = core::installResidentService(&err);
+        if (!ok) {
+            std::cerr << "icmg service install: " << err << "\n";
+            return 1;
+        }
 #ifdef _WIN32
-        // Write launcher VBS that hides Run + invokes detached icmg.
-        fs::path vbs = fs::path(core::icmgGlobalDir()) / "service-launcher.vbs";
-        std::error_code ec;
-        fs::create_directories(vbs.parent_path(), ec);
-        {
-            std::ofstream f(vbs, std::ios::binary);
-            f << "CreateObject(\"Wscript.Shell\").Run \"icmg service run\", 0, False\r\n";
-        }
-        std::string tn = "icmg-service";
-        std::string cmd =
-            "MSYS_NO_PATHCONV=1 schtasks /Create /SC ONLOGON /TN \"" + tn + "\""
-            " /TR \"wscript.exe //B //Nologo \\\"" + vbs.string() + "\\\"\""
-            " /F";
-        auto r = core::safeExecShell(cmd, true, 15000);
-        if (r.exit_code != 0) {
-            std::cerr << "icmg service install: schtasks failed:\n  " << r.err;
-            return r.exit_code;
-        }
-        std::cout << "icmg service: logon-trigger registered (" << tn << ")\n";
-        return 0;
+        std::cout << "icmg service: logon-trigger registered (icmg-service)\n";
 #else
-        std::cout << "icmg service install: POSIX path not yet wired; "
-                     "manually add `icmg service run &` to your shell rc.\n";
-        return 0;
+        std::cout << "icmg service install: POSIX no-op (systemd/launchd out of scope)\n";
 #endif
+        int removed = core::cleanupLegacySchtasks();
+        if (removed > 0)
+            std::cout << "icmg service: cleaned " << removed << " legacy schtasks\n";
+        return 0;
     }
 
     int doUninstall() {

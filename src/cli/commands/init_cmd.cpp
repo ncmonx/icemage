@@ -16,6 +16,7 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/service_install.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
@@ -1090,6 +1091,21 @@ private:
         // Install icmg-first enforcement into global ~/.claude/settings.json
         // so the rule applies across ALL projects, not just this one.
         n += installGlobalReadHook(force);
+
+        // v1.1.1: register resident service (logon-trigger) + clean any legacy
+        // per-project autopilot schtasks left over from pre-v1.1.0.
+        // Opt-out via ICMG_SKIP_SERVICE=1.
+        if (!std::getenv("ICMG_SKIP_SERVICE")) {
+            std::string serr;
+            if (core::installResidentService(&serr)) {
+                std::cout << "  + icmg service: logon-trigger installed\n";
+            } else if (!serr.empty()) {
+                std::cerr << "  ! icmg service install skipped: " << serr << "\n";
+            }
+            int removed = core::cleanupLegacySchtasks();
+            if (removed > 0)
+                std::cout << "  + icmg service: cleaned " << removed << " legacy schtasks\n";
+        }
 
         return n;
     }
