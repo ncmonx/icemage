@@ -28,9 +28,8 @@ jobs:
           - os: macos-arm64
             runner: macos-14
             arch: arm64
-          - os: macos-x64
-            runner: macos-13
-            arch: x64
+          # macOS Intel (macos-13) deferred — runner pool low-capacity, Apple
+          # Silicon is primary. Add back in v0.59.0 if Intel demand surfaces.
 
     steps:
       - uses: actions/checkout@v4
