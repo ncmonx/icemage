@@ -40,15 +40,15 @@ jobs:
         if: startsWith(matrix.runner, 'ubuntu')
         run: |
           sudo apt-get update
+          # v0.59.0: tree-sitter no longer needed via apt (vendored from source).
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build build-essential \
-            libtree-sitter-dev libsqlite3-dev zlib1g-dev
+            cmake ninja-build build-essential zlib1g-dev
 
       - name: Install deps (macOS)
         if: startsWith(matrix.runner, 'macos')
         run: |
           brew update
-          brew install cmake ninja tree-sitter sqlite zlib
+          brew install cmake ninja zlib
 
       - name: Install deps (Windows / MSYS2)
         if: startsWith(matrix.runner, 'windows')
@@ -60,8 +60,6 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-tree-sitter
-            mingw-w64-x86_64-sqlite3
             mingw-w64-x86_64-zlib
 
       # ---- configure + build ------------------------------------------------
@@ -78,23 +76,21 @@ jobs:
       - name: Configure (Linux)
         if: startsWith(matrix.runner, 'ubuntu')
         run: |
-          # Linux: tree-sitter disabled in v0.58.0 — apt's libtree-sitter is
-          # v0.20.x, vendored grammars expect v0.26 ABI → silent empty parse.
-          # Tracked for v0.59.0 (vendor libtree-sitter source).
+          # v0.59.0: tree-sitter now vendored from source (CMake auto-fetch
+          # v0.24.5) — apt ABI mismatch resolved. Full feature parity.
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DICMG_USE_ONNX=ON \
-            -DICMG_USE_TREESITTER=OFF
+            -DICMG_USE_TREESITTER=ON
 
       - name: Configure (macOS)
         if: startsWith(matrix.runner, 'macos')
         run: |
-          # macOS: ONNX disabled in v0.58.0 — bundled .dylib symlink handling
-          # in CMake's file(ARCHIVE_EXTRACT) misbehaves. Tracked for v0.59.0.
-          # Tree-sitter still available via Homebrew (matches vendored ABI).
+          # v0.59.0: ORT extract now uses tar + cp -RP (preserves dylib symlink
+          # chain) instead of CMake file(ARCHIVE_EXTRACT). Full feature parity.
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DICMG_USE_ONNX=OFF \
+            -DICMG_USE_ONNX=ON \
             -DICMG_USE_TREESITTER=ON
 
       - name: Build (Windows)
@@ -126,8 +122,10 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           mkdir -p pkg
           cp build/icmg.exe pkg/
-          # Bundle MSYS2 runtime DLLs that we link against
-          for dll in libtree-sitter-0.26.dll libwinpthread-1.dll libzstd.dll wasmtime.dll; do
+          # v0.59.0: vendored tree-sitter is static — only libwinpthread may be
+          # needed (std::thread on MinGW posix model). Static-libstdc++ in link
+          # options usually pulls it in, but copy is safety net.
+          for dll in libwinpthread-1.dll; do
             cp /mingw64/bin/$dll pkg/ 2>/dev/null || true
           done
           # Bundle ORT DLLs

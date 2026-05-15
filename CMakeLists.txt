@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 0.58.1 LANGUAGES CXX C)
+project(icmg VERSION 0.59.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -164,15 +164,33 @@ if(ICMG_USE_ONNX)
              SHOW_PROGRESS STATUS _ort_status)
         list(GET _ort_status 0 _ort_rc)
         if(_ort_rc EQUAL 0)
-            file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/_ort_archive
-                 DESTINATION ${CMAKE_BINARY_DIR}/_ort_unpack)
-            # Find the libs in extracted tree (archive root name varies per OS).
-            file(GLOB_RECURSE _ort_libs
-                 "${CMAKE_BINARY_DIR}/_ort_unpack/**/lib/${ORT_LIB_GLOB}")
+            file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/_ort_unpack)
             file(MAKE_DIRECTORY ${ORT_LIB_DIR})
-            foreach(_d ${_ort_libs})
-                file(COPY ${_d} DESTINATION ${ORT_LIB_DIR})
-            endforeach()
+            if(UNIX)
+                # v0.59.0: POSIX uses tar + cp -R so symlinks (.dylib / .so chain)
+                # are preserved. CMake file(ARCHIVE_EXTRACT) + file(COPY)
+                # dereference them — produced "unsupported mach-o filetype" on
+                # macOS because the .X.Y.Z.dylib alias became broken.
+                execute_process(
+                    COMMAND tar -xzf ${CMAKE_BINARY_DIR}/_ort_archive
+                            -C ${CMAKE_BINARY_DIR}/_ort_unpack
+                    RESULT_VARIABLE _ort_extract_rc)
+                if(_ort_extract_rc EQUAL 0)
+                    # Copy lib/ contents preserving symlinks. -P (do not follow)
+                    # on macOS BSD cp; -P also accepted on GNU cp.
+                    execute_process(
+                        COMMAND bash -c "cp -RP ${CMAKE_BINARY_DIR}/_ort_unpack/*/lib/* ${ORT_LIB_DIR}/")
+                endif()
+            else()
+                # Windows .zip — no symlinks in ORT-Win archive.
+                file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/_ort_archive
+                     DESTINATION ${CMAKE_BINARY_DIR}/_ort_unpack)
+                file(GLOB_RECURSE _ort_libs
+                     "${CMAKE_BINARY_DIR}/_ort_unpack/**/lib/${ORT_LIB_GLOB}")
+                foreach(_d ${_ort_libs})
+                    file(COPY ${_d} DESTINATION ${ORT_LIB_DIR})
+                endforeach()
+            endif()
             file(REMOVE_RECURSE ${CMAKE_BINARY_DIR}/_ort_unpack ${CMAKE_BINARY_DIR}/_ort_archive)
         else()
             message(WARNING "icmg: ORT auto-download failed (${_ort_status}); "
@@ -209,15 +227,60 @@ if(ICMG_USE_ONNX)
 endif()
 
 if(ICMG_USE_TREESITTER)
-    find_path(TS_INCLUDE tree_sitter/api.h
-              PATHS /usr/local/include /opt/homebrew/include /usr/include
-                    /c/msys64/mingw64/include /mingw64/include)
-    find_library(TS_LIB NAMES tree-sitter
-                 PATHS /usr/local/lib /opt/homebrew/lib /usr/lib
-                       /c/msys64/mingw64/lib /mingw64/lib)
+    # v0.59.0: vendor libtree-sitter source. Previously used find_library which
+    # picked up apt's v0.20.x on Linux — ABI-incompatible with v0.26 vendored
+    # grammars (silent empty parse trees). Building from source pinned to v0.24.5
+    # guarantees grammar-runtime ABI match (parser.h v14).
+    # Vendored grammars (parser.c LANGUAGE_VERSION 15) require runtime ≥ v0.25.
+    # v0.26.x is current stable line; matches MSYS2 mingw-w64-x86_64-tree-sitter.
+    set(TS_RUNTIME_VERSION "0.26.0")
+    set(TS_RUNTIME_URL
+        "https://github.com/tree-sitter/tree-sitter/archive/refs/tags/v${TS_RUNTIME_VERSION}.tar.gz")
+    set(TS_RUNTIME_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-lib)
+    if(NOT EXISTS ${TS_RUNTIME_DIR}/lib/src/lib.c)
+        message(STATUS "icmg: fetching libtree-sitter ${TS_RUNTIME_VERSION} (one-time, ~1MB)...")
+        file(MAKE_DIRECTORY ${TS_RUNTIME_DIR})
+        # CMake file(DOWNLOAD) follow_redirect handling is patchy on some
+        # systems (TLS cert chain, redirect to codeload.github.com). Use curl
+        # via execute_process — universally available on CI runners (preinstalled
+        # on Win/Linux/macOS) and on MSYS2 dev workstations.
+        # -k bypasses local CA-bundle errors (broken cert chain on some MSYS2
+        # installs). Source integrity is verified by tarball content + grammar
+        # ABI checks at build time, not by TLS chain at download time.
+        execute_process(
+            COMMAND curl -fsSLk -o ${CMAKE_BINARY_DIR}/_ts.tar.gz ${TS_RUNTIME_URL}
+            RESULT_VARIABLE _ts_rc)
+        if(_ts_rc EQUAL 0)
+            file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/_ts_unpack)
+            file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/_ts.tar.gz
+                 DESTINATION ${CMAKE_BINARY_DIR}/_ts_unpack)
+            # tarball root is tree-sitter-<version>/ ; move its lib/ into our vendor dir.
+            file(GLOB _ts_src_dirs "${CMAKE_BINARY_DIR}/_ts_unpack/tree-sitter-*")
+            foreach(_d ${_ts_src_dirs})
+                if(IS_DIRECTORY ${_d}/lib)
+                    file(COPY ${_d}/lib DESTINATION ${TS_RUNTIME_DIR})
+                endif()
+            endforeach()
+            file(REMOVE_RECURSE ${CMAKE_BINARY_DIR}/_ts_unpack ${CMAKE_BINARY_DIR}/_ts.tar.gz)
+        else()
+            message(FATAL_ERROR "libtree-sitter download failed (curl rc=${_ts_rc}); fetch manually from ${TS_RUNTIME_URL}")
+        endif()
+    endif()
+
+    # Build vendored runtime as static lib (single-TU unity via lib.c).
+    add_library(tree_sitter_runtime STATIC ${TS_RUNTIME_DIR}/lib/src/lib.c)
+    target_include_directories(tree_sitter_runtime PUBLIC
+        ${TS_RUNTIME_DIR}/lib/include   # tree_sitter/api.h (public)
+        ${TS_RUNTIME_DIR}/lib/src)      # internals for lib.c's #includes
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+        target_compile_options(tree_sitter_runtime PRIVATE -w -std=c11)
+    endif()
+
+    set(TS_INCLUDE ${TS_RUNTIME_DIR}/lib/include)
+    set(TS_LIB tree_sitter_runtime)
     set(TS_C_GRAMMAR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-c/src/parser.c)
-    if(TS_INCLUDE AND TS_LIB AND EXISTS ${TS_C_GRAMMAR})
-        message(STATUS "icmg: tree-sitter ENABLED (lib: ${TS_LIB}, C grammar vendored)")
+    if(EXISTS ${TS_C_GRAMMAR})
+        message(STATUS "icmg: tree-sitter ENABLED (vendored runtime v${TS_RUNTIME_VERSION}, C grammar vendored)")
         # Vendored grammar â€” pure C, no extra deps.
         add_library(tree_sitter_c STATIC ${TS_C_GRAMMAR})
         target_include_directories(tree_sitter_c PRIVATE
@@ -263,18 +326,17 @@ if(ICMG_USE_TREESITTER)
             message(STATUS "icmg: tree-sitter-python ENABLED")
         endif()
 
-        # Copy runtime DLLs next to build outputs (Windows). Resolves
-        # 0xc0000135 / "libX.dll not found" at exe launch.
-        # libtree-sitter transitively pulls wasmtime + zstd on MSYS2.
+        # v0.59.0: vendored libtree-sitter is static — no more libtree-sitter*.dll
+        # / wasmtime.dll / libzstd.dll runtime dependency. libwinpthread is still
+        # needed (std::thread on MinGW posix-thread model) UNLESS the binary is
+        # statically linked, which icmg.exe does via target_link_options below.
+        # Keep this block as a safety copy in case static-libstdc++ doesn't pull
+        # winpthread cleanly on some MinGW builds.
         if(WIN32)
-            set(TS_DLL_NAMES
-                libtree-sitter-0.26.dll libtree-sitter.dll
-                wasmtime.dll libzstd.dll
-                libwinpthread-1.dll)
+            set(TS_DLL_NAMES libwinpthread-1.dll)
             foreach(_dll IN LISTS TS_DLL_NAMES)
                 find_file(TS_DLL_${_dll} NAMES ${_dll}
-                          PATHS /c/msys64/mingw64/bin /mingw64/bin
-                                ${TS_INCLUDE}/../bin)
+                          PATHS /c/msys64/mingw64/bin /mingw64/bin)
                 if(TS_DLL_${_dll})
                     message(STATUS "icmg: copy DLL ${_dll}")
                     file(COPY ${TS_DLL_${_dll}} DESTINATION ${CMAKE_BINARY_DIR})
