@@ -39,6 +39,20 @@ Windows users today: **safe to depend on for solo + small-team workflows**. The 
 
 ---
 
+## 🌐 What's new in v0.58.0
+
+| Feature | What changed |
+| --- | --- |
+| **Multi-platform CI matrix** | GitHub Actions builds + tests on `windows-latest`, `ubuntu-latest`, `macos-14 (arm64)` per push. On tag push, packages per-OS archives + sha256 sidecars and publishes them to the GitHub Release |
+| **Cross-platform CMake** | ORT block per-OS archive naming (zip/tgz) + library glob (`.dll/.dylib/.so*`) + RPATH (`$ORIGIN` / `@loader_path`). Auto-download for SQLite amalgamation + nlohmann/json (previously gitignored, broke fresh-clone builds) |
+| **POSIX-portable callsites** | macOS `_NSGetExecutablePath` via `core::selfExePath()`; Apple ld64 `-force_load` instead of GNU `--whole-archive`; `popen/pclose` (no MSVC `_popen` on POSIX); `<climits>` for `INT_MAX`; const-ref on `fs::path` iterator (libc++ returns temporaries) |
+| **update_cmd OS detect** | `wantedAssetName()` now picks `icmg-VERSION-macos-arm64.tar.gz` on Apple Silicon vs `-macos-x64.tar.gz` on Intel; Linux + Windows asset names unchanged |
+| **Feature parity v0.58.0** | Windows: full (ONNX + tree-sitter). Linux: ONNX-only (tree-sitter via apt is v0.20 ABI vs vendored v0.26 — v0.59.0 will vendor source). macOS arm64: tree-sitter-only (ONNX dylib symlink-extract issue — v0.59.0) |
+
+> 🛣️ **Next gate:** v0.59.0 = vendor libtree-sitter source + fix macOS ORT dylib extract → feature parity all three platforms → **v1.0.0 production-stable tag.**
+
+---
+
 ## 🔥 What's new in v0.57.0
 
 | Feature | What changed |
@@ -68,19 +82,6 @@ icmg hook stop            # routes through daemon when up; falls back inline if 
 ```
 
 > 🧱 Continues B1→B2→B3-B6 daemon refactor. Plan: `docs/plans/2026-05-14-phase-b3-b6-plan.md`.
-
----
-
-## 🚀 What's new in v0.55.0
-
-| Feature | What changed |
-| --- | --- |
-| **Daemon dispatcher map** | `src/daemon/rule_daemon.{hpp,cpp}` now uses `std::unordered_map<string,Handler>` registered in ctor — opcode routing is O(1), extensible without touching the eval loop |
-| **Mutex-protected rules** | `std::mutex rules_mu_` guards all `rules_` r/w (loadRules / checkFile snapshot / SET_STRICT / GET_STRICT) — no more races between concurrent strict-mode toggles and rule evaluation |
-| **Per-request worker threads (POSIX)** | Server loop detaches `std::thread` per `accept()` — slow hook ops (B3-B6) won't starve concurrent rule-eval clients |
-| **+8 daemon tests** | dispatcher PING/RELOAD/SHUTDOWN/SET_STRICT/GET_STRICT roundtrip + malformed-JSON fallback + 16-thread concurrent SET_STRICT + 8-thread concurrent checkFile+SET_STRICT toggler. 64/64 ctest pass |
-
-> 🧱 **Foundation work** — this release prepares `rule_daemon` for hook RPC ops landing in v0.56.0+ (`hook_stop`, `hook_precompact`, `hook_posttool_read`). User-visible behavior unchanged. Full audit: `docs/plans/2026-05-14-phase-b1-daemon-audit.md`.
 
 ---
 
