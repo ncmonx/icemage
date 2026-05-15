@@ -984,26 +984,183 @@ Open:
 - CII-Best-Practices: fill questionnaire at bestpractices.dev/projects/12818 (currently 18%).
 - Code-Review=0: needs 2nd reviewer; unsolvable solo without bot.
 
-## 2026-05-12 20:00 [saved]
-Goal: Phase 82 T1-T3: Go/Rust/Java tree-sitter symbol extractors + graph lang commands.
+## 2026-05-14 09:30 [saved]
+Goal: Fix WAL 65GB bloat + CMD popup + plan BFS graph expansion.
 Decisions:
-- Java grammar (v14 ABI) needs its own parser.h from tree-sitter-java repo — not the v15 one from tree-sitter-c.
-- Registry method is `reg.reg(key, factory)` not `registerFactory()` — check existing extractors before writing new ones.
-- Go/Rust/Java extractor keys match scanner.cpp ext_to_lang map: "go"/"rust"/"java" — wired automatically.
-- `graph lang status` static table; `graph lang list` queries langStats() DB view; both registered as subcommands.
+- `wal_autocheckpoint` 1000→100 pages (db.cpp): 10x more frequent checkpoint — prevents WAL bloat when concurrent hook writers accumulate.
+- Hook scripts always-overwrite on `icmg init` (init_cmd.cpp): removes stale `&`-backgrounded hooks from old installs automatically, eliminates zombie icmg processes.
+- PS1 Task Scheduler launcher (schedule_helper.cpp): `ProcessStartInfo.CreateNoWindow=$true` + `UseShellExecute=$false` maps to Win32 CREATE_NO_WINDOW — reliably hides console on Win11 console-subsystem apps.
+- BFS plan (12 tasks) saved to `docs/superpowers-optimized/plans/2026-05-14-bfs-expansion.md`; includes COMMANDS_BLOCK auto-injection into AGENTS.md on every `icmg init`.
 Rejected:
-- Merging feat/phase-82 into local main — main is public docs-only; source lives on feature branches in private remote.
-- Using v15 parser.h for Java grammar — causes TSLanguage struct field mismatch at compile time.
+- `Start-Process -WindowStyle Hidden -NoNewWindow` together — contradictory on Win11, still flashes.
+- Gating hook scripts on `--force` flag — leaves old buggy hooks on upgrades.
 Open:
-- Phase 82 T8 tests (11 fixtures) not yet written.
-- Java grammar still on v14 ABI; monitor tree-sitter-java for v15 update.
+- Execute BFS plan (12 tasks); execution approach not yet chosen.
+- Run tests + commit WAL/CMD fixes to private/main (pending user permission).
 
-## 2026-05-13 [saved]
-Goal: Phase 82 T8: write and pass Go/Rust/Java symbol extractor tests.
+## 2026-05-14 10:30 [saved]
+Goal: Implement BFS expansion (12 tasks) + 3 bug fixes in icmg.
 Decisions:
-- Test guard pattern: `#ifdef ICMG_HAS_TREESITTER_*` with `#else ASSERT_TRUE(true)` — matches existing py/ts/c pattern.
-- Register tests in CMakeLists with `add_icmg_test` alongside other treesitter tests.
+- impact() rewritten: accepts edge_types, delegates to closure(reverse=true) — old BFS loop replaced.
+- test_main.hpp does NOT provide main(); each test file needs `int main() { return icmg::test::run_all(); }`.
+- COMMANDS_BLOCK (~50 cmds) injected separately from AGENTS_BLOCK; injectBlock() helper handles both marker pairs.
+- graph-neighbors = closureByLevel(depth=1)[0]; avoids duplicating BFS logic.
 Rejected:
-- Integration-only tests without unit fixture strings — harder to debug regressions.
+- Keeping old impact() BFS loop — duplicate of closure(); now unified.
+- Putting COMMANDS_BLOCK inside AGENTS_BLOCK — separate markers allow independent updates.
 Open:
-- T6 (--lang filter for graph update) and T7 (MCP extension) not started.
+- Build + ctest -R test_bfs_expand pending user permission.
+- Version bump to v0.53.0 needed before commit.
+
+## 2026-05-14 12:15 [saved]
+Goal: Upgrade icmg to v0.53.0, fix release asset naming, update public docs.
+Decisions:
+- Release assets: `icmg-{ver}-win-x64.zip` + `.sha256` — documented in CLAUDE.md Release workflow section; check prior release before uploading.
+- icmg upgrade path: build locally → copy to `~/bin/icmg.exe`; `update --apply` fails when no asset on release yet.
+- Public README badge 61/62→62/62: PR #24 squash-merged; GitHub About description updated via `gh api PATCH`.
+- `icmg init --force` re-run after upgrade to refresh hooks + AGENTS.md COMMANDS_BLOCK.
+Rejected:
+- Raw `.exe` upload as `icmg-windows-x86_64.exe` — wrong name AND format.
+- Direct push to public `main` — branch protected, requires PR + status checks.
+Open:
+- backup/maintain/mirror/sentinel auto-on failed — run manually if needed.
+
+## 2026-05-14 12:20 [saved]
+Goal: Fix release zip missing DLL — bundle libwinpthread-1.dll.
+Decisions:
+- Only `libwinpthread-1.dll` needed (MinGW thread runtime); detected via `objdump -p icmg.exe | grep "DLL Name"`.
+- CLAUDE.md release checklist updated: stage icmg.exe + dll into temp folder, zip folder contents, not just exe.
+Rejected:
+- Bundling KERNEL32/msvcrt/SHELL32/WS2_32 — Windows built-ins, always present.
+Open:
+- If MinGW updated, re-check DLL deps before next release.
+
+## 2026-05-14 12:35 [saved]
+Goal: Fix v0.53.0 release zip — missing DLLs vs v0.51.0.
+Decisions:
+- Release build MUST use `-DICMG_USE_ONNX=ON -DICMG_USE_TREESITTER=ON`; default-OFF build omits 5 DLLs.
+- 6 DLLs required: libtree-sitter-0.26, libwinpthread-1, libzstd, onnxruntime, onnxruntime_providers_shared, wasmtime — documented in CLAUDE.md with source paths.
+- libzstd/wasmtime/onnxruntime_providers_shared loaded via LoadLibrary — invisible to objdump; must cross-check against prior release zip.
+Rejected:
+- Using objdump alone to determine DLL list — misses dynamically loaded DLLs.
+Open:
+- If MinGW or onnxruntime updated, re-verify DLL list before next release.
+
+## 2026-05-14 22:50 [saved]
+Goal: PR #31 trim README + Phase B.B1 daemon audit done
+Decisions:
+- README "What's new" trimmed to last 3 versions (v0.54.0/0.53.0/0.53.1); older releases moved to CHANGELOG.md pointer. PR #31 squash-merged.
+- B1 audit verdict: rule_daemon dispatcher extensible for control ops but NOT acceptable for hook ops as-is. Single-threaded loop will starve rule clients during slow hook ops (50-500ms).
+- Insert B2 prerequisite refactor: dispatcher std::unordered_map, std::mutex on rules_, detached worker thread per request, length-prefix framing for >4KB responses.
+- Proposed B3-B6 wire: hook_stop / hook_precompact / hook_posttool_read / hook_userprompt — backward-compat with existing PING/RELOAD/SHUTDOWN/SET_STRICT/Read/Glob/Grep ops.
+Rejected: extend daemon hook ops without concurrency refactor — would starve PreToolUse:Read clients during Stop event.
+Open: B2 refactor (~0.5d) → B3-B6 (~0.5-1d each) → v0.55.0. User confirm to proceed.
+
+## 2026-05-14 23:10 [saved]
+Goal: Phase B.B2 implementation BLOCKED on toolchain
+Decisions:
+- B2 code written: dispatcher std::unordered_map, std::mutex rules_mu_ snapshot pattern in checkFile, detached std::thread worker per accept on POSIX path, version bump 0.55.0.
+- 8 new daemon tests (dispatcher PING/RELOAD/SHUTDOWN, SET/GET_STRICT roundtrip, malformed JSON fallback, concurrent SET_STRICT, concurrent checkFile+toggle).
+- BLOCKED: MSYS2 mingw64 toolchain broken — cc1plus.exe exits rc=1 with empty stderr on ANY compile, even trivial int main(). Direct `c++ --version` works, but compile silent-crashes. Build infra issue, NOT code issue. Needs pacman -Syu or reboot to recover.
+Rejected: shipping unverified code — TDD policy + craftsman:verify both forbid commit without passing build/tests.
+Open: user repairs toolchain → resume `cmake --build build` → ctest → commit + PR to public origin/main → tag v0.55.0.
+
+## 2026-05-15 01:30 [saved]
+Goal: v0.57.0 SHIPPED — Phase B.B7 hook runners fully in-process
+Decisions:
+- internals module: 6 standalone fns (distillAuto, distillSession, complianceCheckThinking, failSyncDenials, toolBudgetReset, compressInPlace) mirror CLI cmd core logic. runners.cpp calls them directly — no subprocess.
+- Eliminates 4 inner forks per Stop event + compress fork in PostToolUse:Read. Net ~200-400ms saved per Stop.
+- Combined with v0.56.0 daemon RPC: ~250-500ms → ~5-10ms per hook event (single socket + zero forks).
+- CLI commands unchanged. 65/65 ctest (+11 new internals tests). Local install upgraded to 0.57.0.
+- PR #35 squash-merged, GH release v0.57.0 published with sha256 + signature bundles.
+Rejected: rewriting PreCompact Python snapshot to C++ — low priority, defer.
+Open: Multi-Platform T1-T8 → v1.0.0 is now obvious next push (Linux x64 + macOS arm64/x64 binaries, ~4-5d).
+
+## 2026-05-15 02:55 [saved]
+Goal: v0.58.0 SHIPPED — first cross-platform release (Win + Linux + macOS arm64)
+Decisions:
+- GH Actions matrix workflow proves Win + Linux + macOS arm64 build/test/package on tag push. macos-x64 dropped (low-capacity runner pool); add back v0.59.0+ if Intel-Mac demand surfaces.
+- CMake auto-download for SQLite amalgamation (3.47.1) + nlohmann/json (3.11.3) — both gitignored, broke fresh-clone CI builds.
+- POSIX-portability sweep: new core::selfExePath(), Apple -force_load (ld64 doesn't know --whole-archive), popen/pclose guards, <climits> for INT_MAX, const fs::path& iter, missing-cmd POSIX cron entries in 5 auto-on cmds.
+- Feature parity caveats: Linux tree-sitter OFF (apt v0.20 vs vendored v0.26 ABI), macOS ONNX OFF (dylib symlink extract). Both → v0.59.0.
+- update_cmd wantedAssetName() picks macos-arm64 vs macos-x64 via __aarch64__.
+- Win package step: PowerShell Compress-Archive (no 7z in MSYS2 MINGW64).
+- Total CI iterations to green: 8 (each ~5min). Most cost = warnings-to-errors NOT — were all real cross-platform bugs (compile + link + runtime).
+- Private GH release: workflow auto-publishes 6 artifacts. Public: manually mirrored via gh release create.
+Rejected: macOS codesigning (Apple Developer ID required, defer indefinitely; Gatekeeper override documented).
+Open: v0.59.0 = vendor libtree-sitter + shell-tar macOS ORT extract → feature parity → v1.0.0.
+
+## 2026-05-15 04:15 [saved]
+Goal: v0.58.1 HOTFIX SHIPPED — console popup eliminated
+Decisions:
+- Root cause: icmg.exe was /SUBSYSTEM:CONSOLE — Win auto-allocates console for any console-subsystem app launched headless (Task Scheduler, Explorer), even with -WindowStyle Hidden. Combined with PowerShell launcher (also console-subsystem) multiple flickers per cycle.
+- Two-part fix: (1) icmg.exe linked /SUBSYSTEM:WINDOWS via -mwindows. main() calls AttachConsole(ATTACH_PARENT_PROCESS) + selective freopen_s of CONOUT$/CONIN$ when no inherited stdio handle (cmd.exe). Inherited pipes (bash/mintty/redirects) preserved → no clobber. (2) schedule_helper drops .ps1, emits .vbs wrapper invoked via wscript.exe //B //Nologo. wscript IS GUI-subsystem → no console flash anywhere in chain.
+- Verified: ./build/icmg --version works from bash AND cmd.exe. cmd /c .icmg\sched\backup-hourly.cmd silent (no flash). 65/65 ctest. CI matrix Win + Linux + macOS arm64 all green. Private + public GH release published with 3-platform binaries.
+- User-action note: existing PS1/CMD tasks remain registered; run `icmg init --force` per project to convert.
+Rejected: previous session-log claim "WshShell.Run windowStyle=0 insufficient on Win11" — actually root cause was console-subsystem icmg.exe, not VBS approach. With GUI-subsystem icmg.exe, VBS WshShell.Run works correctly.
+Open: v0.59.0 = vendor libtree-sitter source + fix macOS ORT dylib extract → feature parity → v1.0.0.
+
+## 2026-05-15 05:00 [saved]
+Goal: v0.59.0 SHIPPED (Win-only) + matrix-CI disabled for solo-dev cost
+Decisions:
+- libtree-sitter vendored from source v0.26.0 via CMake (curl -fsSLk, MSYS2 cert chain unreliable for file(DOWNLOAD)). Static tree_sitter_runtime built from lib/src/lib.c. ABI matches LANGUAGE_VERSION 15 grammars.
+- macOS ORT extract: tar -xzf + cp -RP preserves .dylib symlink chain (was broken by file(ARCHIVE_EXTRACT)).
+- Win bundle slimmed: 4 DLLs → 1 (only libwinpthread-1.dll).
+- Matrix-CI workflow disabled (.yml.disabled) — solo-dev free-tier Actions minutes exhausted from many iterations. Releases now ship Win-only via local build + manual gh release upload. Linux/macOS users build from source. Pre-v0.58.0 pattern restored.
+- Public release v0.59.0 created with Win zip + sha256 + signature bundles. PR #37 squash-merged.
+- v0.58.1 popup hotfix CHANGELOG entry backfilled.
+Rejected: paid Actions minutes (no plan to spend); waiting for CI billing refresh; releasing without CI verification on Linux/macOS (would block indefinitely).
+Open: v1.0.0 gate requires full-platform binary distribution → self-hosted runner setup OR migrate CI to free alternative OR defer 1.0.0 tag.
+
+## 2026-05-15 13:35 [saved]
+Goal: WSL2 Linux binary backfill for v0.59.0
+Decisions:
+- WSL2 Ubuntu 24.04 installed via `wsl --install -d Ubuntu-24.04 --no-launch`. No admin needed (WSL already enabled).
+- Build deps via apt: cmake 3.28.3, ninja 1.11.1, g++ 13.3.0, zlib1g-dev, build-essential, curl, git.
+- Build on /mnt/d/... works (DrvFs ~50s test phase, acceptable for occasional releases).
+- 2 CMake patches needed for Linux build green:
+  1. `scripts/release-linux.sh` CRLF → LF (sed -i 's/\r$//') — written from Windows defaults to CRLF.
+  2. `tree_sitter_runtime` needs `_GNU_SOURCE` define on Linux (NOT macOS) for `be16toh/le16toh` UTF-16 decode in lib.c. glibc gates these behind feature macro; macOS libc + MinGW expose unconditionally.
+- 65/65 ctest pass on Linux. Archive 4.3MB (vs Win 11MB — no ORT DLLs bundled, libonnxruntime.so.* stripped via .gitignore).
+- Public release v0.59.0 now ships Win zip + Linux tar.gz + both sha256 sidecars.
+- WSL2 build flow: `wsl -d Ubuntu-24.04 -u root -- bash scripts/release-linux.sh` → /tmp/icmg-VERSION-linux-x64.tar.gz → cp to /mnt/c/temp/ → gh release upload. ~10min cold first run.
+Rejected: macOS binary (no Apple hardware); CI matrix paid Actions (solo-dev policy).
+Open: CMake `_GNU_SOURCE` patch + sh-script needs commit to private/main + release-linux.sh CRLF fix needs LF normalization on commit. v1.0.0 ceremony tag only blocked on macOS binary.
+
+## 2026-05-15 17:10 [saved]
+Goal: v1.1.0 SHIPPED — 10-task minor (perf + enforcement + canonical popup fix).
+Decisions:
+- Contract additive only: new cmds bench/service/skill-index alias, new env opt-outs (ICMG_STRICT_BYPASS, ICMG_CAVEMAN_QUIET, ICMG_STOP_SYNC), migration 0027 (last_returned_session).
+- Canonical popup fix = resident daemon `icmg service` (1 logon-trigger replaces 5 per-project schtasks); VBS layer alone insufficient.
+- Async Stop hook: sync `toolBudgetReset()` only; distill/fail-sync/compliance detached thread.
+- PreToolUse hard-deny via `permissionDecision: "deny"` for cat/head/tail/grep -r/powershell/cmd /c when icmg equivalent exists.
+- Caveman per-prompt re-inject 5 escalation tiers tied to 24h violation count.
+- MemoryStore embed cache: bulk load on first recallSemantic; invalidate on store.
+- `--unseen` recall opt: per-session dedup via last_returned_session column.
+Rejected:
+- HNSW ANN — BM25 prefilter on 1k-10k nodes makes ANN marginal; embed cache + cosine sufficient.
+- GH Actions matrix CI — solo-dev billing; WSL2 local Linux build instead.
+- Stop hook sync path as default — kept behind ICMG_STOP_SYNC=1 fallback only.
+
+## 2026-05-15 17:40 [saved]
+Goal: v1.1.1 — service auto-activates on init/install + legacy schtasks cleaned.
+Decisions:
+- New `core::installResidentService` + `cleanupLegacySchtasks` helpers; init + install --system + service install all delegate to one path.
+- Opt-out via `ICMG_SKIP_SERVICE=1`.
+- Legacy cleanup prefix-matches autopilot schtasks; excludes `icmg-service` to avoid self-delete.
+- Drop GH Sponsors badge + FUNDING entry; keep Ko-fi only.
+Rejected:
+- Per-cmd `installScheduled()` cleanup — touches 5 cmd files, risks regressing explicit `--schedule`.
+- Subprocess fork to `icmg service install` from init — defeats in-process refactor.
+- Building in Claude Code sandbox (initial) — c++.exe killed silently. Later resolved (see 18:30): PATH missing /c/msys64/mingw64/bin → libmpfr-6.dll unresolved.
+
+## 2026-05-15 18:30 [saved]
+Goal: v1.1.1 SHIPPED — service auto-activate + legacy cleanup, Win+Linux binaries.
+Decisions:
+- Sandbox cc1plus root cause: PATH missing /c/msys64/mingw64/bin → libmpfr-6.dll unresolved → silent exit 1 (no stderr). Prepend that dir for any cmake/build invocation.
+- Linux/macOS: `#ifdef _WIN32` guards added in init_cmd + install_cmd around service auto-install (helpers themselves are POSIX no-op stubs).
+- Test harness: my failing test needed `int main() { return icmg::test::run_all(); }` + `#include "../test_main.hpp"` not gtest.
+- 71/71 ctest pass Windows + WSL2 Linux. GH release published with 4 assets.
+Rejected:
+- `dangerouslyDisableSandbox` — doesn't fix PATH issue, env still inherited from Bash tool.
+- gtest-style includes — project uses tiny in-repo TEST/ASSERT macros from tests/test_main.hpp.
