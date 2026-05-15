@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-65%2F65%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-66%2F66%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -24,18 +24,30 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## 🟢 Status
+## 🟢 Status — v1.0.0 production-stable
 
 | Aspect | Today |
 |---|---|
-| **Platform** | Windows x64 — daily-driven, battle-tested |
-| **Stability gate** | Pre-1.0 — 65/65 tests gate every release; integrity hashes on every artifact |
-| **Production-stable milestone** | Reached when Linux x64 + macOS arm64/x64 binaries ship alongside Windows |
+| **Platforms** | Windows x64 + Linux x64 — prebuilt binaries on every release |
+| **macOS arm64** | Source builds cleanly (verified via prior CI); no prebuilt binary yet — see install section |
+| **Stability gate** | 66/66 tests gate every release; sha256 sidecar on every binary |
 | **Self-healing** | Snapshot + dual-mirror + audit log + auto-recovery built into the binary itself |
+| **Hook overhead** | ~5-10 ms per session-boundary event (daemon RPC + zero-fork in-process runners) |
 
-Windows users today: **safe to depend on for solo + small-team workflows**. The hard part — token economics, integrity, recovery — already works in production. Cross-platform parity is the last gate before the `v1.0` tag.
+**v1.0.0 means:** stable wire formats, stable on-disk schema (migrations only forward), stable CLI surface, stable MCP tool names. No more breaking changes on minor bumps. Source-level work is complete across Win + Linux + macOS.
 
-> 🛣️ **Roadmap:** multi-platform release plan at `docs/plans/2026-05-14-multi-platform-release.md` (8 tasks, GitHub Actions matrix scaffold ready). First cross-platform release ships as `v1.0.0`.
+---
+
+## 🚀 What's new in v1.0.0 — production-stable
+
+| Feature | What changed |
+| --- | --- |
+| **First production-stable tag** | Source-level feature parity reached. Win + Linux x64 binaries ship from this release; macOS arm64 builds from source on the same CMake flow |
+| **TDD debt closed** | `tests/cli/test_hook_cmd.cpp` adds CLI-layer contract test for `icmg hook` command registry + dispatch. Combined with the deep behavior tests in `test_hook_internals.cpp` (since v0.57.0), the hook subsystem is fully covered |
+| **66/66 ctest** | One new test from v0.59.0's 65/65 — verified on both Windows (MSYS2 MinGW) and Linux (WSL2 Ubuntu 24.04 + glibc 2.39) |
+| **Stable contract** | Stable wire formats (MCP tools, daemon RPC, hook JSON), stable SQLite schema (migrations forward-only), stable CLI surface, stable persistent paths. No more breaking changes on minor bumps |
+
+> 🏁 **What v1.0.0 is NOT:** a sales pitch. It's a stability commitment. New features land as minor bumps; only critical security holes get patch bumps. macOS arm64 binary may be added later if a build path (self-hosted runner / paid CI / Apple hardware) opens up — when it does, it ships as v1.0.x with no source changes.
 
 ---
 
@@ -66,20 +78,7 @@ Windows users today: **safe to depend on for solo + small-team workflows**. The 
 
 ---
 
-## 🔥 What's new in v0.57.0
-
-| Feature | What changed |
-| --- | --- |
-| **Hooks go fully in-process** | `runStopHook` no longer forks 4 subprocesses (`icmg distill auto` / `fail sync-denials` / `compliance check-thinking` / `tool-budget reset`). Each is now a direct C++ call into `src/core/hooks/internals.cpp`. **~200-400ms saved per Stop event** |
-| **In-process compress** | `runPostToolUseReadHook` calls `icmg::compress::Compressor` directly — no `icmg compress` subprocess for auto-compress of large Read output |
-| **Single source of truth** | Six new lib functions (`distillAuto` / `distillSession` / `complianceCheckThinking` / `failSyncDenials` / `toolBudgetReset` / `compressInPlace`) mirror CLI commands. Best-effort, never throw |
-| **+11 internals tests** | compliance word counting; distill short-circuits; opt-out env vars (ICMG_NO_STOP_HOOK / ICMG_NO_PRECOMPACT_HOOK / ICMG_NO_COMPRESS_HOOK); compress small-input guard. 65/65 ctest pass |
-
-> 🚀 **Compound win:** combined with v0.56.0's daemon RPC, a hook event now goes from "fork 5 icmg.exe processes" (~250-500ms cold) to "one socket round-trip + zero forks" (~5-10ms). User-visible behavior unchanged; CLI commands `icmg distill` / `compliance` / `fail` / `tool-budget` / `compress` still work normally.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v0.56.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v0.57.x and earlier.
 
 ---
 
