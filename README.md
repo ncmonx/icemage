@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-70%2F70%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-71%2F71%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -36,6 +36,22 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 **v1.0.0 means:** stable wire formats, stable on-disk schema (migrations only forward), stable CLI surface, stable MCP tool names. No more breaking changes on minor bumps. Source-level work is complete across Win + Linux + macOS.
 
 ---
+
+## 🚀 What's new in v1.1.1 — service auto-activate + legacy cleanup
+
+| Feature | What changed |
+| --- | --- |
+| **Auto-installed daemon** | `icmg service` now registers itself on every `icmg init`, `icmg update --apply`, and `icmg install --system`. No more manual `icmg service install` step after upgrade |
+| **Legacy schtasks cleaned** | Pre-v1.1.0 per-project autopilot tasks (`icmg-backup-*`, `icmg-maintain-*`, `icmg-mirror-*`, `icmg-sentinel-*`, `icmg-shadow-upgrade*`) are deleted on next init. The single `icmg-service` logon-trigger replaces them |
+| **POSIX-clean** | Linux/macOS init no longer prints a misleading "logon-trigger installed" line; helpers are guarded by `_WIN32` |
+| **Opt-out** | `ICMG_SKIP_SERVICE=1` skips both install + cleanup |
+| **GitHub Sponsors dropped** | Badge + `FUNDING.yml` entry removed. Ko-fi kept as sole optional tip route |
+
+```bash
+icmg update --apply         # auto-installs service, cleans legacy tasks
+ICMG_SKIP_SERVICE=1 icmg init  # opt out
+schtasks /Query /TN icmg-service   # verify
+```
 
 ## 🚀 What's new in v1.1.0 — perf + enforcement + canonical popup fix
 
