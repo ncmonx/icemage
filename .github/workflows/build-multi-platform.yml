@@ -132,9 +132,8 @@ jobs:
           done
           # Bundle ORT DLLs
           cp third_party/onnxruntime/lib/*.dll pkg/ 2>/dev/null || true
-          cd pkg
-          7z a -tzip "../icmg-${VERSION}-win-x64.zip" *
-          cd ..
+          # Use PowerShell — MSYS2 MINGW64 doesn't bundle 7z by default.
+          powershell -NoProfile -Command "Compress-Archive -Path pkg/* -DestinationPath icmg-${VERSION}-win-x64.zip -Force"
           sha256sum "icmg-${VERSION}-win-x64.zip" | awk '{print $1 "  icmg-" v "-win-x64.zip"}' v="$VERSION" > "icmg-${VERSION}-win-x64.zip.sha256"
 
       - name: Package (Linux)
