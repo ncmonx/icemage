@@ -76,12 +76,26 @@ jobs:
             -DICMG_USE_ONNX=ON \
             -DICMG_USE_TREESITTER=ON
 
-      - name: Configure (Linux/macOS)
-        if: ${{ !startsWith(matrix.runner, 'windows') }}
+      - name: Configure (Linux)
+        if: startsWith(matrix.runner, 'ubuntu')
         run: |
+          # Linux: tree-sitter disabled in v0.58.0 — apt's libtree-sitter is
+          # v0.20.x, vendored grammars expect v0.26 ABI → silent empty parse.
+          # Tracked for v0.59.0 (vendor libtree-sitter source).
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DICMG_USE_ONNX=ON \
+            -DICMG_USE_TREESITTER=OFF
+
+      - name: Configure (macOS)
+        if: startsWith(matrix.runner, 'macos')
+        run: |
+          # macOS: ONNX disabled in v0.58.0 — bundled .dylib symlink handling
+          # in CMake's file(ARCHIVE_EXTRACT) misbehaves. Tracked for v0.59.0.
+          # Tree-sitter still available via Homebrew (matches vendored ABI).
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DICMG_USE_ONNX=OFF \
             -DICMG_USE_TREESITTER=ON
 
       - name: Build (Windows)
