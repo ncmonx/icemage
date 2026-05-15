@@ -1092,9 +1092,10 @@ private:
         // so the rule applies across ALL projects, not just this one.
         n += installGlobalReadHook(force);
 
-        // v1.1.1: register resident service (logon-trigger) + clean any legacy
-        // per-project autopilot schtasks left over from pre-v1.1.0.
-        // Opt-out via ICMG_SKIP_SERVICE=1.
+        // v1.1.1: register resident service (Windows logon-trigger) + clean any
+        // legacy per-project autopilot schtasks left over from pre-v1.1.0.
+        // POSIX: helpers are no-op stubs. Opt-out via ICMG_SKIP_SERVICE=1.
+#ifdef _WIN32
         if (!std::getenv("ICMG_SKIP_SERVICE")) {
             std::string serr;
             if (core::installResidentService(&serr)) {
@@ -1106,6 +1107,7 @@ private:
             if (removed > 0)
                 std::cout << "  + icmg service: cleaned " << removed << " legacy schtasks\n";
         }
+#endif
 
         return n;
     }

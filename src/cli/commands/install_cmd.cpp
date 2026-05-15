@@ -190,6 +190,8 @@ private:
         std::cout << "\nSystem install complete: " << dest_dir << "\n";
 
         // v1.1.1: register resident service + clean legacy autopilot schtasks.
+        // Windows-only — helpers are no-op stubs on POSIX.
+#ifdef _WIN32
         if (!std::getenv("ICMG_SKIP_SERVICE")) {
             std::string serr;
             if (core::installResidentService(&serr)) {
@@ -201,6 +203,7 @@ private:
             if (removed > 0)
                 std::cout << "  + icmg service: cleaned " << removed << " legacy schtasks\n";
         }
+#endif
 
         // PATH hint
         bool on_path = isOnPath(dest_dir);
