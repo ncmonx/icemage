@@ -13,7 +13,6 @@
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ncmonx/icm-graph/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ncmonx/icm-graph)
 [![OpenSSF Best Practices](https://img.shields.io/cii/level/12818?label=OpenSSF%20Best%20Practices)](https://www.bestpractices.dev/projects/12818)
-[![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
 
 > **Stop burning tokens. Stop losing context. Ship faster.**
@@ -525,7 +524,6 @@ icmg is built by one person, MIT-grade rigor, Apache-2.0 license, free forever. 
 
 If icmg has saved you tokens that would have cost more than a coffee, you're welcome to:
 
-[![Sponsor on GitHub](https://img.shields.io/badge/💚_Sponsor-GitHub-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![Tip on Ko-fi](https://img.shields.io/badge/☕_Tip-Ko--fi-ff5e5b?style=for-the-badge&logo=ko-fi)](https://ko-fi.com/ncmonx)
 
 No pressure, no nags, no paywalled features. Every line of icmg stays open-source regardless. Support just routes the dev pipeline straight at the next bottleneck — usually multi-platform CI minutes, ANN index work, or a faster recall path.
