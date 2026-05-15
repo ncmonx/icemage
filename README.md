@@ -329,19 +329,46 @@ Run `icmg --help` for the full list of 82+ subcommands. Each has its own `--help
 
 ## Install
 
-**Windows (recommended):** download the latest release, drop `icmg.exe` somewhere on `PATH`. The bundled DLLs live next to it. Done.
+**Windows (recommended):** download the latest release, drop `icmg.exe` somewhere on `PATH`. Bundled `libwinpthread-1.dll` lives next to it. Done.
 
-**Build from source:**
+**Linux x64 — build from source** *(no prebuilt binary as of v0.59.0; solo-dev cost-saving)*:
 
 ```bash
+# One-time deps (Ubuntu/Debian)
+sudo apt update && sudo apt install -y cmake ninja-build build-essential zlib1g-dev curl git
+# Clone + build
 git clone https://github.com/ncmonx/icm-graph
 cd icm-graph
-cmake -B build && cmake --build build
-# Optional capabilities (turn on what you want)
-cmake -B build -DICMG_USE_TREESITTER=ON -DICMG_USE_ONNX=ON
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DICMG_USE_ONNX=ON -DICMG_USE_TREESITTER=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure   # 65/65 should pass
+sudo install -m755 build/icmg /usr/local/bin/
+# ONNX runtime lib (if you enabled it) — put next to icmg or on LD_LIBRARY_PATH
+sudo install -m644 third_party/onnxruntime/lib/libonnxruntime.so.* /usr/local/lib/
+sudo ldconfig
 ```
 
-Optional capabilities are exactly that — optional. Default build runs everywhere with zero external dependencies beyond a C++17 compiler.
+On Windows, the same build works from a **WSL2 Ubuntu** shell — produces a native Linux ELF binary you can ship to Linux users.
+
+**macOS (arm64 or Intel) — build from source:**
+
+```bash
+brew install cmake ninja zlib curl git
+git clone https://github.com/ncmonx/icm-graph
+cd icm-graph
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DICMG_USE_ONNX=ON -DICMG_USE_TREESITTER=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+sudo install -m755 build/icmg /usr/local/bin/
+# ONNX dylib next to binary or on DYLD_LIBRARY_PATH
+sudo cp -RP third_party/onnxruntime/lib/libonnxruntime*.dylib /usr/local/lib/
+# First run only — Gatekeeper override for unsigned local build
+xattr -d com.apple.quarantine /usr/local/bin/icmg 2>/dev/null || true
+```
+
+**Optional capabilities** (`ICMG_USE_ONNX` for semantic recall, `ICMG_USE_TREESITTER` for AST symbol extractors) auto-fetch their dependencies via CMake (`curl` required). Default-OFF build runs everywhere with zero external dependencies beyond a C++17 compiler — useful for slim deployments where regex-extractor + BM25-only recall is enough.
 
 ---
 
