@@ -1111,3 +1111,18 @@ Decisions:
 - v0.58.1 popup hotfix CHANGELOG entry backfilled.
 Rejected: paid Actions minutes (no plan to spend); waiting for CI billing refresh; releasing without CI verification on Linux/macOS (would block indefinitely).
 Open: v1.0.0 gate requires full-platform binary distribution → self-hosted runner setup OR migrate CI to free alternative OR defer 1.0.0 tag.
+
+## 2026-05-15 13:35 [saved]
+Goal: WSL2 Linux binary backfill for v0.59.0
+Decisions:
+- WSL2 Ubuntu 24.04 installed via `wsl --install -d Ubuntu-24.04 --no-launch`. No admin needed (WSL already enabled).
+- Build deps via apt: cmake 3.28.3, ninja 1.11.1, g++ 13.3.0, zlib1g-dev, build-essential, curl, git.
+- Build on /mnt/d/... works (DrvFs ~50s test phase, acceptable for occasional releases).
+- 2 CMake patches needed for Linux build green:
+  1. `scripts/release-linux.sh` CRLF → LF (sed -i 's/\r$//') — written from Windows defaults to CRLF.
+  2. `tree_sitter_runtime` needs `_GNU_SOURCE` define on Linux (NOT macOS) for `be16toh/le16toh` UTF-16 decode in lib.c. glibc gates these behind feature macro; macOS libc + MinGW expose unconditionally.
+- 65/65 ctest pass on Linux. Archive 4.3MB (vs Win 11MB — no ORT DLLs bundled, libonnxruntime.so.* stripped via .gitignore).
+- Public release v0.59.0 now ships Win zip + Linux tar.gz + both sha256 sidecars.
+- WSL2 build flow: `wsl -d Ubuntu-24.04 -u root -- bash scripts/release-linux.sh` → /tmp/icmg-VERSION-linux-x64.tar.gz → cp to /mnt/c/temp/ → gh release upload. ~10min cold first run.
+Rejected: macOS binary (no Apple hardware); CI matrix paid Actions (solo-dev policy).
+Open: CMake `_GNU_SOURCE` patch + sh-script needs commit to private/main + release-linux.sh CRLF fix needs LF normalization on commit. v1.0.0 ceremony tag only blocked on macOS binary.

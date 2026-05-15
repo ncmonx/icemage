@@ -29,6 +29,7 @@ third_party/tree-sitter-php/
 
 # Local experiments
 build_test/
+build_linux/
 nul
 
 # AI assistant artifacts

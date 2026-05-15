@@ -275,6 +275,12 @@ if(ICMG_USE_TREESITTER)
     if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(tree_sitter_runtime PRIVATE -w -std=c11)
     endif()
+    # glibc gates be16toh/le16toh (UTF-16 decode in tree-sitter v0.25+ lib.c)
+    # behind _GNU_SOURCE / _DEFAULT_SOURCE feature macro. macOS libc + MinGW
+    # expose them unconditionally so guard the define to Linux only.
+    if(UNIX AND NOT APPLE)
+        target_compile_definitions(tree_sitter_runtime PRIVATE _GNU_SOURCE)
+    endif()
 
     set(TS_INCLUDE ${TS_RUNTIME_DIR}/lib/include)
     set(TS_LIB tree_sitter_runtime)
