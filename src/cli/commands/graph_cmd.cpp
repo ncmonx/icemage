@@ -741,7 +741,7 @@ private:
                     "bin", "obj", ".vs", ".idea", ".icmg", "coverage", "vendor"
                 };
                 bool should_skip = false;
-                for (auto& seg : e.path()) {
+                for (const auto& seg : e.path()) {
                     if (skip.count(seg.string())) { should_skip = true; break; }
                 }
                 if (should_skip) continue;

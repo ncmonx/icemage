@@ -12,6 +12,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include <climits>
 #include <iostream>
 #include <fstream>
 #include <sstream>
