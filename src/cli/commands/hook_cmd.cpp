@@ -26,6 +26,7 @@
 #include "../../core/path_utils.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/hooks/runners.hpp"
+#include "../../core/hooks/internals.hpp"
 #include "../../daemon/rule_daemon_client.hpp"
 #include "../../imem/memory_store.hpp"
 
@@ -79,6 +80,7 @@ public:
         const std::string& event = args[0];
         if (event == "userprompt")          return cmdUserPrompt();
         if (event == "pretooluse-read")     return cmdPreToolUseRead();
+        if (event == "pretooluse")          return cmdPreToolUseEnforce();
         if (event == "stop")                return cmdStop();
         if (event == "precompact")          return cmdPreCompact();
         if (event == "posttooluse-read")    return cmdPostToolUseRead();
@@ -173,10 +175,13 @@ private:
     }
 
     // Build the additionalContext payload + emit JSON to stdout.
+    // v1.1.0 Task 6.6: prepend caveman re-inject block when caveman.flag is
+    // ON and violations >0. Empty block on healthy sessions → no overhead.
     static void emitContext(const std::string& msg) {
+        std::string caveman = icmg::core::hooks::runUserPromptCavemanInject();
         json out;
         out["hookSpecificOutput"]["hookEventName"] = "UserPromptSubmit";
-        out["hookSpecificOutput"]["additionalContext"] = msg;
+        out["hookSpecificOutput"]["additionalContext"] = caveman + msg;
         std::cout << out.dump() << "\n";
     }
 
@@ -630,6 +635,8 @@ private:
     int cmdStop();
     int cmdPreCompact();
     int cmdPostToolUseRead();
+    // v1.1.0 Task 6: PreToolUse hard-deny enforcement.
+    int cmdPreToolUseEnforce();
 };
 
 // ── v0.56.0: Stop / PreCompact / PostToolUse-Read ─────────────────────────────
@@ -667,6 +674,16 @@ int HookCommand::cmdPostToolUseRead() {
         return 0;
     }
     auto out = icmg::core::hooks::runPostToolUseReadHook(raw);
+    if (!out.empty()) std::cout << out << "\n";
+    return 0;
+}
+
+// v1.1.0 Task 6: PreToolUse hard-deny — reads Claude Code hook v2 event from
+// stdin, returns permissionDecision JSON. Bypassable per-session via
+// ICMG_STRICT_BYPASS=1.
+int HookCommand::cmdPreToolUseEnforce() {
+    std::string raw = readStdinAll();
+    std::string out = icmg::core::hooks::runPreToolUseEnforce(raw);
     if (!out.empty()) std::cout << out << "\n";
     return 0;
 }

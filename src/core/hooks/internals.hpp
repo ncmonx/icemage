@@ -46,4 +46,20 @@ void toolBudgetReset();
 // with stdin = input, stdout = output.
 std::string compressInPlace(const std::string& input, int threshold = 256);
 
+// v1.1.0 Task 6: PreToolUse hard-deny enforcement.
+// Inspects a single tool invocation against icmg-first rules. Returns
+// Claude Code hook v2 JSON ("permissionDecision": "allow"/"deny"/"ask")
+// or empty string when bypassed (env ICMG_STRICT_BYPASS=1).
+//
+// stdin_raw is the raw JSON Claude Code passes to the PreToolUse hook:
+//   {"tool_name":"Bash","tool_input":{"command":"cat foo.cpp"}}
+//   {"tool_name":"Read","tool_input":{"file_path":"foo.cpp"}}
+std::string runPreToolUseEnforce(const std::string& stdin_raw);
+
+// v1.1.0 Task 6.6: caveman per-prompt re-inject + escalation.
+// Returns an additionalContext text block reminding the model of caveman
+// ultra; intensity scales with violation count in the last 24h.
+// Empty when caveman.flag absent or ICMG_CAVEMAN_QUIET=1.
+std::string runUserPromptCavemanInject();
+
 } // namespace icmg::core::hooks

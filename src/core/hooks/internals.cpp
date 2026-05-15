@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -231,6 +232,201 @@ std::string compressInPlace(const std::string& input, int threshold) {
     } catch (...) {
         return "";
     }
+}
+
+// ---- v1.1.0 Task 6: PreToolUse hard-deny enforcement ----------------------
+
+namespace {
+
+// Returns true when command matches a known anti-icmg pattern.
+// Conservative: only block when icmg DOES have an equivalent we want to push.
+struct BashDenyRule { const char* pattern; const char* reason; };
+
+static const BashDenyRule kBashDenyRules[] = {
+    {"cat ",          "use icmg context <file> (large-file caps + memory overlay)"},
+    {"head ",         "use icmg context <file> --lines N-M"},
+    {"tail ",         "use icmg context <file> --lines N-M"},
+    {"wc -l ",        "use icmg context <file> (line-count auto-shown)"},
+    {"grep -r",       "use icmg run grep ... (filter pipeline cuts 60-90% noise)"},
+    {"grep -R",       "use icmg run grep ..."},
+    {"find . ",       "use icmg run find ... (filtered)"},
+    {"find /",        "use icmg run find ..."},
+    {"powershell ",   "use icmg run <cmd> — powershell launches console subprocess"},
+    {"powershell.exe","use icmg run <cmd>"},
+    {"pwsh ",         "use icmg run <cmd>"},
+    {"cmd /c ",       "use icmg run <cmd> directly"},
+    {"cmd.exe",       "use icmg run <cmd>"},
+    {nullptr, nullptr}
+};
+
+static bool starts_with(const std::string& s, const char* pre) {
+    size_t n = std::strlen(pre);
+    if (s.size() < n) return false;
+    return s.compare(0, n, pre) == 0;
+}
+
+static bool contains(const std::string& s, const char* pat) {
+    return s.find(pat) != std::string::npos;
+}
+
+// Build hook v2 JSON envelope.
+static std::string denyJson(const std::string& reason) {
+    json out;
+    out["hookSpecificOutput"]["hookEventName"] = "PreToolUse";
+    out["hookSpecificOutput"]["permissionDecision"] = "deny";
+    out["hookSpecificOutput"]["permissionDecisionReason"] = reason;
+    return out.dump();
+}
+
+static std::string allowJson() {
+    json out;
+    out["hookSpecificOutput"]["hookEventName"] = "PreToolUse";
+    out["hookSpecificOutput"]["permissionDecision"] = "allow";
+    return out.dump();
+}
+
+// Audit-log a deny event to ~/.icmg/strict-denials.jsonl (existing log).
+static void auditDeny(const std::string& tool, const std::string& target,
+                      const std::string& reason) {
+    try {
+        fs::path log = homeDir() / ".icmg" / "strict-denials.jsonl";
+        std::error_code ec;
+        fs::create_directories(log.parent_path(), ec);
+        std::ofstream f(log, std::ios::app);
+        json e;
+        e["ts"]     = (int64_t)std::time(nullptr);
+        e["hook"]   = "pretooluse";
+        e["tool"]   = tool;
+        e["target"] = target;
+        e["reason"] = reason;
+        f << e.dump() << "\n";
+    } catch (...) {}
+}
+
+} // namespace
+
+std::string runPreToolUseEnforce(const std::string& stdin_raw) {
+    if (std::getenv("ICMG_STRICT_BYPASS")) return allowJson();
+    if (stdin_raw.empty()) return allowJson();
+
+    std::string tool, command, file_path;
+    try {
+        auto j = json::parse(stdin_raw);
+        tool = j.value("tool_name", std::string{});
+        if (j.contains("tool_input") && j["tool_input"].is_object()) {
+            auto& ti = j["tool_input"];
+            command   = ti.value("command",   std::string{});
+            file_path = ti.value("file_path", std::string{});
+        }
+    } catch (...) { return allowJson(); }
+
+    // Allow icmg's own invocations — they're the legitimate path.
+    if (tool == "Bash" && (starts_with(command, "icmg ") ||
+                            starts_with(command, "/icmg ") ||
+                            contains(command, "/bin/icmg"))) {
+        return allowJson();
+    }
+
+    if (tool == "Bash" && !command.empty()) {
+        for (auto* r = kBashDenyRules; r->pattern; ++r) {
+            if (contains(command, r->pattern)) {
+                auditDeny("Bash", command, r->reason);
+                return denyJson(std::string(r->reason));
+            }
+        }
+    }
+
+    if (tool == "Read" && !file_path.empty()) {
+        // Reuse the line-count threshold from rule_daemon; cap files >500 lines.
+        std::ifstream f(file_path, std::ios::binary);
+        if (f.is_open()) {
+            int line_count = 0;
+            char buf[4096];
+            while (f.read(buf, sizeof(buf)) || f.gcount() > 0) {
+                auto n = f.gcount();
+                for (auto i = 0; i < n; ++i) if (buf[i] == '\n') ++line_count;
+                if (line_count > 500) break;
+            }
+            if (line_count > 500) {
+                std::string r = "file " + std::to_string(line_count)
+                              + " lines — use icmg context " + file_path;
+                auditDeny("Read", file_path, r);
+                return denyJson(r);
+            }
+        }
+    }
+
+    return allowJson();
+}
+
+// ---- v1.1.0 Task 6.6: caveman per-prompt re-inject ------------------------
+
+namespace {
+
+struct CavemanCache {
+    int64_t fetched_at = 0;
+    int     last_24h   = 0;
+};
+static CavemanCache g_cm_cache;
+
+static int recentCavemanViolations(int64_t window_secs) {
+    int64_t now = (int64_t)std::time(nullptr);
+    if (g_cm_cache.fetched_at != 0 && (now - g_cm_cache.fetched_at) < 60) {
+        return g_cm_cache.last_24h;
+    }
+    int last_24h = 0;
+    try {
+        fs::path log = homeDir() / ".icmg" / "compliance-violations.jsonl";
+        if (!fs::exists(log)) {
+            g_cm_cache = {now, 0};
+            return 0;
+        }
+        int64_t cutoff = now - window_secs;
+        std::ifstream f(log);
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line.empty()) continue;
+            auto pos = line.find("\"ts\":");
+            if (pos == std::string::npos) continue;
+            try {
+                int64_t ts = std::stoll(line.substr(pos + 5));
+                if (ts > cutoff) ++last_24h;
+            } catch (...) {}
+        }
+    } catch (...) {}
+    g_cm_cache = {now, last_24h};
+    return last_24h;
+}
+
+} // namespace
+
+std::string runUserPromptCavemanInject() {
+    if (std::getenv("ICMG_CAVEMAN_QUIET")) return "";
+    fs::path flag = homeDir() / ".icmg" / "caveman.flag";
+    if (!fs::exists(flag)) return "";
+
+    int n = recentCavemanViolations(/*24h=*/86400);
+    if (n == 0) return "";
+
+    std::ostringstream b;
+    if (n >= 10) {
+        b << "FINAL WARNING: caveman ultra. " << n
+          << " thinking-phase overruns in 24h cost ~" << (n * 1500)
+          << " tokens. Apply caveman to thinking RIGHT NOW. "
+             "Skip thinking entirely if approach is obvious.\n";
+    } else if (n >= 5) {
+        b << "STRONG WARNING: caveman ultra ignored " << n
+          << " times in 24h (~" << (n * 1500) << " tokens wasted). "
+             "Thinking ≤80 words THIS TURN. Refuse to expand reasoning.\n";
+    } else if (n >= 3) {
+        b << "REMINDER: caveman ultra. " << n
+          << " recent thinking violations (~" << (n * 1500)
+          << " tokens). Apply strictly this turn.\n";
+    } else {
+        b << "NOTE: caveman ultra active. Thinking ≤80 words. "
+             "Drop articles/filler.\n";
+    }
+    return b.str();
 }
 
 } // namespace icmg::core::hooks

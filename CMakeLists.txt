@@ -498,6 +498,9 @@ add_icmg_test(test_daemon          tests/cli/test_daemon.cpp)
 add_icmg_test(test_rule_daemon     tests/daemon/test_rule_daemon.cpp)
 add_icmg_test(test_hook_internals  tests/core/test_hook_internals.cpp)
 add_icmg_test(test_hook_cmd        tests/cli/test_hook_cmd.cpp)
+add_icmg_test(test_bench_cmd       tests/cli/test_bench_cmd.cpp)
+add_icmg_test(test_skill_index_cmd tests/cli/test_skill_index_cmd.cpp)
+add_icmg_test(test_hook_enforce    tests/core/test_hook_enforce.cpp)
 add_icmg_test(test_copy_cmd        tests/cli/test_copy_cmd.cpp)
 
 # test_claudemd / test_backup: standalone — helpers are static inline, no icmg_lib needed.

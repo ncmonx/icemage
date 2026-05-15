@@ -289,4 +289,31 @@ public:
 
 ICMG_REGISTER_COMMAND("skill", SkillCommand);
 
+// v1.1.0 Task 5: `icmg skill-index` alias.
+// Pre-v1.0 docs + agent-prompt examples consistently used hyphenated form;
+// nested-subcommand refactor left "unknown command" regression. Alias
+// forwards to `skill index <args...>` so legacy invocations still work.
+class SkillIndexAliasCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "skill-index"; }
+    std::string description() const override {
+        return "Alias for `icmg skill index` (compat with pre-v1.0 docs)";
+    }
+    void usage() const override {
+        std::cout <<
+            "Usage: icmg skill-index <action> [options]\n\n"
+            "Alias for `icmg skill index` — same actions:\n"
+            "  list / search / refresh / show <id>\n";
+    }
+    int run(const std::vector<std::string>& args) override {
+        SkillCommand inner;
+        std::vector<std::string> forwarded;
+        forwarded.reserve(args.size() + 1);
+        forwarded.push_back("index");
+        for (auto& a : args) forwarded.push_back(a);
+        return inner.run(forwarded);
+    }
+};
+ICMG_REGISTER_COMMAND("skill-index", SkillIndexAliasCommand);
+
 } // namespace icmg::cli

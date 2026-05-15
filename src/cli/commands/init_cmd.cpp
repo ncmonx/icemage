@@ -1056,6 +1056,19 @@ private:
                 })}
             }
         });
+        // v1.1.0 Task 6: PreToolUse hard-deny — denies raw shell / large Read /
+        // powershell / cmd patterns when icmg has an equivalent. Per-session
+        // bypass via ICMG_STRICT_BYPASS=1.
+        cfg["hooks"]["PreToolUse"] = json::array({
+            {
+                {"matcher", "Bash|Read|Glob|Grep|WebFetch"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook pretooluse"}}
+                })}
+            }
+        });
+
         // v0.54.0: Stop hook consolidated into `icmg hook stop` single fork.
         // Replaces the 5-bash-command chain (distill / fail-sync / compliance /
         // tool-budget / wflog) — saves ~150-250ms per Stop event.

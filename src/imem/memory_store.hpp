@@ -3,6 +3,7 @@
 #include "../core/db.hpp"
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <stdexcept>
 
 namespace icmg::imem {
@@ -73,6 +74,13 @@ public:
 
 private:
     core::Db& db_;
+
+    // v1.1.0 Task 3: in-memory embed cache.
+    // Lazily populated by recallSemantic — avoids per-query DB roundtrip
+    // for vec fetch. Cleared on store() to stay coherent with writes.
+    mutable std::unordered_map<int64_t, std::vector<float>> embed_cache_;
+    mutable bool embed_cache_warmed_ = false;
+    void warmEmbedCache(int dim) const;
 
     MemoryNode rowToNode(const core::Row& row) const;
     std::vector<MemoryNode> findSimilar(const std::string& topic,

@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <sstream>
 #include <string>
+#include <thread>
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -22,14 +23,39 @@ namespace icmg::core::hooks {
 
 // ---- Stop ------------------------------------------------------------------
 
+// v1.1.0 Task 7: async fast-path.
+// Synchronous part runs only the trivial in-process tasks (tool-budget reset);
+// distill / fail-sync / compliance run on a detached worker so the hook
+// returns to Claude Code within ~ms instead of ~150-300ms.
+//
+// Tradeoff: if the agent process exits within ~1s of Stop event firing, the
+// async work may not finish. memory_nodes writes are best-effort already; on
+// next SessionStart icmg picks up where it left off.
 std::string runStopHook(const std::string& stdin_raw) {
     if (std::getenv("ICMG_NO_STOP_HOOK")) return "";
     if (stdin_raw.empty()) return "";
 
+    // Sync: cheap + immediate-feedback work only.
+    toolBudgetReset();
+
+    // Async: heavyweight work that the agent doesn't need synchronously.
+    // Detach so the hook handler can return immediately. std::thread dtor
+    // would otherwise std::terminate on a non-joined thread.
+    if (!std::getenv("ICMG_STOP_SYNC")) {
+        std::thread([raw = stdin_raw]() {
+            try {
+                (void)distillAuto(raw, /*min_len=*/100);
+                (void)failSyncDenials();
+                (void)complianceCheckThinking(raw, /*max_words=*/80);
+            } catch (...) {}
+        }).detach();
+        return "";
+    }
+
+    // ICMG_STOP_SYNC=1 retains legacy synchronous path for debug / tests.
     (void)distillAuto(stdin_raw, /*min_len=*/100);
     (void)failSyncDenials();
     (void)complianceCheckThinking(stdin_raw, /*max_words=*/80);
-    toolBudgetReset();
     return "";
 }
 
