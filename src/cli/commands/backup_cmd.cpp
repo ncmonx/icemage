@@ -553,6 +553,10 @@ private:
         else if ((minutes % 60) == 0)
                                  cron_expr = "0 */" + std::to_string(minutes / 60) + " * * *";
         else                     cron_expr = "*/" + std::to_string(minutes) + " * * * *";
+        // Construct cd + snapshot + prune one-liner; cwd-bound to project root.
+        std::string cmd = "cd " + projectRoot().string()
+                        + " && icmg backup snapshot --note auto-hourly >> .icmg/sched/sched.log 2>&1"
+                        + " && icmg backup prune >> .icmg/sched/sched.log 2>&1";
         std::string entry = cron_expr + "  " + cmd + "  # " + tn + "\n";
 
         auto cur = core::safeExecShell("crontab -l 2>/dev/null", false, 5000);
