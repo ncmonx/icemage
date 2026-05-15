@@ -9,6 +9,8 @@
 #  define NOMINMAX
 #  include <windows.h>
 #  include <shlobj.h>
+#elif defined(__APPLE__)
+#  include <mach-o/dyld.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -74,6 +76,30 @@ bool isSQLiteFile(const std::string& path) {
     char magic[16] = {};
     f.read(magic, 16);
     return std::string(magic, 6) == "SQLite";
+}
+
+std::string selfExePath() {
+#ifdef _WIN32
+    char buf[1024];
+    DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    if (n == 0 || n >= sizeof(buf)) return {};
+    return std::string(buf, n);
+#elif defined(__APPLE__)
+    char buf[4096];
+    uint32_t sz = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &sz) != 0) return {};
+    try {
+        return fs::canonical(buf).string();
+    } catch (...) {
+        return std::string(buf);
+    }
+#else
+    try {
+        return fs::canonical("/proc/self/exe").string();
+    } catch (...) {
+        return {};
+    }
+#endif
 }
 
 } // namespace icmg::core

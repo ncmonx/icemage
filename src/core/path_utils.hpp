@@ -22,4 +22,9 @@ std::string homeDir();
 // Get icmg global config dir (~/.icmg or %APPDATA%\icmg).
 std::string icmgGlobalDir();
 
+// Cross-platform self executable path.
+// Windows: GetModuleFileNameA. Linux: /proc/self/exe via canonical.
+// macOS: _NSGetExecutablePath + canonical. Returns "" on failure.
+std::string selfExePath();
+
 } // namespace icmg::core

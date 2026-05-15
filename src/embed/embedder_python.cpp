@@ -13,6 +13,10 @@
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+
+#ifdef __APPLE__
+#  include <mach-o/dyld.h>
+#endif
 #include <string>
 #include <vector>
 #include <memory>
@@ -41,11 +45,19 @@ std::string findScript() {
     if (const char* env = std::getenv("ICMG_EMBED_SCRIPT")) {
         if (env[0] && fs::exists(env)) return env;
     }
+    fs::path bin;
 #ifdef _WIN32
-    char buf[1024]; DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
-    fs::path bin(std::string(buf, n));
+    char wbuf[1024]; DWORD wn = GetModuleFileNameA(nullptr, wbuf, sizeof(wbuf));
+    bin = fs::path(std::string(wbuf, wn));
+#elif defined(__APPLE__)
+    {
+        char mbuf[4096]; uint32_t msz = sizeof(mbuf);
+        if (_NSGetExecutablePath(mbuf, &msz) == 0) {
+            try { bin = fs::canonical(mbuf); } catch (...) { bin = mbuf; }
+        }
+    }
 #else
-    fs::path bin = fs::canonical("/proc/self/exe");
+    try { bin = fs::canonical("/proc/self/exe"); } catch (...) { /* leave empty */ }
 #endif
     // Walk: <bin>/, <bin>/embed/, <bin>/../embed/, <bin>/../../embed/, ~/.icmg/embed/
     std::vector<fs::path> tries;
