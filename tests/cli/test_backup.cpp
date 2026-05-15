@@ -46,12 +46,20 @@ static std::string computeSha256(const fs::path& file) {
     std::string cmd = "(sha256sum \"" + file.string()
                     + "\" 2>/dev/null || shasum -a 256 \"" + file.string() + "\")";
 #endif
+#ifdef _WIN32
     FILE* pipe = _popen(cmd.c_str(), "r");
+#else
+    FILE* pipe = popen(cmd.c_str(), "r");
+#endif
     if (!pipe) return {};
     std::string out;
     char buf[256];
     while (fgets(buf, sizeof(buf), pipe)) out += buf;
+#ifdef _WIN32
     _pclose(pipe);
+#else
+    pclose(pipe);
+#endif
     for (size_t i = 0; i + 64 <= out.size(); ++i) {
         bool ok = true;
         for (size_t j = 0; j < 64; ++j) {
