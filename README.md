@@ -39,6 +39,19 @@ Windows users today: **safe to depend on for solo + small-team workflows**. The 
 
 ---
 
+## 🎯 What's new in v0.59.0
+
+| Feature | What changed |
+| --- | --- |
+| **Vendored libtree-sitter (Linux feature parity)** | Runtime v0.26.0 fetched + built from source by CMake. Apt's v0.20.x is no longer used — eliminates the ABI mismatch that silently produced empty parse trees in v0.58.0. C / TypeScript / Python / Go / Rust / Java / C# / Ruby / Bash / Kotlin / Lua extractors all work on Linux now |
+| **macOS ORT extract via shell tar (macOS feature parity)** | POSIX ORT archives extracted with `tar -xzf` + `cp -RP` instead of `file(ARCHIVE_EXTRACT)` / `file(COPY)`. Preserves the `.dylib` symlink chain `libonnxruntime.dylib → .1.dylib → .1.25.1.dylib`; macOS arm64 ONNX embedder now links cleanly |
+| **Static-only Win bundle** | Vendored static tree-sitter eliminates `libtree-sitter-0.26.dll` / `wasmtime.dll` / `libzstd.dll` runtime deps. Win release zip slimmed (only `libwinpthread-1.dll` retained as a safety net) |
+| **Solo-dev release flow** | Matrix-CI workflow disabled (preserved as `.yml.disabled`) to keep solo-dev GitHub Actions minutes near zero. v0.59.0 ships Windows binary; Linux/macOS users build from source (`cmake -B build && cmake --build build`) |
+
+> 🛣️ **Next gate:** v1.0.0 production-stable. Now blocked only on full-platform binary distribution — viable paths: self-hosted runner, paid Actions minutes, or alternate CI host.
+
+---
+
 ## 🌐 What's new in v0.58.0
 
 | Feature | What changed |
@@ -66,26 +79,7 @@ Windows users today: **safe to depend on for solo + small-team workflows**. The 
 
 ---
 
-## ⚡ What's new in v0.56.0
-
-| Feature | What changed |
-| --- | --- |
-| **Daemon hook RPC** | `icmg hook stop` / `hook precompact` / `hook posttool_read` now route through `rule-daemon` socket when available — eliminates icmg.exe outer fork (~30-50ms × event). Inline runner is automatic fallback if daemon down |
-| **Auto-spawn fallback** | `RuleDaemonClient::ensureDaemon()` spawns `icmg rule-daemon start` background daemon on first connect failure; polls 500ms; transparent to caller |
-| **Length-prefix framing** | Responses ≥4KB now prefixed with `Content-Length: N\r\n\r\n` header — supports arbitrary-size compress payloads for `hook_posttool_read`. <4KB stay unframed (backward-compat with v0.55.x clients) |
-| **Shared runner module** | `src/core/hooks/runners.{hpp,cpp}` — both CLI hook handler and daemon RPC handler call the same `runStopHook` / `runPreCompactHook` / `runPostToolUseReadHook` functions. Single source of truth |
-| **+7 daemon tests** | hook_stop / hook_precompact / hook_posttool_read dispatch + ICMG_NO_STOP_HOOK opt-out + framing parser (strip / passthrough / malformed). 64/64 ctest pass; test_rule_daemon 25/25 (was 18) |
-
-```bash
-icmg rule-daemon start    # spawn daemon (auto-invoked on first hook call)
-icmg hook stop            # routes through daemon when up; falls back inline if down
-```
-
-> 🧱 Continues B1→B2→B3-B6 daemon refactor. Plan: `docs/plans/2026-05-14-phase-b3-b6-plan.md`.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v0.54.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v0.56.x and earlier.
 
 ---
 
