@@ -38,6 +38,15 @@ public:
                                    int limit    = 10,
                                    bool fuzzy   = false);
 
+    // v1.1.0 Task 4: diff-aware recall. When `unseen_in_session` is non-empty,
+    // excludes nodes whose `last_returned_session` already equals that string;
+    // after returning matches, stamps them with the session id so a second
+    // call in the same session returns nothing (or fewer).
+    std::vector<MemoryNode> recallUnseen(const std::string& query,
+                                          const std::string& session_id,
+                                          int  limit = 10,
+                                          bool fuzzy = false);
+
     // Zone-scoped recall: corpus restricted to nodes with matching zone before BM25 fit.
     // Sharper IDF + faster on large stores.
     std::vector<MemoryNode> recallInZone(const std::string& query,

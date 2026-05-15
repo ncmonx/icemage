@@ -29,6 +29,31 @@ int64_t MemoryStore::nowEpoch() const {
         std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+// v1.1.0 Task 3: bulk-load every memory_node embedding into the in-memory
+// cache on first semantic-recall call. Subsequent recalls within the same
+// MemoryStore lifetime hit the cache directly — zero EmbedStore DB calls.
+// Cleared on store() to stay coherent.
+void MemoryStore::warmEmbedCache(int dim) const {
+    if (embed_cache_warmed_) return;
+    embed_cache_warmed_ = true;
+    try {
+        std::vector<int64_t> all_ids;
+        db_.query("SELECT id FROM memory_nodes", {},
+                  [&](const core::Row& r) {
+                      if (r.empty()) return;
+                      try { all_ids.push_back(std::stoll(r[0])); } catch (...) {}
+                  });
+        if (all_ids.empty()) return;
+        embed::EmbedStore es(db_);
+        auto vecs = es.getMany("memory", all_ids, dim);
+        for (auto& kv : vecs) {
+            embed_cache_[kv.first] = std::move(kv.second);
+        }
+    } catch (...) {
+        // Cache stays empty; recall falls back to miss_ids path (DB query).
+    }
+}
+
 MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     // Columns: id, topic, content, keywords, importance, frequency,
     //          last_used, created_at, expires_at, deleted_at, zone, pinned, git_sha
@@ -113,6 +138,11 @@ std::vector<MemoryNode> MemoryStore::findSimilar(const std::string& topic,
 }
 
 int64_t MemoryStore::store(const MemoryNode& node, bool force) {
+    // v1.1.0 Task 3: any write invalidates the embed cache. Next recall
+    // refreshes from DB. Cheap (clear map + bool flip).
+    embed_cache_.clear();
+    embed_cache_warmed_ = false;
+
     // Fire PRE_STORE hook
     core::HookContext ctx;
     ctx.set<std::string>("topic",   node.topic);
@@ -280,6 +310,61 @@ std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
     return ranked;
 }
 
+// v1.1.0 Task 4: diff-aware recall. Filters out nodes whose
+// last_returned_session already matches the current session_id, then stamps
+// the returned set so a re-recall in the same session returns less.
+std::vector<MemoryNode> MemoryStore::recallUnseen(const std::string& query,
+                                                    const std::string& session_id,
+                                                    int limit, bool fuzzy) {
+    auto candidates = recall(query, limit * 4, fuzzy); // over-fetch then filter
+    if (session_id.empty() || candidates.empty()) {
+        if ((int)candidates.size() > limit) candidates.resize(limit);
+        return candidates;
+    }
+
+    // Read last_returned_session per candidate. Single SELECT IN (...) query.
+    std::ostringstream ids_sql;
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        if (i) ids_sql << ",";
+        ids_sql << candidates[i].id;
+    }
+    std::unordered_map<int64_t, std::string> seen;
+    try {
+        db_.query(
+            "SELECT id, COALESCE(last_returned_session,'') FROM memory_nodes "
+            "WHERE id IN (" + ids_sql.str() + ")",
+            {},
+            [&](const core::Row& r) {
+                if (r.size() < 2) return;
+                try { seen[std::stoll(r[0])] = r[1]; } catch (...) {}
+            });
+    } catch (...) {}
+
+    std::vector<MemoryNode> out;
+    out.reserve(limit);
+    std::vector<int64_t> to_stamp;
+    for (auto& n : candidates) {
+        auto it = seen.find(n.id);
+        if (it != seen.end() && it->second == session_id) continue;
+        out.push_back(n);
+        to_stamp.push_back(n.id);
+        if ((int)out.size() >= limit) break;
+    }
+
+    // Stamp the returned set as seen this session.
+    if (!to_stamp.empty()) {
+        std::ostringstream upd;
+        upd << "UPDATE memory_nodes SET last_returned_session=? WHERE id IN (";
+        for (size_t i = 0; i < to_stamp.size(); ++i) {
+            if (i) upd << ",";
+            upd << to_stamp[i];
+        }
+        upd << ")";
+        try { db_.run(upd.str(), {session_id}); } catch (...) {}
+    }
+    return out;
+}
+
 std::vector<MemoryNode> MemoryStore::recallInZone(const std::string& query,
                                                     const std::string& zone,
                                                     int limit, bool /*fuzzy*/) {
@@ -355,13 +440,29 @@ std::vector<MemoryNode> MemoryStore::recallSemantic(const std::string& query,
     }
 
     // Step 3: load doc embeddings for candidate ids.
-    embed::EmbedStore es(db_);
-    std::vector<int64_t> ids;
-    ids.reserve(cand.size());
-    for (auto& n : cand) ids.push_back(n.id);
-    auto vecs = es.getMany("memory", ids, dim);
+    // v1.1.0 Task 3: hot-path cache. Warm once per MemoryStore lifetime;
+    // subsequent recalls skip the EmbedStore DB query entirely.
+    warmEmbedCache(dim);
     std::unordered_map<int64_t, std::vector<float>> by_id;
-    for (auto& kv : vecs) by_id.emplace(kv.first, std::move(kv.second));
+    {
+        std::vector<int64_t> miss_ids;
+        for (auto& n : cand) {
+            auto it = embed_cache_.find(n.id);
+            if (it != embed_cache_.end()) {
+                by_id.emplace(n.id, it->second);
+            } else {
+                miss_ids.push_back(n.id);
+            }
+        }
+        if (!miss_ids.empty()) {
+            embed::EmbedStore es(db_);
+            auto vecs = es.getMany("memory", miss_ids, dim);
+            for (auto& kv : vecs) {
+                embed_cache_[kv.first] = kv.second;
+                by_id.emplace(kv.first, std::move(kv.second));
+            }
+        }
+    }
 
     // Step 4: BM25 normalisation (max-score = 1).
     double max_bm = 0.0;

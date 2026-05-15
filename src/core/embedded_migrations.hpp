@@ -521,6 +521,14 @@ ALTER TABLE rules ADD COLUMN trial_prompts   INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE rules ADD COLUMN trial_threshold INTEGER NOT NULL DEFAULT 5;
 CREATE INDEX IF NOT EXISTS idx_rules_trial ON rules(trial_mode) WHERE trial_mode=1;
 )SQL"},
+        {27, R"SQL(
+-- 0027_memory_seen_per_session (v1.1.0 Task 4)
+-- Per-session tracking column for `icmg recall --unseen` diff-aware path.
+-- TEXT NULL — zero storage cost on rows that never use the feature.
+ALTER TABLE memory_nodes ADD COLUMN last_returned_session TEXT;
+CREATE INDEX IF NOT EXISTS idx_memory_last_returned_session
+    ON memory_nodes(last_returned_session);
+)SQL"},
     };
 }
 

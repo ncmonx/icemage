@@ -76,6 +76,15 @@ public:
         try { alpha = std::stod(flagValue(args, "--alpha", "0.5")); } catch (...) {}
         if (pure_vec) alpha = 0.0;
         bool all_projects = hasFlag(args, "--all-projects");
+        // v1.1.0 Task 4: --unseen returns only entries not yet served in this
+        // session. Session id from ICMG_SESSION_ID env (set by SessionStart hook)
+        // or fallback to PID-based string.
+        bool unseen = hasFlag(args, "--unseen");
+        std::string session_id = flagValue(args, "--session", "");
+        if (session_id.empty()) {
+            const char* env_sid = std::getenv("ICMG_SESSION_ID");
+            if (env_sid && *env_sid) session_id = env_sid;
+        }
         std::string topic     = flagValue(args, "--topic");
         std::string zone      = flagValue(args, "--zone");
         std::string at_commit = flagValue(args, "--at-commit");
@@ -124,6 +133,8 @@ public:
             results = store.recallInZone(query, zone, limit, fuzzy);
         } else if (semantic) {
             results = store.recallSemantic(query, limit, alpha);
+        } else if (unseen) {
+            results = store.recallUnseen(query, session_id, limit, fuzzy);
         } else {
             results = store.recall(query, limit, fuzzy);
         }
