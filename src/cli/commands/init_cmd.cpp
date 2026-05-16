@@ -238,15 +238,27 @@ EXIT=$?
 exit 0
 )BASH";
 
-// v0.42.0: SessionStart — inject hot context_nodes (always-on sections).
+// v0.42.0 + v1.2.0: SessionStart inject — hot context_nodes + skill manifest.
+// Skill manifest gives the agent direct access patterns for every ingested
+// skill so it doesn't fall back to grep/Read when the user names one.
 static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on SessionStart.
-# Pre-warms binary, clears session-reads dedup, injects hot context_nodes.
+# Pre-warms binary, clears session-reads dedup, injects hot context_nodes
+# plus skill discovery manifest (v1.2.0+).
 command -v icmg >/dev/null 2>&1 || exit 0
 # Clear session dedup file — new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [ -d "$ICMG_HOME" ] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
-CONTENT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
+HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
+SKILLS=$(icmg skill manifest 2>/dev/null)
+CONTENT="$HOT"
+if [ -n "$SKILLS" ]; then
+    if [ -n "$CONTENT" ]; then
+        CONTENT="$CONTENT"$'\n\n'"$SKILLS"
+    else
+        CONTENT="$SKILLS"
+    fi
+fi
 [ -z "$CONTENT" ] && exit 0
 jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
 )BASH";

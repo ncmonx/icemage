@@ -20,6 +20,7 @@
 #include <sstream>
 #include <filesystem>
 #include <algorithm>
+#include <memory>
 #include <regex>
 
 namespace fs = std::filesystem;
@@ -231,6 +232,70 @@ static int doList(ContextNodeStore& store, const std::vector<std::string>& args)
     return 0;
 }
 
+// v1.2.0: SessionStart auto-inject — emit "Available skills" block listing
+// every indexed skill with its canonical access pattern (`icmg context
+// skills/<name>` or `icmg recall "<keyword>"`). Plain markdown so it folds
+// into SessionStart additionalContext.
+static int doManifest(ContextNodeStore& store, const std::vector<std::string>& args) {
+    bool json_out = false;
+    int limit = 50;
+    for (size_t i = 0; i < args.size(); ++i) {
+        const auto& a = args[i];
+        if (a == "--json") json_out = true;
+        else if (a == "--limit" && i + 1 < args.size()) {
+            try { limit = std::max(1, std::stoi(args[++i])); } catch (...) {}
+        }
+    }
+
+    auto nodes = store.list("skill", true);
+    if ((int)nodes.size() > limit) nodes.resize(limit);
+
+    if (json_out) {
+        std::cout << "{\"skills\":[";
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            auto& n = nodes[i];
+            // Cheap JSON escape — fine for slug + first-line title.
+            auto esc = [](const std::string& s) {
+                std::string o;
+                for (char c : s) {
+                    if (c == '"' || c == '\\') o += '\\';
+                    if (c == '\n' || c == '\r') { o += ' '; continue; }
+                    o += c;
+                }
+                return o;
+            };
+            std::string desc = n.content.substr(0, 120);
+            if (!i) std::cout << "\n";
+            std::cout << "  {\"name\":\"" << esc(n.node_key)
+                      << "\",\"title\":\"" << esc(n.title)
+                      << "\",\"description\":\"" << esc(desc)
+                      << "\",\"access\":\"icmg context " << esc(n.node_key) << "\"}"
+                      << (i+1 < nodes.size() ? ",\n" : "\n");
+        }
+        std::cout << "]}\n";
+        return 0;
+    }
+
+    if (nodes.empty()) return 0;  // emit nothing — keeps SessionStart noise minimal
+
+    std::cout << "## Available skills (stored knowledge, " << nodes.size() << " indexed)\n";
+    std::cout << "Direct access patterns — use these instead of grep/Read when "
+                 "the user names a skill:\n\n";
+    for (auto& n : nodes) {
+        std::string desc = n.content;
+        // First line of content as short hint.
+        auto nl = desc.find('\n');
+        if (nl != std::string::npos) desc = desc.substr(0, nl);
+        if (desc.size() > 90) desc = desc.substr(0, 87) + "...";
+        std::cout << "- **" << n.title << "** (`" << n.node_key << "`)";
+        if (!desc.empty()) std::cout << " — " << desc;
+        std::cout << "\n  Access: `icmg context " << n.node_key
+                  << "` | `icmg recall \"" << n.title << " <query>\"`\n";
+    }
+    std::cout << "\n";
+    return 0;
+}
+
 static int doSearch(ContextNodeStore& store, const std::vector<std::string>& args) {
     if (args.empty()) { std::cerr << "skill search: missing query\n"; return 1; }
     std::string query = args[0];
@@ -263,6 +328,8 @@ public:
             "      Scan skill .md files → upsert into context_nodes (tier=skill).\n"
             "  list [--json]\n"
             "      List all indexed skills.\n"
+            "  manifest [--json] [--limit N]\n"
+            "      Emit skill discovery block (used by SessionStart hook).\n"
             "  search <query>\n"
             "      BM25 search skill index.\n";
     }
@@ -271,16 +338,27 @@ public:
         if (args.empty() || args[0] == "--help" || args[0] == "-h") {
             usage(); return 0;
         }
-        auto& cfg = core::Config::instance();
-        core::Db db(cfg.projectDbPath("."));
-        ContextNodeStore store(db);
-
         const std::string& sub = args[0];
         std::vector<std::string> rest(args.begin() + 1, args.end());
 
-        if (sub == "index")  return doIndex(store, rest);
-        if (sub == "list")   return doList(store, rest);
-        if (sub == "search") return doSearch(store, rest);
+        // Open project DB. `manifest` is invoked by the SessionStart hook even
+        // before `icmg init` has materialised a project DB — fail soft for
+        // that path so the hook stays silent instead of erroring.
+        auto& cfg = core::Config::instance();
+        std::unique_ptr<core::Db> db;
+        try {
+            db = std::make_unique<core::Db>(cfg.projectDbPath("."));
+        } catch (const std::exception& e) {
+            if (sub == "manifest") return 0;  // SessionStart-safe no-op
+            std::cerr << "skill: cannot open project DB: " << e.what() << "\n";
+            return 1;
+        }
+        ContextNodeStore store(*db);
+
+        if (sub == "index")    return doIndex(store, rest);
+        if (sub == "list")     return doList(store, rest);
+        if (sub == "manifest") return doManifest(store, rest);
+        if (sub == "search")   return doSearch(store, rest);
 
         std::cerr << "skill: unknown subcommand '" << sub << "'. Try --help.\n";
         return 1;
