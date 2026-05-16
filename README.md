@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-71%2F71%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-72%2F72%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -38,7 +38,25 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## 🚀 What's new in v1.1.1 — service auto-activate + legacy cleanup
+## 🚀 What's new in v1.2.0 — skill manifest + SessionStart auto-inject
+
+| Feature | What changed |
+| --- | --- |
+| **`icmg skill manifest`** | New subcommand emits a markdown block listing every indexed skill + its canonical access line — `icmg context <node_key>` and `icmg recall "<title> <query>"`. JSON output via `--json`, cap via `--limit N` |
+| **SessionStart auto-inject** | `CONTEXT_SESSION_SH` hook now concatenates hot context_nodes + skill manifest in one `additionalContext` payload. Agents learn the routing for every ingested skill from turn 1 — no more grep-fallback when the user names a stored skill |
+| **Fail-soft pre-init** | Manifest silently exits 0 when the project DB doesn'''t exist yet, so the SessionStart hook stays quiet on fresh checkouts |
+| **Test harness fix** | `test_service_install_helper` migrated from gtest include to the project'''s tiny in-tree macros (regression from v1.1.1 inline patch) |
+
+```bash
+icmg skill manifest          # see the cheatsheet that SessionStart now injects
+icmg skill manifest --json   # machine-readable list of skills + access patterns
+```
+
+72/72 ctest pass on Windows + Linux.
+
+---
+
+## 🚀 What'''s new in v1.1.1 — service auto-activate + legacy cleanup
 
 | Feature | What changed |
 | --- | --- |
