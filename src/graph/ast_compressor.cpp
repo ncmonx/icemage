@@ -226,10 +226,11 @@ static std::string compressCFamily(const std::string& source) {
                 if (c == '{') ++depth;
                 if (c == '}') { --depth; }
             }
-            // Skip any remaining content on the closing '}' line.
-            // Continue from bl (next line after the closing brace).
-            li = bl;
-            // If we stopped mid-line (after consuming '}'), skip to next line.
+            // Skip any remaining content on the closing '}' line and advance
+            // past it. Using `li = bl + 1` (not `li = bl`) is critical when
+            // the whole function body lived on the same line as the header —
+            // otherwise we'd reprocess the same line forever.
+            li = bl + 1;
             continue;
         }
 
