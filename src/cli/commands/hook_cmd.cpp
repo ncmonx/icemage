@@ -84,6 +84,7 @@ public:
         if (event == "stop")                return cmdStop();
         if (event == "precompact")          return cmdPreCompact();
         if (event == "posttooluse-read")    return cmdPostToolUseRead();
+        if (event == "posttooluse-bash")    return cmdPostToolUseBash();
         std::cerr << "icmg hook: unknown event '" << event << "'\n";
         return 0;  // hook fail-safe
     }
@@ -641,6 +642,8 @@ private:
     int cmdPostToolUseRead();
     // v1.1.0 Task 6: PreToolUse hard-deny enforcement.
     int cmdPreToolUseEnforce();
+    // v1.3.0 Task 13: PostToolUse:Bash test-fail auto-context.
+    int cmdPostToolUseBash();
 };
 
 // ── v0.56.0: Stop / PreCompact / PostToolUse-Read ─────────────────────────────
@@ -689,6 +692,44 @@ int HookCommand::cmdPreToolUseEnforce() {
     std::string raw = readStdinAll();
     std::string out = icmg::core::hooks::runPreToolUseEnforce(raw);
     if (!out.empty()) std::cout << out << "\n";
+    return 0;
+}
+
+// v1.3.0 Task 13: PostToolUse:Bash test-fail auto-context bundle.
+// Reads Claude Code PostToolUse JSON from stdin (tool_name, tool_input, tool_response).
+// When tool_name == "Bash" and failure signatures detected in output, injects
+// debug context block into additionalContext for the next turn.
+int HookCommand::cmdPostToolUseBash() {
+    std::string raw = readStdinAll();
+    if (raw.empty()) return 0;
+
+    std::string tool_name, tool_command, tool_output;
+    try {
+        json j = json::parse(raw);
+        tool_name = j.value("tool_name", std::string{});
+        if (j.contains("tool_input") && j["tool_input"].is_object())
+            tool_command = j["tool_input"].value("command", std::string{});
+        // tool_response may be a string or object with "output" field.
+        if (j.contains("tool_response")) {
+            auto& tr = j["tool_response"];
+            if (tr.is_string())
+                tool_output = tr.get<std::string>();
+            else if (tr.is_object())
+                tool_output = tr.value("output", std::string{});
+        }
+    } catch (...) { return 0; }
+
+    // Only handle Bash tool — don't touch Read/Glob/Grep paths.
+    if (tool_name != "Bash") return 0;
+
+    std::string ctx = icmg::core::hooks::runPostToolUseTestFailContext(
+        tool_command, tool_output);
+    if (ctx.empty()) return 0;
+
+    json out;
+    out["hookSpecificOutput"]["hookEventName"] = "PostToolUse";
+    out["hookSpecificOutput"]["additionalContext"] = ctx;
+    std::cout << out.dump() << "\n";
     return 0;
 }
 

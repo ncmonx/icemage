@@ -3,6 +3,7 @@
 #include "../config.hpp"
 #include "../db.hpp"
 #include "../path_utils.hpp"
+#include "../context_node_store.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../cli/commands/skill_recall.hpp"
@@ -511,6 +512,131 @@ std::string runUserPromptSkillSuggest(const std::string& user_prompt) {
     } catch (...) {
         return "";
     }
+}
+
+// ---- v1.3.0 Task 13: PostToolUse test-fail auto-context bundle -------------
+
+std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
+                                          const std::string& tool_output) {
+    (void)tool_input_command; // reserved for future filtering
+    // Opt-out.
+    const char* quiet = std::getenv("ICMG_DEBUG_CONTEXT_QUIET");
+    if (quiet && std::string(quiet) == "1") return "";
+    if (tool_output.empty()) return "";
+
+    // --- 1. Detect failure signatures ----------------------------------------
+    static const char* kFailPatterns[] = {
+        "FAIL ",
+        "FAIL:",
+        "× FAIL ",
+        "FAILED tests",
+        "Error:",
+        "error:",
+        "error[E",         // Rust error[E0xxx]
+        "Traceback (most recent call last)",
+        "ninja: build stopped",
+        "cmake.*FAILED",   // checked via simple substr for speed
+        nullptr
+    };
+
+    bool has_failure = false;
+    for (auto** p = kFailPatterns; *p; ++p) {
+        if (tool_output.find(*p) != std::string::npos) {
+            has_failure = true;
+            break;
+        }
+    }
+    if (!has_failure) return "";
+
+    // --- 2. Extract candidate file paths (cap 3 unique) ----------------------
+    // Pattern: word-chars + path separators + extension, optional :linenum
+    std::regex path_re(
+        R"([\w./\-]+\.(?:cpp|hpp|h|c|py|ts|tsx|js|jsx|go|rs|java|cs|rb)(?::\d+)?)",
+        std::regex::ECMAScript);
+
+    std::vector<std::string> paths;
+    {
+        auto begin = std::sregex_iterator(tool_output.begin(), tool_output.end(), path_re);
+        auto end   = std::sregex_iterator();
+        for (auto it = begin; it != end && (int)paths.size() < 3; ++it) {
+            std::string m = (*it)[0].str();
+            // Strip trailing :linenum for display key dedup.
+            auto colon = m.rfind(':');
+            std::string base = (colon != std::string::npos) ? m.substr(0, colon) : m;
+            // Dedup.
+            bool dup = false;
+            for (auto& existing : paths) if (existing == base) { dup = true; break; }
+            if (!dup) paths.push_back(base);
+        }
+    }
+
+    // --- 3. Build context block -----------------------------------------------
+    std::ostringstream out;
+    out << "## Debug context (icmg auto)\n"
+        << "Detected failure in last command. Likely-relevant files + memory:\n\n";
+
+    // For each path, attempt graph neighbor lookup from project DB (fail-soft).
+    for (auto& fpath : paths) {
+        out << "- **" << fpath << "**";
+
+        // Try graph neighbors lookup.
+        try {
+            auto& cfg = Config::instance();
+            Db db(cfg.projectDbPath("."));
+
+            // 1-hop neighbors via graph_edges.
+            std::vector<std::string> neighbors;
+            db.query(
+                "SELECT DISTINCT n2.path, e.edge_type "
+                "FROM graph_edges e "
+                "JOIN graph_nodes n1 ON n1.id = e.src "
+                "JOIN graph_nodes n2 ON n2.id = e.dst "
+                "WHERE n1.path = ? AND n2.path != ? LIMIT 3",
+                {fpath, fpath},
+                [&](const Row& r){
+                    if (r.size() >= 2)
+                        neighbors.push_back(r[1] + ": " + r[0]);
+                });
+
+            if (!neighbors.empty()) {
+                out << " — neighbors: ";
+                for (size_t i = 0; i < neighbors.size(); ++i) {
+                    if (i > 0) out << ", ";
+                    out << neighbors[i];
+                }
+            } else {
+                // ContextNodeStore: search by filename stem.
+                std::string stem = fpath;
+                auto slash = stem.rfind('/');
+                if (slash == std::string::npos) slash = stem.rfind('\\');
+                if (slash != std::string::npos) stem = stem.substr(slash + 1);
+                auto dot = stem.rfind('.');
+                if (dot != std::string::npos) stem = stem.substr(0, dot);
+
+                if (!stem.empty()) {
+                    ContextNodeStore cns(db);
+                    auto nodes = cns.search(stem, "", 2, 0.05);
+                    if (!nodes.empty()) {
+                        out << " — context: " << nodes[0].title;
+                    }
+                }
+            }
+        } catch (...) {
+            // fail-soft: no DB or any error → just list the path
+        }
+        out << "\n";
+    }
+
+    if (paths.empty()) {
+        out << "- (no file paths extracted from output)\n";
+    }
+
+    out << "\nCite via: `icmg context <file>` or `icmg graph reverse-impact <Symbol>`.\n";
+
+    std::string result = out.str();
+    // Hard cap at ~1.2 KB.
+    if (result.size() > 1200) result = result.substr(0, 1197) + "...\n";
+    return result;
 }
 
 } // namespace icmg::core::hooks

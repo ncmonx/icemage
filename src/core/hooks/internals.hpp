@@ -76,4 +76,13 @@ std::string runFocusChainInject(const std::string& session_id = "", int limit = 
 // Opt-out: set env ICMG_SKILL_QUIET=1.
 std::string runUserPromptSkillSuggest(const std::string& user_prompt);
 
+// v1.3.0 Task 13: PostToolUse:Bash test-fail auto-context bundle.
+// Inspects tool_output for failure signatures (FAIL, error:, Traceback, etc.).
+// When detected, extracts candidate file paths from output, queries graph/memory,
+// and returns a ≤1.2 KB markdown debug context block for additionalContext.
+// Returns "" when no failure detected, on empty input, or on any error.
+// Opt-out: set env ICMG_DEBUG_CONTEXT_QUIET=1.
+std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
+                                          const std::string& tool_output);
+
 } // namespace icmg::core::hooks
