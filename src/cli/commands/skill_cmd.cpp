@@ -19,6 +19,8 @@
 #include "../../core/context_node_store.hpp"
 #include "../../core/token_counter.hpp"
 #include "../../imem/skill_chunker.hpp"
+#include "../../embed/embedder.hpp"
+#include <sqlite3.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -27,6 +29,7 @@
 #include <memory>
 #include <regex>
 #include <iomanip>
+#include <cstring>
 
 namespace fs = std::filesystem;
 using namespace icmg::core;
@@ -186,18 +189,43 @@ static void upsertChunks(Db& db, const std::string& skill_id_str,
     // Delete existing chunks for this skill.
     db.run("DELETE FROM skill_chunks WHERE skill_id=?", {skill_id_str});
 
+    // Lazy-construct embedder — returns nullptr if ONNX/python unavailable.
+    auto embedder = icmg::embed::makeEmbedder();
+
     auto chunks = icmg::imem::SkillChunker::split(content, node_key);
     for (auto& chunk : chunks) {
         size_t tokens = icmg::core::estimateTokens(chunk.content);
-        db.run(
-            "INSERT INTO skill_chunks(skill_id, parent_path, heading, content, token_count)"
-            " VALUES (?, ?, ?, ?, ?)",
-            {skill_id_str,
-             chunk.parent_path,
-             chunk.heading,
-             chunk.content,
-             std::to_string(tokens)}
-        );
+
+        // Compute embedding BLOB (384-dim MiniLM → 1536 bytes).
+        // Bind NULL when embedder unavailable, content empty, or dim wrong.
+        std::vector<float> vec;
+        if (embedder && embedder->available() && !chunk.content.empty()) {
+            vec = embedder->embed(chunk.content);
+        }
+
+        const char* sql =
+            "INSERT INTO skill_chunks(skill_id, parent_path, heading, content, token_count, embedding)"
+            " VALUES (?, ?, ?, ?, ?, ?)";
+
+        auto* raw = db.handle();
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(raw, sql, -1, &stmt, nullptr) != SQLITE_OK) continue;
+
+        sqlite3_bind_text(stmt, 1, skill_id_str.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, chunk.parent_path.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, chunk.heading.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, chunk.content.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(stmt, 5, (sqlite3_int64)tokens);
+
+        if (vec.size() == 384) {
+            int blob_bytes = (int)(vec.size() * sizeof(float));
+            sqlite3_bind_blob(stmt, 6, vec.data(), blob_bytes, SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(stmt, 6);
+        }
+
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
     }
 }
 
