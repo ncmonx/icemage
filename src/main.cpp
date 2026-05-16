@@ -151,7 +151,40 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Dispatch command
+    // Dispatch command + catch-all that auto-captures crashes for
+    // `icmg bug-report --send-pending`. Privacy: never auto-submits; only
+    // writes to ~/.icmg/crash-pending.jsonl until user opts in.
     icmg::cli::Dispatcher dispatcher;
-    return dispatcher.run(args);
+    try {
+        return dispatcher.run(args);
+    } catch (const std::exception& e) {
+        // Synthesize a one-shot --auto-capture invocation so the crash gets
+        // recorded with the same code path users would invoke manually.
+        std::string cmd_str;
+        for (auto& a : args) { if (!cmd_str.empty()) cmd_str += " "; cmd_str += a; }
+        std::vector<std::string> cap = {
+            "bug-report", "--auto-capture",
+            "--cmd", cmd_str,
+            "--err", e.what()
+        };
+        try {
+            icmg::cli::Dispatcher d2;
+            d2.run(cap);
+        } catch (...) { /* swallow — never crash twice */ }
+        std::cerr << "icmg: uncaught error: " << e.what() << "\n"
+                  << "      Crash logged. Send report: icmg bug-report --send-pending\n";
+        return 1;
+    } catch (...) {
+        std::vector<std::string> cap = {
+            "bug-report", "--auto-capture",
+            "--cmd", args.empty() ? "" : args[0],
+            "--err", "unknown exception"
+        };
+        try {
+            icmg::cli::Dispatcher d2;
+            d2.run(cap);
+        } catch (...) {}
+        std::cerr << "icmg: unknown crash. Send report: icmg bug-report --send-pending\n";
+        return 1;
+    }
 }

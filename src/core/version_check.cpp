@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <filesystem>
+#include <thread>
 
 namespace fs = std::filesystem;
 
@@ -97,6 +98,15 @@ std::string fetchLatestTag(const std::string& repo, const std::string& current_v
 
 } // anonymous namespace
 
+// v1.3.0 (fixes #46): never block on the GitHub API call. Cache fresh →
+// return cached. Cache stale or absent → spawn detached refresh thread and
+// return the best-known answer immediately (cached if any, else unknown).
+//
+// Net effect: every command's hot path costs at most one tiny file read,
+// not a 2–18s network round-trip on slow links.
+//
+// Opt-out: ICMG_NO_VERSION_CHECK=1 (handled by callers).
+// Force foreground fetch: ICMG_VERSION_CHECK_SYNC=1 (debug / first install).
 VersionStatus checkVersionStaleness(const std::string& current_version,
                                     const std::string& repo) {
     VersionStatus st;
@@ -121,22 +131,41 @@ VersionStatus checkVersionStaleness(const std::string& current_version,
         return st;
     }
 
-    // Fetch from GitHub (async would be nicer but adds complexity)
-    std::string fetched = fetchLatestTag(repo, current_version);
-    if (!fetched.empty()) {
-        st.latest = fetched;
-        st.online = true;
-        writeCache(fetched);
-    } else if (cache_valid) {
+    // Sync path (debug / first-install verification) — only when explicitly
+    // opted in via env. Default is async refresh below.
+    bool sync = std::getenv("ICMG_VERSION_CHECK_SYNC") != nullptr;
+    if (sync) {
+        std::string fetched = fetchLatestTag(repo, current_version);
+        if (!fetched.empty()) {
+            st.latest = fetched;
+            st.online = true;
+            writeCache(fetched);
+            st.lag = semverLag(current_version, st.latest);
+            return st;
+        }
+        // sync fetch failed — fall through to cache-or-unknown below
+    } else {
+        // Spawn detached refresh — never blocks caller. Next invocation in
+        // the next 24h gets the fresh value from cache.
+        try {
+            std::thread([repo, current_version]() {
+                std::string fetched = fetchLatestTag(repo, current_version);
+                if (!fetched.empty()) writeCache(fetched);
+            }).detach();
+        } catch (...) {
+            // thread spawn failed — non-fatal, callers stay on cached or unknown
+        }
+    }
+
+    if (cache_valid) {
         st.latest     = cache.latest;
         st.from_cache = true;
-        st.online     = false; // treat as offline but use stale cache
-    } else {
-        st.lag = -1; // unknown — offline + no usable cache
+        st.online     = false; // stale cache served while refresh runs in bg
+        st.lag        = semverLag(current_version, st.latest);
         return st;
     }
 
-    st.lag = semverLag(current_version, st.latest);
+    st.lag = -1; // unknown — no usable cache yet; refresh thread will populate
     return st;
 }
 
