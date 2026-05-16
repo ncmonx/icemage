@@ -529,6 +529,35 @@ ALTER TABLE memory_nodes ADD COLUMN last_returned_session TEXT;
 CREATE INDEX IF NOT EXISTS idx_memory_last_returned_session
     ON memory_nodes(last_returned_session);
 )SQL"},
+        {28, R"SQL(
+-- 0028_skill_chunks
+CREATE TABLE IF NOT EXISTS skill_chunks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    skill_id      INTEGER NOT NULL REFERENCES context_nodes(id) ON DELETE CASCADE,
+    parent_path   TEXT NOT NULL,
+    heading       TEXT NOT NULL,
+    content       TEXT NOT NULL,
+    token_count   INTEGER DEFAULT 0,
+    embedding     BLOB,
+    created_at    INTEGER DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_skill_chunks_skill_id ON skill_chunks(skill_id);
+CREATE INDEX IF NOT EXISTS idx_skill_chunks_path     ON skill_chunks(parent_path);
+)SQL"},
+        {29, R"SQL(
+-- 0029_focus_chain (v1.3.0)
+-- Per-session todo items re-injected at SessionStart/UserPromptSubmit to prevent agent drift.
+CREATE TABLE IF NOT EXISTS focus_chain (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT    NOT NULL,
+    todo        TEXT    NOT NULL,
+    status      TEXT    NOT NULL DEFAULT 'in' CHECK(status IN ('in','done','blocked')),
+    ord         INTEGER NOT NULL,
+    created_at  INTEGER DEFAULT (strftime('%s','now')),
+    updated_at  INTEGER DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_focus_chain_session ON focus_chain(session_id, ord);
+)SQL"},
     };
 }
 
