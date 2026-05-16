@@ -74,7 +74,7 @@ private:
     int doStart() {
         // Spawn `icmg service run` as detached background process.
 #ifdef _WIN32
-        std::string cmd = "start \"\" /B icmg service run";
+        std::string cmd = "MSYS_NO_PATHCONV=1 cmd /c start \"\" /B icmg service run";
 #else
         std::string cmd = "(icmg service run &)";
 #endif

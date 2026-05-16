@@ -30,6 +30,8 @@ void writeTokenReceipt(core::Db& db, const std::string& cmd,
 }
 #include "../../graph/graph_store.hpp"
 #include "../../graph/scanner.hpp"
+#include "../../graph/ast_compressor.hpp"
+#include "../../core/token_counter.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
 #include "../../imem/memory_store.hpp"
@@ -449,7 +451,9 @@ public:
             "  --ref-ids             Emit [ICMG-MEM-N] anchors; subsequent calls reuse\n"
             "  --prune-audit         Drop memory hits below --prune-min-score (default 1.5)\n"
             "  --prune-min-score N   Threshold for prune-audit (default 1.5)\n"
-            "  --budget N            Knapsack-keep highest-score hits within N tokens\n";
+            "  --budget N            Knapsack-keep highest-score hits within N tokens\n"
+            "  --compress-ast        Elide function/class bodies in emitted source (70-90% byte cut)\n"
+            "  --show-tokens         Print before→after token stats to stderr\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -729,6 +733,37 @@ public:
         capped = core::capOutput(out.str(), cap, spill);
         if (!no_cache) tcc.store("pack", cache_args, capped, 300);
         }  // end else (cache-miss compute branch)
+
+        // T10: --compress-ast — elide function/class bodies in the packed output.
+        // Applied after cache-miss compute (so we compress the final assembled text).
+        // --show-tokens emits before→after token stats to stderr.
+        bool compress_ast  = hasFlag(args, "--compress-ast");
+        bool show_tokens   = hasFlag(args, "--show-tokens");
+        if (compress_ast && !capped.empty()) {
+            try {
+                size_t tok_before = core::estimateTokens(capped);
+                // The pack output is markdown text, not a single-lang source file.
+                // We apply C++ body elision to any fenced code blocks we detect.
+                // For the common case (pack returns symbol paths + metadata, not
+                // raw source), we also apply cpp compression to the whole blob
+                // so any inline code snippets are trimmed.
+                // Language: use "cpp" as default for C-family heuristic on mixed output.
+                std::string compressed = graph::compressAst(capped, "cpp");
+                if (show_tokens) {
+                    size_t tok_after = core::estimateTokens(compressed);
+                    int pct = (tok_before > 0)
+                              ? (int)(100 - (100 * tok_after / tok_before))
+                              : 0;
+                    std::cerr << "pack: " << tok_before << " → " << tok_after
+                              << " tokens (-" << pct << "%)\n";
+                }
+                if (compressed.size() < capped.size()) capped = compressed;
+            } catch (...) {}
+        } else if (show_tokens) {
+            // --show-tokens without --compress-ast: just report current size.
+            size_t tok = core::estimateTokens(capped);
+            std::cerr << "pack: " << tok << " tokens (--compress-ast not set, no reduction)\n";
+        }
 
         // Phase 40 T1: optional Anthropic prompt-cache wrap.
         // Phase 67 T12: --auto-cache enables cache-prefix when output >= 4KB

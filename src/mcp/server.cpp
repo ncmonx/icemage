@@ -93,7 +93,7 @@ void McpServer::handleInitialize(const json& req) {
         {"protocolVersion", "2024-11-05"},
         {"serverInfo", {
             {"name", "icmg"},
-            {"version", "1.2.0"}
+            {"version", "1.3.0"}
         }},
         {"capabilities", {
             {"tools",     {{"listChanged", false}}},
