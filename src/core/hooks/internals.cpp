@@ -429,4 +429,46 @@ std::string runUserPromptCavemanInject() {
     return b.str();
 }
 
+// ---- v1.3.0 Task 8: Focus Chain inject -------------------------------------
+
+std::string runFocusChainInject(const std::string& session_id_arg, int limit) {
+    try {
+        const char* quiet = std::getenv("ICMG_FOCUS_QUIET");
+        if (quiet && std::string(quiet) == "1") return "";
+
+        // Resolve session id: arg > env > "default".
+        std::string sid = session_id_arg;
+        if (sid.empty()) {
+            const char* env_sid = std::getenv("ICMG_SESSION_ID");
+            sid = (env_sid && env_sid[0] != '\0') ? std::string(env_sid) : "default";
+        }
+
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+
+        // Query in-progress items ordered by ord, capped to limit.
+        std::vector<std::string> todos;
+        db.query(
+            "SELECT todo, status FROM focus_chain "
+            "WHERE session_id=? AND status='in' "
+            "ORDER BY ord ASC LIMIT ?",
+            {sid, std::to_string(limit)},
+            [&](const Row& row) {
+                if (!row.empty()) todos.push_back(row[0]);
+            }
+        );
+
+        if (todos.empty()) return "";
+
+        std::ostringstream out;
+        out << "## Focus chain (current session todos)\n";
+        for (auto& t : todos) {
+            out << "- [ ] " << t << "\n";
+        }
+        return out.str();
+    } catch (...) {
+        return "";
+    }
+}
+
 } // namespace icmg::core::hooks

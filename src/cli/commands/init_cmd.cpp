@@ -251,12 +251,20 @@ ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [ -d "$ICMG_HOME" ] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
 HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
 SKILLS=$(icmg skill manifest 2>/dev/null)
+FOCUS=$(icmg focus inject 2>/dev/null)
 CONTENT="$HOT"
 if [ -n "$SKILLS" ]; then
     if [ -n "$CONTENT" ]; then
         CONTENT="$CONTENT"$'\n\n'"$SKILLS"
     else
         CONTENT="$SKILLS"
+    fi
+fi
+if [ -n "$FOCUS" ]; then
+    if [ -n "$CONTENT" ]; then
+        CONTENT="$CONTENT"$'\n\n'"$FOCUS"
+    else
+        CONTENT="$FOCUS"
     fi
 fi
 [ -z "$CONTENT" ] && exit 0
@@ -285,8 +293,16 @@ PROMPT=$(echo "$INPUT" | jq -r '.message // .prompt // empty' 2>/dev/null)
 [ -z "$PROMPT" ] && exit 0
 COLD=$(icmg context-node match "$PROMPT" --tier cold  --top 3 --fmt plain 2>/dev/null)
 SKILL=$(icmg context-node match "$PROMPT" --tier skill --top 2 --fmt plain 2>/dev/null)
+FOCUS=$(icmg focus inject 2>/dev/null)
 COMBINED="$COLD"
 [ -n "$SKILL" ] && COMBINED=$(printf '%s\n\n---\nSuggested skills:\n%s' "$COLD" "$SKILL")
+if [ -n "$FOCUS" ]; then
+    if [ -n "$COMBINED" ]; then
+        COMBINED=$(printf '%s\n\n%s' "$COMBINED" "$FOCUS")
+    else
+        COMBINED="$FOCUS"
+    fi
+fi
 [ -z "$COMBINED" ] && exit 0
 jq -n --arg m "$COMBINED" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:$m}}'
 )BASH";

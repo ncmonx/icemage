@@ -62,4 +62,10 @@ std::string runPreToolUseEnforce(const std::string& stdin_raw);
 // Empty when caveman.flag absent or ICMG_CAVEMAN_QUIET=1.
 std::string runUserPromptCavemanInject();
 
+// v1.3.0 Task 8: Focus Chain per-prompt re-inject.
+// Returns a markdown block of in-progress todos for the current session
+// (up to `limit` items). Empty when no in-progress items or ICMG_FOCUS_QUIET=1.
+// session_id defaults to ICMG_SESSION_ID env var, then "default".
+std::string runFocusChainInject(const std::string& session_id = "", int limit = 5);
+
 } // namespace icmg::core::hooks
