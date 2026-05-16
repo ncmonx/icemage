@@ -30,6 +30,8 @@
 #include <regex>
 #include <iomanip>
 #include <cstring>
+#include <cmath>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 using namespace icmg::core;
@@ -535,6 +537,249 @@ static int doChunk(ContextNodeStore& store, Db& db,
     return 0;
 }
 
+// ---- doAsk ------------------------------------------------------------------
+//
+// icmg skill ask "<query>" [--top N] [--alpha F] [--json] [--skill <key>]
+//
+// Hybrid recall over skill_chunks: BM25 over content + cosine over embedding BLOB.
+// Gracefully degrades to BM25-only when embedder unavailable.
+
+static int doAsk(Db& db, const std::vector<std::string>& args) {
+    if (args.empty()) {
+        std::cerr << "skill ask: missing <query>\n"
+                     "Usage: icmg skill ask \"<query>\" [--top N] [--alpha F] [--json] [--skill <key>]\n";
+        return 1;
+    }
+
+    std::string query;
+    int top_n = 5;
+    double alpha = 0.5;
+    bool json_out = false;
+    std::string skill_filter;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        const auto& a = args[i];
+        if (a == "--json") {
+            json_out = true;
+        } else if (a == "--top" && i + 1 < args.size()) {
+            try { top_n = std::max(1, std::min(50, std::stoi(args[++i]))); } catch (...) {}
+        } else if (a == "--alpha" && i + 1 < args.size()) {
+            try {
+                double v = std::stod(args[++i]);
+                alpha = std::max(0.0, std::min(1.0, v));
+            } catch (...) {}
+        } else if (a == "--skill" && i + 1 < args.size()) {
+            skill_filter = args[++i];
+        } else if (query.empty() && !a.empty() && a[0] != '-') {
+            query = a;
+        }
+    }
+
+    if (query.empty()) {
+        std::cerr << "skill ask: missing <query>\n"
+                     "Usage: icmg skill ask \"<query>\" [--top N] [--alpha F] [--json] [--skill <key>]\n";
+        return 1;
+    }
+
+    // Tokenize — mirrors ContextNodeStore::tokenize() exactly.
+    auto tokenize = [](const std::string& text) -> std::vector<std::string> {
+        std::vector<std::string> tokens;
+        std::string tok;
+        for (unsigned char c : text) {
+            if (std::isalnum(c) || c == '_') {
+                tok += static_cast<char>(std::tolower(c));
+            } else {
+                if (tok.size() >= 2) tokens.push_back(tok);
+                tok.clear();
+            }
+        }
+        if (tok.size() >= 2) tokens.push_back(tok);
+        return tokens;
+    };
+
+    auto q_tokens = tokenize(query);
+
+    struct ChunkCandidate {
+        int64_t     id;
+        std::string parent_path;
+        std::string heading;
+        std::string content;
+        std::string skill_key;
+        std::vector<uint8_t> emb_blob;
+    };
+
+    std::vector<ChunkCandidate> candidates;
+
+    auto rowToCandidate = [&](const Row& row) {
+        if (row.size() < 5) return;
+        ChunkCandidate c;
+        try { c.id = std::stoll(row[0]); } catch (...) { c.id = 0; }
+        c.parent_path = row[1];
+        c.heading     = row[2];
+        c.content     = row[3];
+        c.skill_key   = row[4];
+        if (row.size() >= 6 && !row[5].empty()) {
+            const std::string& s = row[5];
+            c.emb_blob.assign(
+                reinterpret_cast<const uint8_t*>(s.data()),
+                reinterpret_cast<const uint8_t*>(s.data()) + s.size());
+        }
+        candidates.push_back(std::move(c));
+    };
+
+    if (skill_filter.empty()) {
+        db.query(
+            "SELECT sc.id, sc.parent_path, sc.heading, sc.content, cn.node_key, sc.embedding"
+            " FROM skill_chunks sc"
+            " JOIN context_nodes cn ON cn.id = sc.skill_id"
+            " WHERE cn.tier = 'skill' AND cn.active = 1",
+            {},
+            rowToCandidate
+        );
+    } else {
+        std::string skill_id_str;
+        db.query(
+            "SELECT id FROM context_nodes WHERE node_key=? AND tier='skill'",
+            {skill_filter},
+            [&](const Row& row) { if (!row.empty()) skill_id_str = row[0]; }
+        );
+        if (skill_id_str.empty()) {
+            if (json_out) std::cout << "[]\n";
+            return 0;
+        }
+        db.query(
+            "SELECT sc.id, sc.parent_path, sc.heading, sc.content, cn.node_key, sc.embedding"
+            " FROM skill_chunks sc"
+            " JOIN context_nodes cn ON cn.id = sc.skill_id"
+            " WHERE sc.skill_id = ?",
+            {skill_id_str},
+            rowToCandidate
+        );
+    }
+
+    if (candidates.empty()) {
+        if (json_out) std::cout << "[]\n";
+        return 0;
+    }
+
+    // BM25: tf × log(N/df) per query token.
+    size_t N = candidates.size();
+    std::unordered_map<std::string, int> df;
+    for (auto& qt : q_tokens) {
+        for (auto& cand : candidates) {
+            auto tokens = tokenize(cand.content);
+            for (auto& t : tokens) {
+                if (t == qt) { df[qt]++; break; }
+            }
+        }
+    }
+
+    std::vector<double> bm25_raw(candidates.size(), 0.0);
+    for (size_t ci = 0; ci < candidates.size(); ++ci) {
+        auto tokens = tokenize(candidates[ci].content);
+        std::unordered_map<std::string, int> tf;
+        for (auto& t : tokens) tf[t]++;
+        double score = 0.0;
+        for (auto& qt : q_tokens) {
+            auto it = tf.find(qt);
+            if (it == tf.end() || it->second == 0) continue;
+            int doc_freq = df.count(qt) ? df[qt] : 1;
+            if (doc_freq == 0) doc_freq = 1;
+            score += static_cast<double>(it->second)
+                   * std::log(static_cast<double>(N) / static_cast<double>(doc_freq));
+        }
+        bm25_raw[ci] = score;
+    }
+
+    double max_bm25 = *std::max_element(bm25_raw.begin(), bm25_raw.end());
+    std::vector<double> bm25_norm(candidates.size(), 0.0);
+    if (max_bm25 > 1e-9) {
+        for (size_t ci = 0; ci < candidates.size(); ++ci)
+            bm25_norm[ci] = bm25_raw[ci] / max_bm25;
+    }
+
+    // Embed query once.
+    std::vector<float> q_vec;
+    {
+        auto e = icmg::embed::makeEmbedder();
+        if (e && e->available() && !query.empty()) {
+            q_vec = e->embed(query);
+        }
+    }
+
+    // Cosine similarity.
+    auto cosineVec = [](const std::vector<float>& a, const std::vector<float>& b) -> double {
+        if (a.size() != b.size() || a.empty()) return 0.0;
+        double dot = 0.0, na = 0.0, nb = 0.0;
+        for (size_t i = 0; i < a.size(); ++i) {
+            dot += static_cast<double>(a[i]) * static_cast<double>(b[i]);
+            na  += static_cast<double>(a[i]) * static_cast<double>(a[i]);
+            nb  += static_cast<double>(b[i]) * static_cast<double>(b[i]);
+        }
+        if (na < 1e-9 || nb < 1e-9) return 0.0;
+        return dot / (std::sqrt(na) * std::sqrt(nb));
+    };
+
+    struct Scored { size_t idx; double score; };
+    std::vector<Scored> ranked;
+    ranked.reserve(candidates.size());
+
+    for (size_t ci = 0; ci < candidates.size(); ++ci) {
+        double cosine_score = 0.0;
+        if (!q_vec.empty() && candidates[ci].emb_blob.size() == 384 * sizeof(float)) {
+            std::vector<float> c_vec(384);
+            std::memcpy(c_vec.data(), candidates[ci].emb_blob.data(), 384 * sizeof(float));
+            cosine_score = cosineVec(q_vec, c_vec);
+        }
+        double final_score = alpha * cosine_score + (1.0 - alpha) * bm25_norm[ci];
+        ranked.push_back({ci, final_score});
+    }
+
+    std::sort(ranked.begin(), ranked.end(),
+              [](const Scored& a, const Scored& b) { return a.score > b.score; });
+
+    int take = std::min(top_n, (int)ranked.size());
+
+    auto jsonEsc = [](const std::string& s) {
+        std::string o; o.reserve(s.size());
+        for (char c : s) {
+            if (c == '"')  { o += "\\\""; continue; }
+            if (c == '\\') { o += "\\\\"; continue; }
+            if (c == '\n' || c == '\r') { o += ' '; continue; }
+            o += c;
+        }
+        return o;
+    };
+
+    if (json_out) {
+        std::cout << "[\n";
+        for (int i = 0; i < take; ++i) {
+            auto& cand = candidates[ranked[i].idx];
+            std::string excerpt = cand.content.substr(0, 200);
+            std::cout << "  {"
+                      << "\"path\":\"" << jsonEsc(cand.parent_path) << "\","
+                      << "\"heading\":\"" << jsonEsc(cand.heading) << "\","
+                      << "\"skill\":\"" << jsonEsc(cand.skill_key) << "\","
+                      << "\"score\":" << std::fixed << std::setprecision(4) << ranked[i].score << ","
+                      << "\"content_excerpt\":\"" << jsonEsc(excerpt) << "\""
+                      << "}" << (i + 1 < take ? "," : "") << "\n";
+        }
+        std::cout << "]\n";
+        return 0;
+    }
+
+    for (int i = 0; i < take; ++i) {
+        auto& cand = candidates[ranked[i].idx];
+        std::string excerpt = cand.content.substr(0, 200);
+        std::cout << "[" << i + 1 << "] " << cand.heading
+                  << "  (score=" << std::fixed << std::setprecision(4) << ranked[i].score
+                  << ", skill=" << cand.skill_key << ")\n"
+                  << "    path: " << cand.parent_path << "\n"
+                  << "    " << excerpt << "\n\n";
+    }
+    return 0;
+}
+
 static int doSearch(ContextNodeStore& store, const std::vector<std::string>& args) {
     if (args.empty()) { std::cerr << "skill search: missing query\n"; return 1; }
     std::string query = args[0];
@@ -572,7 +817,13 @@ public:
             "  search <query>\n"
             "      BM25 search skill index.\n"
             "  chunk <skill_key> [--list [--json] | --get <path> | --reindex]\n"
-            "      Access/rebuild skill_chunks rows for a skill.\n";
+            "      Access/rebuild skill_chunks rows for a skill.\n"
+            "  ask <query> [--top N] [--alpha F] [--json] [--skill <key>]\n"
+            "      Hybrid BM25+cosine recall over skill_chunks.\n"
+            "      --top N      Return top N results (default 5, max 50).\n"
+            "      --alpha F    Blend weight: 0.0=pure BM25, 1.0=pure cosine (default 0.5).\n"
+            "      --json       JSON output: [{path, heading, skill, score, content_excerpt}].\n"
+            "      --skill KEY  Restrict search to chunks of a single skill.\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -597,6 +848,8 @@ public:
             // `chunk` with no skill_key: SessionStart hook path — fail soft.
             // `chunk` with a skill_key: real user invocation — surface the error.
             if (sub == "chunk" && rest.empty()) return 0;
+            // `ask` with no query: will surface error in doAsk; with query but no DB: fail soft.
+            if (sub == "ask") return 0;
             std::cerr << "skill: cannot open project DB: " << e.what() << "\n";
             return 1;
         }
@@ -607,6 +860,7 @@ public:
         if (sub == "manifest") return doManifest(store, rest);
         if (sub == "search")   return doSearch(store, rest);
         if (sub == "chunk")    return doChunk(store, *db, rest);
+        if (sub == "ask")      return doAsk(*db, rest);
 
         std::cerr << "skill: unknown subcommand '" << sub << "'. Try --help.\n";
         return 1;
