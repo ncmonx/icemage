@@ -5,6 +5,7 @@
 #include "../path_utils.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../cli/commands/skill_recall.hpp"
 
 #include <nlohmann/json.hpp>
 #include <cstdint>
@@ -466,6 +467,47 @@ std::string runFocusChainInject(const std::string& session_id_arg, int limit) {
             out << "- [ ] " << t << "\n";
         }
         return out.str();
+    } catch (...) {
+        return "";
+    }
+}
+
+// ---- v1.3.0 Task 7: UserPromptSubmit skill chunk auto-inject ---------------
+
+std::string runUserPromptSkillSuggest(const std::string& user_prompt) {
+    // Opt-out.
+    if (std::getenv("ICMG_SKILL_QUIET")) return "";
+    if (user_prompt.empty()) return "";
+
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+
+        auto results = icmg::cli::recallSkillChunks(db, user_prompt, /*top=*/1, /*alpha=*/0.5);
+        if (results.empty()) return "";
+
+        const auto& top = results[0];
+        if (top.score < 0.20) return "";
+
+        // Build hint block (≤600 chars total).
+        std::string excerpt = top.content.size() > 400
+                            ? top.content.substr(0, 400)
+                            : top.content;
+
+        std::ostringstream out;
+        out << "## Skill hint (icmg auto-suggest)\n"
+            << "Stored skill section **" << top.heading
+            << "** at `" << top.parent_path
+            << "` may answer this. Cite via:\n"
+            << "`icmg context " << top.parent_path
+            << "` or `icmg skill ask \"" << user_prompt.substr(0, 60) << "\"`.\n\n"
+            << "Excerpt (first 400 chars):\n"
+            << "> " << excerpt << "\n";
+
+        std::string result = out.str();
+        // Hard cap at 600 chars.
+        if (result.size() > 600) result = result.substr(0, 597) + "...\n";
+        return result;
     } catch (...) {
         return "";
     }

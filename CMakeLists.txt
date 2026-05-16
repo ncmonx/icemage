@@ -514,6 +514,7 @@ add_icmg_test(test_migration_0030     tests/core/test_migration_0030.cpp)
 add_icmg_test(test_rules_store        tests/core/test_rules_store.cpp)
 add_icmg_test(test_rules_cmd          tests/cli/test_rules_cmd.cpp)
 add_icmg_test(test_skill_ask_cmd      tests/cli/test_skill_ask_cmd.cpp)
+add_icmg_test(test_hook_skill_suggest tests/core/test_hook_skill_suggest.cpp)
 
 # test_claudemd / test_backup: standalone — helpers are static inline, no icmg_lib needed.
 add_executable(test_claudemd tests/cli/test_claudemd.cpp)

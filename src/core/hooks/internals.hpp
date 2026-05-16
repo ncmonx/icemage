@@ -68,4 +68,12 @@ std::string runUserPromptCavemanInject();
 // session_id defaults to ICMG_SESSION_ID env var, then "default".
 std::string runFocusChainInject(const std::string& session_id = "", int limit = 5);
 
+// v1.3.0 Task 7: UserPromptSubmit auto-inject top skill chunk.
+// Searches skill_chunks in the project DB for the highest-scoring chunk
+// matching the user prompt (hybrid BM25+cosine, alpha=0.5).
+// Returns a markdown hint block (≤600 chars) when the top score ≥ 0.20,
+// empty string otherwise. Fail-soft: any error → "".
+// Opt-out: set env ICMG_SKILL_QUIET=1.
+std::string runUserPromptSkillSuggest(const std::string& user_prompt);
+
 } // namespace icmg::core::hooks

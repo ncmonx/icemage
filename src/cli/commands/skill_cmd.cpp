@@ -20,6 +20,7 @@
 #include "../../core/token_counter.hpp"
 #include "../../imem/skill_chunker.hpp"
 #include "../../embed/embedder.hpp"
+#include "skill_recall.hpp"
 #include <sqlite3.h>
 #include <iostream>
 #include <fstream>
@@ -537,51 +538,21 @@ static int doChunk(ContextNodeStore& store, Db& db,
     return 0;
 }
 
-// ---- doAsk ------------------------------------------------------------------
+// ---- recallSkillChunks (shared helper) -------------------------------------
 //
-// icmg skill ask "<query>" [--top N] [--alpha F] [--json] [--skill <key>]
-//
-// Hybrid recall over skill_chunks: BM25 over content + cosine over embedding BLOB.
-// Gracefully degrades to BM25-only when embedder unavailable.
+// Hybrid BM25+cosine recall over skill_chunks.
+// Exposed via skill_recall.hpp so internals.cpp can call it without duplication.
 
-static int doAsk(Db& db, const std::vector<std::string>& args) {
-    if (args.empty()) {
-        std::cerr << "skill ask: missing <query>\n"
-                     "Usage: icmg skill ask \"<query>\" [--top N] [--alpha F] [--json] [--skill <key>]\n";
-        return 1;
-    }
+std::vector<ScoredChunk> recallSkillChunks(
+    Db&                db,
+    const std::string& query,
+    int                top_n,
+    double             alpha,
+    const std::string& skill_key_filter)
+{
+    if (query.empty()) return {};
 
-    std::string query;
-    int top_n = 5;
-    double alpha = 0.5;
-    bool json_out = false;
-    std::string skill_filter;
-
-    for (size_t i = 0; i < args.size(); ++i) {
-        const auto& a = args[i];
-        if (a == "--json") {
-            json_out = true;
-        } else if (a == "--top" && i + 1 < args.size()) {
-            try { top_n = std::max(1, std::min(50, std::stoi(args[++i]))); } catch (...) {}
-        } else if (a == "--alpha" && i + 1 < args.size()) {
-            try {
-                double v = std::stod(args[++i]);
-                alpha = std::max(0.0, std::min(1.0, v));
-            } catch (...) {}
-        } else if (a == "--skill" && i + 1 < args.size()) {
-            skill_filter = args[++i];
-        } else if (query.empty() && !a.empty() && a[0] != '-') {
-            query = a;
-        }
-    }
-
-    if (query.empty()) {
-        std::cerr << "skill ask: missing <query>\n"
-                     "Usage: icmg skill ask \"<query>\" [--top N] [--alpha F] [--json] [--skill <key>]\n";
-        return 1;
-    }
-
-    // Tokenize — mirrors ContextNodeStore::tokenize() exactly.
+    // Tokenize — mirrors ContextNodeStore::tokenize().
     auto tokenize = [](const std::string& text) -> std::vector<std::string> {
         std::vector<std::string> tokens;
         std::string tok;
@@ -600,7 +571,6 @@ static int doAsk(Db& db, const std::vector<std::string>& args) {
     auto q_tokens = tokenize(query);
 
     struct ChunkCandidate {
-        int64_t     id;
         std::string parent_path;
         std::string heading;
         std::string content;
@@ -613,13 +583,12 @@ static int doAsk(Db& db, const std::vector<std::string>& args) {
     auto rowToCandidate = [&](const Row& row) {
         if (row.size() < 5) return;
         ChunkCandidate c;
-        try { c.id = std::stoll(row[0]); } catch (...) { c.id = 0; }
-        c.parent_path = row[1];
-        c.heading     = row[2];
-        c.content     = row[3];
-        c.skill_key   = row[4];
-        if (row.size() >= 6 && !row[5].empty()) {
-            const std::string& s = row[5];
+        c.parent_path = row[0];
+        c.heading     = row[1];
+        c.content     = row[2];
+        c.skill_key   = row[3];
+        if (row.size() >= 5 && !row[4].empty()) {
+            const std::string& s = row[4];
             c.emb_blob.assign(
                 reinterpret_cast<const uint8_t*>(s.data()),
                 reinterpret_cast<const uint8_t*>(s.data()) + s.size());
@@ -627,40 +596,36 @@ static int doAsk(Db& db, const std::vector<std::string>& args) {
         candidates.push_back(std::move(c));
     };
 
-    if (skill_filter.empty()) {
-        db.query(
-            "SELECT sc.id, sc.parent_path, sc.heading, sc.content, cn.node_key, sc.embedding"
-            " FROM skill_chunks sc"
-            " JOIN context_nodes cn ON cn.id = sc.skill_id"
-            " WHERE cn.tier = 'skill' AND cn.active = 1",
-            {},
-            rowToCandidate
-        );
-    } else {
-        std::string skill_id_str;
-        db.query(
-            "SELECT id FROM context_nodes WHERE node_key=? AND tier='skill'",
-            {skill_filter},
-            [&](const Row& row) { if (!row.empty()) skill_id_str = row[0]; }
-        );
-        if (skill_id_str.empty()) {
-            if (json_out) std::cout << "[]\n";
-            return 0;
+    try {
+        if (skill_key_filter.empty()) {
+            db.query(
+                "SELECT sc.parent_path, sc.heading, sc.content, cn.node_key, sc.embedding"
+                " FROM skill_chunks sc"
+                " JOIN context_nodes cn ON cn.id = sc.skill_id"
+                " WHERE cn.tier = 'skill' AND cn.active = 1",
+                {},
+                rowToCandidate
+            );
+        } else {
+            std::string skill_id_str;
+            db.query(
+                "SELECT id FROM context_nodes WHERE node_key=? AND tier='skill'",
+                {skill_key_filter},
+                [&](const Row& row) { if (!row.empty()) skill_id_str = row[0]; }
+            );
+            if (skill_id_str.empty()) return {};
+            db.query(
+                "SELECT sc.parent_path, sc.heading, sc.content, cn.node_key, sc.embedding"
+                " FROM skill_chunks sc"
+                " JOIN context_nodes cn ON cn.id = sc.skill_id"
+                " WHERE sc.skill_id = ?",
+                {skill_id_str},
+                rowToCandidate
+            );
         }
-        db.query(
-            "SELECT sc.id, sc.parent_path, sc.heading, sc.content, cn.node_key, sc.embedding"
-            " FROM skill_chunks sc"
-            " JOIN context_nodes cn ON cn.id = sc.skill_id"
-            " WHERE sc.skill_id = ?",
-            {skill_id_str},
-            rowToCandidate
-        );
-    }
+    } catch (...) { return {}; }
 
-    if (candidates.empty()) {
-        if (json_out) std::cout << "[]\n";
-        return 0;
-    }
+    if (candidates.empty()) return {};
 
     // BM25: tf × log(N/df) per query token.
     size_t N = candidates.size();
@@ -739,6 +704,68 @@ static int doAsk(Db& db, const std::vector<std::string>& args) {
               [](const Scored& a, const Scored& b) { return a.score > b.score; });
 
     int take = std::min(top_n, (int)ranked.size());
+    std::vector<ScoredChunk> results;
+    results.reserve(take);
+    for (int i = 0; i < take; ++i) {
+        auto& cand = candidates[ranked[i].idx];
+        results.push_back({cand.parent_path, cand.heading, cand.content,
+                           cand.skill_key, ranked[i].score});
+    }
+    return results;
+}
+
+// ---- doAsk ------------------------------------------------------------------
+//
+// icmg skill ask "<query>" [--top N] [--alpha F] [--json] [--skill <key>]
+//
+// Hybrid recall over skill_chunks: BM25 over content + cosine over embedding BLOB.
+// Gracefully degrades to BM25-only when embedder unavailable.
+// Now delegates scoring to recallSkillChunks().
+
+static int doAsk(Db& db, const std::vector<std::string>& args) {
+    if (args.empty()) {
+        std::cerr << "skill ask: missing <query>\n"
+                     "Usage: icmg skill ask \"<query>\" [--top N] [--alpha F] [--json] [--skill <key>]\n";
+        return 1;
+    }
+
+    std::string query;
+    int top_n = 5;
+    double alpha = 0.5;
+    bool json_out = false;
+    std::string skill_filter;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        const auto& a = args[i];
+        if (a == "--json") {
+            json_out = true;
+        } else if (a == "--top" && i + 1 < args.size()) {
+            try { top_n = std::max(1, std::min(50, std::stoi(args[++i]))); } catch (...) {}
+        } else if (a == "--alpha" && i + 1 < args.size()) {
+            try {
+                double v = std::stod(args[++i]);
+                alpha = std::max(0.0, std::min(1.0, v));
+            } catch (...) {}
+        } else if (a == "--skill" && i + 1 < args.size()) {
+            skill_filter = args[++i];
+        } else if (query.empty() && !a.empty() && a[0] != '-') {
+            query = a;
+        }
+    }
+
+    if (query.empty()) {
+        std::cerr << "skill ask: missing <query>\n"
+                     "Usage: icmg skill ask \"<query>\" [--top N] [--alpha F] [--json] [--skill <key>]\n";
+        return 1;
+    }
+
+    // Delegate to shared helper.
+    auto results = recallSkillChunks(db, query, top_n, alpha, skill_filter);
+
+    if (results.empty()) {
+        if (json_out) std::cout << "[]\n";
+        return 0;
+    }
 
     auto jsonEsc = [](const std::string& s) {
         std::string o; o.reserve(s.size());
@@ -751,16 +778,18 @@ static int doAsk(Db& db, const std::vector<std::string>& args) {
         return o;
     };
 
+    int take = (int)results.size();
+
     if (json_out) {
         std::cout << "[\n";
         for (int i = 0; i < take; ++i) {
-            auto& cand = candidates[ranked[i].idx];
-            std::string excerpt = cand.content.substr(0, 200);
+            auto& r = results[i];
+            std::string excerpt = r.content.substr(0, 200);
             std::cout << "  {"
-                      << "\"path\":\"" << jsonEsc(cand.parent_path) << "\","
-                      << "\"heading\":\"" << jsonEsc(cand.heading) << "\","
-                      << "\"skill\":\"" << jsonEsc(cand.skill_key) << "\","
-                      << "\"score\":" << std::fixed << std::setprecision(4) << ranked[i].score << ","
+                      << "\"path\":\"" << jsonEsc(r.parent_path) << "\","
+                      << "\"heading\":\"" << jsonEsc(r.heading) << "\","
+                      << "\"skill\":\"" << jsonEsc(r.skill_key) << "\","
+                      << "\"score\":" << std::fixed << std::setprecision(4) << r.score << ","
                       << "\"content_excerpt\":\"" << jsonEsc(excerpt) << "\""
                       << "}" << (i + 1 < take ? "," : "") << "\n";
         }
@@ -769,12 +798,12 @@ static int doAsk(Db& db, const std::vector<std::string>& args) {
     }
 
     for (int i = 0; i < take; ++i) {
-        auto& cand = candidates[ranked[i].idx];
-        std::string excerpt = cand.content.substr(0, 200);
-        std::cout << "[" << i + 1 << "] " << cand.heading
-                  << "  (score=" << std::fixed << std::setprecision(4) << ranked[i].score
-                  << ", skill=" << cand.skill_key << ")\n"
-                  << "    path: " << cand.parent_path << "\n"
+        auto& r = results[i];
+        std::string excerpt = r.content.substr(0, 200);
+        std::cout << "[" << i + 1 << "] " << r.heading
+                  << "  (score=" << std::fixed << std::setprecision(4) << r.score
+                  << ", skill=" << r.skill_key << ")\n"
+                  << "    path: " << r.parent_path << "\n"
                   << "    " << excerpt << "\n\n";
     }
     return 0;

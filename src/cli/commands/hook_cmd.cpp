@@ -177,11 +177,15 @@ private:
     // Build the additionalContext payload + emit JSON to stdout.
     // v1.1.0 Task 6.6: prepend caveman re-inject block when caveman.flag is
     // ON and violations >0. Empty block on healthy sessions → no overhead.
-    static void emitContext(const std::string& msg) {
+    // v1.3.0 Task 7: prepend skill chunk hint when top score ≥ 0.20.
+    static void emitContext(const std::string& msg, const std::string& prompt = "") {
         std::string caveman = icmg::core::hooks::runUserPromptCavemanInject();
+        std::string skill_hint = prompt.empty()
+            ? ""
+            : icmg::core::hooks::runUserPromptSkillSuggest(prompt);
         json out;
         out["hookSpecificOutput"]["hookEventName"] = "UserPromptSubmit";
-        out["hookSpecificOutput"]["additionalContext"] = caveman + msg;
+        out["hookSpecificOutput"]["additionalContext"] = skill_hint + caveman + msg;
         std::cout << out.dump() << "\n";
     }
 
@@ -525,7 +529,7 @@ private:
         }
 
         if (msg.tellp() == 0) return 0;
-        emitContext(msg.str());
+        emitContext(msg.str(), prompt);
         return 0;
     }
 
