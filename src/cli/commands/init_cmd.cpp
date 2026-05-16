@@ -252,6 +252,7 @@ ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
 SKILLS=$(icmg skill manifest 2>/dev/null)
 FOCUS=$(icmg focus inject 2>/dev/null)
+RULES=$(icmg rules inject 2>/dev/null)
 CONTENT="$HOT"
 if [ -n "$SKILLS" ]; then
     if [ -n "$CONTENT" ]; then
@@ -265,6 +266,13 @@ if [ -n "$FOCUS" ]; then
         CONTENT="$CONTENT"$'\n\n'"$FOCUS"
     else
         CONTENT="$FOCUS"
+    fi
+fi
+if [ -n "$RULES" ]; then
+    if [ -n "$CONTENT" ]; then
+        CONTENT="$CONTENT"$'\n\n'"$RULES"
+    else
+        CONTENT="$RULES"
     fi
 fi
 [ -z "$CONTENT" ] && exit 0
@@ -1136,6 +1144,19 @@ private:
                 std::cout << "  + icmg service: cleaned " << removed << " legacy schtasks\n";
         }
 #endif
+
+        // T11: auto-sync .icmgrules/ into rules_bank if directory exists.
+        {
+            fs::path rules_dir = root / ".icmgrules";
+            if (fs::exists(rules_dir) && fs::is_directory(rules_dir)) {
+                auto rules_cmd = core::Registry<cli::BaseCommand>::instance().create("rules");
+                if (rules_cmd) {
+                    int rc = rules_cmd->run({"sync"});
+                    if (rc == 0)
+                        std::cout << "  + icmg rules: .icmgrules/ synced\n";
+                }
+            }
+        }
 
         return n;
     }

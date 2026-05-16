@@ -144,6 +144,9 @@ int Scanner::scan(const std::string& root, const Options& opts) {
     // A9: load gitignore
     GitIgnore gi;
     if (opts.gitignore) gi.load(root + "/.gitignore");
+    // T11: load .icmgignore (additive — does not replace .gitignore)
+    GitIgnore icmgi;
+    icmgi.load(root + "/.icmgignore"); // no-op if absent
 
     // Phase 21 hotfix: auto-merge case-mismatched duplicate path nodes from
     // pre-v0.6.1 scans (Windows). Cheap when no dups exist (one SELECT).
@@ -274,6 +277,12 @@ int Scanner::scan(const std::string& root, const Options& opts) {
                         std::string rel = fs::relative(entry.path(), root_path, rel_ec).string();
                         if (!rel_ec && gi.matches(rel)) skip = true;
                     }
+                    // T11: check .icmgignore (always active when file present)
+                    if (!skip) {
+                        std::error_code rel_ec;
+                        std::string rel = fs::relative(entry.path(), root_path, rel_ec).string();
+                        if (!rel_ec && icmgi.matches(rel)) skip = true;
+                    }
                     if (!skip) walk(entry.path(), depth + 1);
                     continue;
                 }
@@ -282,6 +291,12 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             {
                 std::error_code is_reg_ec;
                 if (!entry.is_regular_file(is_reg_ec)) continue;
+            }
+            // T11: skip files matched by .icmgignore
+            {
+                std::error_code rel_ec;
+                std::string rel = fs::relative(entry.path(), root_path, rel_ec).string();
+                if (!rel_ec && icmgi.matches(rel)) continue;
             }
             std::error_code fsz_ec;
             auto fsz = entry.file_size(fsz_ec);

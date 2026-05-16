@@ -510,6 +510,9 @@ add_icmg_test(test_copy_cmd        tests/cli/test_copy_cmd.cpp)
 add_icmg_test(test_tokens_cmd      tests/cli/test_tokens_cmd.cpp)
 add_icmg_test(test_ingest_history_cmd tests/cli/test_ingest_history_cmd.cpp)
 add_icmg_test(test_migration_0029     tests/core/test_migration_0029.cpp)
+add_icmg_test(test_migration_0030     tests/core/test_migration_0030.cpp)
+add_icmg_test(test_rules_store        tests/core/test_rules_store.cpp)
+add_icmg_test(test_rules_cmd          tests/cli/test_rules_cmd.cpp)
 
 # test_claudemd / test_backup: standalone — helpers are static inline, no icmg_lib needed.
 add_executable(test_claudemd tests/cli/test_claudemd.cpp)
