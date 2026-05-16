@@ -77,6 +77,12 @@ static void autoBootstrapProject(const std::vector<std::string>& args) {
 
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
+    // v1.3.1: suppress Windows critical-error popups (e.g. "B:/ — system
+    // cannot find drive"). MSYS-style bash paths like /b/x can reach Win32
+    // file APIs as `B:\x`. SEM_FAILCRITICALERRORS makes the call fail
+    // silently instead of showing a system dialog; SEM_NOOPENFILEERRORBOX
+    // suppresses the "file not found" UI.
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     attachParentConsoleIfAny();
 #endif
     // Parse global flags first
@@ -101,7 +107,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (show_version) {
-        std::cout << "icmg 1.3.0\n";
+        std::cout << "icmg 1.3.1\n";
         return 0;
     }
 
@@ -142,7 +148,7 @@ int main(int argc, char* argv[]) {
     // Version staleness check (cached — no network hit when cache is fresh).
     // Skip for MCP mode, version queries, and update commands.
     if (!args.empty() && args[0] != "update" && args[0] != "upgrade") {
-        auto vstatus = icmg::core::checkVersionStaleness("1.3.0");
+        auto vstatus = icmg::core::checkVersionStaleness("1.3.1");
         icmg::core::printVersionWarning(vstatus);
         if (!args.empty() && icmg::core::isCommandSoftBlocked(args[0], vstatus)) {
             std::cerr << "[icmg] Command '" << args[0]
