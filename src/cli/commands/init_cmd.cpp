@@ -1080,13 +1080,15 @@ private:
             }
         });
 
-        // Phase 71: UserPromptSubmit â€” auto-recall memory + auto-context.
-        // v0.42.0: also inject BM25-matched cold context_nodes + skill suggestions.
+        // v1.5.3: UserPromptSubmit goes pure icmg.exe — drops bash + jq + daemon
+        // IPC dance (icmg-prompt-recall.sh) that was spawning Win32 children
+        // outside icmg.exe SetErrorMode coverage, causing the recurring B:/ popup
+        // when transitive lookups hit MSYS path-translated drives.
         cfg["hooks"]["UserPromptSubmit"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0"}}
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook userprompt"}}
                 })}
             }
         });
@@ -1115,16 +1117,15 @@ private:
             }
         });
 
-        // v0.54.0: Stop hook consolidated into `icmg hook stop` single fork.
-        // Replaces the 5-bash-command chain (distill / fail-sync / compliance /
-        // tool-budget / wflog) â€” saves ~150-250ms per Stop event.
+        // v1.5.3: Stop hook trimmed to single icmg.exe call. Dropped the
+        // wflog-stop.sh sidecar — it spawned git + jq (Win32) outside icmg's
+        // SetErrorMode, triggering the recurring B:/ popup at end of turn.
+        // wflog reminder feature retired; users invoke `icmg wflog save` manually.
         cfg["hooks"]["Stop"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook stop"}},
-                    {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-wflog-stop.sh ] && bash .claude/hooks/icmg-wflog-stop.sh || exit 0"}}
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook stop"}}
                 })}
             }
         });
