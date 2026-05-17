@@ -7,11 +7,17 @@
 //
 // Output: per-source breakdown (user/assistant/tool-input/tool-output)
 // + top-N largest entries.
+//
+// v1.5.0: --all-sessions flag aggregates every transcript in the current
+// project's ~/.claude/projects/<cwd-encoded>/ directory. JSON output adds a
+// `sessions[]` array (one entry per transcript file) so callers like
+// `icmg savings --html` can render a per-session detail table.
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -42,68 +48,260 @@ public:
             "and Claude's real context-window fill.\n\n"
             "Options:\n"
             "  --transcript PATH  Override default ~/.claude/projects/<cwd-hash>/*.jsonl\n"
+            "  --all-sessions     Aggregate every transcript in current project\n"
+            "                     (sums across all *.jsonl in ~/.claude/projects/<cwd>/)\n"
             "  --top N            Show top-N largest entries (default 10)\n"
             "  --json             Machine-readable output\n";
     }
 
+    struct Bucket { int64_t tokens = 0; int64_t calls = 0; };
+    struct Entry  { std::string source; std::string label; int64_t tokens; };
+    struct SessionStats {
+        fs::path path;
+        std::time_t mtime = 0;
+        int64_t total = 0;
+        std::map<std::string, Bucket> by_source;
+    };
+
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help")) { usage(); return 0; }
-        bool json_out = hasFlag(args, "--json");
+        bool json_out     = hasFlag(args, "--json");
+        bool all_sessions = hasFlag(args, "--all-sessions");
         int top = 10;
         try { top = std::stoi(flagValue(args, "--top", "10")); } catch (...) {}
 
         std::string explicit_path = flagValue(args, "--transcript");
-        fs::path transcript;
-        if (!explicit_path.empty()) {
-            transcript = explicit_path;
-        } else {
-            transcript = findLatestTranscript();
+
+        // --- multi-session path -------------------------------------------
+        if (all_sessions && explicit_path.empty()) {
+            return runAllSessions(json_out, top);
         }
+
+        // --- single-transcript path (back-compat) -------------------------
+        fs::path transcript;
+        if (!explicit_path.empty())  transcript = explicit_path;
+        else                          transcript = findLatestTranscript();
+
         if (transcript.empty() || !fs::exists(transcript)) {
             std::cerr << "icmg context-budget: no transcript found.\n"
                       << "  Try --transcript <path> or check ~/.claude/projects/\n";
             return 1;
         }
 
-        // Aggregate.
-        struct Bucket { int64_t tokens = 0; int64_t calls = 0; };
         std::map<std::string, Bucket> by_source;
-        struct Entry { std::string source; std::string label; int64_t tokens; };
         std::vector<Entry> entries;
-
-        std::ifstream f(transcript);
-        std::string line;
         int64_t total_tokens = 0;
-        while (std::getline(f, line)) {
-            if (line.empty()) continue;
-            json msg;
-            try { msg = json::parse(line); } catch (...) { continue; }
-            walkMessage(msg, by_source, entries, total_tokens);
-        }
+        parseTranscript(transcript, by_source, entries, total_tokens);
 
-        // Sort entries desc by token count.
         std::sort(entries.begin(), entries.end(),
                   [](const Entry& a, const Entry& b){ return a.tokens > b.tokens; });
 
         if (json_out) {
-            std::cout << "{\"transcript\":\"" << transcript.string()
+            std::cout << "{\"transcript\":\"" << jsonEscape(transcript.string())
                       << "\",\"total_tokens\":" << total_tokens
-                      << ",\"by_source\":{";
+                      << ",\"by_source\":" << bySourceJson(by_source)
+                      << "}\n";
+            return 0;
+        }
+        emitText(transcript.filename().string(), total_tokens, by_source, entries, top);
+        return 0;
+    }
+
+private:
+    // ---- aggregate-all-sessions path -------------------------------------
+    int runAllSessions(bool json_out, int top) {
+        fs::path proj_dir = currentProjectDir();
+        if (proj_dir.empty() || !fs::exists(proj_dir)) {
+            std::cerr << "icmg context-budget: project transcript dir not found.\n"
+                      << "  Looked for ~/.claude/projects/" << encodeCwd()
+                      << "\n  Run from your project root, or pass --transcript PATH.\n";
+            return 1;
+        }
+        std::vector<SessionStats> sessions;
+        std::map<std::string, Bucket> agg_source;
+        std::vector<Entry> agg_entries;
+        int64_t grand_total = 0;
+
+        std::error_code ec;
+        for (auto& e : fs::recursive_directory_iterator(proj_dir, ec)) {
+            if (ec) { ec.clear(); continue; }
+            if (!e.is_regular_file()) continue;
+            if (e.path().extension() != ".jsonl") continue;
+
+            SessionStats s;
+            s.path = e.path();
+            auto wt = fs::last_write_time(e, ec);
+            if (!ec) {
+                // Convert file_time_type → std::time_t (portable enough).
+                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                    wt - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+                s.mtime = std::chrono::system_clock::to_time_t(sctp);
+            } else { ec.clear(); }
+
+            parseTranscript(s.path, s.by_source, agg_entries, s.total);
+            for (auto& [k, v] : s.by_source) {
+                agg_source[k].tokens += v.tokens;
+                agg_source[k].calls  += v.calls;
+            }
+            grand_total += s.total;
+            sessions.push_back(std::move(s));
+        }
+        // Newest first.
+        std::sort(sessions.begin(), sessions.end(),
+                  [](const SessionStats& a, const SessionStats& b){ return a.mtime > b.mtime; });
+        std::sort(agg_entries.begin(), agg_entries.end(),
+                  [](const Entry& a, const Entry& b){ return a.tokens > b.tokens; });
+
+        if (json_out) {
+            std::cout << "{\"project_dir\":\"" << jsonEscape(proj_dir.string())
+                      << "\",\"session_count\":" << sessions.size()
+                      << ",\"total_tokens\":" << grand_total
+                      << ",\"by_source\":" << bySourceJson(agg_source)
+                      << ",\"sessions\":[";
             bool first = true;
-            for (auto& [k, v] : by_source) {
+            for (auto& s : sessions) {
                 if (!first) std::cout << ",";
                 first = false;
-                std::cout << "\"" << k << "\":{\"calls\":" << v.calls
-                          << ",\"tokens\":" << v.tokens << "}";
+                std::cout << "{\"file\":\"" << jsonEscape(s.path.filename().string())
+                          << "\",\"mtime\":" << s.mtime
+                          << ",\"total_tokens\":" << s.total
+                          << ",\"by_source\":" << bySourceJson(s.by_source)
+                          << "}";
             }
-            std::cout << "}}\n";
+            std::cout << "]}\n";
             return 0;
         }
 
-        std::cout << "icmg context-budget — " << transcript.filename().string() << "\n"
+        std::cout << "icmg context-budget — project aggregate (" << sessions.size()
+                  << " session" << (sessions.size() == 1 ? "" : "s") << ")\n"
                   << std::string(64, '=') << "\n\n";
-        std::cout << "Estimated total: " << total_tokens << " tokens\n\n";
-        std::cout << "By source:\n";
+        std::cout << "Project dir: " << proj_dir.string() << "\n";
+        std::cout << "Grand total: " << grand_total << " tokens\n\n";
+        std::cout << "Aggregate by source:\n";
+        emitBySource(agg_source, grand_total);
+
+        std::cout << "\nSessions (newest first):\n";
+        std::cout << "  " << std::left
+                  << std::setw(40) << "file"
+                  << std::setw(14) << "tokens"
+                  << "mtime\n";
+        std::cout << "  " << std::string(74, '-') << "\n";
+        for (auto& s : sessions) {
+            char buf[20]; std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M",
+                std::localtime(&s.mtime));
+            std::cout << "  " << std::left
+                      << std::setw(40) << s.path.filename().string().substr(0, 38)
+                      << std::setw(14) << s.total
+                      << buf << "\n";
+        }
+        std::cout << "\nNote: bytes/4 estimate; ±10% vs Anthropic exact count.\n";
+        return 0;
+    }
+
+    // ---- helpers ---------------------------------------------------------
+    // Convert cwd into Claude project-dir encoding: replace each ':', '\',
+    // '/' or ' ' with '-'. Example:
+    //   D:\Data Kerja\Personal\AI\icm-graph
+    //   → D--Data-Kerja-Personal-AI-icm-graph
+    static std::string encodeCwd() {
+        std::error_code ec;
+        fs::path cwd = fs::current_path(ec);
+        if (ec) return {};
+        std::string s = cwd.string();
+        std::string out;
+        out.reserve(s.size());
+        for (char c : s) {
+            if (c == ':' || c == '\\' || c == '/' || c == ' ') out.push_back('-');
+            else out.push_back(c);
+        }
+        return out;
+    }
+
+    static fs::path currentProjectDir() {
+        const char* home = std::getenv("USERPROFILE");
+        if (!home) home = std::getenv("HOME");
+        if (!home) return {};
+        std::string enc = encodeCwd();
+        if (enc.empty()) return {};
+        return fs::path(home) / ".claude" / "projects" / enc;
+    }
+
+    static fs::path findLatestTranscript() {
+        const char* home = std::getenv("USERPROFILE");
+        if (!home) home = std::getenv("HOME");
+        if (!home) return {};
+        fs::path root = fs::path(home) / ".claude" / "projects";
+        if (!fs::exists(root)) return {};
+        // Prefer current-project dir; fall back to global walk.
+        fs::path proj = currentProjectDir();
+        fs::path latest;
+        fs::file_time_type latest_t = fs::file_time_type::min();
+        std::error_code ec;
+        auto pick = [&](const fs::path& base) {
+            for (auto& e : fs::recursive_directory_iterator(base, ec)) {
+                if (ec) { ec.clear(); continue; }
+                if (!e.is_regular_file()) continue;
+                if (e.path().extension() != ".jsonl") continue;
+                auto wt = fs::last_write_time(e, ec);
+                if (ec) { ec.clear(); continue; }
+                if (wt > latest_t) { latest_t = wt; latest = e.path(); }
+            }
+        };
+        if (!proj.empty() && fs::exists(proj)) pick(proj);
+        if (latest.empty()) pick(root);
+        return latest;
+    }
+
+    static void parseTranscript(const fs::path& transcript,
+                                 std::map<std::string, Bucket>& by_source,
+                                 std::vector<Entry>& entries,
+                                 int64_t& total) {
+        std::ifstream f(transcript);
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line.empty()) continue;
+            json msg;
+            try { msg = json::parse(line); } catch (...) { continue; }
+            walkMessage(msg, by_source, entries, total);
+        }
+    }
+
+    static std::string bySourceJson(const std::map<std::string, Bucket>& by_source) {
+        std::ostringstream os;
+        os << "{";
+        bool first = true;
+        for (auto& [k, v] : by_source) {
+            if (!first) os << ",";
+            first = false;
+            os << "\"" << jsonEscape(k) << "\":{\"calls\":" << v.calls
+               << ",\"tokens\":" << v.tokens << "}";
+        }
+        os << "}";
+        return os.str();
+    }
+
+    static std::string jsonEscape(const std::string& s) {
+        std::string out;
+        out.reserve(s.size() + 4);
+        for (char c : s) {
+            switch (c) {
+                case '"':  out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n";  break;
+                case '\r': out += "\\r";  break;
+                case '\t': out += "\\t";  break;
+                default:
+                    if ((unsigned char)c < 0x20) {
+                        char buf[8]; std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                        out += buf;
+                    } else out.push_back(c);
+            }
+        }
+        return out;
+    }
+
+    static void emitBySource(const std::map<std::string, Bucket>& by_source,
+                              int64_t total_tokens) {
         std::cout << "  " << std::left
                   << std::setw(20) << "source"
                   << std::setw(10) << "calls"
@@ -118,6 +316,16 @@ public:
                       << std::setw(10) << b.tokens
                       << pct << "%\n";
         }
+    }
+
+    static void emitText(const std::string& title, int64_t total_tokens,
+                          const std::map<std::string, Bucket>& by_source,
+                          const std::vector<Entry>& entries, int top) {
+        std::cout << "icmg context-budget — " << title << "\n"
+                  << std::string(64, '=') << "\n\n";
+        std::cout << "Estimated total: " << total_tokens << " tokens\n\n";
+        std::cout << "By source:\n";
+        emitBySource(by_source, total_tokens);
         std::cout << "\nTop " << top << " entries by size:\n";
         for (int i = 0; i < (int)entries.size() && i < top; ++i) {
             std::cout << "  " << std::setw(8) << entries[i].tokens
@@ -127,29 +335,6 @@ public:
         std::cout << "\nNote: estimate via bytes/4. Anthropic actual tokens may differ ±10%.\n";
         std::cout << "      `icmg savings` covers icmg-instrumented ops only.\n";
         std::cout << "      This view captures EVERYTHING in the conversation.\n";
-        return 0;
-    }
-
-private:
-    static fs::path findLatestTranscript() {
-        const char* home = std::getenv("USERPROFILE");
-        if (!home) home = std::getenv("HOME");
-        if (!home) return {};
-        fs::path root = fs::path(home) / ".claude" / "projects";
-        if (!fs::exists(root)) return {};
-        // Walk to find latest *.jsonl.
-        fs::path latest;
-        fs::file_time_type latest_t = fs::file_time_type::min();
-        std::error_code ec;
-        for (auto& e : fs::recursive_directory_iterator(root, ec)) {
-            if (ec) { ec.clear(); continue; }
-            if (!e.is_regular_file()) continue;
-            if (e.path().extension() != ".jsonl") continue;
-            auto wt = fs::last_write_time(e, ec);
-            if (ec) { ec.clear(); continue; }
-            if (wt > latest_t) { latest_t = wt; latest = e.path(); }
-        }
-        return latest;
     }
 
     template<typename Map, typename Vec>

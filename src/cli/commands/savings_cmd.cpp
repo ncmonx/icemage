@@ -330,15 +330,39 @@ public:
                   << "  (" << std::fixed << std::setprecision(1)
                   << pct(total.saved, total.raw_tokens) << "%)\n";
 
-        // Phase 67 hotfix: real session total alongside dashboard estimate.
-        int64_t real_tok = fetchRealSessionTokens();
-        if (real_tok > 0) {
-            int coverage_pct = real_tok > 0 ? (int)(100 * total.raw_tokens / real_tok) : 0;
+        // v1.5.0: real session total (aggregated across all project sessions).
+        RealSessionData rsd = fetchRealSessionData();
+        if (rsd.total_tokens > 0) {
+            int coverage_pct = rsd.total_tokens > 0
+                                ? (int)(100 * total.raw_tokens / rsd.total_tokens) : 0;
             if (coverage_pct > 100) coverage_pct = 100;
-            std::cout << "\nReal session tokens: " << real_tok
+            std::cout << "\nReal session tokens (sum of " << rsd.session_count
+                      << " sessions): " << rsd.total_tokens
                       << "  (icmg-covered " << total.raw_tokens
                       << " = " << coverage_pct << "%, outside "
-                      << (real_tok - total.raw_tokens) << ")\n";
+                      << (rsd.total_tokens - total.raw_tokens) << ")\n";
+
+            std::map<std::string, int64_t, std::greater<std::string>> by_day;
+            for (auto& r : rsd.sessions) {
+                if (r.mtime <= 0) continue;
+                std::time_t t = (std::time_t)r.mtime;
+                std::tm tm_buf{};
+#ifdef _WIN32
+                localtime_s(&tm_buf, &t);
+#else
+                localtime_r(&t, &tm_buf);
+#endif
+                char dbuf[16]; std::strftime(dbuf, sizeof(dbuf), "%Y-%m-%d", &tm_buf);
+                by_day[dbuf] += r.total;
+            }
+            if (!by_day.empty()) {
+                std::cout << "\nDaily real-token history (this project, newest first):\n";
+                int shown = 0;
+                for (auto& [d, tok] : by_day) {
+                    if (shown++ >= 14) break;
+                    std::cout << "  " << d << "  " << std::setw(10) << tok << " tok\n";
+                }
+            }
         }
 
         if (denials.total > 0) {
@@ -394,11 +418,66 @@ private:
                   << pct(b.saved, b.raw_tokens) << "% saved)\n";
     }
 
-    // Phase 67 hotfix: query latest transcript for REAL session total
-    // (covers all sources, not just icmg-instrumented). Subprocess call
-    // to self avoids duplicating the JSONL walker.
-    static int64_t fetchRealSessionTokens() {
-        // Prefer self-exe path; fall back to ICMG_BIN env then 'icmg' on PATH.
+    // v1.5.0: real session data aggregated across ALL transcripts in the
+    // current project's ~/.claude/projects/<cwd-encoded>/ directory.
+    struct RealSessionRow {
+        std::string file;
+        int64_t     mtime = 0;
+        int64_t     total = 0;
+        int64_t     text = 0;
+        int64_t     tool_input = 0;
+        int64_t     tool_output = 0;
+        int64_t     thinking = 0;
+    };
+    struct RealSessionData {
+        int64_t total_tokens = 0;
+        int64_t text = 0;
+        int64_t tool_input = 0;
+        int64_t tool_output = 0;
+        int64_t thinking = 0;
+        int     session_count = 0;
+        std::vector<RealSessionRow> sessions;
+    };
+
+    static int64_t parseIntAfter(const std::string& s, const std::string& key,
+                                   size_t start, size_t end) {
+        size_t p = s.find(key, start);
+        if (p == std::string::npos || p >= end) return 0;
+        p += key.size();
+        try { return std::stoll(s.substr(p)); } catch (...) { return 0; }
+    }
+
+    // Sum tokens for keys starting with prefix inside [scope_start, scope_end).
+    // Each value object has shape {"calls":N,"tokens":M}.
+    static int64_t sumSourceTokens(const std::string& s, size_t scope_start,
+                                     size_t scope_end,
+                                     const std::string& source_prefix,
+                                     bool is_prefix_match) {
+        int64_t out = 0;
+        size_t pos = scope_start;
+        while (pos < scope_end) {
+            std::string needle = "\"" + source_prefix;
+            size_t kp = s.find(needle, pos);
+            if (kp == std::string::npos || kp >= scope_end) break;
+            size_t after_prefix = kp + needle.size();
+            if (!is_prefix_match) {
+                if (after_prefix >= scope_end || s[after_prefix] != '"') {
+                    pos = kp + needle.size();
+                    continue;
+                }
+            }
+            size_t obj_start = s.find('{', after_prefix);
+            if (obj_start == std::string::npos || obj_start >= scope_end) break;
+            size_t obj_end = s.find('}', obj_start);
+            if (obj_end == std::string::npos || obj_end > scope_end) break;
+            out += parseIntAfter(s, "\"tokens\":", obj_start, obj_end);
+            pos = obj_end + 1;
+        }
+        return out;
+    }
+
+    static RealSessionData fetchRealSessionData() {
+        RealSessionData out;
         std::string bin;
 #ifdef _WIN32
         char buf[1024]; DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
@@ -408,12 +487,68 @@ private:
             const char* e = std::getenv("ICMG_BIN");
             bin = e ? e : "icmg";
         }
-        std::string cmd = "\"" + bin + "\" context-budget --json --top 0 2>/dev/null";
-        auto res = core::safeExecShell(cmd, false, 10000);
-        if (res.exit_code != 0 || res.out.empty()) return 0;
-        auto p = res.out.find("\"total_tokens\":");
-        if (p == std::string::npos) return 0;
-        try { return std::stoll(res.out.substr(p + 15)); } catch (...) { return 0; }
+        std::string cmd = "\"" + bin + "\" context-budget --all-sessions --json 2>/dev/null";
+        auto res = core::safeExecShell(cmd, false, 15000);
+        if (res.exit_code != 0 || res.out.empty()) return out;
+        const std::string& s = res.out;
+
+        size_t sess_arr = s.find("\"sessions\":");
+        size_t top_end  = (sess_arr == std::string::npos) ? s.size() : sess_arr;
+        out.total_tokens  = parseIntAfter(s, "\"total_tokens\":", 0, top_end);
+        out.session_count = (int)parseIntAfter(s, "\"session_count\":", 0, top_end);
+
+        size_t agg_bs = s.find("\"by_source\":");
+        if (agg_bs != std::string::npos && agg_bs < top_end) {
+            size_t agg_obj = s.find('{', agg_bs);
+            size_t agg_end = top_end;
+            if (agg_obj != std::string::npos && agg_obj < agg_end) {
+                out.tool_input  = sumSourceTokens(s, agg_obj, agg_end, "tool-input:", true);
+                out.tool_output = sumSourceTokens(s, agg_obj, agg_end, "tool-output", false);
+                out.thinking    = sumSourceTokens(s, agg_obj, agg_end, "thinking",    false);
+                int64_t a = sumSourceTokens(s, agg_obj, agg_end, "user",      false);
+                int64_t b = sumSourceTokens(s, agg_obj, agg_end, "assistant", false);
+                int64_t c = sumSourceTokens(s, agg_obj, agg_end, "text",      false);
+                int64_t d = sumSourceTokens(s, agg_obj, agg_end, "other",     false);
+                out.text = a + b + c + d;
+            }
+        }
+
+        if (sess_arr != std::string::npos) {
+            size_t cursor = sess_arr;
+            while (true) {
+                size_t obj = s.find("{\"file\":\"", cursor);
+                if (obj == std::string::npos) break;
+                size_t obj_end = s.find("}}", obj);
+                if (obj_end == std::string::npos) break;
+                obj_end += 2;
+
+                RealSessionRow r;
+                size_t fp = obj + 9;
+                size_t fe = s.find('"', fp);
+                if (fe == std::string::npos) break;
+                r.file  = s.substr(fp, fe - fp);
+                r.mtime = parseIntAfter(s, "\"mtime\":",       fe, obj_end);
+                r.total = parseIntAfter(s, "\"total_tokens\":", fe, obj_end);
+
+                size_t row_bs = s.find("\"by_source\":", fe);
+                if (row_bs != std::string::npos && row_bs < obj_end) {
+                    size_t row_obj = s.find('{', row_bs);
+                    if (row_obj != std::string::npos && row_obj < obj_end) {
+                        r.tool_input  = sumSourceTokens(s, row_obj, obj_end, "tool-input:", true);
+                        r.tool_output = sumSourceTokens(s, row_obj, obj_end, "tool-output", false);
+                        r.thinking    = sumSourceTokens(s, row_obj, obj_end, "thinking",    false);
+                        int64_t a = sumSourceTokens(s, row_obj, obj_end, "user",      false);
+                        int64_t b = sumSourceTokens(s, row_obj, obj_end, "assistant", false);
+                        int64_t c = sumSourceTokens(s, row_obj, obj_end, "text",      false);
+                        int64_t d = sumSourceTokens(s, row_obj, obj_end, "other",     false);
+                        r.text = a + b + c + d;
+                    }
+                }
+                out.sessions.push_back(std::move(r));
+                cursor = obj_end;
+            }
+        }
+        return out;
     }
 
     int emitHtml(const Bucket& f, const Bucket& c, const Bucket& t, const Bucket& tot,
@@ -462,18 +597,21 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
            << R"HTML(</div><div class="lbl">Total operations</div></div>
 </div>)HTML";
 
-        // Phase 67 hotfix: real session total from latest transcript.
-        int64_t real_tokens = fetchRealSessionTokens();
-        if (real_tokens > 0) {
+        // v1.5.0: aggregate REAL session tokens across all transcripts in
+        // current project + emit per-session detail table with source breakdown.
+        RealSessionData rsd = fetchRealSessionData();
+        if (rsd.total_tokens > 0) {
             int64_t instrumented = tot.raw_tokens;
-            int64_t uncovered = real_tokens > instrumented ? real_tokens - instrumented : 0;
-            int coverage_pct = real_tokens > 0
-                                ? (int)(100 * instrumented / real_tokens) : 0;
-            if (coverage_pct > 100) coverage_pct = 100;  // cap on small transcripts
+            int64_t uncovered = rsd.total_tokens > instrumented ? rsd.total_tokens - instrumented : 0;
+            int coverage_pct = rsd.total_tokens > 0
+                                ? (int)(100 * instrumented / rsd.total_tokens) : 0;
+            if (coverage_pct > 100) coverage_pct = 100;
             os << R"HTML(<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin-bottom:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">
 <div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Real session tokens</div><div style="font-size:28px;font-weight:700;color:#58a6ff">)HTML"
-               << humanTok(real_tokens)
-               << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">All sources from latest transcript</div></div>
+               << humanTok(rsd.total_tokens)
+               << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Sum across )HTML"
+               << rsd.session_count
+               << R"HTML( session(s) in this project</div></div>
 <div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Icmg-covered</div><div style="font-size:28px;font-weight:700;color:#3fb950">)HTML"
                << humanTok(instrumented) << " (" << coverage_pct
                << R"HTML(%)</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Tracked in dashboard</div></div>
@@ -481,6 +619,81 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                << humanTok(uncovered)
                << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Raw Read/Bash/MCP/conversation</div></div>
 </div>)HTML";
+
+            // Detail table: per-session source breakdown.
+            if (!rsd.sessions.empty()) {
+                os << R"HTML(<details style="margin-bottom:24px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px 20px">
+<summary style="cursor:pointer;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.05em;font-weight:500">Per-session detail ()HTML"
+                   << rsd.sessions.size()
+                   << R"HTML( sessions, source breakdown)</summary>
+<table style="margin-top:12px">
+<thead><tr><th>Session</th><th>Date</th><th class="num">Total</th><th class="num">Text</th><th class="num">Tool in</th><th class="num">Tool out</th><th class="num">Thinking</th></tr></thead>
+<tbody>)HTML";
+                for (auto& r : rsd.sessions) {
+                    char dbuf[24] = "";
+                    std::time_t t = (std::time_t)r.mtime;
+                    if (t > 0) {
+                        std::tm tm_buf{};
+#ifdef _WIN32
+                        localtime_s(&tm_buf, &t);
+#else
+                        localtime_r(&t, &tm_buf);
+#endif
+                        std::strftime(dbuf, sizeof(dbuf), "%Y-%m-%d %H:%M", &tm_buf);
+                    }
+                    std::string label = r.file;
+                    if (label.size() > 16) label = label.substr(0, 8) + "..." + label.substr(label.size() - 5);
+                    os << "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px;color:#8b949e\">"
+                       << label << "</td><td>" << dbuf << "</td>"
+                       << "<td class=\"num\">" << humanTok(r.total) << "</td>"
+                       << "<td class=\"num\">" << humanTok(r.text) << "</td>"
+                       << "<td class=\"num\">" << humanTok(r.tool_input) << "</td>"
+                       << "<td class=\"num\">" << humanTok(r.tool_output) << "</td>"
+                       << "<td class=\"num\">" << humanTok(r.thinking) << "</td></tr>";
+                }
+                os << R"HTML(</tbody></table></details>)HTML";
+            }
+
+            // Daily history: group by YYYY-MM-DD, newest first.
+            std::map<std::string, int64_t, std::greater<std::string>> by_day_html;
+            std::map<std::string, int> sess_per_day;
+            for (auto& r : rsd.sessions) {
+                if (r.mtime <= 0) continue;
+                std::time_t t = (std::time_t)r.mtime;
+                std::tm tm_buf{};
+#ifdef _WIN32
+                localtime_s(&tm_buf, &t);
+#else
+                localtime_r(&t, &tm_buf);
+#endif
+                char dbuf[16]; std::strftime(dbuf, sizeof(dbuf), "%Y-%m-%d", &tm_buf);
+                by_day_html[dbuf] += r.total;
+                ++sess_per_day[dbuf];
+            }
+            if (!by_day_html.empty()) {
+                int64_t day_max = 0;
+                for (auto& [_, v] : by_day_html) if (v > day_max) day_max = v;
+                os << R"HTML(<details style="margin-bottom:24px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px 20px" open>
+<summary style="cursor:pointer;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.05em;font-weight:500">Daily real-token history ()HTML"
+                   << by_day_html.size()
+                   << R"HTML( days, newest first)</summary>
+<table style="margin-top:12px">
+<thead><tr><th>Date</th><th class="num">Sessions</th><th class="num">Real tokens</th><th>Trend</th></tr></thead>
+<tbody>)HTML";
+                int shown = 0;
+                for (auto& [d, tok] : by_day_html) {
+                    if (shown++ >= 30) break;
+                    int bar_pct = day_max > 0 ? (int)(100 * tok / day_max) : 0;
+                    os << "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px\">"
+                       << d << "</td>"
+                       << "<td class=\"num\">" << sess_per_day[d] << "</td>"
+                       << "<td class=\"num\">" << humanTok(tok) << "</td>"
+                       << "<td style=\"width:40%\"><div style=\"background:#21262d;border-radius:3px;height:10px;overflow:hidden\">"
+                       << "<div style=\"height:100%;width:" << bar_pct
+                       << "%;background:linear-gradient(90deg,#58a6ff,#3fb950)\"></div></div></td></tr>";
+                }
+                os << R"HTML(</tbody></table></details>)HTML";
+            }
         }
 
         os << R"HTML(<div class="cards">)HTML";
