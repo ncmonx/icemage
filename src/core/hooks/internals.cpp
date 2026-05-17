@@ -920,4 +920,164 @@ std::string runPostToolUseEditAutoSync(const std::string& stdin_raw) {
     return "";
 }
 
+
+// ---- v1.4.0 Task 5: PreToolUse approach-history inject --------------------
+
+std::string runUserPromptApproachInject(const std::string& user_prompt) {
+    if (user_prompt.empty()) return "";
+    if (std::getenv("ICMG_APPROACH_QUIET")) return "";
+
+    std::unique_ptr<core::Db> db;
+    try {
+        auto& cfg = core::Config::instance();
+        db = std::make_unique<core::Db>(cfg.projectDbPath("."));
+    } catch (...) { return ""; }
+
+    // Tokenize prompt (lowercase, alnum tokens, drop <=2 chars).
+    std::vector<std::string> tokens;
+    {
+        std::string cur;
+        for (char c : user_prompt) {
+            if (std::isalnum((unsigned char)c)) cur += (char)std::tolower((unsigned char)c);
+            else { if (cur.size() > 2) tokens.push_back(cur); cur.clear(); }
+        }
+        if (cur.size() > 2) tokens.push_back(cur);
+    }
+    if (tokens.empty()) return "";
+
+    struct Row { std::string task, approach, outcome, why; };
+    std::map<std::string, std::vector<Row>> task_groups;
+    for (auto& tok : tokens) {
+        std::string pat = "%" + tok + "%";
+        try {
+            db->query(
+                "SELECT task, approach, outcome, COALESCE(why,'') FROM approaches "
+                "WHERE task LIKE ? COLLATE NOCASE "
+                "ORDER BY CASE outcome WHEN 'success' THEN 0 WHEN 'partial' THEN 1 ELSE 2 END, "
+                "created_at DESC LIMIT 3",
+                {pat},
+                [&](const core::Row& r) {
+                    if (r.size() < 4) return;
+                    Row row{r[0], r[1], r[2], r[3]};
+                    task_groups[row.task].push_back(row);
+                });
+        } catch (...) { /* fail-soft per token */ }
+    }
+    if (task_groups.empty()) return "";
+
+    std::ostringstream out;
+    out << "## Past attempts (icmg approach history)\n";
+    for (auto& kv : task_groups) {
+        const auto& tname = kv.first;
+        const auto& rows = kv.second;
+        std::string display_task = tname.size() > 60 ? tname.substr(0, 57) + "..." : tname;
+        out << "For task matching \"" << display_task << "\":\n";
+        for (auto& r : rows) {
+            std::string icon = (r.outcome == "success") ? "OK" :
+                               (r.outcome == "partial") ? "PARTIAL" : "FAIL";
+            std::string ap = r.approach.size() > 80 ? r.approach.substr(0, 77) + "..." : r.approach;
+            out << "- [" << icon << "] " << ap << " (" << r.outcome << ")";
+            if (!r.why.empty()) {
+                std::string why = r.why.size() > 80 ? r.why.substr(0, 77) + "..." : r.why;
+                out << " -- " << why;
+            }
+            out << "\n";
+        }
+    }
+    out << "Prefer success path; cite via `icmg approach lookup \"<task>\"`\n";
+
+    std::string result = out.str();
+    if (result.size() > 600) result = result.substr(0, 597) + "...\n";
+    return result;
+}
+
+// ---- v1.4.0 Task 5: PostToolUse:Bash test-outcome auto-record -------------
+
+std::string runPostToolUseTestOutcome(const std::string& tool_input_command,
+                                      const std::string& tool_output,
+                                      int exit_code) {
+    (void)exit_code;
+    if (std::getenv("ICMG_APPROACH_QUIET")) return "";
+
+    static const char* kTestRunners[] = {
+        "ctest", "npm test", "pytest", "cargo test", "go test", nullptr
+    };
+    bool is_test_cmd = false;
+    for (auto** r = kTestRunners; *r; ++r) {
+        if (tool_input_command.find(*r) != std::string::npos) {
+            is_test_cmd = true;
+            break;
+        }
+    }
+    if (!is_test_cmd) return "";
+
+    static const char* kSuccessPatterns[] = {
+        "100% tests passed", "0 failed", "All tests passed", "PASSED",
+        "test result: ok", nullptr
+    };
+    static const char* kFailPatterns[] = {
+        "tests failed", "FAILED", "Traceback", nullptr
+    };
+
+    std::string outcome;
+    for (auto** p = kSuccessPatterns; *p; ++p) {
+        if (tool_output.find(*p) != std::string::npos) { outcome = "success"; break; }
+    }
+    if (outcome.empty()) {
+        for (auto** p = kFailPatterns; *p; ++p) {
+            if (tool_output.find(*p) != std::string::npos) { outcome = "fail"; break; }
+        }
+    }
+    if (outcome.empty()) return "";
+
+    std::string focus_todo;
+    try {
+        std::string sid;
+        const char* env_sid = std::getenv("ICMG_SESSION_ID");
+        sid = (env_sid && env_sid[0] != ' ') ? std::string(env_sid) : "default";
+
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+
+        db.query(
+            "SELECT todo FROM focus_chain "
+            "WHERE session_id=? AND status='in' "
+            "ORDER BY ord ASC LIMIT 1",
+            {sid},
+            [&](const Row& row) {
+                if (!row.empty()) focus_todo = row[0];
+            }
+        );
+    } catch (...) {
+        return "";
+    }
+
+    if (focus_todo.empty()) return "";
+
+    std::string approach_str = tool_input_command.size() > 200
+                             ? tool_input_command.substr(0, 200)
+                             : tool_input_command;
+    std::string why_str = tool_output.size() > 200
+                        ? tool_output.substr(0, 200)
+                        : tool_output;
+
+    std::string session_id;
+    const char* env_sid2 = std::getenv("ICMG_SESSION_ID");
+    if (env_sid2 && env_sid2[0] != ' ') session_id = std::string(env_sid2);
+
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        db.run(
+            "INSERT INTO approaches (task, approach, outcome, why, session_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            {focus_todo, approach_str, outcome, why_str, session_id}
+        );
+    } catch (...) {
+        // fail-soft
+    }
+
+    return "";
+}
+
 } // namespace icmg::core::hooks

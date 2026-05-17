@@ -118,4 +118,21 @@ std::string runPreToolUseBashGitGuard(const std::string& stdin_raw);
 // Fail-soft: empty input → "", parse error → "", DB unavailable → "", no throw.
 std::string runPostToolUseEditAutoSync(const std::string& stdin_raw);
 
+// v1.4.0 Task 5: PreToolUse approach-history inject.
+// Tokenizes user_prompt (lowercase, split on whitespace+punctuation, drop ≤2 chars).
+// For each token, searches the approaches table for matching tasks. If ≥1 match
+// found, returns a markdown block (≤600 chars) summarising past outcomes.
+// Fail-soft: no DB / parse error → "". Opt-out: ICMG_APPROACH_QUIET=1.
+std::string runUserPromptApproachInject(const std::string& user_prompt);
+
+// v1.4.0 Task 5: PostToolUse:Bash test-outcome auto-record.
+// Detects test runner via pattern on tool_input_command (ctest / npm test /
+// pytest / cargo test / go test). When matched and output contains a success or
+// failure signature, inserts a row into approaches keyed on the current session's
+// first in-progress FocusChain todo. If no focus item or no recognized runner,
+// returns "" silently. Opt-out: ICMG_APPROACH_QUIET=1. Always returns "".
+std::string runPostToolUseTestOutcome(const std::string& tool_input_command,
+                                      const std::string& tool_output,
+                                      int exit_code);
+
 } // namespace icmg::core::hooks

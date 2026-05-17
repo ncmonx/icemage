@@ -188,7 +188,11 @@ private:
             : icmg::core::hooks::runUserPromptSkillSuggest(prompt);
         json out;
         out["hookSpecificOutput"]["hookEventName"] = "UserPromptSubmit";
-        out["hookSpecificOutput"]["additionalContext"] = skill_hint + caveman + msg;
+        // v1.4.0 T5: approach-history inject.
+        std::string approach_hint = prompt.empty()
+            ? ""
+            : icmg::core::hooks::runUserPromptApproachInject(prompt);
+        out["hookSpecificOutput"]["additionalContext"] = approach_hint + skill_hint + caveman + msg;
         std::cout << out.dump() << "\n";
     }
 
@@ -736,6 +740,10 @@ int HookCommand::cmdPostToolUseBash() {
 
     std::string ctx = icmg::core::hooks::runPostToolUseTestFailContext(
         tool_command, tool_output);
+
+    // v1.4.0 T5: record test outcome into approaches table (side-effect only).
+    icmg::core::hooks::runPostToolUseTestOutcome(tool_command, tool_output, 0);
+
     if (ctx.empty()) return 0;
 
     json out;
