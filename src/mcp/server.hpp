@@ -19,6 +19,11 @@ public:
     // returns JSON content. Throws on invalid scheme / missing record.
     json readResourceUri(const std::string& uri);
 
+    // Returns the tools/list response JSON (callable for tests without stdin loop).
+    // lazy=true: minimal schema + truncated description (<=160 chars + "...").
+    // lazy=false: full schema + full description (existing behavior).
+    json buildToolsListResponse(bool lazy) const;
+
 private:
     core::Db& db_;
     bool initialized_ = false;

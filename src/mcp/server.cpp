@@ -102,23 +102,46 @@ void McpServer::handleInitialize(const json& req) {
     });
 }
 
-void McpServer::handleListTools(const json& req) {
-    json id = req.contains("id") ? req["id"] : nullptr;
-
+json McpServer::buildToolsListResponse(bool lazy) const {
     auto& reg = core::Registry<BaseMcpTool>::instance();
     auto keys = reg.keys();
 
     json tools = json::array();
     for (auto& k : keys) {
         auto tool = reg.create(k);
+
+        json schema;
+        std::string desc = tool->description();
+
+        if (lazy) {
+            schema = {{"type", "object"}};
+            if (desc.size() > 160) {
+                desc = desc.substr(0, 160) + "...";
+            }
+        } else {
+            schema = tool->schema();
+        }
+
         tools.push_back({
             {"name",        tool->name()},
-            {"description", tool->description()},
-            {"inputSchema", tool->schema()}
+            {"description", desc},
+            {"inputSchema", schema}
         });
     }
 
-    sendResponse(id, {{"tools", tools}});
+    return {{"tools", tools}};
+}
+
+void McpServer::handleListTools(const json& req) {
+    json id = req.contains("id") ? req["id"] : nullptr;
+
+    bool lazy = false;
+    const char* env = std::getenv("ICMG_MCP_LAZY_TOOLS");
+    if (env != nullptr && std::string(env) != "0") {
+        lazy = true;
+    }
+
+    sendResponse(id, buildToolsListResponse(lazy));
 }
 
 void McpServer::handleCallTool(const json& req) {
