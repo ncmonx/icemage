@@ -72,23 +72,7 @@ Drop-in. All v1.5.0/v1.5.1 features unchanged.
 
 Drop-in. All v1.5.0 features unchanged.
 
----
-
-## 🚀 What's new in v1.5.0 — Savings dashboard: project-wide aggregate + daily history
-
-`icmg savings --html` now aggregates real session tokens across every transcript in the current project (not just the latest one). New per-session detail and daily history tables surface in the dashboard.
-
-| Feature | What it does |
-| --- | --- |
-| **`context-budget --all-sessions`** | Walks `~/.claude/projects/<cwd-encoded>/*.jsonl`; JSON emits per-session detail (file, mtime, total, by_source). |
-| **REAL SESSION TOKENS** | Now = sum across all sessions in current project. Card subtitle: "Sum across N sessions in this project". |
-| **Per-session detail table** | Collapsible. Columns: session, date, total, text, tool-in, tool-out, thinking. |
-| **Daily real-token history** | Sessions grouped by date (newest first), with session count, total tokens, and inline trend bar. Caps at 30 days. |
-| **Console daily output** | `icmg savings` (no `--html`) also prints last-14-days daily history. |
-
-Drop-in. No schema/migration. Re-run `icmg savings --html` after upgrade.
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.4.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.0 and earlier.
 
 ---
 
