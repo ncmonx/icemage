@@ -1,4 +1,4 @@
-// Phase 19: context bundle commands.
+﻿// Phase 19: context bundle commands.
 //   icmg context <file>           — single-call file/symbols/neighbors/memory bundle
 //   icmg pack <task>              — task-context aggregator (recall + context + rules)
 //   icmg diff-summary             — symbol-aware git-diff summary
@@ -18,6 +18,8 @@
 #include "../../core/output_cap.hpp"
 #include "../ref_registry.hpp"
 #include "../pack_delta.hpp"
+#include "../../core/secret_scanner.hpp"
+#include <map>
 #include <chrono>
 #include <ctime>
 #include <unordered_set>
@@ -453,7 +455,7 @@ public:
             "  --prune-min-score N   Threshold for prune-audit (default 1.5)\n"
             "  --budget N            Knapsack-keep highest-score hits within N tokens\n"
             "  --compress-ast        Elide function/class bodies in emitted source (70-90% byte cut)\n"
-            "  --show-tokens         Print before→after token stats to stderr\n";
+            "  --show-tokens         Print before->after token stats to stderr\n  --allow-secrets       Skip secret scan entirely (emit verbatim)\n  --strict-secrets      Scan + redact, exit 2 if secrets detected\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -876,6 +878,31 @@ public:
             } catch (...) {}
         }
 
+        // T6 (v1.4.0): secret scan — warn+redact by default; --allow-secrets skips;
+        // --strict-secrets exits 2 so callers can detect secrets in output.
+        bool allow_secrets  = hasFlag(args, "--allow-secrets");
+        bool strict_secrets = hasFlag(args, "--strict-secrets");
+        int  secret_exit_code = 0;
+        if (!allow_secrets && !capped.empty()) {
+            auto sec_matches = core::scanSecrets(capped);
+            if (!sec_matches.empty()) {
+                // Build per-type count map for warning message.
+                std::map<std::string, int> type_counts;
+                for (auto& m : sec_matches) type_counts[m.type]++;
+                std::string warn = "pack: " + std::to_string(sec_matches.size())
+                                   + " secret(s) redacted: ";
+                bool first = true;
+                for (auto& kv : type_counts) {
+                    if (!first) warn += ", ";
+                    warn += kv.first + " x " + std::to_string(kv.second);
+                    first = false;
+                }
+                std::cerr << warn << "\n";
+                capped = core::redactSecrets(capped, sec_matches);
+                if (strict_secrets) secret_exit_code = 2;
+            }
+        }
+
         // Phase 66 T1: differential pack — emit only delta vs last pack
         // saved at .icmg/last-pack.txt. Massive saving when running pack
         // repeatedly during iterative work (typical 60-90% reduction).
@@ -912,7 +939,7 @@ public:
             std::ofstream of(last_path, std::ios::binary);
             of << capped;
         } catch (...) {}
-        return 0;
+        return secret_exit_code;
     }
 
     // Phase 68 T2: computePackDelta extracted to pack_delta.hpp for unit tests.
