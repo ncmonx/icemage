@@ -1,4 +1,5 @@
 #include "server.hpp"
+#include "../core/version.hpp"
 #include "base_mcp_tool.hpp"
 #include "../core/registry.hpp"
 #include <iostream>
@@ -93,7 +94,7 @@ void McpServer::handleInitialize(const json& req) {
         {"protocolVersion", "2024-11-05"},
         {"serverInfo", {
             {"name", "icmg"},
-            {"version", "1.5.0"}
+            {"version", icmg::core::ICMG_VERSION}
         }},
         {"capabilities", {
             {"tools",     {{"listChanged", false}}},

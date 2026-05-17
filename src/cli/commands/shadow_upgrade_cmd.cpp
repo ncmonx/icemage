@@ -24,6 +24,7 @@
 #include "../../core/exec_utils.hpp"
 #include "../../core/audit_log.hpp"
 #include "../../core/schedule_helper.hpp"
+#include "../../core/version.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -97,8 +98,34 @@ private:
     static fs::path lastCheckFile() { return globalDir() / "shadow-last-check.txt"; }
 
     static const char* currentVersion() {
-        // Synced with update_cmd.cpp / main.cpp.
-        return "0.37.0";
+        return icmg::core::ICMG_VERSION;
+    }
+
+    // v1.5.1: discard stale pin-version.txt entries pointing to an older
+    // release than the binary actually is (e.g. user pinned 0.43.1 in 2025,
+    // then upgraded manually). Returns true if a stale pin was deleted.
+    static bool discardStalePin() {
+        fs::path f = pinFile();
+        std::error_code ec;
+        if (!fs::exists(f, ec)) return false;
+        std::ifstream in(f);
+        std::string pinned; std::getline(in, pinned);
+        in.close();
+        // Trim whitespace.
+        while (!pinned.empty() && (pinned.back() == '\r' || pinned.back() == '\n' ||
+                                     pinned.back() == ' '  || pinned.back() == '\t'))
+            pinned.pop_back();
+        if (pinned.empty()) {
+            fs::remove(f, ec);
+            return true;
+        }
+        if (versionNewer(currentVersion(), pinned)) {
+            fs::remove(f, ec);
+            std::cerr << "icmg shadow-upgrade: discarded stale pin " << pinned
+                      << " (binary already at " << currentVersion() << ")\n";
+            return true;
+        }
+        return false;
     }
 
     static std::string repo() { return "ncmonx/icm-graph"; }

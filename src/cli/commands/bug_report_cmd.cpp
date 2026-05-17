@@ -20,6 +20,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/version.hpp"
 #include "../../core/path_utils.hpp"
 #include "../../core/exec_utils.hpp"
 
@@ -76,13 +77,7 @@ std::string platformTag() {
 
 // Best-effort version probe — read from self if accessible.
 std::string currentVersion() {
-    auto r = core::safeExecShell("icmg --version", false, 3000);
-    if (r.exit_code == 0 && !r.out.empty()) {
-        std::string s = r.out;
-        while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
-        return s;
-    }
-    return "icmg <unknown>";
+    return icmg::core::ICMG_VERSION;
 }
 
 // Collect diagnostics (safe: no secrets, no paths outside .icmg).
