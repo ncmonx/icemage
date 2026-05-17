@@ -43,7 +43,6 @@ static void sweepDllOldSidecars() {
     }
 }
 
-#ifdef _WIN32
 // v0.58.1 popup fix: icmg.exe links as /SUBSYSTEM:WINDOWS (no auto-allocated
 // console). When invoked from an existing console (cmd/bash/powershell), we
 // attach to the parent's console so stdout/stderr/stdin work normally for
