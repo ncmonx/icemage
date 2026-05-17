@@ -17,9 +17,23 @@ sentence-transformers + transformers + huggingface_hub all emit warnings on
 import/load that would otherwise pollute stdout and break the parser. We
 silence + redirect them at module level BEFORE importing.
 """
+# v1.5.2: belt-and-suspenders — Windows child *should* inherit parent's
+# SetErrorMode, but enforce locally too in case a transformers/torch C
+# extension launches a helper without inheritance. SEM_FAILCRITICALERRORS
+# suppresses the "B:/ — system cannot find drive" dialog seen when MSYS-style
+# bash paths like /b/x reach Win32 file APIs as `B:\x`.
+import sys
+if sys.platform == "win32":
+    try:
+        import ctypes
+        SEM_FAILCRITICALERRORS = 0x0001
+        SEM_NOOPENFILEERRORBOX = 0x8000
+        ctypes.windll.kernel32.SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX)
+    except Exception:
+        pass  # graceful: popup may recur, but sidecar still runs
+
 import io
 import os
-import sys
 import json
 import warnings
 import logging
@@ -41,9 +55,20 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 DIM = 384
 
 def emit(obj):
-    """Write a single JSON line to stdout, flushed."""
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    """Write a single JSON line to stdout, flushed.
+
+    Graceful on broken pipe (parent died / closed stdout). Exits 0 instead of
+    raising OSError to the C++ parent which logs it as a sidecar crash.
+    """
+    try:
+        sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    except (OSError, BrokenPipeError, ValueError):
+        try:
+            sys.stderr.write("icmg-embedder: parent pipe closed, exiting\n")
+        except Exception:
+            pass
+        sys.exit(0)
 
 def main():
     # Redirect anything-that-isn't-our-protocol to stderr during model load.
