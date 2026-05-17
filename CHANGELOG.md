@@ -4,6 +4,16 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.5.2 — Hotfix: Python sidecar B:/ popup + locked-DLL upgrade fix
+
+Patch release. Three robustness fixes for upgrade and sidecar paths.
+
+- **Python sidecar `SetErrorMode`** — `embed/icmg_embedder.py` calls `ctypes.windll.kernel32.SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX)` at the top of the script (before any `sentence-transformers` / `transformers` imports). Belt-and-suspenders against the recurring "B:/ — system cannot find drive" popup when MSYS-style paths reach Win32 file APIs from inside the sidecar's transitive C extensions.
+- **`emit()` OSError guard** — sidecar's stdout writer wraps in `try / except (OSError, BrokenPipeError, ValueError)`. Parent pipe closing no longer logs as a sidecar crash; sidecar exits 0 cleanly.
+- **`icmg update --apply` locked-DLL fix** — previously logged `skipped DLL (locked?)` and moved on. Now uses the Win rename-aside trick: rename current DLL to `*.dll.old-<pid>` (Windows allows rename of open files), then copy new DLL to original path. `main()` startup sweeps `*.dll.old-*` on next launch. Last resort: `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)`. Summary line now reports `N DLL(s) replaced directly, M via rename-aside`.
+
+Drop-in. No schema/migration. All v1.5.0/v1.5.1 features unchanged.
+
 ## 1.5.1 — Hotfix: central version header + stale shadow-upgrade pin auto-discard
 
 Patch release. Two cleanups so future upgrades stay stable.
