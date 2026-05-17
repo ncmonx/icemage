@@ -572,6 +572,19 @@ CREATE TABLE IF NOT EXISTS rules_bank (
 );
 CREATE INDEX IF NOT EXISTS idx_rules_bank_active ON rules_bank(active, path);
 )SQL"},
+        {31, R"SQL(
+-- 0031_token_counts (v1.4.0 T8)
+-- Cache icmg tokens results per file path.
+-- Future pack --show-tokens consults cache; skip recompute when mtime unchanged.
+CREATE TABLE IF NOT EXISTS token_counts (
+    path        TEXT PRIMARY KEY,
+    tokens      INTEGER NOT NULL,
+    bytes       INTEGER NOT NULL,
+    mtime       INTEGER NOT NULL,
+    computed_at INTEGER DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_token_counts_mtime ON token_counts(mtime);
+)SQL"},
         {32, R"SQL(
 -- 0032_approaches (v1.4.0 T4)
 -- Track which task approaches succeeded vs failed so AI doesn't repeat
