@@ -1126,3 +1126,47 @@ Decisions:
 - WSL2 build flow: `wsl -d Ubuntu-24.04 -u root -- bash scripts/release-linux.sh` → /tmp/icmg-VERSION-linux-x64.tar.gz → cp to /mnt/c/temp/ → gh release upload. ~10min cold first run.
 Rejected: macOS binary (no Apple hardware); CI matrix paid Actions (solo-dev policy).
 Open: CMake `_GNU_SOURCE` patch + sh-script needs commit to private/main + release-linux.sh CRLF fix needs LF normalization on commit. v1.0.0 ceremony tag only blocked on macOS binary.
+
+## 2026-05-17 09:30 [saved]
+Goal: HARD RULE — never branch source work from a *-docs branch.
+Decisions:
+- Branch creation must verify base has src/ BEFORE creating new branch (test-path src/main.cpp = True). Rule added to CLAUDE.md "Branch creation rules (NEVER violate)".
+- CORRECT bases for release branches: a source tag (e.g. v1.3.1) OR private/release/X.Y.Z. NEVER from *-docs branches (those are docs-only on public origin).
+- Recovery procedure (this session): git stash session-log -> git reset --hard v1.3.1 -> verify src/ restored.
+Rejected:
+- Relying on memory to pick correct base - mechanical check via git ls-tree required.
+- Recreating files manually after src/ loss - reset to source tag is the only safe path.
+Open:
+- Apply rule consistently for all future release branches v1.4.0 onward.
+
+## 2026-05-17 17:30 [saved]
+Goal: Ship v1.4.0 mega bundle — 4 AI guards + 3 deferred items, sequential exec.
+Decisions:
+- 8 tasks shipped sequentially (T1 target-verify, T2 safe-rollback, T3 PostToolUse:Edit auto-sync, T4 approaches DB mig 0032, T5 prompt inject + test outcome, T6 bundle secret scan, T7 MCP lazy schema, T8 mig 0031 token_counts) — full build + ctest only at end → 101/101 Win + Linux.
+- New hooks (PreToolUse:Edit|Write, PreToolUse:Bash, PostToolUse:Edit|Write, UserPromptSubmit) auto-register on `icmg init --force` → features usable by AI immediately after upgrade.
+- Linux release packaging: build artifacts on /mnt/d persistent across WSL restarts; /tmp wipes on WSL stop → copy tarball to repo root immediately after tar.
+- gh CLI hook blocks `--head` flag as `head` cmd → use short flag `-H` for `gh pr create`.
+Rejected:
+- Parallel subagent dispatch — user explicit "jangan parallel, sequential saja".
+- Full build between each task — wastes ~5min × 8; gate at end only.
+- Pushing source to public origin — private remote only; public gets tag via `gh release create --target <docs-merge-sha>`.
+Open:
+- session-log.md uncommitted on release/v1.4.0 (carry-over).
+- B:/ popup edge case in Python subprocess still unverified.
+
+## 2026-05-17 21:30 [saved]
+Goal: v1.5.0-1.5.2 release cycle — savings project-wide aggregate + version-drift fix + Python sidecar popup hardening.
+Decisions:
+- v1.5.0: `context-budget --all-sessions` + savings dashboard aggregates all transcripts in project; adds per-session + daily history tables.
+- v1.5.1: `src/core/version.hpp` single ICMG_VERSION source; `discardStalePin()` auto-removes stale `~/.icmg/pin-version.txt`.
+- v1.5.2: Python sidecar ctypes SetErrorMode at top (belt-and-suspenders for B:/ popup); `emit()` OSError-guarded → graceful exit 0.
+- BUILD RULE: never cmake --build without explicit user approval; apply+commit unilaterally, then ask.
+- gh CLI `--head` flag conflicts with hook → use `-H`.
+Rejected:
+- Build between every patch (user explicit gate at end).
+- CreateProcess flag refactor (Win32 inheritance already correct; ctypes SEM is cheaper).
+- Push source to public origin (private only; public tag via release-create --target).
+Open:
+- v1.5.2 build approval pending.
+- B:/ popup escalation = audit Claude-Code bash hooks if sidecar fix insufficient.
+- `src/icmg.rc` ICMG_VERSION still duplicated (RC compiler limit; byte-regex bump).
