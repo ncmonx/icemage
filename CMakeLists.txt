@@ -556,3 +556,5 @@ add_icmg_test(test_focus_cmd       tests/cli/test_focus_cmd.cpp)
 add_icmg_test(test_skill_chunk_cmd tests/cli/test_skill_chunk_cmd.cpp)
 add_icmg_test(test_ast_compressor   tests/graph/test_ast_compressor.cpp)
 add_icmg_test(test_hook_test_fail_context tests/core/test_hook_test_fail_context.cpp)
+
+add_icmg_test(test_secret_scanner     tests/core/test_secret_scanner.cpp)

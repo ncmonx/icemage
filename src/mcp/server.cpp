@@ -178,8 +178,12 @@ void McpServer::handleCallTool(const json& req) {
         if (args.contains("topic"))  summary = "topic=" + args["topic"].get<std::string>().substr(0, 80);
         logAudit(toolName, summary);
 
+        // v1.3.1: replace invalid UTF-8 bytes with U+FFFD instead of throwing
+        // json::type_error 316. Memory-stored content can contain mojibake
+        // from cross-platform copy/paste or older mismatched-encoding writes.
         sendResponse(id, {
-            {"content", json::array({{{"type", "text"}, {"text", result.dump()}}})}
+            {"content", json::array({{{"type", "text"},
+                {"text", result.dump(-1, ' ', false, json::error_handler_t::replace)}}})}
         });
 
     } catch (const McpError& e) {
@@ -199,7 +203,8 @@ void McpServer::sendResponse(const json& id, const json& result) {
         {"id",      id},
         {"result",  result}
     };
-    std::cout << res.dump() << "\n";
+    // v1.3.1: replace invalid UTF-8 (type_error.316) — fail-soft over throw.
+    std::cout << res.dump(-1, ' ', false, json::error_handler_t::replace) << "\n";
 }
 
 void McpServer::sendError(const json& id, int code, const std::string& msg) {
@@ -208,7 +213,7 @@ void McpServer::sendError(const json& id, int code, const std::string& msg) {
         {"id",      id},
         {"error",   {{"code", code}, {"message", msg}}}
     };
-    std::cout << res.dump() << "\n";
+    std::cout << res.dump(-1, ' ', false, json::error_handler_t::replace) << "\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +356,8 @@ void McpServer::handleReadResource(const json& req) {
         json content = readResourceUri(uri);
         sendResponse(id, {
             {"contents", json::array({
-                {{"uri", uri}, {"mimeType", "application/json"}, {"text", content.dump()}}
+                {{"uri", uri}, {"mimeType", "application/json"},
+                 {"text", content.dump(-1, ' ', false, json::error_handler_t::replace)}}
             })}
         });
         logAudit("resource_read", "uri=" + uri.substr(0, 80));
