@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-90%2F90%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-91%2F91%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -35,6 +35,18 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 | **Hook overhead** | ~5-10 ms per session-boundary event (daemon RPC + zero-fork in-process runners) |
 
 **v1.0.0 means:** stable wire formats, stable on-disk schema (migrations only forward), stable CLI surface, stable MCP tool names. No more breaking changes on minor bumps. Source-level work is complete across Win + Linux + macOS.
+
+---
+
+## 🚀 What's new in v1.3.1 — Windows popup + MCP UTF-8 hotfix
+
+| Fix | What changed |
+| --- | --- |
+| **Windows popup gone** | `icmg skill index` no longer triggers "cannot find drive" dialogs when MSYS bash paths reach Win32 file APIs. `SetErrorMode` suppresses critical-error UI at process entry |
+| **MCP `icmg_recall` UTF-8 fix** | Tool no longer fails with `-32603 type_error.316` on memory content with invalid UTF-8. JSON dumps substitute U+FFFD instead of throwing |
+| **`core::secret_scanner` foundation** | New library detects + redacts AWS/GitHub/Anthropic/OpenAI/Slack/JWT/PEM secrets. `pack` cmd wire ships in v1.3.2 |
+
+91/91 ctest pass Windows + Linux.
 
 ---
 
