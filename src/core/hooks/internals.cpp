@@ -722,4 +722,101 @@ std::string runPreToolUseEditDisambig(const std::string& stdin_raw) {
     return hook_out.dump();
 }
 
+
+// ---- v1.4.0 Task 2: PreToolUse:Bash git guard ------------------------------
+//
+// Detects: git checkout <file-path>, git restore <file-path>,
+//          git reset --hard <file-path>
+// Does NOT block: git checkout <branch>, git reset --hard <commit-hash>
+
+std::string runPreToolUseBashGitGuard(const std::string& stdin_raw) {
+    // Opt-out env.
+    if (std::getenv("ICMG_GIT_GUARD_QUIET")) return allowJson();
+    if (stdin_raw.empty()) return allowJson();
+
+    std::string tool, command;
+    try {
+        auto j = json::parse(stdin_raw);
+        tool = j.value("tool_name", std::string{});
+        if (j.contains("tool_input") && j["tool_input"].is_object()) {
+            command = j["tool_input"].value("command", std::string{});
+        }
+    } catch (...) { return allowJson(); }
+
+    if (tool != "Bash" || command.empty()) return allowJson();
+
+    // Allow icmg's own invocations.
+    if (starts_with(command, "icmg ") ||
+        starts_with(command, "/icmg ") ||
+        contains(command, "/bin/icmg")) {
+        return allowJson();
+    }
+
+    // --- Pattern matching ---
+    // File-path discriminator: paths contain '.' or '/' or '\'.
+    // Blocks: git checkout -- <file>, git checkout <path/file>, git checkout <file.ext>
+    // Blocks: git restore <file>
+    // Blocks: git reset --hard <path/file> or <file.ext> (not commit hashes or HEAD)
+    // Allows: git checkout main, git checkout HEAD, git reset --hard HEAD~2
+    static const std::regex re_checkout(
+        R"(git\s+checkout\s+(?:[^\n]*?\s+)?(--\s+\S+|\S*[./\\]\S*))",
+        std::regex::ECMAScript);
+    static const std::regex re_restore(
+        R"(git\s+restore\s+(?:--\S+\s+)*(\S+))",
+        std::regex::ECMAScript);
+    static const std::regex re_reset_hard(
+        R"(git\s+reset\s+--hard\s+(\S+))",
+        std::regex::ECMAScript);
+
+    bool matched = false;
+    std::string file_hint;
+
+    std::smatch m;
+    if (std::regex_search(command, m, re_checkout)) {
+        std::string tok = m[1].str();
+        // Must look like a file path: contains dot, slash, or starts with "--"
+        if (tok.find('.') != std::string::npos ||
+            tok.find('/') != std::string::npos ||
+            tok.find('\\') != std::string::npos ||
+            (tok.size() > 3 && tok.substr(0,3) == "-- ")) {
+            matched = true;
+            // Strip "-- " prefix if present
+            file_hint = (tok.size() > 3 && tok.substr(0,3) == "-- ")
+                        ? tok.substr(3) : tok;
+        }
+    } else if (std::regex_search(command, m, re_restore)) {
+        std::string tok = m[1].str();
+        // git restore always operates on files — any non-flag arg is a path
+        if (!tok.empty() && tok[0] != '-') {
+            matched = true;
+            file_hint = tok;
+        }
+    } else if (std::regex_search(command, m, re_reset_hard)) {
+        std::string tok = m[1].str();
+        // Block only if the token looks like a file path (contains . or /)
+        // Not HEAD, HEAD~N, or a 40-char hex hash
+        bool is_head = (tok == "HEAD" || tok.substr(0, 5) == "HEAD~" || tok.substr(0, 5) == "HEAD^");
+        bool is_hash = (tok.size() >= 7 && tok.size() <= 40 &&
+                        tok.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos);
+        bool is_path = (tok.find('.') != std::string::npos ||
+                        tok.find('/') != std::string::npos ||
+                        tok.find('\\') != std::string::npos);
+        if (!is_head && !is_hash && is_path) {
+            matched = true;
+            file_hint = tok;
+        }
+    }
+
+    if (!matched) return allowJson();
+
+    std::string reason =
+        "Use `icmg safe-rollback " + file_hint +
+        "` instead — protects uncommitted work by showing diff and backing up "
+        "to ~/.icmg/rollback-backups/ before checkout. "
+        "Bypass: set ICMG_GIT_GUARD_QUIET=1.";
+
+    auditDeny("Bash", command, reason);
+    return denyJson(reason);
+}
+
 } // namespace icmg::core::hooks

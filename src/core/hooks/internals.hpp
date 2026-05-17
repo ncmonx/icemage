@@ -96,4 +96,16 @@ std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
 //   - Not an Edit/Write tool call
 std::string runPreToolUseEditDisambig(const std::string& stdin_raw);
 
+// v1.4.0 Task 2: PreToolUse:Bash git guard.
+// Intercepts `git checkout <file>`, `git restore <file>`, `git reset --hard <file>`
+// patterns that operate on file paths (not commit hashes or branch names).
+// Returns Claude Code hook v2 JSON with permissionDecision:"deny" and a redirect
+// message pointing to `icmg safe-rollback <file>`.
+// Returns allowJson() (empty string callers treat as allow) when:
+//   - Pattern does not match a file-path form
+//   - ICMG_GIT_GUARD_QUIET=1 env is set
+//   - stdin is empty or malformed
+//   - Not a Bash tool call
+std::string runPreToolUseBashGitGuard(const std::string& stdin_raw);
+
 } // namespace icmg::core::hooks

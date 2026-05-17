@@ -693,6 +693,12 @@ int HookCommand::cmdPostToolUseRead() {
 // ICMG_STRICT_BYPASS=1.
 int HookCommand::cmdPreToolUseEnforce() {
     std::string raw = readStdinAll();
+    // v1.4.0 Task 2: check git guard first (file-path forms of git checkout/restore/reset).
+    std::string git_guard = icmg::core::hooks::runPreToolUseBashGitGuard(raw);
+    if (git_guard.find("\"deny\"") != std::string::npos) {
+        std::cout << git_guard << "\n";
+        return 0;
+    }
     std::string out = icmg::core::hooks::runPreToolUseEnforce(raw);
     if (!out.empty()) std::cout << out << "\n";
     return 0;

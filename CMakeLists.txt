@@ -560,3 +560,4 @@ add_icmg_test(test_hook_test_fail_context tests/core/test_hook_test_fail_context
 add_icmg_test(test_secret_scanner     tests/core/test_secret_scanner.cpp)
 add_icmg_test(test_target_disambiguator tests/core/test_target_disambiguator.cpp)
 add_icmg_test(test_target_verify_cmd    tests/cli/test_target_verify_cmd.cpp)
+add_icmg_test(test_safe_rollback_cmd    tests/cli/test_safe_rollback_cmd.cpp)
