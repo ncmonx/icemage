@@ -24,6 +24,26 @@
 namespace fs = std::filesystem;
 
 #ifdef _WIN32
+// v1.5.2: sweep leftover *.dll.old-<pid> sidecars from rename-aside upgrades.
+// These are created by `icmg update --apply` when a DLL was locked at copy
+// time. We remove them at startup; ignore any still-locked ones (some other
+// icmg instance may still hold a handle).
+static void sweepDllOldSidecars() {
+    char buf[1024]; DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    if (n == 0) return;
+    fs::path bin = buf;
+    fs::path dir = bin.parent_path();
+    std::error_code ec;
+    for (auto& e : fs::directory_iterator(dir, ec)) {
+        if (ec) { ec.clear(); continue; }
+        const std::string& name = e.path().filename().string();
+        if (name.find(".dll.old-") == std::string::npos) continue;
+        std::error_code rm;
+        fs::remove(e.path(), rm);  // best-effort; locked sidecars stay
+    }
+}
+
+#ifdef _WIN32
 // v0.58.1 popup fix: icmg.exe links as /SUBSYSTEM:WINDOWS (no auto-allocated
 // console). When invoked from an existing console (cmd/bash/powershell), we
 // attach to the parent's console so stdout/stderr/stdin work normally for
@@ -85,6 +105,7 @@ int main(int argc, char* argv[]) {
     // suppresses the "file not found" UI.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     attachParentConsoleIfAny();
+    sweepDllOldSidecars();
 #endif
     // Parse global flags first
     std::vector<std::string> args;

@@ -321,16 +321,53 @@ private:
             }
         }
 
-        // Update DLLs alongside binary (non-fatal if locked by running process).
+        // Update DLLs alongside binary. Locked DLLs (in-use by current icmg
+        // process or another running instance) are handled via rename-aside:
+        // Windows allows renaming open files because handles point to the
+        // inode, not the path. We rename current DLL to a .old-<pid> sidecar,
+        // copy new DLL to original path, and sweep .old-* on next launch.
+        int dll_ok = 0, dll_aside = 0, dll_failed = 0;
         for (auto& entry : fs::directory_iterator(tmp_dir)) {
-            if (entry.path().extension() == ".dll") {
-                fs::path dst = dll_dir / entry.path().filename();
+            if (entry.path().extension() != ".dll") continue;
+            fs::path dst = dll_dir / entry.path().filename();
+            std::error_code ec1;
+            fs::copy_file(entry.path(), dst,
+                          fs::copy_options::overwrite_existing, ec1);
+            if (!ec1) { ++dll_ok; continue; }
+            // Locked. Rename-aside.
+            std::error_code ec2;
+            fs::path aside = dst;
+            aside += ".old-" + std::to_string(GetCurrentProcessId());
+            fs::rename(dst, aside, ec2);
+            if (!ec2) {
+                std::error_code ec3;
                 fs::copy_file(entry.path(), dst,
-                              fs::copy_options::overwrite_existing, ec);
-                if (ec)
-                    std::cerr << "icmg update: skipped DLL (locked?): "
-                              << entry.path().filename().string() << "\n";
+                              fs::copy_options::overwrite_existing, ec3);
+                if (!ec3) {
+                    ++dll_aside;
+                    std::cout << "icmg update: DLL replaced via rename-aside: "
+                              << entry.path().filename().string()
+                              << " (cleanup on next launch)\n";
+                    continue;
+                }
             }
+            // Last resort: schedule delayed rename at next reboot.
+            BOOL scheduled = MoveFileExA(
+                entry.path().string().c_str(),
+                dst.string().c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_DELAY_UNTIL_REBOOT);
+            ++dll_failed;
+            std::cerr << "icmg update: DLL " << entry.path().filename().string()
+                      << " could not be replaced (locked, rename failed)";
+            if (scheduled) std::cerr << " — scheduled for next reboot";
+            std::cerr << "\n";
+        }
+        if (dll_failed > 0) {
+            std::cerr << "icmg update: " << dll_failed << " DLL(s) require reboot.\n";
+        }
+        if (dll_ok + dll_aside > 0) {
+            std::cout << "icmg update: " << dll_ok << " DLL(s) replaced directly, "
+                      << dll_aside << " via rename-aside.\n";
         }
         fs::remove_all(tmp_dir);
         return true;
