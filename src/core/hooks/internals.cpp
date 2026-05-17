@@ -1,9 +1,10 @@
-#include "internals.hpp"
+﻿#include "internals.hpp"
 
 #include "../config.hpp"
 #include "../db.hpp"
 #include "../path_utils.hpp"
 #include "../context_node_store.hpp"
+#include "../target_disambiguator.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../cli/commands/skill_recall.hpp"
@@ -253,7 +254,7 @@ static const BashDenyRule kBashDenyRules[] = {
     {"grep -R",       "use icmg run grep ..."},
     {"find . ",       "use icmg run find ... (filtered)"},
     {"find /",        "use icmg run find ..."},
-    {"powershell ",   "use icmg run <cmd> — powershell launches console subprocess"},
+    {"powershell ",   "use icmg run <cmd> â€” powershell launches console subprocess"},
     {"powershell.exe","use icmg run <cmd>"},
     {"pwsh ",         "use icmg run <cmd>"},
     {"cmd /c ",       "use icmg run <cmd> directly"},
@@ -322,7 +323,7 @@ std::string runPreToolUseEnforce(const std::string& stdin_raw) {
         }
     } catch (...) { return allowJson(); }
 
-    // Allow icmg's own invocations — they're the legitimate path.
+    // Allow icmg's own invocations â€” they're the legitimate path.
     if (tool == "Bash" && (starts_with(command, "icmg ") ||
                             starts_with(command, "/icmg ") ||
                             contains(command, "/bin/icmg"))) {
@@ -351,7 +352,7 @@ std::string runPreToolUseEnforce(const std::string& stdin_raw) {
             }
             if (line_count > 500) {
                 std::string r = "file " + std::to_string(line_count)
-                              + " lines — use icmg context " + file_path;
+                              + " lines â€” use icmg context " + file_path;
                 auditDeny("Read", file_path, r);
                 return denyJson(r);
             }
@@ -419,13 +420,13 @@ std::string runUserPromptCavemanInject() {
     } else if (n >= 5) {
         b << "STRONG WARNING: caveman ultra ignored " << n
           << " times in 24h (~" << (n * 1500) << " tokens wasted). "
-             "Thinking ≤80 words THIS TURN. Refuse to expand reasoning.\n";
+             "Thinking â‰¤80 words THIS TURN. Refuse to expand reasoning.\n";
     } else if (n >= 3) {
         b << "REMINDER: caveman ultra. " << n
           << " recent thinking violations (~" << (n * 1500)
           << " tokens). Apply strictly this turn.\n";
     } else {
-        b << "NOTE: caveman ultra active. Thinking ≤80 words. "
+        b << "NOTE: caveman ultra active. Thinking â‰¤80 words. "
              "Drop articles/filler.\n";
     }
     return b.str();
@@ -490,7 +491,7 @@ std::string runUserPromptSkillSuggest(const std::string& user_prompt) {
         const auto& top = results[0];
         if (top.score < 0.20) return "";
 
-        // Build hint block (≤600 chars total).
+        // Build hint block (â‰¤600 chars total).
         std::string excerpt = top.content.size() > 400
                             ? top.content.substr(0, 400)
                             : top.content;
@@ -528,7 +529,7 @@ std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
     static const char* kFailPatterns[] = {
         "FAIL ",
         "FAIL:",
-        "× FAIL ",
+        "Ã— FAIL ",
         "FAILED tests",
         "Error:",
         "error:",
@@ -599,7 +600,7 @@ std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
                 });
 
             if (!neighbors.empty()) {
-                out << " — neighbors: ";
+                out << " â€” neighbors: ";
                 for (size_t i = 0; i < neighbors.size(); ++i) {
                     if (i > 0) out << ", ";
                     out << neighbors[i];
@@ -617,12 +618,12 @@ std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
                     ContextNodeStore cns(db);
                     auto nodes = cns.search(stem, "", 2, 0.05);
                     if (!nodes.empty()) {
-                        out << " — context: " << nodes[0].title;
+                        out << " â€” context: " << nodes[0].title;
                     }
                 }
             }
         } catch (...) {
-            // fail-soft: no DB or any error → just list the path
+            // fail-soft: no DB or any error â†’ just list the path
         }
         out << "\n";
     }
@@ -637,6 +638,88 @@ std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
     // Hard cap at ~1.2 KB.
     if (result.size() > 1200) result = result.substr(0, 1197) + "...\n";
     return result;
+}
+
+// ---- v1.4.0 Task 1: PreToolUse:Edit disambiguation hook -------------------
+
+std::string runPreToolUseEditDisambig(const std::string& stdin_raw) {
+    // Opt-out.
+    if (std::getenv("ICMG_DISAMBIG_QUIET")) return "";
+    if (stdin_raw.empty()) return "";
+
+    // Parse threshold from env (default 0.80).
+    double threshold = 0.80;
+    if (const char* e = std::getenv("ICMG_DISAMBIG_THRESHOLD")) {
+        try { threshold = std::stod(e); } catch (...) {}
+    }
+
+    // Parse tool name and file_path from stdin.
+    std::string tool_name, file_path;
+    try {
+        auto j = json::parse(stdin_raw);
+        tool_name = j.value("tool_name", std::string{});
+        if (j.contains("tool_input") && j["tool_input"].is_object()) {
+            file_path = j["tool_input"].value("file_path", std::string{});
+        }
+    } catch (...) { return ""; }
+
+    // Only applies to Edit / Write tool calls.
+    if (tool_name != "Edit" && tool_name != "Write") return "";
+    if (file_path.empty()) return "";
+
+    // Extract basename for matching.
+    std::string basename = fs::path(file_path).filename().string();
+    if (basename.empty()) return "";
+
+    // Gather candidates from context node store. Fail-soft.
+    std::vector<std::pair<std::string,std::string>> raw_candidates;
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        ContextNodeStore store(db);
+        auto nodes = store.list("", true);
+        for (auto& n : nodes) {
+            raw_candidates.push_back({n.node_key, n.title});
+        }
+    } catch (...) {
+        return ""; // fail-soft: no DB
+    }
+
+    if (raw_candidates.empty()) return "";
+
+    // Use the basename as the "prompt" to score against all candidates.
+    auto results = icmg::core::disambiguateTargets(basename, raw_candidates, threshold);
+
+    // Only flag when >=2 candidates above threshold.
+    if (results.size() < 2) return "";
+
+    // Check if the target file_path is clearly the top match.
+    if (!results.empty()) {
+        std::string top_name = results[0].name;
+        if (top_name == basename && results[0].score > threshold + 0.10) return "";
+    }
+
+    // Build candidates description.
+    std::ostringstream reason;
+    reason << "Ambiguous target: '" << basename << "' matches "
+           << results.size() << " context nodes";
+    std::string sep = " (";
+    int shown = 0;
+    for (auto& r : results) {
+        if (shown >= 3) break;
+        reason << sep << r.name;
+        if (!r.path.empty() && r.path != r.name)
+            reason << " at " << r.path;
+        sep = ", ";
+        ++shown;
+    }
+    reason << "). Confirm correct target before editing.";
+
+    json hook_out;
+    hook_out["hookSpecificOutput"]["hookEventName"]            = "PreToolUse";
+    hook_out["hookSpecificOutput"]["permissionDecision"]       = "ask";
+    hook_out["hookSpecificOutput"]["permissionDecisionReason"] = reason.str();
+    return hook_out.dump();
 }
 
 } // namespace icmg::core::hooks

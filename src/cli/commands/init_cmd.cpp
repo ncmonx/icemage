@@ -1,10 +1,10 @@
-// `icmg init` — bootstrap a project for icmg-aware AI agents.
+﻿// `icmg init` â€” bootstrap a project for icmg-aware AI agents.
 //
 // Creates / updates:
-//   .claude/settings.local.json  — installs Bash-rewrite + Read-shrink hooks
-//   .claude/hooks/               — drops hook scripts (bundled in binary)
-//   AGENTS.md                    — universal routing rules (appends marker block)
-//   .icmg/data.db                — auto-init via existing migration
+//   .claude/settings.local.json  â€” installs Bash-rewrite + Read-shrink hooks
+//   .claude/hooks/               â€” drops hook scripts (bundled in binary)
+//   AGENTS.md                    â€” universal routing rules (appends marker block)
+//   .icmg/data.db                â€” auto-init via existing migration
 //
 // After init: AI agents (Claude Code / Cursor / etc.) auto-route raw bash
 // commands through `icmg run`, get token-filtered output, and follow AGENTS.md
@@ -38,7 +38,7 @@ namespace icmg::cli {
 // Bundled hook scripts (must stay in sync with examples/hooks/*.sh).
 static const char* BASH_REWRITE_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Edit at your own risk.
-# PreToolUse:Bash — redirect noisy commands through `icmg run` for filtered output.
+# PreToolUse:Bash â€” redirect noisy commands through `icmg run` for filtered output.
 set -uo pipefail
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
@@ -58,7 +58,7 @@ log_denial() {
         >> "$home_dir/.icmg/strict-denials.jsonl" 2>/dev/null || true
 }
 
-# Strict mode: cat/head/tail/less/more on a file >20KB → hard-deny, force icmg context.
+# Strict mode: cat/head/tail/less/more on a file >20KB â†’ hard-deny, force icmg context.
 if [[ "${ICMG_STRICT_BASH:-0}" = "1" ]]; then
     FILE_CMD=$(echo "$CMD" | grep -oE '^[[:space:]]*(cat|head|tail|less|more)[[:space:]]+[^ |&;<>]+' | awk '{print $2}')
     if [[ -n "$FILE_CMD" && -f "$FILE_CMD" ]]; then
@@ -79,7 +79,7 @@ fi
 
 PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status)([[:space:]]|$)'
 if echo "$CMD" | grep -qE "$PATTERN"; then
-    log_denial "bash-rewrite" "$CMD" "noisy command — use icmg run"
+    log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
     jq -n --arg c "$CMD" '{
         hookSpecificOutput: {
             hookEventName: "PreToolUse",
@@ -128,7 +128,7 @@ msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
     "Off only when user says 'stop caveman' or 'normal mode'.")
 # Phase 67 T32: prepend violation pressure if recent caveman thinking-phase
 # violations recorded. Escalates language at 2+ / 5+ violations in 24h.
-# Phase 70: also surface real session token total to model — encourages
+# Phase 70: also surface real session token total to model â€” encourages
 # self-throttling when token usage high.
 if command -v icmg >/dev/null 2>&1; then
     pressure=$(icmg compliance inject 2>/dev/null)
@@ -174,7 +174,7 @@ msg=$(printf '%s\n... [truncated, %d bytes total, full at %s] ...\n%s' "$head_pa
 jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
 )BASH";
 
-// Phase 71: UserPromptSubmit hook — auto-recall memory + suggest compress
+// Phase 71: UserPromptSubmit hook â€” auto-recall memory + suggest compress
 // when prompt contains large pasted text. Forces 4 core features (memory/
 // compress/store/graph) into Claude's awareness on every turn instead of
 // passive existence in DB.
@@ -204,7 +204,7 @@ fi
 printf '%s' "$INPUT" | exec icmg hook userprompt
 )BASH";
 
-// Stop hook — reminds to log workflow decisions when session had git activity.
+// Stop hook â€” reminds to log workflow decisions when session had git activity.
 static const char* WFLOG_STOP_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on session Stop.
 # Reminds to save workflow decisions when session had code changes.
@@ -219,10 +219,10 @@ fi
 [ "$HAS_CHANGES" = "false" ] && exit 0
 LAST=$(icmg wflog recent --limit 1 2>/dev/null | head -1)
 [ -n "$LAST" ] && exit 0
-jq -n '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:"WFLOG: session had changes — log decisions: icmg wflog save --goal \"...\" --decisions \"...\""}}' 2>/dev/null || true
+jq -n '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:"WFLOG: session had changes â€” log decisions: icmg wflog save --goal \"...\" --decisions \"...\""}}' 2>/dev/null || true
 )BASH";
 
-// v0.42.0: PreToolUse rule enforcement — call rule-daemon via `icmg rule-eval`.
+// v0.42.0: PreToolUse rule enforcement â€” call rule-daemon via `icmg rule-eval`.
 // Blocks Read/Glob/Grep on files >500 lines; warns at >200 lines.
 static const char* RULE_ENFORCE_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. PreToolUse:Read|Glob|Grep enforcement.
@@ -234,11 +234,11 @@ FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.pattern // em
 [ -z "$TOOL" ] && exit 0
 icmg rule-eval --tool "$TOOL" --file "$FILE" 2>/dev/null
 EXIT=$?
-[ $EXIT -eq 2 ] && exit 2  # BLOCK → hook deny
+[ $EXIT -eq 2 ] && exit 2  # BLOCK â†’ hook deny
 exit 0
 )BASH";
 
-// v0.42.0 + v1.2.0: SessionStart inject — hot context_nodes + skill manifest.
+// v0.42.0 + v1.2.0: SessionStart inject â€” hot context_nodes + skill manifest.
 // Skill manifest gives the agent direct access patterns for every ingested
 // skill so it doesn't fall back to grep/Read when the user names one.
 static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
@@ -246,7 +246,7 @@ static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Pre-warms binary, clears session-reads dedup, injects hot context_nodes
 # plus skill discovery manifest (v1.2.0+).
 command -v icmg >/dev/null 2>&1 || exit 0
-# Clear session dedup file — new session, fresh slate.
+# Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [ -d "$ICMG_HOME" ] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
 HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
@@ -290,7 +290,7 @@ CONTENT=$(icmg wake-up 2>/dev/null) || true
 jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
 )BASH";
 
-// v0.42.0: UserPromptSubmit — BM25-match cold context_nodes + skill index per prompt.
+// v0.42.0: UserPromptSubmit â€” BM25-match cold context_nodes + skill index per prompt.
 static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on UserPromptSubmit.
 # Injects relevant cold context_nodes + skill suggestions via BM25 match.
@@ -315,7 +315,7 @@ fi
 jq -n --arg m "$COMBINED" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:$m}}'
 )BASH";
 
-// Phase 40 T2: PreCompact hook — auto-snapshots session before /compact
+// Phase 40 T2: PreCompact hook â€” auto-snapshots session before /compact
 // or auto-compaction wipes context. Runs `icmg session save auto-precompact-<ts>`.
 static const char* PRECOMPACT_PY = R"PY(#!/usr/bin/env python3
 """icmg PreCompact hook (auto-installed by `icmg init`).
@@ -342,11 +342,11 @@ def main():
 if __name__ == "__main__": sys.exit(main())
 )PY";
 
-// Embedded sidecar — kept in sync with embed/icmg_embedder.py.
+// Embedded sidecar â€” kept in sync with embed/icmg_embedder.py.
 // `icmg init` drops this to ~/.icmg/embed/icmg_embedder.py so binary-only
 // installs (where source tree isn't adjacent) can still find the sidecar.
 static const char* EMBEDDER_PY = R"PY(#!/usr/bin/env python3
-"""icmg embedder sidecar — auto-installed by `icmg init`.
+"""icmg embedder sidecar â€” auto-installed by `icmg init`.
 Protocol: line-delimited JSON over stdin/stdout. Only JSON to stdout.
 """
 import io, os, sys, json, warnings, logging, contextlib
@@ -411,36 +411,36 @@ static const char* AGENTS_BLOCK = R"MD(<!-- icmg:start -->
 
 This project uses **icmg** for token-efficient code navigation.
 
-### ABSOLUTE RULE — icmg FIRST, ALWAYS
+### ABSOLUTE RULE â€” icmg FIRST, ALWAYS
 
 **Before any native tool call (Read / Bash / Grep / Glob / WebFetch), STOP and check the decision tree below.** If an `icmg` command serves the same need, you MUST use icmg. No exceptions, no "small file" excuses, no "just this once."
 
 Order of resolution for every action:
 
-1. **Is there an icmg command for this?** → run it
-2. **No icmg command?** → run native tool
-3. **icmg command failed?** → diagnose with `icmg doctor` first; only fall back to native when icmg explicitly errors
+1. **Is there an icmg command for this?** â†’ run it
+2. **No icmg command?** â†’ run native tool
+3. **icmg command failed?** â†’ diagnose with `icmg doctor` first; only fall back to native when icmg explicitly errors
 
-This is enforced at hook level (strict mode auto-on). Native calls that have an icmg equivalent are blocked with a redirect message. Do not waste tokens trying native first — the hook will block, you'll re-issue via icmg, you've burned a turn.
+This is enforced at hook level (strict mode auto-on). Native calls that have an icmg equivalent are blocked with a redirect message. Do not waste tokens trying native first â€” the hook will block, you'll re-issue via icmg, you've burned a turn.
 
 **Common slip-ups that cost tokens:**
-- Reading a big file with native Read instead of `icmg context <file>` → 80%+ saved
-- `grep -r` instead of `icmg run grep ...` → unfiltered noise
-- WebFetch instead of `icmg fetch <url>` → no cache, no reduce
-- `cat large.log` instead of `icmg compress < large.log` → no glossary
-- Running 3 reads sequentially instead of `icmg parallel` → 3-6× wall-clock loss
+- Reading a big file with native Read instead of `icmg context <file>` â†’ 80%+ saved
+- `grep -r` instead of `icmg run grep ...` â†’ unfiltered noise
+- WebFetch instead of `icmg fetch <url>` â†’ no cache, no reduce
+- `cat large.log` instead of `icmg compress < large.log` â†’ no glossary
+- Running 3 reads sequentially instead of `icmg parallel` â†’ 3-6Ã— wall-clock loss
 
 ### CRITICAL: parallel-first rule
 
-**If you have 2+ independent tasks (independent files, independent checks, independent recalls), ALWAYS run them via `icmg parallel`.** Do NOT run sequentially. This is non-negotiable — sequential runs waste wall-clock and miss the I/O parallelism win (3-6× speedup on typical paths).
+**If you have 2+ independent tasks (independent files, independent checks, independent recalls), ALWAYS run them via `icmg parallel`.** Do NOT run sequentially. This is non-negotiable â€” sequential runs waste wall-clock and miss the I/O parallelism win (3-6Ã— speedup on typical paths).
 
 ```bash
-# Wrong: sequential — waits each
+# Wrong: sequential â€” waits each
 icmg verify --command "ctest"
 icmg verify --command "cmake --build build"
 icmg run npm test
 
-# Right: parallel — all run concurrently
+# Right: parallel â€” all run concurrently
 icmg parallel \
     --task "icmg verify --command 'ctest'" \
     --task "icmg verify --command 'cmake --build build'" \
@@ -453,7 +453,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 
 | Want to | Use |
 |---|---|
-| **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default — see rule above) |
+| **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default â€” see rule above) |
 | Read a large file | `icmg context <file>` (graph + symbols + memory) |
 | Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
@@ -469,12 +469,12 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
 | Recall across projects | `icmg cross-recall "<query>"` |
 | Start new task | `icmg pack "<task>"` (4KB context bundle) |
-| Delegate to LLM | `icmg agent "<task>"` (pack→prompt→user-CLI) |
-| Run noisy command | `icmg run <cmd>` (Tkil filter — 60-90% smaller) |
+| Delegate to LLM | `icmg agent "<task>"` (packâ†’promptâ†’user-CLI) |
+| Run noisy command | `icmg run <cmd>` (Tkil filter â€” 60-90% smaller) |
 | Big git diff | `icmg diff-summary --ref HEAD~5` |
 | Errored before? | `icmg explain "<error>"` |
 | Fetch URL with cache | `icmg fetch <url>` (cached + token-reduced) |
-| Compress large output | `icmg compress` (pipe or `< file` — glossary output) |
+| Compress large output | `icmg compress` (pipe or `< file` â€” glossary output) |
 | Shrink to token budget | `icmg shrink` |
 | Expand compressed text | `icmg expand` |
 | View token savings | `icmg savings` |
@@ -573,9 +573,9 @@ static const char* COMMANDS_BLOCK = R"MD(<!-- icmg:commands:start -->
 |---|---|
 | `icmg context <file>` | Graph + symbols + memory (80%+ smaller than raw read) |
 | `icmg pack "<task>"` | 4KB context bundle for new tasks |
-| `icmg parallel --task "..." --task "..."` | Run 2+ tasks concurrently (3-6× speedup) |
+| `icmg parallel --task "..." --task "..."` | Run 2+ tasks concurrently (3-6Ã— speedup) |
 | `icmg run <cmd>` | Run noisy command through Tkil filter |
-| `icmg compress` | Pipe or `< file` — glossary-compressed output |
+| `icmg compress` | Pipe or `< file` â€” glossary-compressed output |
 | `icmg shrink` | Shrink output to token budget |
 | `icmg expand` | Expand compressed text |
 | `icmg fetch <url>` | Cached + token-reduced URL fetch |
@@ -588,7 +588,7 @@ static const char* COMMANDS_BLOCK = R"MD(<!-- icmg:commands:start -->
 | `icmg wake-up` | Session-start briefing (decisions + phases + fixes) |
 | `icmg session claim/clear/list` | Cross-session awareness |
 | `icmg verify --command "<cmd>"` | Run command + record audit trail |
-| `icmg agent "<task>"` | Delegate to LLM via pack→prompt |
+| `icmg agent "<task>"` | Delegate to LLM via packâ†’prompt |
 | `icmg explain "<error>"` | Lookup known error patterns |
 | `icmg known-issue add "<pattern>" --fix "<res>"` | Record a fix |
 | `icmg batch` | Batch cache writes (cut round-trips) |
@@ -630,10 +630,10 @@ public:
         std::cout <<
             "Usage: icmg init [options]\n\n"
             "Sets up:\n"
-            "  .claude/settings.local.json  — Bash-rewrite + Read-shrink hooks\n"
-            "  .claude/hooks/icmg-*.sh      — bundled hook scripts\n"
-            "  AGENTS.md                    — routing rules for AI agents\n"
-            "  ~/.icmg/embed/icmg_embedder.py — embedder sidecar (semantic recall)\n\n"
+            "  .claude/settings.local.json  â€” Bash-rewrite + Read-shrink hooks\n"
+            "  .claude/hooks/icmg-*.sh      â€” bundled hook scripts\n"
+            "  AGENTS.md                    â€” routing rules for AI agents\n"
+            "  ~/.icmg/embed/icmg_embedder.py â€” embedder sidecar (semantic recall)\n\n"
             "Options:\n"
             "  --no-hooks      Skip .claude/ setup\n"
             "  --no-agents     Skip AGENTS.md update\n"
@@ -661,7 +661,7 @@ public:
         bool force       = hasFlag(args, "--force");
         bool strict_read = hasFlag(args, "--strict-read");
 
-        // Global strict flag: ~/.icmg/strict.flag → enforce on every init/upgrade.
+        // Global strict flag: ~/.icmg/strict.flag â†’ enforce on every init/upgrade.
         if (!strict_read) {
             const char* home = std::getenv("HOME");
             if (!home) home = std::getenv("USERPROFILE");
@@ -674,7 +674,7 @@ public:
         fs::path root = fs::current_path();
         std::cout << "icmg init: " << root.string() << "\n";
 
-        // T3: Cloud sync path detection — warn if .icmg/ would be synced.
+        // T3: Cloud sync path detection â€” warn if .icmg/ would be synced.
         {
             std::string rstr = root.string();
             for (char& c : rstr) if (c == '\\') c = '/';
@@ -777,7 +777,7 @@ public:
                 std::cerr << "    [warn] initial snapshot failed (continuing)\n";
             auto r2 = core::safeExecShell("icmg backup auto-on --interval 1h", false, 15000);
             if (r2.exit_code != 0) {
-                std::cerr << "    [warn] auto-on failed — run manually: icmg backup auto-on\n";
+                std::cerr << "    [warn] auto-on failed â€” run manually: icmg backup auto-on\n";
             } else {
                 std::cout << "    OK: scheduler armed (every 1h)\n";
             }
@@ -786,7 +786,7 @@ public:
             std::cout << "  maintain:   enabling 6h hygiene...\n";
             auto r = core::safeExecShell("icmg maintain auto-on --interval 6h", false, 15000);
             if (r.exit_code != 0) {
-                std::cerr << "    [warn] maintain auto-on failed — run manually: icmg maintain auto-on\n";
+                std::cerr << "    [warn] maintain auto-on failed â€” run manually: icmg maintain auto-on\n";
             } else {
                 std::cout << "    OK: scheduler armed (every 6h)\n";
             }
@@ -798,7 +798,7 @@ public:
                 std::cerr << "    [warn] initial mirror sync failed (continuing)\n";
             auto r2 = core::safeExecShell("icmg mirror auto-on --every 15m", false, 15000);
             if (r2.exit_code != 0) {
-                std::cerr << "    [warn] mirror auto-on failed — run manually: icmg mirror auto-on\n";
+                std::cerr << "    [warn] mirror auto-on failed â€” run manually: icmg mirror auto-on\n";
             } else {
                 std::cout << "    OK: failover armed (refresh every 15m)\n";
             }
@@ -807,7 +807,7 @@ public:
             std::cout << "  sentinel:   enabling 15m watchdog...\n";
             auto r = core::safeExecShell("icmg sentinel auto-on --every 15m", false, 15000);
             if (r.exit_code != 0) {
-                std::cerr << "    [warn] sentinel auto-on failed — run manually: icmg sentinel auto-on\n";
+                std::cerr << "    [warn] sentinel auto-on failed â€” run manually: icmg sentinel auto-on\n";
             } else {
                 std::cout << "    OK: watchdog armed (heavy/idle + disk/audit checks)\n";
             }
@@ -816,14 +816,14 @@ public:
             std::cout << "  upgrade:    enabling daily shadow check...\n";
             auto r = core::safeExecShell("icmg shadow-upgrade auto-on --every 24h", false, 15000);
             if (r.exit_code != 0) {
-                std::cerr << "    [warn] shadow-upgrade auto-on failed — run manually: icmg shadow-upgrade auto-on\n";
+                std::cerr << "    [warn] shadow-upgrade auto-on failed â€” run manually: icmg shadow-upgrade auto-on\n";
             } else {
                 std::cout << "    OK: shadow auto-upgrade armed (daily check)\n";
             }
         }
 
         // v0.45.0: auto-add icmg.exe to Windows Defender exclusion list.
-        // Root cause: icmg spawns on every hook turn → Defender scans each spawn → CPU spike.
+        // Root cause: icmg spawns on every hook turn â†’ Defender scans each spawn â†’ CPU spike.
         // Non-fatal: skips silently if elevation unavailable (prints hint).
 #ifdef _WIN32
         {
@@ -849,7 +849,7 @@ public:
                         std::cout << "  defender:   icmg.exe excluded (faster hook spawns)\n";
                     else
                         std::cout << "  defender:   exclusion needs elevation"
-                                  << " — run `icmg init` as Administrator once to reduce Defender overhead\n";
+                                  << " â€” run `icmg init` as Administrator once to reduce Defender overhead\n";
                 }
             }
         }
@@ -865,7 +865,7 @@ private:
         int n = 0;
         fs::create_directories(root / ".claude" / "hooks");
 
-        // Drop hook scripts — always overwrite so upgrades fix stale/buggy hooks
+        // Drop hook scripts â€” always overwrite so upgrades fix stale/buggy hooks
         // (e.g. old versions with & background that caused WAL 65GB growth).
         // Users who need custom hooks should use --no-hooks and manage manually.
         n += writeFile(root / ".claude" / "hooks" / "icmg-bash-rewrite.sh", BASH_REWRITE_SH, true);
@@ -954,7 +954,7 @@ private:
                 })}
             }
         });
-        // Phase 56 T1: WebFetch redirect to `icmg fetch` (cache + reduce → 70-90% off).
+        // Phase 56 T1: WebFetch redirect to `icmg fetch` (cache + reduce â†’ 70-90% off).
         // Strict mode hard-denies; soft mode emits suggestion but allows.
         if (strict_read) {
             pre_array.push_back({
@@ -971,8 +971,8 @@ private:
             });
         }
         // (PreToolUse assigned later after Phase 70 Edit hook appended.)
-        // Phase 45 T3: PostToolUse:Bash — auto-shrink huge outputs (>8KB).
-        // Phase 67 T4: PostToolUse:Edit — capture user fixes to AI-emitted code.
+        // Phase 45 T3: PostToolUse:Bash â€” auto-shrink huge outputs (>8KB).
+        // Phase 67 T4: PostToolUse:Edit â€” capture user fixes to AI-emitted code.
         // Phase 70: PostToolUse:Glob/Grep/WebFetch + universal cap for any
         // tool result >8KB. Coverage extension targeting outside-icmg waste.
         cfg["hooks"]["PostToolUse"] = json::array({
@@ -990,7 +990,7 @@ private:
                      {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -c '.tool_input | {old_string, new_string, file_path}' 2>/dev/null | icmg correction capture 2>/dev/null || true"}}
                 })}
             },
-            // Phase 70: Glob/Grep cap — both produce path/line lists that
+            // Phase 70: Glob/Grep cap â€” both produce path/line lists that
             // accumulate fast. Cap to top 50 entries.
             {
                 {"matcher", "Glob|Grep"},
@@ -1002,11 +1002,11 @@ private:
                       "LINES=$(printf '%s' \"$OUT\" | wc -l); "
                       "[ \"$LINES\" -lt 50 ] && exit 0; "
                       "HEAD=$(printf '%s' \"$OUT\" | head -50); "
-                      "MSG=$(printf '%s\\n... [%d total entries; first 50 shown — refine query for fewer] ...\\n' \"$HEAD\" \"$LINES\"); "
+                      "MSG=$(printf '%s\\n... [%d total entries; first 50 shown â€” refine query for fewer] ...\\n' \"$HEAD\" \"$LINES\"); "
                       "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
                 })}
             },
-            // Phase 70: WebFetch result cap — even after icmg fetch reduce,
+            // Phase 70: WebFetch result cap â€” even after icmg fetch reduce,
             // direct WebFetch can return large pages. Cap to 4KB.
             {
                 {"matcher", "WebFetch"},
@@ -1022,7 +1022,7 @@ private:
                       "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
                 })}
             },
-            // Phase 82 T2: PostToolUse:Read — graph-aware auto-reroute.
+            // Phase 82 T2: PostToolUse:Read â€” graph-aware auto-reroute.
             // If file in graph: emit icmg context (structured, ~80% cut).
             // Fallback: icmg shrink. Threshold 4KB (ICMG_READ_THRESHOLD env).
             {
@@ -1040,7 +1040,7 @@ private:
                       "if [ -n \"$FILE\" ] && [ -f \"$FILE\" ]; then "
                       "  CTX=$(icmg context \"$FILE\" --max-bytes 3000 2>/dev/null); "
                       "  if [ -n \"$CTX\" ]; then "
-                      "    MSG=$(printf '[Read auto-rerouted to icmg context (%dB → structured)]\\n%s\\nHint: use `icmg context %s` directly.' \"$SZ\" \"$CTX\" \"$FILE\"); "
+                      "    MSG=$(printf '[Read auto-rerouted to icmg context (%dB â†’ structured)]\\n%s\\nHint: use `icmg context %s` directly.' \"$SZ\" \"$CTX\" \"$FILE\"); "
                       "    jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'; "
                       "    exit 0; "
                       "  fi; "
@@ -1049,7 +1049,7 @@ private:
                       "[ -z \"$SHRUNK\" ] && exit 0; "
                       "OZ=${#OUT}; SZ2=${#SHRUNK}; "
                       "[ \"$SZ2\" -ge \"$OZ\" ] && exit 0; "
-                      "MSG=$(printf 'Read output shrunk (%dB → %dB). Use `icmg context %s` for structured output.\\n%s' \"$OZ\" \"$SZ2\" \"$FILE\" \"$SHRUNK\"); "
+                      "MSG=$(printf 'Read output shrunk (%dB â†’ %dB). Use `icmg context %s` for structured output.\\n%s' \"$OZ\" \"$SZ2\" \"$FILE\" \"$SHRUNK\"); "
                       "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
                 })}
             }
@@ -1071,7 +1071,7 @@ private:
             }
         });
 
-        // Phase 71: UserPromptSubmit — auto-recall memory + auto-context.
+        // Phase 71: UserPromptSubmit â€” auto-recall memory + auto-context.
         // v0.42.0: also inject BM25-matched cold context_nodes + skill suggestions.
         cfg["hooks"]["UserPromptSubmit"] = json::array({
             {
@@ -1093,7 +1093,7 @@ private:
                 })}
             }
         });
-        // v1.1.0 Task 6: PreToolUse hard-deny — denies raw shell / large Read /
+        // v1.1.0 Task 6: PreToolUse hard-deny â€” denies raw shell / large Read /
         // powershell / cmd patterns when icmg has an equivalent. Per-session
         // bypass via ICMG_STRICT_BYPASS=1.
         cfg["hooks"]["PreToolUse"] = json::array({
@@ -1108,7 +1108,7 @@ private:
 
         // v0.54.0: Stop hook consolidated into `icmg hook stop` single fork.
         // Replaces the 5-bash-command chain (distill / fail-sync / compliance /
-        // tool-budget / wflog) — saves ~150-250ms per Stop event.
+        // tool-budget / wflog) â€” saves ~150-250ms per Stop event.
         cfg["hooks"]["Stop"] = json::array({
             {
                 {"hooks", json::array({
@@ -1278,7 +1278,7 @@ private:
     }
 
     int installEmbedder(bool force) {
-        // Drop sidecar to ~/.icmg/embed/icmg_embedder.py — findScript() picks
+        // Drop sidecar to ~/.icmg/embed/icmg_embedder.py â€” findScript() picks
         // it up there. Binary-only installs (no source tree) need this.
         const char* h = std::getenv("USERPROFILE");
         if (!h) h = std::getenv("HOME");

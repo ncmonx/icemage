@@ -1,12 +1,12 @@
-// Phase 79: `icmg hook <event>` — in-process hook event handler.
+﻿// Phase 79: `icmg hook <event>` â€” in-process hook event handler.
 //
 // Consolidates the 4-5 separate icmg subprocess calls that
 // .claude/hooks/icmg-prompt-recall.sh used to make per UserPromptSubmit
 // event into a single icmg invocation. Saves cold-start fork overhead
-// (~30-50ms × N callers = 100-200ms per prompt).
+// (~30-50ms Ã— N callers = 100-200ms per prompt).
 //
 // Events:
-//   userprompt    UserPromptSubmit — drift check + memory recall + path context
+//   userprompt    UserPromptSubmit â€” drift check + memory recall + path context
 //                 + compress suggestion. Reads JSON stdin, emits additionalContext.
 //
 // Stdin: JSON {prompt: "...", session_id: "..."} (Claude Code event format)
@@ -14,10 +14,10 @@
 // Exit: 0 always (hook fail-safe).
 //
 // Future events (deferred to next phase):
-//   pretooluse-read   — replaces icmg-shrink-read.sh chain
-//   posttooluse-bash  — replaces icmg-cap-output.sh
+//   pretooluse-read   â€” replaces icmg-shrink-read.sh chain
+//   posttooluse-bash  â€” replaces icmg-cap-output.sh
 //
-// Design: every step here uses in-process Db/MemoryStore/etc — no subprocess.
+// Design: every step here uses in-process Db/MemoryStore/etc â€” no subprocess.
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
@@ -69,7 +69,7 @@ public:
         std::cout <<
             "Usage: icmg hook <event> [options]\n\n"
             "Events:\n"
-            "  userprompt          UserPromptSubmit — drift + recall + path-ctx merged\n"
+            "  userprompt          UserPromptSubmit â€” drift + recall + path-ctx merged\n"
             "                      Reads JSON stdin, emits additionalContext JSON.\n\n"
             "Designed for Claude Code .claude/hooks/ scripts: consolidates 4-5\n"
             "separate icmg invocations into one, eliminating per-prompt fork overhead.\n";
@@ -85,6 +85,7 @@ public:
         if (event == "precompact")          return cmdPreCompact();
         if (event == "posttooluse-read")    return cmdPostToolUseRead();
         if (event == "posttooluse-bash")    return cmdPostToolUseBash();
+        if (event == "pretooluseedit")      return cmdPreToolUseEditDisambig();
         std::cerr << "icmg hook: unknown event '" << event << "'\n";
         return 0;  // hook fail-safe
     }
@@ -177,8 +178,8 @@ private:
 
     // Build the additionalContext payload + emit JSON to stdout.
     // v1.1.0 Task 6.6: prepend caveman re-inject block when caveman.flag is
-    // ON and violations >0. Empty block on healthy sessions → no overhead.
-    // v1.3.0 Task 7: prepend skill chunk hint when top score ≥ 0.20.
+    // ON and violations >0. Empty block on healthy sessions â†’ no overhead.
+    // v1.3.0 Task 7: prepend skill chunk hint when top score â‰¥ 0.20.
     static void emitContext(const std::string& msg, const std::string& prompt = "") {
         std::string caveman = icmg::core::hooks::runUserPromptCavemanInject();
         std::string skill_hint = prompt.empty()
@@ -194,7 +195,7 @@ private:
     //
     // Replaces icmg-prompt-recall.sh chain. All in-process.
     int cmdUserPrompt() {
-        // Phase 79: early-exit guard — env opt-out fully disables hook.
+        // Phase 79: early-exit guard â€” env opt-out fully disables hook.
         if (std::getenv("ICMG_NO_PROMPT_HOOK")) return 0;
 
         std::string raw = readStdinAll();
@@ -208,7 +209,7 @@ private:
             else if (j.contains("message") && j["message"].is_string())
                 prompt = j["message"].get<std::string>();
         } catch (...) {
-            // Malformed input — fail silent.
+            // Malformed input â€” fail silent.
             return 0;
         }
         if (prompt.empty() || prompt.size() < 20) return 0;
@@ -216,21 +217,21 @@ private:
         std::string lp = lower(prompt);
         std::ostringstream msg;
 
-        // T4: Adaptive injection depth — scale limits with prompt complexity.
+        // T4: Adaptive injection depth â€” scale limits with prompt complexity.
         // Short prompts (<150 chars) need minimal context; long ones get full depth.
         int recall_limit = 5;
         int ctx_limit    = 3;
         if      (prompt.size() < 150) { recall_limit = 1; ctx_limit = 1; }
         else if (prompt.size() < 500) { recall_limit = 3; ctx_limit = 2; }
 
-        // T2: Token budget cap — stop injecting when accumulated output approaches limit.
-        // Estimate: 1 token ≈ 4 chars. Cap at ~1000 tokens (4096 chars).
+        // T2: Token budget cap â€” stop injecting when accumulated output approaches limit.
+        // Estimate: 1 token â‰ˆ 4 chars. Cap at ~1000 tokens (4096 chars).
         constexpr size_t BUDGET_CHARS = 4096;
         auto budgetOk = [&]() -> bool {
             return (size_t)msg.tellp() < BUDGET_CHARS;
         };
 
-        // T3: BM25 confidence threshold for memory recall — skip noisy low-score hits.
+        // T3: BM25 confidence threshold for memory recall â€” skip noisy low-score hits.
         constexpr float RECALL_MIN_SCORE = 0.15f;
 
         // 1. Drift check (in-process; only fires if any pinned anchor exists).
@@ -285,7 +286,7 @@ private:
             } catch (...) {}
         }
 
-        // 2. Memory recall — top N hits (adaptive limit, T3 threshold, T1 dedup).
+        // 2. Memory recall â€” top N hits (adaptive limit, T3 threshold, T1 dedup).
         int local_hits = 0;
         if (budgetOk()) try {
             auto& cfg = core::Config::instance();
@@ -353,7 +354,7 @@ private:
             } catch (...) {}
         }
 
-        // 2c. Path-context — detect file path mentions, emit graph context.
+        // 2c. Path-context â€” detect file path mentions, emit graph context.
         if (budgetOk()) {
             // Match common code file extensions.
             static const std::vector<std::string> exts = {
@@ -403,10 +404,10 @@ private:
                             std::string trunc = ctx.size() > 200 ? ctx.substr(0, 197) + "..." : ctx;
                             msg << "  context: " << trunc << "\n";
                         }
-                        msg << "  → for full slice: `icmg context " << firstpath
+                        msg << "  â†’ for full slice: `icmg context " << firstpath
                             << " --lines A-B`\n\n";
                     }
-                    // T9: 1-hop BFS — callers/callees via graph_edges (file→symbol→neighbor).
+                    // T9: 1-hop BFS â€” callers/callees via graph_edges (fileâ†’symbolâ†’neighbor).
                     if (budgetOk()) {
                         std::ostringstream bfs_out;
                         int bfs_n = 0;
@@ -419,7 +420,7 @@ private:
                             {firstpath, firstpath},
                             [&](const core::Row& r){
                                 if (r.size() < 2 || bfs_n >= 5) return;
-                                bfs_out << "  →" << r[1] << ": " << r[0] << "\n";
+                                bfs_out << "  â†’" << r[1] << ": " << r[0] << "\n";
                                 ++bfs_n;
                             });
                         if (bfs_n > 0)
@@ -430,7 +431,7 @@ private:
             }
         }
 
-        // 2d. T9: BFS 1-hop expansion — callers/callees of the path-context file.
+        // 2d. T9: BFS 1-hop expansion â€” callers/callees of the path-context file.
         // Seeds from graph_nodes matching the detected path, expands via graph_edges depth-1.
         // Skipped if budget is tight or path-context found nothing.
         if (budgetOk() && !lp.empty()) {
@@ -472,7 +473,7 @@ private:
                                      std::string bkey = "bfs:" + r[0];
                                      if (isNodeInjected(bkey)) return;
                                      markNodeInjected(bkey);
-                                     bfs_out << "  " << r[1] << " → " << r[0] << "\n";
+                                     bfs_out << "  " << r[1] << " â†’ " << r[0] << "\n";
                                      ++bfs_added;
                                  });
                         if (bfs_added > 0)
@@ -483,14 +484,14 @@ private:
             }
         }
 
-        // 3. Compress suggestion — large prompt heuristic.
+        // 3. Compress suggestion â€” large prompt heuristic.
         size_t sz = prompt.size();
         if (sz > 4000) {
             msg << "(Large prompt " << sz
-                << "B — pipe big paste through `icmg compress` next time.)\n";
+                << "B â€” pipe big paste through `icmg compress` next time.)\n";
         }
 
-        // 4. Cold context_nodes + skill injection — BM25 min-score 0.15, cached 300s (T12).
+        // 4. Cold context_nodes + skill injection â€” BM25 min-score 0.15, cached 300s (T12).
         if (budgetOk() && !prompt.empty() && !std::getenv("ICMG_NO_CONTEXT_HOOK")) {
             uint32_t h = fnv1a32(prompt);
             std::string cached_ctx = readPromptCache(h, 300);
@@ -508,7 +509,7 @@ private:
                         if (!budgetOk()) break;
                         if (isNodeInjected(n.node_key)) continue;        // T1
                         markNodeInjected(n.node_key);
-                        // T10: compress content — signature only (≤200 chars).
+                        // T10: compress content â€” signature only (â‰¤200 chars).
                         std::string body = n.content.size() > 200
                                          ? n.content.substr(0, 197) + "..."
                                          : n.content;
@@ -559,7 +560,7 @@ private:
         } catch (...) { return 0; }
         if (file_path.empty() || !fs::exists(file_path)) return 0;
 
-        // Session dedup — emit reminder if file already read this session.
+        // Session dedup â€” emit reminder if file already read this session.
         bool already_read = isFileRead(file_path);
         markFileRead(file_path);
         if (already_read) {
@@ -644,15 +645,17 @@ private:
     int cmdPreToolUseEnforce();
     // v1.3.0 Task 13: PostToolUse:Bash test-fail auto-context.
     int cmdPostToolUseBash();
+    // v1.4.0 Task 1: PreToolUse:Edit target disambiguation.
+    int cmdPreToolUseEditDisambig();
 };
 
-// ── v0.56.0: Stop / PreCompact / PostToolUse-Read ─────────────────────────────
+// â”€â”€ v0.56.0: Stop / PreCompact / PostToolUse-Read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // Logic extracted to `core/hooks/runners.{hpp,cpp}` (Phase B.B3). Each cmd:
-//   1. Try the rule-daemon RPC path (saves ~30-50ms icmg.exe startup × event).
+//   1. Try the rule-daemon RPC path (saves ~30-50ms icmg.exe startup Ã— event).
 //   2. Fall back to inline runner if daemon down or RPC fails.
 //
-// Single source of truth — daemon handler + inline path call the same runner.
+// Single source of truth â€” daemon handler + inline path call the same runner.
 
 int HookCommand::cmdStop() {
     std::string raw = readStdinAll();
@@ -685,7 +688,7 @@ int HookCommand::cmdPostToolUseRead() {
     return 0;
 }
 
-// v1.1.0 Task 6: PreToolUse hard-deny — reads Claude Code hook v2 event from
+// v1.1.0 Task 6: PreToolUse hard-deny â€” reads Claude Code hook v2 event from
 // stdin, returns permissionDecision JSON. Bypassable per-session via
 // ICMG_STRICT_BYPASS=1.
 int HookCommand::cmdPreToolUseEnforce() {
@@ -719,7 +722,7 @@ int HookCommand::cmdPostToolUseBash() {
         }
     } catch (...) { return 0; }
 
-    // Only handle Bash tool — don't touch Read/Glob/Grep paths.
+    // Only handle Bash tool â€” don't touch Read/Glob/Grep paths.
     if (tool_name != "Bash") return 0;
 
     std::string ctx = icmg::core::hooks::runPostToolUseTestFailContext(
@@ -733,6 +736,13 @@ int HookCommand::cmdPostToolUseBash() {
     return 0;
 }
 
+
+int HookCommand::cmdPreToolUseEditDisambig() {
+    std::string raw = readStdinAll();
+    std::string out = icmg::core::hooks::runPreToolUseEditDisambig(raw);
+    if (!out.empty()) std::cout << out << "\n";
+    return 0;
+}
 ICMG_REGISTER_COMMAND("hook", HookCommand);
 
 } // namespace icmg::cli

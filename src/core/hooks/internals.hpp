@@ -85,4 +85,15 @@ std::string runUserPromptSkillSuggest(const std::string& user_prompt);
 std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
                                           const std::string& tool_output);
 
+// v1.4.0 Task 1: PreToolUse:Edit disambiguation hook.
+// Inspects a PreToolUse Edit/Write tool invocation. When the target file_path
+// is ambiguous (>=2 context-graph candidates score above threshold), returns
+// Claude Code hook v2 JSON with permissionDecision:"ask" and a candidates list.
+// Returns empty string when:
+//   - Only 0 or 1 candidate above threshold (no ambiguity)
+//   - ICMG_DISAMBIG_QUIET=1 env is set
+//   - DB unavailable (fail-soft)
+//   - Not an Edit/Write tool call
+std::string runPreToolUseEditDisambig(const std::string& stdin_raw);
+
 } // namespace icmg::core::hooks
