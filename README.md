@@ -38,6 +38,17 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.5.1 — Hotfix: central version header + stale shadow-upgrade pin auto-discard
+
+| Fix | What changed |
+| --- | --- |
+| **`src/core/version.hpp`** | Single source of truth for `ICMG_VERSION`. All version-printing call sites read the same constant — eliminates the kind of drift that left `shadow-upgrade` hard-coded at `0.37.0`. |
+| **Stale pin auto-discard** | `icmg shadow-upgrade` now removes `pin-version.txt` automatically when the pinned version is older than the binary on disk. Legacy pins no longer block auto-upgrade. |
+
+Drop-in. All v1.5.0 features unchanged.
+
+---
+
 ## 🚀 What's new in v1.5.0 — Savings dashboard: project-wide aggregate + daily history
 
 `icmg savings --html` now aggregates real session tokens across every transcript in the current project (not just the latest one). New per-session detail and daily history tables surface in the dashboard.
@@ -71,19 +82,7 @@ Drop-in. No schema/migration. Re-run `icmg savings --html` after upgrade.
 
 101/101 ctest pass on Windows + Linux (+10 new test executables vs v1.3.1).
 
----
-
-## 🚀 What's new in v1.3.1 — Windows popup + MCP UTF-8 hotfix
-
-| Fix | What changed |
-| --- | --- |
-| **Windows popup gone** | `icmg skill index` no longer triggers "cannot find drive" dialogs when MSYS bash paths reach Win32 file APIs. `SetErrorMode` suppresses critical-error UI at process entry |
-| **MCP `icmg_recall` UTF-8 fix** | Tool no longer fails with `-32603 type_error.316` on memory content with invalid UTF-8. JSON dumps substitute U+FFFD instead of throwing |
-| **`core::secret_scanner` foundation** | New library detects + redacts AWS/GitHub/Anthropic/OpenAI/Slack/JWT/PEM secrets. `pack` cmd wire ships in v1.3.2 |
-
-91/91 ctest pass Windows + Linux.
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.3.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.3.1 and earlier.
 
 ---
 

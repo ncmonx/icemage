@@ -4,6 +4,16 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.5.1 — Hotfix: central version header + stale shadow-upgrade pin auto-discard
+
+Patch release. Two cleanups so future upgrades stay stable.
+
+- **`src/core/version.hpp`** — single source of truth for `ICMG_VERSION`. `main.cpp`, `update_cmd.cpp`, `mcp/server.cpp`, `shadow_upgrade_cmd.cpp`, `bug_report_cmd.cpp` now all reference the same constant. Eliminates drift seen with `shadow-upgrade` previously hard-coded at `"0.37.0"`.
+- **`icmg shadow-upgrade` stale-pin auto-discard** — `discardStalePin()` removes any `pin-version.txt` whose pinned version is older than the installed binary. Stops legacy pins (e.g. `0.43.1`) silently blocking auto-upgrade.
+- `icmg.rc`, `CMakeLists.txt` bumped to `1.5.1`.
+
+Drop-in. No schema/migration. All v1.5.0 features unchanged.
+
 ## 1.5.0 — Savings dashboard: project-wide aggregate + daily history
 
 `icmg savings --html` now aggregates real session tokens across **every transcript in the current project** (not just the latest one), with a per-session detail table and a daily history breakdown.
