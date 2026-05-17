@@ -38,6 +38,22 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🚀 What's new in v1.5.0 — Savings dashboard: project-wide aggregate + daily history
+
+`icmg savings --html` now aggregates real session tokens across every transcript in the current project (not just the latest one). New per-session detail and daily history tables surface in the dashboard.
+
+| Feature | What it does |
+| --- | --- |
+| **`context-budget --all-sessions`** | Walks `~/.claude/projects/<cwd-encoded>/*.jsonl`; JSON emits per-session detail (file, mtime, total, by_source). |
+| **REAL SESSION TOKENS** | Now = sum across all sessions in current project. Card subtitle: "Sum across N sessions in this project". |
+| **Per-session detail table** | Collapsible. Columns: session, date, total, text, tool-in, tool-out, thinking. |
+| **Daily real-token history** | Sessions grouped by date (newest first), with session count, total tokens, and inline trend bar. Caps at 30 days. |
+| **Console daily output** | `icmg savings` (no `--html`) also prints last-14-days daily history. |
+
+Drop-in. No schema/migration. Re-run `icmg savings --html` after upgrade.
+
+---
+
 ## 🚀 What's new in v1.4.0 — AI guard mega bundle
 
 8-task release: 4 AI failure-mode guards + 3 deferred items. New hooks auto-register on `icmg init --force` — features are ready for AI models immediately after upgrade.
@@ -67,38 +83,7 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 91/91 ctest pass Windows + Linux.
 
----
-
-## 🚀 What's new in v1.3.0 — skill power chain + Focus Chain + token cuts
-
-| Feature | What changed |
-| --- | --- |
-| **Sub-skill chunking** | Skills auto-split at H2/H3 boundaries; per-pasal granularity. `icmg skill chunk <key> --list|--get|--reindex` for CRUD |
-| **`icmg skill ask "<q>"`** | BM25 + cosine hybrid recall over chunks. Embeddings (384-dim MiniLM) precomputed at index time. Flags: `--top N --alpha F --skill <key> --json` |
-| **Auto-inject top chunk** | UserPromptSubmit hook prepends top-scoring chunk above 0.20 threshold into additionalContext. Kills grep-fallback when user names ingested skill. Opt-out `ICMG_SKILL_QUIET=1` |
-| **Focus Chain** | Per-session todo persistence + SessionStart/UserPromptSubmit re-inject. `icmg focus add/done/block/list/inject`. Kills drift in long sessions |
-| **`pack --compress-ast`** | Regex-based function/class body elision for C/C++/JS/TS/Py/Go/Rust. 70-90% byte cut on big sources. `--show-tokens` prints before→after stats |
-| **`icmg tokens`** | Heuristic token counter for files/stdin/dirs (`--per-file --json`) |
-| **`.icmgrules` Memory Bank** | Git-tracked durable rule files auto-loaded at `icmg init`; SessionStart injects active rules. `.icmgignore` additive scanner exclude |
-| **`@symbol` resolver** | `pack "@AuthService refactor"` expands @symbol → file/symbol context |
-| **Debug auto-context** | PostToolUse:Bash detects FAIL/Error/Traceback signatures; injects relevant file paths + memory recall into next turn |
-| **`icmg ingest-history`** | Ingest last N merged PRs as memoir-tier nodes via `gh` CLI |
-| **`icmg bug-report`** | Collect diagnostics + file GH issue (manual or `--auto-capture` + `--send-pending` after user consent). Privacy: never auto-submits |
-| **fix #46 async version check** | Detached thread on stale cache; hot path never blocks on GitHub API. Eliminates 2-18s latency spike. `ICMG_VERSION_CHECK_SYNC=1` for debug |
-
-```bash
-icmg skill ask "siapa ahli waris" --top 3 --json
-icmg focus add "fix auth bug" && icmg focus list
-icmg pack "refactor auth" --compress-ast --show-tokens
-icmg ingest-history --pr-count 20
-icmg bug-report --title "crash on pack"
-```
-
-90/90 ctest pass on Windows + Linux. Stable contract from v1.0.0 preserved — all additions backward-compatible.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.2.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.3.x and earlier.
 
 ---
 
