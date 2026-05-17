@@ -38,6 +38,18 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.5.2 — Hotfix: Python sidecar B:/ popup + locked-DLL upgrade fix
+
+| Fix | What changed |
+| --- | --- |
+| **Python sidecar `SetErrorMode`** | `embed/icmg_embedder.py` sets `SEM_FAILCRITICALERRORS \| SEM_NOOPENFILEERRORBOX` via ctypes before any HF/sentence-transformers import. Belt-and-suspenders against the recurring `B:/` popup when MSYS-style paths reach Win32 from inside transitive C extensions. |
+| **`emit()` OSError guard** | Sidecar stdout writer catches `OSError` / `BrokenPipeError`. Parent pipe close → graceful `exit 0` instead of crash-log. |
+| **`icmg update --apply` locked-DLL fix** | Rename-aside (`*.dll.old-<pid>`) replaces in-use DLLs instead of silently skipping. Startup sweep cleans residue. Worst-case falls back to `MoveFileEx(DELAY_UNTIL_REBOOT)`. |
+
+Drop-in. All v1.5.0/v1.5.1 features unchanged.
+
+---
+
 ## 🛠 v1.5.1 — Hotfix: central version header + stale shadow-upgrade pin auto-discard
 
 | Fix | What changed |
@@ -63,26 +75,7 @@ Drop-in. All v1.5.0 features unchanged.
 
 Drop-in. No schema/migration. Re-run `icmg savings --html` after upgrade.
 
----
-
-## 🚀 What's new in v1.4.0 — AI guard mega bundle
-
-8-task release: 4 AI failure-mode guards + 3 deferred items. New hooks auto-register on `icmg init --force` — features are ready for AI models immediately after upgrade.
-
-| Feature | What it guards / does |
-| --- | --- |
-| **T1 `icmg target-verify`** | `PreToolUse:Edit\|Write` hook blocks wrong-file edits when the AI's stated target description doesn't match the candidate path. Char-trigram Jaccard scorer with configurable `--threshold`. |
-| **T2 `icmg safe-rollback`** | `PreToolUse:Bash` guard intercepts unsafe `git checkout` / `git reset --hard` on uncommitted work; auto-backs up before rollback. Flags: `--force`, `--ref <commit>`, `--no-backup`, `--dry-run`. |
-| **T3 PostToolUse auto-sync** | Edits trigger immediate graph + memory re-scan (tier=`draft`), so the AI's next context lookup sees fresh state. Opt-out: `ICMG_AUTO_SYNC_QUIET=1`. |
-| **T4 Approach history** | New `approaches` table (migration 0032). `icmg approach record\|lookup\|list\|prune` records what worked / failed per task — prevents the AI from repeating dead-end approaches. |
-| **T5 Prompt inject + test outcome** | `UserPromptSubmit` surfaces past attempts before the AI replies; `PostToolUse:Bash` auto-records test results into approach history. |
-| **T6 Bundle secret scan** | `icmg bundle` scans context bundles before emit. Flags: `--allow-secrets`, `--strict-secrets`. |
-| **T7 MCP lazy tool-schema** | `ICMG_MCP_LAZY_TOOLS=1` returns minimal schema in `tools/list` (cuts ~80% schema bytes on cold init). |
-| **T8 Migration 0031 `token_counts`** | Per-file token-count cache for fast `icmg savings` / `icmg pack` budget queries. |
-
-101/101 ctest pass on Windows + Linux (+10 new test executables vs v1.3.1).
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.3.1 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.4.x and earlier.
 
 ---
 
