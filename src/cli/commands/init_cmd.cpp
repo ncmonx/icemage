@@ -928,14 +928,14 @@ private:
                     {{"type", "command"}, {"command",
                         std::string("[ -f .claude/hooks/icmg-bash-rewrite.sh ] && ") +
                         (strict_read ? "ICMG_STRICT_BASH=1 " : "") +
-                        "bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
+                        "(command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-bash-rewrite.sh) || bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
                 })}
             },
             {
                 {"matcher", "Read|Glob|Grep"},
                 {"hooks",   json::array({
                     {{"type", "command"}, {"command",
-                        "[ -f .claude/hooks/icmg-rule-enforce.sh ] && bash .claude/hooks/icmg-rule-enforce.sh || exit 0"}}
+                        "[ -f .claude/hooks/icmg-rule-enforce.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-rule-enforce.sh) || bash .claude/hooks/icmg-rule-enforce.sh || exit 0"}}
                 })}
             },
             {
@@ -950,7 +950,7 @@ private:
                         // Edit-anchor requirement. Opt-out: ICMG_NO_READ_FORCE=1.
                         "ICMG_READ_LIMIT=30 ICMG_SHRINK_THRESHOLD=0 " +
                         (strict_read ? "ICMG_SHRINK_STRICT=1 " : "") +
-                        "bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
+                        "(command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-shrink-read.sh) || bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
                 })}
             }
         });
@@ -980,7 +980,7 @@ private:
                 {"matcher", "Bash|PowerShell"},
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-cap-output.sh ] && bash .claude/hooks/icmg-cap-output.sh || exit 0"}}
+                     {"command", "[ -f .claude/hooks/icmg-cap-output.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-cap-output.sh) || bash .claude/hooks/icmg-cap-output.sh || exit 0"}}
                 })}
             },
             {
@@ -1071,11 +1071,11 @@ private:
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
+                     {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-caveman-prompt.sh) || bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0"}},
+                     {"command", "[ -f .claude/hooks/icmg-context-session.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-context-session.sh) || bash .claude/hooks/icmg-context-session.sh || exit 0"}},
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-wakeup-session.sh ] && bash .claude/hooks/icmg-wakeup-session.sh || exit 0"}}
+                     {"command", "[ -f .claude/hooks/icmg-wakeup-session.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-wakeup-session.sh) || bash .claude/hooks/icmg-wakeup-session.sh || exit 0"}}
                 })}
             }
         });
@@ -1194,7 +1194,7 @@ private:
 
         const std::string matcher = "Read|Glob|Grep";
         const std::string hook_cmd =
-            "python3 -c \"import json,sys; sys.stdin.read(); "
+            "icmg shield -- python3 -c \"import json,sys; sys.stdin.read(); "
             "print(json.dumps({'hookSpecificOutput':{'hookEventName':'PreToolUse',"
             "'additionalContext':'ICMG-FIRST RULE: Before Read/Glob/Grep, use icmg first: "
             "icmg context <file>, icmg pack <task>, icmg graph symbol <Name>, "
