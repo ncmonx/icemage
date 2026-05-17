@@ -4,6 +4,18 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.5.0 — Savings dashboard: project-wide aggregate + daily history
+
+`icmg savings --html` now aggregates real session tokens across **every transcript in the current project** (not just the latest one), with a per-session detail table and a daily history breakdown.
+
+- **`icmg context-budget --all-sessions`** — walks `~/.claude/projects/<cwd-encoded>/*.jsonl` and emits per-session detail (file, mtime, total, by_source) in JSON. cwd-encoded = path with `:` / `\` / `/` / ` ` replaced by `-` (matches Claude Code's project-dir naming).
+- **`icmg savings --html` REAL SESSION TOKENS** = sum across all sessions in the project. The card subtitle now reads "Sum across N session(s) in this project".
+- **Per-session detail table** (collapsible) with date, total, and source breakdown (text / tool-in / tool-out / thinking).
+- **Daily real-token history table** — sessions grouped by `YYYY-MM-DD`, newest first, with per-day session count, total tokens, and an inline trend bar (caps at 30 days).
+- Console `icmg savings` also prints the daily history (last 14 days) under the dashboard summary.
+
+No schema changes. No new dependencies. Drop-in upgrade — re-run `icmg savings --html` after install to see the new view.
+
 ## 1.4.0 — AI guard mega bundle
 
 Eight-task release shipping 4 AI failure-mode guards + 3 deferred items from v1.3.1. New hooks auto-register on `icmg init --force` so features are ready for AI models immediately after upgrade.
