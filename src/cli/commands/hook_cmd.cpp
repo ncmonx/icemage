@@ -86,6 +86,7 @@ public:
         if (event == "posttooluse-read")    return cmdPostToolUseRead();
         if (event == "posttooluse-bash")    return cmdPostToolUseBash();
         if (event == "pretooluseedit")      return cmdPreToolUseEditDisambig();
+        if (event == "posttooluse-edit")    return cmdPostToolUseEditAutoSync();
         std::cerr << "icmg hook: unknown event '" << event << "'\n";
         return 0;  // hook fail-safe
     }
@@ -647,6 +648,8 @@ private:
     int cmdPostToolUseBash();
     // v1.4.0 Task 1: PreToolUse:Edit target disambiguation.
     int cmdPreToolUseEditDisambig();
+    // v1.4.0 Task 3: PostToolUse:Edit/Write auto graph-update + memory draft.
+    int cmdPostToolUseEditAutoSync();
 };
 
 // â”€â”€ v0.56.0: Stop / PreCompact / PostToolUse-Read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -747,6 +750,15 @@ int HookCommand::cmdPreToolUseEditDisambig() {
     std::string raw = readStdinAll();
     std::string out = icmg::core::hooks::runPreToolUseEditDisambig(raw);
     if (!out.empty()) std::cout << out << "\n";
+    return 0;
+}
+
+// v1.4.0 Task 3: PostToolUse:Edit/Write auto graph-update + memory draft.
+// Reads Claude Code PostToolUse JSON from stdin (tool_name, tool_input).
+// Silently writes a draft ContextNode for the edited file; returns 0.
+int HookCommand::cmdPostToolUseEditAutoSync() {
+    std::string raw = readStdinAll();
+    icmg::core::hooks::runPostToolUseEditAutoSync(raw);
     return 0;
 }
 ICMG_REGISTER_COMMAND("hook", HookCommand);

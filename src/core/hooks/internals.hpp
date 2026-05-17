@@ -108,4 +108,14 @@ std::string runPreToolUseEditDisambig(const std::string& stdin_raw);
 //   - Not a Bash tool call
 std::string runPreToolUseBashGitGuard(const std::string& stdin_raw);
 
+// v1.4.0 Task 3: PostToolUse:Edit/Write auto graph-update + memory draft.
+// Intercepts PostToolUse Edit/Write events. For each intercepted event:
+//   1. Parses file_path, old_string/new_string (Edit) or content (Write).
+//   2. Skips paths outside the project root.
+//   3. Writes a draft ContextNode (tier="draft") summarising the change.
+//   4. Returns "" always (silent side-effect hook — no additionalContext inject).
+// Opt-out: set env ICMG_AUTO_SYNC_QUIET=1.
+// Fail-soft: empty input → "", parse error → "", DB unavailable → "", no throw.
+std::string runPostToolUseEditAutoSync(const std::string& stdin_raw);
+
 } // namespace icmg::core::hooks

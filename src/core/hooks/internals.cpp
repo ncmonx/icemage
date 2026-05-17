@@ -819,4 +819,105 @@ std::string runPreToolUseBashGitGuard(const std::string& stdin_raw) {
     return denyJson(reason);
 }
 
+
+// ---- v1.4.0 Task 3: PostToolUse:Edit/Write auto graph-update + memory draft -
+
+std::string runPostToolUseEditAutoSync(const std::string& stdin_raw) {
+    // Opt-out env.
+    if (std::getenv("ICMG_AUTO_SYNC_QUIET")) return "";
+    if (stdin_raw.empty()) return "";
+
+    // Parse tool name, file_path, and change content from stdin.
+    std::string tool_name, file_path, old_string, new_string, content;
+    try {
+        auto j = json::parse(stdin_raw);
+        tool_name = j.value("tool_name", std::string{});
+        if (j.contains("tool_input") && j["tool_input"].is_object()) {
+            auto& ti = j["tool_input"];
+            file_path  = ti.value("file_path",  std::string{});
+            old_string = ti.value("old_string", std::string{});
+            new_string = ti.value("new_string", std::string{});
+            content    = ti.value("content",    std::string{});
+        }
+    } catch (...) {
+        return ""; // fail-soft: malformed JSON
+    }
+
+    // Only handle Edit / Write tool calls.
+    if (tool_name != "Edit" && tool_name != "Write") return "";
+    if (file_path.empty()) return "";
+
+    // Resolve project root (cwd at hook invocation time).
+    fs::path proj_root;
+    try {
+        proj_root = fs::current_path();
+    } catch (...) {
+        return "";
+    }
+
+    // Skip files outside the project root (absolute path check).
+    fs::path fp(file_path);
+    try {
+        fp = fs::absolute(fp);
+        std::string fp_str = fp.string();
+        std::string pr_str = fs::absolute(proj_root).string();
+        if (fp_str.size() < pr_str.size() ||
+            fp_str.compare(0, pr_str.size(), pr_str) != 0) {
+            return ""; // outside project root -- skip
+        }
+    } catch (...) {
+        // If we can't determine, proceed conservatively (don't skip).
+    }
+
+    // Compute relative path for the topic key.
+    std::string rel_path = file_path;
+    try {
+        fs::path rel = fs::relative(fp, proj_root);
+        rel_path = rel.string();
+        // Normalise separators to forward slash.
+        for (auto& c : rel_path) if (c == '\\') c = '/';
+    } catch (...) {}
+
+    // TODO: in-process graph update -- no in-process GraphStore::scan() variant
+    // exposed at hook level; avoid subprocess spawn per task constraint.
+    // Deferred: call GraphStore::resolveAndInsertEdges() when a non-blocking
+    // in-process API is added. For now, the graph update is a no-op here.
+
+    // Compose draft memory entry.
+    std::string draft_content;
+    if (tool_name == "Write") {
+        // For Write: first 200 chars of new content.
+        std::string snip = content.substr(0, std::min(content.size(), size_t(200)));
+        draft_content = "Write to " + rel_path + ": " + snip;
+    } else {
+        // For Edit: diff summary.
+        draft_content = "Edit at " + rel_path +
+                        ": -" + std::to_string(old_string.size()) + "b" +
+                        " +" + std::to_string(new_string.size()) + "b";
+    }
+
+    // Insert draft ContextNode (fail-soft on DB unavailable).
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        ContextNodeStore store(db);
+
+        ContextNode node;
+        node.node_key    = "auto-draft:" + rel_path;
+        node.title       = "auto-draft: " + rel_path;
+        node.content     = draft_content;
+        node.source_file = file_path;
+        node.tier        = "draft";
+        node.tags        = "[\"auto-draft\",\"edit-sync\"]";
+        node.active      = true;
+
+        store.upsert(node);
+    } catch (...) {
+        // fail-soft: DB open failure, schema mismatch, etc.
+    }
+
+    // Always return "" -- this is a silent side-effect hook.
+    return "";
+}
+
 } // namespace icmg::core::hooks

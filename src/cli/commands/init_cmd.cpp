@@ -1052,6 +1052,15 @@ private:
                       "MSG=$(printf 'Read output shrunk (%dB â†’ %dB). Use `icmg context %s` for structured output.\\n%s' \"$OZ\" \"$SZ2\" \"$FILE\" \"$SHRUNK\"); "
                       "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
                 })}
+            },
+            // v1.4.0 Task 3: PostToolUse:Edit|Write auto graph-update + memory draft.
+            // Silently writes a draft context node; no additionalContext emitted.
+            {
+                {"matcher", "Edit|Write"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"command", "command -v icmg >/dev/null 2>&1 && echo \"$(cat)\" | icmg hook posttooluse-edit 2>/dev/null || true"}}
+                })}
             }
         });
         cfg["hooks"]["PreToolUse"] = pre_array;
