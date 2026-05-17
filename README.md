@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-91%2F91%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-101%2F101%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -35,6 +35,25 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 | **Hook overhead** | ~5-10 ms per session-boundary event (daemon RPC + zero-fork in-process runners) |
 
 **v1.0.0 means:** stable wire formats, stable on-disk schema (migrations only forward), stable CLI surface, stable MCP tool names. No more breaking changes on minor bumps. Source-level work is complete across Win + Linux + macOS.
+
+---
+
+## 🚀 What's new in v1.4.0 — AI guard mega bundle
+
+8-task release: 4 AI failure-mode guards + 3 deferred items. New hooks auto-register on `icmg init --force` — features are ready for AI models immediately after upgrade.
+
+| Feature | What it guards / does |
+| --- | --- |
+| **T1 `icmg target-verify`** | `PreToolUse:Edit\|Write` hook blocks wrong-file edits when the AI's stated target description doesn't match the candidate path. Char-trigram Jaccard scorer with configurable `--threshold`. |
+| **T2 `icmg safe-rollback`** | `PreToolUse:Bash` guard intercepts unsafe `git checkout` / `git reset --hard` on uncommitted work; auto-backs up before rollback. Flags: `--force`, `--ref <commit>`, `--no-backup`, `--dry-run`. |
+| **T3 PostToolUse auto-sync** | Edits trigger immediate graph + memory re-scan (tier=`draft`), so the AI's next context lookup sees fresh state. Opt-out: `ICMG_AUTO_SYNC_QUIET=1`. |
+| **T4 Approach history** | New `approaches` table (migration 0032). `icmg approach record\|lookup\|list\|prune` records what worked / failed per task — prevents the AI from repeating dead-end approaches. |
+| **T5 Prompt inject + test outcome** | `UserPromptSubmit` surfaces past attempts before the AI replies; `PostToolUse:Bash` auto-records test results into approach history. |
+| **T6 Bundle secret scan** | `icmg bundle` scans context bundles before emit. Flags: `--allow-secrets`, `--strict-secrets`. |
+| **T7 MCP lazy tool-schema** | `ICMG_MCP_LAZY_TOOLS=1` returns minimal schema in `tools/list` (cuts ~80% schema bytes on cold init). |
+| **T8 Migration 0031 `token_counts`** | Per-file token-count cache for fast `icmg savings` / `icmg pack` budget queries. |
+
+101/101 ctest pass on Windows + Linux (+10 new test executables vs v1.3.1).
 
 ---
 
