@@ -4,6 +4,24 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.4.0 — AI guard mega bundle
+
+Eight-task release shipping 4 AI failure-mode guards + 3 deferred items from v1.3.1. New hooks auto-register on `icmg init --force` so features are ready for AI models immediately after upgrade.
+
+**AI guards (T1-T5):**
+- **T1 `icmg target-verify`** — char-trigram Jaccard scorer + `PreToolUse:Edit|Write` hook blocks wrong-file edits when the AI's stated target description doesn't match the candidate path (e.g. "menu B x" mistakenly resolved to "menu C x" via suffix overlap).
+- **T2 `icmg safe-rollback`** — `PreToolUse:Bash` guard intercepts unsafe `git checkout` / `git reset --hard` on uncommitted work; auto-backs up before rollback. Flags: `--force`, `--ref <commit>`, `--no-backup`, `--dry-run`.
+- **T3 PostToolUse:Edit auto-sync** — touched files immediately re-scanned into graph + memory (tier=`draft`), so the AI's next context lookup sees fresh state. Opt-out: `ICMG_AUTO_SYNC_QUIET=1`.
+- **T4 Approach history** — new `approaches` table (migration 0032), `icmg approach record|lookup|list|prune`. Records what worked / failed per task so the AI doesn't repeat dead-end approaches.
+- **T5 `UserPromptSubmit` inject + `PostToolUse:Bash` test outcome** — past attempts surface before the AI replies; test results auto-recorded into approach history.
+
+**Deferred from v1.3.1 (T6-T8):**
+- **T6 Bundle secret scan** — `icmg bundle` scans context bundles before emit; flags `--allow-secrets` and `--strict-secrets`.
+- **T7 MCP lazy tool-schema** — `ICMG_MCP_LAZY_TOOLS=1` returns minimal `{type:"object"}` schema in `tools/list` and truncates long descriptions (cuts ~80% schema bytes on cold init).
+- **T8 Migration 0031 `token_counts`** — per-file token-count cache for fast `icmg savings` / `icmg pack` token-budget queries.
+
+101/101 ctest pass on Windows + Linux (+10 new test executables vs v1.3.1).
+
 ## 1.3.1 — Hotfix: Windows popup + MCP UTF-8 + secret_scanner foundation
 > Patch. `icmg skill index` and other commands that touched MSYS-style bash paths (e.g. `/b/x` → reinterpreted by Win32 as `B:\x`) used to surface a Windows critical-error dialog ("cannot find drive"); fixed via `SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX)` at process entry. MCP `icmg_recall` and other tools no longer crash with `-32603 type_error.316` on memory content containing invalid UTF-8 (mojibake from cross-platform paste) — JSON dumps now use `json::error_handler_t::replace`, substituting U+FFFD instead of throwing. New `core::secret_scanner` library: `scanSecrets(text)` + `redactSecrets(text, matches)` covering AWS access/secret keys, GitHub tokens, Anthropic `sk-ant-…`, OpenAI `sk-…`, Slack tokens, JWT, PEM private keys. Usable directly via the API; `pack` cmd wire ships in v1.3.2 alongside the rest of the T15 bundle (MCP lazy tool-schema + migration 0031 token_counts). 91/91 ctest pass Windows + Linux (+1 new test: test_secret_scanner).
 
