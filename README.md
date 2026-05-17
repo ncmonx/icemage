@@ -38,6 +38,19 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.5.3 — Hotfix: B:/ popup eliminated (Stop + UserPromptSubmit pure icmg.exe)
+
+| Fix | What changed |
+| --- | --- |
+| **Stop hook trimmed** | Now single `exec icmg hook stop` — dropped `icmg-wflog-stop.sh` bash sidecar that spawned Win32 `git`/`jq` outside icmg.exe's `SetErrorMode`. |
+| **UserPromptSubmit trimmed** | Single `exec icmg hook userprompt` — dropped `icmg-prompt-recall.sh` + its `jq` pre-extract daemon-IPC dance. |
+| **`exec` semantics** | bash → exec → icmg.exe replaces process in-place; SEM_FAILCRITICALERRORS covers the entire downstream tree. |
+| **`wflog` reminder retired** | Use `icmg wflog save` manually. |
+
+Re-run `icmg init --force` per project to pick up new hook wiring. v1.5.2 sidecar fixes remain in effect.
+
+---
+
 ## 🛠 v1.5.2 — Hotfix: Python sidecar B:/ popup + locked-DLL upgrade fix
 
 | Fix | What changed |

@@ -4,6 +4,17 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.5.3 — Hotfix: B:/ popup eliminated (Stop + UserPromptSubmit go pure icmg.exe)
+
+Patch release. Removes the bash sidecar hook scripts that were spawning Win32 git/jq processes outside icmg's `SetErrorMode` coverage — the actual source of the recurring "B:/ — system cannot find drive" popup at end of turn.
+
+- **Stop hook** trimmed to single `exec icmg hook stop`. Dropped `bash .claude/hooks/icmg-wflog-stop.sh` (which ran `git diff`/`git log`/`jq` as Claude-Code-parent children, outside icmg.exe SEM). `wflog` reminder feature retired — users invoke `icmg wflog save` manually.
+- **UserPromptSubmit** trimmed to single `exec icmg hook userprompt`. Dropped `bash .claude/hooks/icmg-prompt-recall.sh` (which used `jq` to pre-extract the prompt for daemon-IPC optimization, again outside SEM coverage).
+- `exec` replaces bash with icmg.exe in-place → icmg's `SetErrorMode(SEM_FAILCRITICALERRORS)` covers the entire downstream tree.
+- Re-run `icmg init --force` per project to pick up the new hook wiring. v1.5.2 sidecar fixes (`SetErrorMode` in Python, `OSError`-guarded `emit()`, locked-DLL rename-aside) all remain in effect.
+
+Drop-in. No schema/migration. v1.5.0/v1.5.1/v1.5.2 features unchanged.
+
 ## 1.5.2 — Hotfix: Python sidecar B:/ popup + locked-DLL upgrade fix
 
 Patch release. Three robustness fixes for upgrade and sidecar paths.
