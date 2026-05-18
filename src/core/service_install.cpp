@@ -61,14 +61,69 @@ bool installResidentService(std::string* err_out) {
         f << "CreateObject(\"Wscript.Shell\").Run \"icmg service run\", 0, False\r\n";
     }
 
-    // 2) Register logon-trigger task (overwrite with /F).
+    // 2) Register logon-trigger task (overwrite with /F). v1.6.1: use cmd.exe
+    // direct prefix instead of `MSYS_NO_PATHCONV=1` — when invoked from
+    // PowerShell, the bash VAR=value form was emitting truncated/garbled
+    // errors (PS interpreted leading token as a cmdlet).
     std::string cmd =
-        "MSYS_NO_PATHCONV=1 schtasks /Create /SC ONLOGON /TN \"icmg-service\""
+        "cmd.exe /c schtasks /Create /SC ONLOGON /TN \"icmg-service\""
         " /TR \"wscript.exe //B //Nologo \\\"" + vbs.string() + "\\\"\""
         " /F";
     auto r = safeExecShell(cmd, true, 15000);
     if (r.exit_code != 0) {
-        setErr("schtasks failed: " + r.err);
+        // v1.6.1: fall back to user Startup folder shortcut — no admin needed.
+        // Service still auto-starts at next user logon (via Explorer shell
+        // startup-folder enumeration). Less robust than schtask (no resume on
+        // logout/login mid-session) but works for shared servers + standard
+        // user accounts.
+        const char* appdata = std::getenv("APPDATA");
+        if (appdata && *appdata) {
+            fs::path startup = fs::path(appdata) / "Microsoft" / "Windows"
+                              / "Start Menu" / "Programs" / "Startup";
+            std::error_code ec2;
+            fs::create_directories(startup, ec2);
+            // Build a VBScript that writes the .lnk (Win Shell COM via Wscript.Shell).
+            fs::path mklnk = gdir / "service-mklnk.vbs";
+            fs::path lnk   = startup / "icmg-service.lnk";
+            {
+                std::ofstream f(mklnk, std::ios::binary);
+                if (f) {
+                    f << "Set sh = CreateObject(\"Wscript.Shell\")\r\n"
+                      << "Set lk = sh.CreateShortcut(\"" << lnk.string() << "\")\r\n"
+                      << "lk.TargetPath = \"wscript.exe\"\r\n"
+                      << "lk.Arguments  = \"//B //Nologo \"\"" << vbs.string() << "\"\"\"\r\n"
+                      << "lk.WindowStyle = 7\r\n"
+                      << "lk.Save\r\n";
+                }
+            }
+            std::string lcmd = "cmd.exe /c wscript.exe //B //Nologo \""
+                             + mklnk.string() + "\"";
+            auto rlnk = safeExecShell(lcmd, true, 10000);
+            std::error_code ec3;
+            if (rlnk.exit_code == 0 && fs::exists(lnk, ec3)) {
+                // Fallback succeeded. Best-effort fire the service NOW so
+                // popup-killer + cron iterator start immediately without wait
+                // for next logon.
+                std::string boot = "cmd.exe /c wscript.exe //B //Nologo \""
+                                 + vbs.string() + "\"";
+                (void)safeExecShell(boot, true, 5000);
+                return true;
+            }
+        }
+        std::string err = r.err.empty() ? r.out : r.err;
+        bool denied = err.find("denied") != std::string::npos
+                   || err.find("Access") != std::string::npos
+                   || err.find("akses") != std::string::npos
+                   || r.exit_code == 5
+                   || r.exit_code == 1314;
+        if (denied) {
+            setErr("elevation denied + Startup-folder fallback failed. "
+                   "Manual: copy " + vbs.string() + " shortcut to "
+                   "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\");
+        } else {
+            setErr("schtasks failed (exit=" + std::to_string(r.exit_code)
+                   + "): " + err);
+        }
         return false;
     }
     return true;
@@ -84,7 +139,7 @@ int cleanupLegacySchtasks() {
 #ifdef _WIN32
     // Enumerate task names — CSV, no header, first column is task path.
     auto q = safeExecShell(
-        "MSYS_NO_PATHCONV=1 schtasks /Query /FO CSV /NH", false, 15000);
+        "cmd.exe /c schtasks /Query /FO CSV /NH", false, 15000);
     if (q.exit_code != 0) return 0;
 
     int removed = 0;
@@ -106,7 +161,7 @@ int cleanupLegacySchtasks() {
         if (!startsWithAny(col)) continue;
 
         std::string del =
-            "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"" + col + "\" /F";
+            "cmd.exe /c schtasks /Delete /TN \"" + col + "\" /F";
         auto dr = safeExecShell(del, false, 8000);
         if (dr.exit_code == 0) ++removed;
     }

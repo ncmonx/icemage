@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <csignal>
 #include <ctime>
 #include <filesystem>
@@ -18,6 +19,7 @@
 #include <vector>
 
 #ifdef _WIN32
+#  include <windows.h>
 #  include <process.h>
 #else
 #  include <unistd.h>
@@ -106,6 +108,24 @@ void ServiceLoop::requestStop() { g_stop = true; }
 bool ServiceLoop::shouldStop()  { return g_stop.load(); }
 
 void ServiceLoop::tickOnce() {
+#ifdef _WIN32
+    // v1.6.1: dismiss any pending "X:/ — drive not found" popup before main
+    // work. SmartScreen spawns these out-of-process; SEM cannot reach them.
+    // EnumWindows pass cheap (~1ms).
+    EnumWindows([](HWND hwnd, LPARAM) -> BOOL {
+        if (!IsWindowVisible(hwnd)) return TRUE;
+        char title[64] = {0};
+        int n = GetWindowTextA(hwnd, title, sizeof(title) - 1);
+        if (n < 2 || n > 4) return TRUE;
+        char c = title[0];
+        if (!(c >= 'A' && c <= 'Z') || title[1] != ':') return TRUE;
+        char cls[64] = {0};
+        GetClassNameA(hwnd, cls, sizeof(cls) - 1);
+        if (std::strcmp(cls, "#32770") != 0) return TRUE;
+        PostMessageA(hwnd, WM_CLOSE, 0, 0);
+        return TRUE;
+    }, 0);
+#endif
     auto& reg = Registry<cli::BaseCommand>::instance();
     auto state = readState();
     int64_t now = (int64_t)std::time(nullptr);

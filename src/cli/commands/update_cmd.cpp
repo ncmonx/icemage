@@ -309,6 +309,18 @@ private:
             return false;
         }
 
+        // v1.6.1: strip Zone.Identifier ADS ("Mark of the Web") from extracted
+        // artifacts. SmartScreen uses this stream to gate reputation checks;
+        // without it, SmartScreen skips the drive-probe scan that triggers the
+        // B:\ popup. Best-effort; failure does not abort upgrade.
+        {
+            std::string unblock = "powershell -NoProfile -Command "
+                                  "\"Get-ChildItem -LiteralPath '"
+                                + tmp_dir.string()
+                                + "' | Unblock-File\"";
+            (void)core::safeExecShell(unblock, true, 15000);
+        }
+
         std::error_code ec;
         fs::rename(extracted_exe, dest_exe, ec);
         if (ec) {

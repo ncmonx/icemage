@@ -140,14 +140,19 @@ int main(int argc, char* argv[]) {
     // Init logger
     icmg::core::Logger::instance().init(cfg.logPath());
 
-    // Auto-init project DB if needed
+    // Auto-init project DB if needed. v1.6.1: degrade to warning on
+    // failure — many cmds (hook stop, --version, --help, shield) do NOT
+    // require DB. Failing here would make Stop hook exit non-zero and
+    // surface as a Claude Code error banner even on transient perm-denied /
+    // WAL-locked / OneDrive-conflict dirs. Cmds that actually need DB will
+    // fail with a clearer error when they try to open it.
     std::string db_path;
     try {
         db_path = cfg.projectDbPath(".");
         icmg::core::ensureProjectDb(db_path);
     } catch (const std::exception& e) {
-        std::cerr << "icmg: db init error: " << e.what() << "\n";
-        return 1;
+        std::cerr << "icmg: db init warning: " << e.what()
+                  << " (non-DB commands still work)\n";
     }
 
     // MCP server mode — run stdio JSON-RPC loop
