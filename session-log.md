@@ -1170,3 +1170,18 @@ Open:
 - v1.5.2 build approval pending.
 - B:/ popup escalation = audit Claude-Code bash hooks if sidecar fix insufficient.
 - `src/icmg.rc` ICMG_VERSION still duplicated (RC compiler limit; byte-regex bump).
+
+## 2026-05-18 08:30 [saved]
+Goal: v1.6.0 — consolidate N×5 per-project Win schtasks into single icmg-service iterator.
+Decisions:
+- global.db mig 2 `cron_jobs(project_path, chore, every_min, last_run)` + `core::CronStore`.
+- `ServiceLoop::tickOnce` iterates `dueJobs`, fires subprocess `cd $proj && icmg <chore>`; auto-prune dead projects.
+- `sweepLegacySchtasks()` regex-deletes `icmg-{backup,maintain,mirror,sentinel,shadow-upgrade}-<8hex>` on init --force.
+- New cmd `cronjobs` (NOT `cron` — collides with legacy memory-prune).
+- init_cmd: 5 auto-on subprocess → `cs.upsert()`.
+Rejected:
+- In-process chdir per chore (cwd leak).
+- POSIX systemd unit (deferred v1.7+).
+Open:
+- Service install elevation failure → fallback flag deferred.
+- No tests for cron_store/cronjobs_cmd/sweepLegacySchtasks.
