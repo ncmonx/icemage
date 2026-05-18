@@ -96,18 +96,32 @@ bool installResidentService(std::string* err_out) {
                       << "lk.Save\r\n";
                 }
             }
-            std::string lcmd = "cmd.exe /c wscript.exe //B //Nologo \""
+            // v1.6.6: MSYS_NO_PATHCONV=1 prefix instead of cmd.exe /c —
+            // matches v1.6.5 schtasks pattern. Bash path-conv was mangling
+            // wscript flags.
+            std::string lcmd = "MSYS_NO_PATHCONV=1 wscript.exe //B //Nologo \""
                              + mklnk.string() + "\"";
             auto rlnk = safeExecShell(lcmd, true, 10000);
             std::error_code ec3;
             if (rlnk.exit_code == 0 && fs::exists(lnk, ec3)) {
-                // Fallback succeeded. Best-effort fire the service NOW so
-                // popup-killer + cron iterator start immediately without wait
-                // for next logon.
-                std::string boot = "cmd.exe /c wscript.exe //B //Nologo \""
+                std::string boot = "MSYS_NO_PATHCONV=1 wscript.exe //B //Nologo \""
                                  + vbs.string() + "\"";
                 (void)safeExecShell(boot, true, 5000);
                 return true;
+            }
+            // v1.6.6: surface wscript stderr to caller so root cause is
+            // visible in `icmg init` output rather than just "fallback failed".
+            if (rlnk.exit_code != 0 || !fs::exists(lnk, ec3)) {
+                std::string detail = rlnk.err.empty() ? rlnk.out : rlnk.err;
+                if (detail.empty()) detail = "wscript exit=" + std::to_string(rlnk.exit_code)
+                                          + " lnk_exists=" + (fs::exists(lnk, ec3) ? "yes" : "no");
+                // Trim trailing whitespace.
+                while (!detail.empty() && (detail.back() == '\r' || detail.back() == '\n'
+                                            || detail.back() == ' ')) detail.pop_back();
+                setErr("Startup-folder fallback failed: " + detail
+                       + ". Manual: copy " + vbs.string() + " shortcut to "
+                       + "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\");
+                return false;
             }
         }
         std::string err = r.err.empty() ? r.out : r.err;
