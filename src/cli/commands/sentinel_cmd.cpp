@@ -441,7 +441,7 @@ private:
     int cmdAutoOff(const std::vector<std::string>&) {
         std::string tn = taskName();
 #ifdef _WIN32
-        core::safeExecShell("cmd.exe /c schtasks /Delete /TN \"" + tn + "\" /F", true, 5000);
+        core::safeExecShell("MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"" + tn + "\" /F", true, 5000);
 #else
         auto cur = core::safeExecShell("crontab -l 2>/dev/null", false, 5000);
         if (cur.exit_code == 0 && !cur.out.empty()) {

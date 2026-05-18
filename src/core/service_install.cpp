@@ -66,7 +66,7 @@ bool installResidentService(std::string* err_out) {
     // PowerShell, the bash VAR=value form was emitting truncated/garbled
     // errors (PS interpreted leading token as a cmdlet).
     std::string cmd =
-        "cmd.exe /c schtasks /Create /SC ONLOGON /TN \"icmg-service\""
+        "MSYS_NO_PATHCONV=1 schtasks /Create /SC ONLOGON /TN \"icmg-service\""
         " /TR \"wscript.exe //B //Nologo \\\"" + vbs.string() + "\\\"\""
         " /F";
     auto r = safeExecShell(cmd, true, 15000);
@@ -139,7 +139,7 @@ int cleanupLegacySchtasks() {
 #ifdef _WIN32
     // Enumerate task names — CSV, no header, first column is task path.
     auto q = safeExecShell(
-        "cmd.exe /c schtasks /Query /FO CSV /NH", false, 15000);
+        "MSYS_NO_PATHCONV=1 schtasks /Query /FO CSV /NH", false, 15000);
     if (q.exit_code != 0) return 0;
 
     int removed = 0;
@@ -161,7 +161,7 @@ int cleanupLegacySchtasks() {
         if (!startsWithAny(col)) continue;
 
         std::string del =
-            "cmd.exe /c schtasks /Delete /TN \"" + col + "\" /F";
+            "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"" + col + "\" /F";
         auto dr = safeExecShell(del, false, 8000);
         if (dr.exit_code == 0) ++removed;
     }

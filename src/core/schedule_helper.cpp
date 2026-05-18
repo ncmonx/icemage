@@ -103,7 +103,7 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
     // /TR points at wscript.exe directly. wscript is GUI-subsystem — no
     // console allocated for the launcher itself. //B = batch mode (no UI on
     // error). //Nologo suppresses banner.
-    std::string cmd = "cmd.exe /c schtasks /Create " + sched
+    std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Create " + sched
                     + " /TN \"" + spec.task_name + "\""
                     + " /TR \"wscript.exe //B //Nologo \\\"" + vbs_path + "\\\"\""
                     + " /F";
@@ -160,7 +160,7 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
     auto r2 = safeExecShell(ps_cmd, true, 60000);
 
     // Verify regardless of r2.exit_code — RunAs can return 0 even on user-cancel.
-    std::string q = "cmd.exe /c schtasks /Query /TN \""
+    std::string q = "MSYS_NO_PATHCONV=1 schtasks /Query /TN \""
                   + spec.task_name + "\"";
     auto verify = safeExecShell(q, false, 5000);
 
@@ -183,14 +183,14 @@ int registerWindowsSchedule(const ScheduleSpec& spec) {
 }
 
 int unregisterWindowsSchedule(const std::string& task_name) {
-    std::string cmd = "cmd.exe /c schtasks /Delete /TN \""
+    std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \""
                     + task_name + "\" /F";
     auto res = safeExecShell(cmd, true, 5000);
     return res.exit_code;
 }
 
 bool queryWindowsSchedule(const std::string& task_name, std::string* status_out) {
-    std::string cmd = "cmd.exe /c schtasks /Query /TN \""
+    std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Query /TN \""
                     + task_name + "\" /FO LIST 2>nul";
     auto res = safeExecShell(cmd, false, 5000);
     if (res.exit_code != 0) return false;
@@ -200,7 +200,7 @@ bool queryWindowsSchedule(const std::string& task_name, std::string* status_out)
 
 int sweepLegacySchtasks() {
     auto res = safeExecShell(
-        "cmd.exe /c schtasks /Query /FO CSV /NH", false, 10000);
+        "MSYS_NO_PATHCONV=1 schtasks /Query /FO CSV /NH", false, 10000);
     if (res.exit_code != 0 || res.out.empty()) return 0;
     int deleted = 0;
     std::istringstream iss(res.out);
@@ -232,7 +232,7 @@ int sweepLegacySchtasks() {
             }
         }
         if (!match) continue;
-        std::string del = "cmd.exe /c schtasks /Delete /TN \""
+        std::string del = "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \""
                         + name + "\" /F";
         auto d = safeExecShell(del, true, 5000);
         if (d.exit_code == 0) ++deleted;

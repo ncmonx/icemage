@@ -147,7 +147,7 @@ private:
 
     int doUninstall() {
 #ifdef _WIN32
-        std::string cmd = "cmd.exe /c schtasks /Delete /TN \"icmg-service\" /F";
+        std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"icmg-service\" /F";
         auto r = core::safeExecShell(cmd, true, 5000);
         return r.exit_code;
 #else

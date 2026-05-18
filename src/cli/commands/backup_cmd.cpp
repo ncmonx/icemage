@@ -590,7 +590,7 @@ private:
     int cmdAutoOff(const std::vector<std::string>&) {
         std::string tn = taskName();
 #ifdef _WIN32
-        std::string cmd = "cmd.exe /c schtasks /Delete /TN \"" + tn + "\" /F";
+        std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \"" + tn + "\" /F";
         auto res = core::safeExecShell(cmd, true, 5000);
         if (res.exit_code != 0) {
             std::cerr << "icmg backup auto-off: not installed or failed\n";
@@ -638,7 +638,7 @@ private:
         if (flag_set) std::cout << "  interval:  every " << interval_min << " min\n";
 
 #ifdef _WIN32
-        std::string q = "cmd.exe /c schtasks /Query /TN \"" + tn + "\" /FO LIST 2>nul";
+        std::string q = "MSYS_NO_PATHCONV=1 schtasks /Query /TN \"" + tn + "\" /FO LIST 2>nul";
         auto res = core::safeExecShell(q, false, 5000);
         if (res.exit_code == 0 && !res.out.empty()) {
             std::cout << "  installed: YES\n";
