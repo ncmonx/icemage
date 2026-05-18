@@ -38,6 +38,18 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.6.2 — Hotfix: first-prompt latency (lazy DB + hook timeout + daemon warm-keep)
+
+| Fix | What changed |
+| --- | --- |
+| **Lazy DB init** | `main.cpp` skips `ensureProjectDb` for hot-path cmds (`hook`, `shield`, `popup-killer`, etc). Saves 50-200ms cold-start per hook fire. |
+| **500ms hook timeout** | `HookCommand::run` wraps dispatch via `std::async + future.wait_for`; exceeded → empty injection exit 0. Override `ICMG_HOOK_TIMEOUT_MS=N` (0 disables). |
+| **Daemon warm-keep** | SessionStart fires `icmg daemon start &` (fire-and-forget). Subsequent UserPromptSubmit hits daemon IPC (~5ms) instead of cold spawn (~360ms). |
+
+Re-run `icmg init --force` per project to register the new SessionStart entry.
+
+---
+
 ## 🛠 v1.6.1 — Hotfix: PS-safe schtasks + B:/ popup mitigation (no-elevation)
 
 Five robustness fixes for shared-server / non-admin Windows deployments. **icmg now usable end-to-end without `Run as Administrator`.**
@@ -68,19 +80,7 @@ For shared-server installs with many users + projects: replaces the N projects �
 
 Re-run `icmg init --force` per project after upgrading.
 
----
-
-## 🛠 v1.5.4 — Hotfix: `icmg shield` SEM gatekeeper wraps all bash hooks
-
-| Fix | What changed |
-| --- | --- |
-| **New `icmg shield -- <argv...>` subcommand** | Sets Win32 `SEM_FAILCRITICALERRORS \| SEM_NOOPENFILEERRORBOX` then `execvp(argv)`. Inserts icmg.exe as SEM gatekeeper into the hook chain. |
-| **`init_cmd` wraps 7 bash hook entries** | All PreToolUse/PostToolUse/SessionStart bash sidecars now run through `icmg shield -- bash X.sh` — bash, jq, git, python3 all inherit SEM silently. |
-| **Global Read/Glob/Grep python3 hook wrapped** | `installGlobalReadHook` prepends `icmg shield --`. |
-
-Final fix for the `B:/` popup chain. Re-run `icmg init --force` per project.
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.3 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.4 and earlier.
 
 ---
 

@@ -4,6 +4,18 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.6.2 — Hotfix: first-prompt latency (lazy DB + hook timeout + daemon warm-keep)
+
+Three perf fixes addressing user-reported slow AI response on cold session start.
+
+- **Lazy DB init** — `main.cpp` skips `ensureProjectDb` for hot-path commands (`hook`, `shield`, `popup-killer`, `--help`, `completions`, `version`). Previously every hook fire paid 50-200ms for DB open + migration check. Cmds that actually need DB open it lazily.
+- **500ms hook timeout** — `HookCommand::run()` wraps the dispatch with `std::async + future.wait_for(500ms)`. If the handler doesn't return in time, the process emits empty injection (exit 0) so Claude UI never blocks waiting on a slow cold-start icmg invocation. Override via `ICMG_HOOK_TIMEOUT_MS=N` (0 disables).
+- **Daemon warm-keep** — `init_cmd` adds a SessionStart entry `icmg daemon start >/dev/null &` (fire-and-forget). Subsequent UserPromptSubmit hooks hit the rule-daemon IPC (~5ms) instead of cold-spawning icmg.exe (~360ms).
+
+Net effect: first-prompt hook latency capped at 500ms; steady-state ~5ms.
+
+Re-run `icmg init --force` per project to register the SessionStart daemon-warm entry.
+
 ## 1.6.1 — Hotfix: PS-safe schtasks + db init resilience + B:/ popup mitigation (no-elevation)
 
 Five robustness fixes for shared-server / non-admin Windows deployments.
