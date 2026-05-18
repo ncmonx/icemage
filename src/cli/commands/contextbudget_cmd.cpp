@@ -50,6 +50,7 @@ public:
             "  --transcript PATH  Override default ~/.claude/projects/<cwd-hash>/*.jsonl\n"
             "  --all-sessions     Aggregate every transcript in current project\n"
             "                     (sums across all *.jsonl in ~/.claude/projects/<cwd>/)\n"
+            "  --all-users        Enumerate sibling user homes (multi-user aggregate)\n"
             "  --top N            Show top-N largest entries (default 10)\n"
             "  --json             Machine-readable output\n";
     }
@@ -60,6 +61,7 @@ public:
         fs::path path;
         std::time_t mtime = 0;
         int64_t total = 0;
+        std::string user;  // v1.9.0
         std::map<std::string, Bucket> by_source;
     };
 
@@ -67,6 +69,8 @@ public:
         if (hasFlag(args, "--help")) { usage(); return 0; }
         bool json_out     = hasFlag(args, "--json");
         bool all_sessions = hasFlag(args, "--all-sessions");
+        bool all_users    = hasFlag(args, "--all-users");
+        if (all_users) all_sessions = true;
         int top = 10;
         try { top = std::stoi(flagValue(args, "--top", "10")); } catch (...) {}
 
@@ -74,7 +78,7 @@ public:
 
         // --- multi-session path -------------------------------------------
         if (all_sessions && explicit_path.empty()) {
-            return runAllSessions(json_out, top);
+            return runAllSessions(json_out, top, all_users);
         }
 
         // --- single-transcript path (back-compat) -------------------------
@@ -109,20 +113,41 @@ public:
 
 private:
     // ---- aggregate-all-sessions path -------------------------------------
-    int runAllSessions(bool json_out, int top) {
-        fs::path proj_dir = currentProjectDir();
-        if (proj_dir.empty() || !fs::exists(proj_dir)) {
+    int runAllSessions(bool json_out, int top, bool all_users) {
+        std::vector<std::pair<fs::path,std::string>> scan_targets;
+        if (all_users) {
+            std::string enc = encodeCwd();
+            if (enc.empty()) {
+                std::cerr << "icmg context-budget: cannot resolve cwd\n";
+                return 1;
+            }
+            for (auto& home : enumUserHomes()) {
+                fs::path pd = home.first / ".claude" / "projects" / enc;
+                std::error_code ec; if (fs::exists(pd, ec)) {
+                    scan_targets.push_back({pd, home.second});
+                }
+            }
+        } else {
+            fs::path proj_dir = currentProjectDir();
+            if (!proj_dir.empty()) scan_targets.push_back({proj_dir, currentUser()});
+        }
+
+        if (scan_targets.empty()) {
             std::cerr << "icmg context-budget: project transcript dir not found.\n"
                       << "  Looked for ~/.claude/projects/" << encodeCwd()
                       << "\n  Run from your project root, or pass --transcript PATH.\n";
             return 1;
         }
+
         std::vector<SessionStats> sessions;
         std::map<std::string, Bucket> agg_source;
         std::vector<Entry> agg_entries;
         int64_t grand_total = 0;
+        fs::path display_proj_dir = scan_targets.front().first;
 
         std::error_code ec;
+        for (auto& [proj_dir, user_name] : scan_targets) {
+        if (!fs::exists(proj_dir, ec)) { ec.clear(); continue; }
         for (auto& e : fs::recursive_directory_iterator(proj_dir, ec)) {
             if (ec) { ec.clear(); continue; }
             if (!e.is_regular_file()) continue;
@@ -130,6 +155,7 @@ private:
 
             SessionStats s;
             s.path = e.path();
+            s.user = user_name;
             auto wt = fs::last_write_time(e, ec);
             if (!ec) {
                 // Convert file_time_type → std::time_t (portable enough).
@@ -146,6 +172,7 @@ private:
             grand_total += s.total;
             sessions.push_back(std::move(s));
         }
+        }  // end scan_targets loop
         // Newest first.
         std::sort(sessions.begin(), sessions.end(),
                   [](const SessionStats& a, const SessionStats& b){ return a.mtime > b.mtime; });
@@ -153,17 +180,28 @@ private:
                   [](const Entry& a, const Entry& b){ return a.tokens > b.tokens; });
 
         if (json_out) {
-            std::cout << "{\"project_dir\":\"" << jsonEscape(proj_dir.string())
+            std::map<std::string,int64_t> per_user_total;
+            for (auto& s : sessions) per_user_total[s.user] += s.total;
+            std::cout << "{\"project_dir\":\"" << jsonEscape(display_proj_dir.string())
                       << "\",\"session_count\":" << sessions.size()
+                      << ",\"user_count\":" << per_user_total.size()
                       << ",\"total_tokens\":" << grand_total
                       << ",\"by_source\":" << bySourceJson(agg_source)
-                      << ",\"sessions\":[";
+                      << ",\"users\":[";
+            bool fu = true;
+            for (auto& [u, t] : per_user_total) {
+                if (!fu) std::cout << ",";
+                fu = false;
+                std::cout << "{\"user\":\"" << jsonEscape(u) << "\",\"total_tokens\":" << t << "}";
+            }
+            std::cout << "],\"sessions\":[";
             bool first = true;
             for (auto& s : sessions) {
                 if (!first) std::cout << ",";
                 first = false;
                 std::cout << "{\"file\":\"" << jsonEscape(s.path.filename().string())
-                          << "\",\"mtime\":" << s.mtime
+                          << "\",\"user\":\"" << jsonEscape(s.user) << "\""
+                          << ",\"mtime\":" << s.mtime
                           << ",\"total_tokens\":" << s.total
                           << ",\"by_source\":" << bySourceJson(s.by_source)
                           << "}";
@@ -175,21 +213,23 @@ private:
         std::cout << "icmg context-budget — project aggregate (" << sessions.size()
                   << " session" << (sessions.size() == 1 ? "" : "s") << ")\n"
                   << std::string(64, '=') << "\n\n";
-        std::cout << "Project dir: " << proj_dir.string() << "\n";
+        std::cout << "Project dir: " << display_proj_dir.string() << "\n";
         std::cout << "Grand total: " << grand_total << " tokens\n\n";
         std::cout << "Aggregate by source:\n";
         emitBySource(agg_source, grand_total);
 
         std::cout << "\nSessions (newest first):\n";
         std::cout << "  " << std::left
+                  << std::setw(14) << "user"
                   << std::setw(40) << "file"
                   << std::setw(14) << "tokens"
                   << "mtime\n";
-        std::cout << "  " << std::string(74, '-') << "\n";
+        std::cout << "  " << std::string(88, '-') << "\n";
         for (auto& s : sessions) {
             char buf[20]; std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M",
                 std::localtime(&s.mtime));
             std::cout << "  " << std::left
+                      << std::setw(14) << s.user.substr(0, 13)
                       << std::setw(40) << s.path.filename().string().substr(0, 38)
                       << std::setw(14) << s.total
                       << buf << "\n";
@@ -203,6 +243,52 @@ private:
     // '/' or ' ' with '-'. Example:
     //   D:\Data Kerja\Personal\AI\icm-graph
     //   → D--Data-Kerja-Personal-AI-icm-graph
+    // v1.9.0: detect current OS user (USERNAME on Win, USER on POSIX).
+    static std::string currentUser() {
+        const char* u = std::getenv("USERNAME");
+        if (!u || !*u) u = std::getenv("USER");
+        if (!u || !*u) u = std::getenv("LOGNAME");
+        return (u && *u) ? std::string(u) : std::string("unknown");
+    }
+
+    // v1.9.0: enumerate sibling user homes. Win: C:\Users\* with .claude/.
+    // POSIX: /home/* plus /root.
+    static std::vector<std::pair<fs::path,std::string>> enumUserHomes() {
+        std::vector<std::pair<fs::path,std::string>> out;
+        std::error_code ec;
+#ifdef _WIN32
+        const char* up = std::getenv("USERPROFILE");
+        fs::path users_root;
+        if (up && *up) users_root = fs::path(up).parent_path();
+        if (users_root.empty() || !fs::exists(users_root, ec)) {
+            users_root = fs::path("C:\\Users");
+        }
+#else
+        fs::path users_root = "/home";
+#endif
+        if (!fs::exists(users_root, ec)) return out;
+        for (auto& e : fs::directory_iterator(users_root, ec)) {
+            if (ec) { ec.clear(); continue; }
+            if (!e.is_directory(ec)) continue;
+            std::string name = e.path().filename().string();
+            if (name == "Default" || name == "Default User" ||
+                name == "All Users" || name == "Public" ||
+                name == "desktop.ini" || name == "WDAGUtilityAccount" ||
+                name.empty() || name[0] == '.') continue;
+            fs::path claude_dir = e.path() / ".claude";
+            if (fs::exists(claude_dir, ec)) {
+                out.push_back({e.path(), name});
+            }
+        }
+#ifndef _WIN32
+        fs::path root_home = "/root";
+        if (fs::exists(root_home / ".claude", ec)) {
+            out.push_back({root_home, "root"});
+        }
+#endif
+        return out;
+    }
+
     static std::string encodeCwd() {
         std::error_code ec;
         fs::path cwd = fs::current_path(ec);

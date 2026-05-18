@@ -422,6 +422,7 @@ private:
     // current project's ~/.claude/projects/<cwd-encoded>/ directory.
     struct RealSessionRow {
         std::string file;
+        std::string user;  // v1.9.0
         int64_t     mtime = 0;
         int64_t     total = 0;
         int64_t     text = 0;
@@ -436,6 +437,7 @@ private:
         int64_t tool_output = 0;
         int64_t thinking = 0;
         int     session_count = 0;
+        int     user_count = 0;  // v1.9.0
         std::vector<RealSessionRow> sessions;
     };
 
@@ -487,7 +489,11 @@ private:
             const char* e = std::getenv("ICMG_BIN");
             bin = e ? e : "icmg";
         }
-        std::string cmd = "\"" + bin + "\" context-budget --all-sessions --json 2>/dev/null";
+        // v1.9.0: opt-in multi-user aggregate via env var.
+        const char* au = std::getenv("ICMG_SAVINGS_ALL_USERS");
+        bool all_users = au && *au && std::string(au) != "0";
+        std::string cmd = "\"" + bin + "\" context-budget --all-sessions"
+                         + (all_users ? " --all-users" : "") + " --json 2>/dev/null";
         auto res = core::safeExecShell(cmd, false, 15000);
         if (res.exit_code != 0 || res.out.empty()) return out;
         const std::string& s = res.out;
@@ -496,6 +502,7 @@ private:
         size_t top_end  = (sess_arr == std::string::npos) ? s.size() : sess_arr;
         out.total_tokens  = parseIntAfter(s, "\"total_tokens\":", 0, top_end);
         out.session_count = (int)parseIntAfter(s, "\"session_count\":", 0, top_end);
+        out.user_count    = (int)parseIntAfter(s, "\"user_count\":",    0, top_end);
 
         size_t agg_bs = s.find("\"by_source\":");
         if (agg_bs != std::string::npos && agg_bs < top_end) {
@@ -527,6 +534,15 @@ private:
                 size_t fe = s.find('"', fp);
                 if (fe == std::string::npos) break;
                 r.file  = s.substr(fp, fe - fp);
+                // v1.9.0: extract optional "user" field after file.
+                size_t up = s.find("\"user\":\"", fe);
+                if (up != std::string::npos && up < obj_end) {
+                    size_t us = up + 8;
+                    size_t ue = s.find('"', us);
+                    if (ue != std::string::npos && ue < obj_end) {
+                        r.user = s.substr(us, ue - us);
+                    }
+                }
                 r.mtime = parseIntAfter(s, "\"mtime\":",       fe, obj_end);
                 r.total = parseIntAfter(s, "\"total_tokens\":", fe, obj_end);
 
@@ -619,6 +635,26 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                << humanTok(uncovered)
                << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Raw Read/Bash/MCP/conversation</div></div>
 </div>)HTML";
+            // v1.9.0: active-users panel (set ICMG_SAVINGS_ALL_USERS=1 for multi-user agg).
+            if (rsd.user_count >= 1) {
+                std::map<std::string,int64_t> per_user;
+                for (auto& r : rsd.sessions) per_user[r.user.empty()?std::string("(unknown)"):r.user] += r.total;
+                os << R"HTML(<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px 20px;margin-bottom:24px">
+<div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;font-weight:500">Active users ()HTML"
+                   << per_user.size()
+                   << R"HTML()</div>
+<table style="margin-top:8px"><thead><tr><th>User</th><th class="num">Sessions</th><th class="num">Real tokens</th></tr></thead><tbody>)HTML";
+                std::map<std::string,int> sess_per_user;
+                for (auto& r : rsd.sessions) sess_per_user[r.user.empty()?std::string("(unknown)"):r.user] += 1;
+                for (auto& [u, t] : per_user) {
+                    os << "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px;color:#c9d1d9\">"
+                       << u << "</td><td class=\"num\">" << sess_per_user[u]
+                       << "</td><td class=\"num\">" << humanTok(t) << "</td></tr>";
+                }
+                os << R"HTML(</tbody></table>
+<div style="color:#6e7681;font-size:11px;margin-top:8px">Multi-user aggregate: set <code>ICMG_SAVINGS_ALL_USERS=1</code> before <code>icmg savings --html</code>.</div>
+</div>)HTML";
+            }
 
             // Detail table: per-session source breakdown.
             if (!rsd.sessions.empty()) {
@@ -627,7 +663,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                    << rsd.sessions.size()
                    << R"HTML( sessions, source breakdown)</summary>
 <table style="margin-top:12px">
-<thead><tr><th>Session</th><th>Date</th><th class="num">Total</th><th class="num">Text</th><th class="num">Tool in</th><th class="num">Tool out</th><th class="num">Thinking</th></tr></thead>
+<thead><tr><th>User</th><th>Session</th><th>Date</th><th class="num">Total</th><th class="num">Text</th><th class="num">Tool in</th><th class="num">Tool out</th><th class="num">Thinking</th></tr></thead>
 <tbody>)HTML";
                 for (auto& r : rsd.sessions) {
                     char dbuf[24] = "";
@@ -643,7 +679,9 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                     }
                     std::string label = r.file;
                     if (label.size() > 16) label = label.substr(0, 8) + "..." + label.substr(label.size() - 5);
-                    os << "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px;color:#8b949e\">"
+                    std::string urow = r.user.empty() ? std::string("(unknown)") : r.user;
+                    os << "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px;color:#c9d1d9\">"
+                       << urow << "</td><td style=\"font-family:ui-monospace,monospace;font-size:12px;color:#8b949e\">"
                        << label << "</td><td>" << dbuf << "</td>"
                        << "<td class=\"num\">" << humanTok(r.total) << "</td>"
                        << "<td class=\"num\">" << humanTok(r.text) << "</td>"
