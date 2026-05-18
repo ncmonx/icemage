@@ -38,6 +38,22 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🚀 What's new in v1.6.0 — Cron consolidation (shared-server scale)
+
+For shared-server installs with many users + projects: replaces the N projects × 5 per-project Windows scheduled tasks with a single `icmg-service` iterator.
+
+| Feature | What changed |
+| --- | --- |
+| **Global `cron_jobs` table** | Migration 0002 on `global.db`. Backs consolidated iterator. Columns: `project_path`, `chore`, `every_min`, `last_run`. |
+| **`ServiceLoop::tickOnce` extended** | After default global tasks, queries `cron_jobs.dueJobs(now)`; fires subprocess `cd $proj && icmg <chore>`; auto-prunes dead projects. |
+| **`sweepLegacySchtasks()`** | Regex-matches `icmg-{backup,maintain,mirror,sentinel,shadow-upgrade}-<hash>` and `schtasks /Delete` each. Called on `icmg init --force`. |
+| **`icmg cronjobs` subcommand** | `list / remove / run-now / reregister / sweep`. Distinct from legacy `icmg cron` (memory-prune scheduler). |
+| **`init_cmd` rewired** | 5 `safeExecShell("icmg X auto-on")` calls → `CronStore::upsert()`. Initial backup + mirror sync still synchronous. |
+
+Re-run `icmg init --force` per project after upgrading.
+
+---
+
 ## 🛠 v1.5.4 — Hotfix: `icmg shield` SEM gatekeeper wraps all bash hooks
 
 | Fix | What changed |
@@ -61,19 +77,7 @@ Final fix for the `B:/` popup chain. Re-run `icmg init --force` per project.
 
 Re-run `icmg init --force` per project to pick up new hook wiring. v1.5.2 sidecar fixes remain in effect.
 
----
-
-## 🛠 v1.5.2 — Hotfix: Python sidecar B:/ popup + locked-DLL upgrade fix
-
-| Fix | What changed |
-| --- | --- |
-| **Python sidecar `SetErrorMode`** | `embed/icmg_embedder.py` sets `SEM_FAILCRITICALERRORS \| SEM_NOOPENFILEERRORBOX` via ctypes before any HF/sentence-transformers import. Belt-and-suspenders against the recurring `B:/` popup when MSYS-style paths reach Win32 from inside transitive C extensions. |
-| **`emit()` OSError guard** | Sidecar stdout writer catches `OSError` / `BrokenPipeError`. Parent pipe close → graceful `exit 0` instead of crash-log. |
-| **`icmg update --apply` locked-DLL fix** | Rename-aside (`*.dll.old-<pid>`) replaces in-use DLLs instead of silently skipping. Startup sweep cleans residue. Worst-case falls back to `MoveFileEx(DELAY_UNTIL_REBOOT)`. |
-
-Drop-in. All v1.5.0/v1.5.1 features unchanged.
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.1 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.2 and earlier.
 
 ---
 
