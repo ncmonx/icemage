@@ -4,6 +4,20 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.6.1 — Hotfix: PS-safe schtasks + db init resilience + B:/ popup mitigation (no-elevation)
+
+Five robustness fixes for shared-server / non-admin Windows deployments.
+
+- **PS-safe schtasks** — 17 call sites of `MSYS_NO_PATHCONV=1 schtasks ...` rewritten to `cmd.exe /c schtasks ...`. Bash-style `VAR=value cmd` was breaking when icmg was invoked from PowerShell; cmd.exe wrapper works from bash + PS + cmd uniformly.
+- **DB init failure → warning** — `main.cpp` previously returned exit 1 on `unable to open database file`. Stop hooks then surfaced as Claude Code error banners on transient perm-denied / WAL-locked / OneDrive-conflict dirs. Now degrades to stderr warning + continues; non-DB cmds (`hook stop`, `--version`, `shield`) still work.
+- **`icmg popup-killer` cmd (A)** — `EnumWindows` + `PostMessage(WM_CLOSE)` against `#32770` dialogs with `[A-Z]:` titles. Auto-dismisses the "B:/ — system cannot find drive" popup that SmartScreen spawns during reputation scans. Integrated into `ServiceLoop::tickOnce` (~1ms scan/tick). Pure user-space; no admin needed.
+- **Startup-folder fallback (B)** — `service_install.cpp` writes `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\icmg-service.lnk` when `schtasks /Create /SC ONLOGON` elevation fails. Service auto-starts at next user logon without admin. Boots immediately for current session.
+- **`Unblock-File` on extract (C)** — `update_cmd extractFromAsset()` runs `Get-ChildItem $tmp | Unblock-File` after archive extraction. Strips Zone.Identifier ADS (Mark of the Web) → SmartScreen skips reputation scan → no drive-probe popup at root.
+
+**Combined effect:** icmg is now usable end-to-end on shared servers / standard user accounts without ever needing `Run as Administrator`.
+
+Re-run `icmg init --force` per project to pick up Startup-folder fallback wiring.
+
 ## 1.6.0 — Cron consolidation: per-project schtasks → single `icmg-service` iterator
 
 **For shared-server deployments.** Eliminates icmg.exe process bloat caused by N projects × 5 per-project Windows scheduled tasks (`icmg-{backup,maintain,mirror,sentinel,shadow-upgrade}-<hash>` × N projects).

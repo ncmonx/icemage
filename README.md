@@ -38,6 +38,22 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.6.1 — Hotfix: PS-safe schtasks + B:/ popup mitigation (no-elevation)
+
+Five robustness fixes for shared-server / non-admin Windows deployments. **icmg now usable end-to-end without `Run as Administrator`.**
+
+| Fix | What changed |
+| --- | --- |
+| **PS-safe schtasks** | 17 call sites `MSYS_NO_PATHCONV=1 schtasks` → `cmd.exe /c schtasks` (works from bash + PS + cmd). |
+| **DB init → warning** | `main.cpp` no longer exits 1 on broken DB; Stop hook tolerates transient perm/WAL/OneDrive issues. |
+| **`icmg popup-killer` (A)** | `EnumWindows` + `PostMessage(WM_CLOSE)` dismisses `#32770` dialogs with `[A-Z]:` titles (B:\ popup). Integrated into `ServiceLoop` tick. |
+| **Startup-folder fallback (B)** | `service_install` writes `.lnk` to `%APPDATA%\...\Startup\` when schtasks elevation denied. Boots service immediately + auto-starts next logon. |
+| **`Unblock-File` on extract (C)** | `update --apply` strips Zone.Identifier ADS from extracted artifacts → SmartScreen skips reputation scan → no drive-probe popup at root. |
+
+Re-run `icmg init --force` per project after upgrade.
+
+---
+
 ## 🚀 What's new in v1.6.0 — Cron consolidation (shared-server scale)
 
 For shared-server installs with many users + projects: replaces the N projects × 5 per-project Windows scheduled tasks with a single `icmg-service` iterator.
@@ -64,20 +80,7 @@ Re-run `icmg init --force` per project after upgrading.
 
 Final fix for the `B:/` popup chain. Re-run `icmg init --force` per project.
 
----
-
-## 🛠 v1.5.3 — Hotfix: B:/ popup eliminated (Stop + UserPromptSubmit pure icmg.exe)
-
-| Fix | What changed |
-| --- | --- |
-| **Stop hook trimmed** | Now single `exec icmg hook stop` — dropped `icmg-wflog-stop.sh` bash sidecar that spawned Win32 `git`/`jq` outside icmg.exe's `SetErrorMode`. |
-| **UserPromptSubmit trimmed** | Single `exec icmg hook userprompt` — dropped `icmg-prompt-recall.sh` + its `jq` pre-extract daemon-IPC dance. |
-| **`exec` semantics** | bash → exec → icmg.exe replaces process in-place; SEM_FAILCRITICALERRORS covers the entire downstream tree. |
-| **`wflog` reminder retired** | Use `icmg wflog save` manually. |
-
-Re-run `icmg init --force` per project to pick up new hook wiring. v1.5.2 sidecar fixes remain in effect.
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.2 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.3 and earlier.
 
 ---
 
