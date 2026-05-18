@@ -16,6 +16,9 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/config.hpp"
+#include "../../core/cron_store.hpp"
+#include "../../core/schedule_helper.hpp"
 #include "../../core/service_install.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
