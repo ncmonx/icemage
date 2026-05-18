@@ -44,7 +44,7 @@ static const char* BASH_REWRITE_SH = R"BASH(#!/usr/bin/env bash
 # PreToolUse:Bash â€” redirect noisy commands through `icmg run` for filtered output.
 set -uo pipefail
 INPUT=$(cat)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+CMD=$(echo "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
 [[ -z "$CMD" ]] && exit 0
 echo "$CMD" | grep -qE '^RAW=1 ' && exit 0
 echo "$CMD" | grep -qE '(^|[ |&;])(icmg|rtk)[ ]+' && exit 0
@@ -56,8 +56,8 @@ log_denial() {
     mkdir -p "$home_dir/.icmg" 2>/dev/null || return 0
     printf '{"ts":%s,"hook":"%s","target":%s,"reason":%s}\n' \
         "$(date +%s)" "$hook" \
-        "$(printf '%s' "$target" | jq -Rs .)" \
-        "$(printf '%s' "$reason" | jq -Rs .)" \
+        "$(printf '%s' "$target" | icmg hookio escape)" \
+        "$(printf '%s' "$reason" | icmg hookio escape)" \
         >> "$home_dir/.icmg/strict-denials.jsonl" 2>/dev/null || true
 }
 
@@ -68,13 +68,7 @@ if [[ "${ICMG_STRICT_BASH:-0}" = "1" ]]; then
         SIZE=$(stat -c%s "$FILE_CMD" 2>/dev/null || stat -f%z "$FILE_CMD" 2>/dev/null || echo 0)
         if [[ "$SIZE" -gt 20000 ]]; then
             log_denial "bash-strict" "$FILE_CMD" "cat/head/tail on file ${SIZE}B"
-            jq -n --arg f "$FILE_CMD" --arg sz "$SIZE" '{
-                hookSpecificOutput: {
-                    hookEventName: "PreToolUse",
-                    permissionDecision: "deny",
-                    permissionDecisionReason: ("File " + $f + " is " + $sz + " bytes. STRICT mode: use `icmg context " + $f + "` instead of cat/head/tail. Bypass: ICMG_STRICT_BASH=0.")
-                }
-            }'
+            icmg hookio emit PreToolUse --deny "File $FILE_CMD is $SIZE bytes. STRICT mode: use \`icmg context $FILE_CMD\` instead of cat/head/tail. Bypass: ICMG_STRICT_BASH=0."
             exit 2
         fi
     fi
@@ -83,13 +77,7 @@ fi
 PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status)([[:space:]]|$)'
 if echo "$CMD" | grep -qE "$PATTERN"; then
     log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
-    jq -n --arg c "$CMD" '{
-        hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            permissionDecision: "deny",
-            permissionDecisionReason: ("Use `icmg run " + $c + "` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix.")
-        }
-    }'
+    icmg hookio emit PreToolUse --deny "Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix."
     exit 2
 fi
 exit 0
@@ -102,7 +90,6 @@ static const char* SHRINK_READ_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 [ "${ICMG_NO_READ_HOOK:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
 exec icmg hook pretooluse-read
 )BASH";
 
@@ -136,7 +123,7 @@ msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
 # self-throttling when token usage high.
 if command -v icmg >/dev/null 2>&1; then
     pressure=$(icmg compliance inject 2>/dev/null)
-    tok_summary=$(icmg context-budget --json --top 0 2>/dev/null | jq -r '.total_tokens // empty' 2>/dev/null)
+    tok_summary=$(icmg context-budget --json --top 0 2>/dev/null | icmg hookio get total_tokens 2>/dev/null)
     if [[ -n "$tok_summary" && "$tok_summary" -gt 50000 ]]; then
         # Convert to K for brevity.
         k=$((tok_summary / 1000))
@@ -147,25 +134,22 @@ if command -v icmg >/dev/null 2>&1; then
         msg="${pressure}"$'\n\n'"${msg}"
     fi
 fi
-jq -n --arg m "$msg" '{
-    hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: $m
-    }
-}'
+printf '%s' "$msg" | icmg hookio emit SessionStart --ctx-stdin
 )BASH";
 
 // Phase 45 T3: PostToolUse:Bash hook routes huge stdout through `icmg shrink`.
 static const char* CAP_OUTPUT_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
-out=$(jq -r '.tool_response.stdout // .tool_response.output // empty')
+INPUT=$(cat)
+out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
+[ -z "$out" ] && out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.output 2>/dev/null)
 sz=${#out}
 CAP=${ICMG_CAP_BYTES:-8000}
 [[ "$sz" -le "$CAP" ]] && exit 0
 if command -v icmg >/dev/null 2>&1; then
     shrunk=$(printf '%s' "$out" | icmg shrink --threshold 0 2>/dev/null)
     if [[ -n "$shrunk" ]]; then
-        jq -n --arg m "$shrunk" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+        printf '%s' "$shrunk" | icmg hookio emit PostToolUse --ctx-stdin
         exit 0
     fi
 fi
@@ -175,7 +159,7 @@ printf '%s' "$out" > "$spill"
 head_part=$(printf '%s' "$out" | head -c 4096)
 tail_part=$(printf '%s' "$out" | tail -c 2048)
 msg=$(printf '%s\n... [truncated, %d bytes total, full at %s] ...\n%s' "$head_part" "$sz" "$spill" "$tail_part")
-jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+printf '%s' "$msg" | icmg hookio emit PostToolUse --ctx-stdin
 )BASH";
 
 // Phase 71: UserPromptSubmit hook â€” auto-recall memory + suggest compress
@@ -188,20 +172,17 @@ static const char* PROMPT_RECALL_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 [ "${ICMG_NO_PROMPT_HOOK:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
 
 # Read hook input JSON from stdin.
 INPUT=$(cat)
 
-# If jq available and daemon running: extract prompt, send via IPC (~5ms).
-if command -v jq >/dev/null 2>&1; then
-    PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)
-    if [ -n "$PROMPT" ]; then
-        RESULT=$(icmg daemon client hook.userprompt --param "prompt=$PROMPT" 2>/dev/null)
-        if [ -n "$RESULT" ]; then
-            printf '%s' "$RESULT"
-            exit 0
-        fi
+# Try daemon IPC first (~5ms); fall back to direct spawn (~360ms).
+PROMPT=$(printf '%s' "$INPUT" | icmg hookio get prompt 2>/dev/null)
+if [ -n "$PROMPT" ]; then
+    RESULT=$(icmg daemon client hook.userprompt --param "prompt=$PROMPT" 2>/dev/null)
+    if [ -n "$RESULT" ]; then
+        printf '%s' "$RESULT"
+        exit 0
     fi
 fi
 
@@ -214,7 +195,6 @@ static const char* WFLOG_STOP_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on session Stop.
 # Reminds to save workflow decisions when session had code changes.
 command -v icmg >/dev/null 2>&1 || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
 HAS_CHANGES=false
 if command -v git >/dev/null 2>&1; then
     { git diff --quiet HEAD 2>/dev/null && git diff --cached --quiet 2>/dev/null; } || HAS_CHANGES=true
@@ -225,7 +205,7 @@ fi
 [ "$HAS_CHANGES" = "false" ] && exit 0
 LAST=$(icmg wflog recent --limit 1 2>/dev/null | head -1)
 [ -n "$LAST" ] && exit 0
-jq -n '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:"WFLOG: session had changes â€” log decisions: icmg wflog save --goal \"...\" --decisions \"...\""}}' 2>/dev/null || true
+icmg hookio emit Stop --ctx "WFLOG: session had changes — log decisions: icmg wflog save --goal \"...\" --decisions \"...\"" 2>/dev/null || true
 )BASH";
 
 // v0.42.0: PreToolUse rule enforcement â€” call rule-daemon via `icmg rule-eval`.
@@ -234,10 +214,9 @@ static const char* RULE_ENFORCE_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. PreToolUse:Read|Glob|Grep enforcement.
 [ "${ICMG_NO_RULE_ENFORCE:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
-TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
-FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.pattern // empty' 2>/dev/null)
+TOOL=$(echo "$INPUT" | icmg hookio get tool_name 2>/dev/null)
+FILE=$(echo "$INPUT" | icmg hookio get tool_input.file_path // .tool_input.pattern 2>/dev/null)
 [ -z "$TOOL" ] && exit 0
 icmg rule-eval --tool "$TOOL" --file "$FILE" 2>/dev/null
 EXIT=$?
@@ -253,7 +232,6 @@ static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Pre-warms binary, clears session-reads dedup, injects hot context_nodes
 # plus skill discovery manifest (v1.2.0+).
 command -v icmg >/dev/null 2>&1 || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [ -d "$ICMG_HOME" ] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
@@ -284,7 +262,7 @@ if [ -n "$RULES" ]; then
     fi
 fi
 [ -z "$CONTENT" ] && exit 0
-jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+printf '%s' "$CONTENT" | icmg hookio emit SessionStart --ctx-stdin
 )BASH";
 
 // #1084: SessionStart wake-up injection.
@@ -293,10 +271,9 @@ static const char* WAKEUP_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Injects icmg wake-up briefing at start of every AI session.
 set -uo pipefail
 command -v icmg >/dev/null 2>&1 || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
 CONTENT=$(icmg wake-up 2>/dev/null) || true
 [[ -z "$CONTENT" ]] && exit 0
-jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+printf '%s' "$CONTENT" | icmg hookio emit SessionStart --ctx-stdin
 )BASH";
 
 // v0.42.0: UserPromptSubmit â€” BM25-match cold context_nodes + skill index per prompt.
@@ -305,9 +282,8 @@ static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Injects relevant cold context_nodes + skill suggestions via BM25 match.
 [ "${ICMG_NO_CONTEXT_HOOK:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
-PROMPT=$(echo "$INPUT" | jq -r '.message // .prompt // empty' 2>/dev/null)
+PROMPT=$(echo "$INPUT" | icmg hookio get message // .prompt 2>/dev/null)
 [ -z "$PROMPT" ] && exit 0
 COLD=$(icmg context-node match "$PROMPT" --tier cold  --top 3 --fmt plain 2>/dev/null)
 SKILL=$(icmg context-node match "$PROMPT" --tier skill --top 2 --fmt plain 2>/dev/null)
@@ -322,7 +298,7 @@ if [ -n "$FOCUS" ]; then
     fi
 fi
 [ -z "$COMBINED" ] && exit 0
-jq -n --arg m "$COMBINED" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:$m}}'
+printf '%s' "$COMBINED" | icmg hookio emit UserPromptSubmit --ctx-stdin
 )BASH";
 
 // Phase 40 T2: PreCompact hook â€” auto-snapshots session before /compact
@@ -963,11 +939,11 @@ private:
                 {"matcher", "WebFetch"},
                 {"hooks", json::array({
                     {{"type", "command"}, {"command",
-                        "INPUT=$(cat); URL=$(echo \"$INPUT\" | jq -r '.tool_input.url // empty' 2>/dev/null); "
+                        "INPUT=$(cat); URL=$(printf '%s' \"$INPUT\" | icmg hookio get tool_input.url 2>/dev/null); "
                         "[ -z \"$URL\" ] && exit 0; "
                         "HOMED=\"${USERPROFILE:-${HOME:-/tmp}}\"; mkdir -p \"$HOMED/.icmg\" 2>/dev/null; "
-                        "printf '{\"ts\":%s,\"hook\":\"webfetch-strict\",\"target\":%s,\"reason\":\"WebFetch denied\"}\\n' \"$(date +%s)\" \"$(printf '%s' \"$URL\" | jq -Rs .)\" >> \"$HOMED/.icmg/strict-denials.jsonl\" 2>/dev/null || true; "
-                        "jq -n --arg u \"$URL\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:(\"STRICT mode: use `icmg fetch \" + $u + \"` (cached + reduced, 70-90% token saving). Bypass: icmg strict off.\")}}'; "
+                        "printf '{\"ts\":%s,\"hook\":\"webfetch-strict\",\"target\":%s,\"reason\":\"WebFetch denied\"}\\n' \"$(date +%s)\" \"$(printf '%s' \"$URL\" | icmg hookio escape)\" >> \"$HOMED/.icmg/strict-denials.jsonl\" 2>/dev/null || true; "
+                        "icmg hookio emit PreToolUse --deny \"STRICT mode: use `icmg fetch $URL` (cached + reduced, 70-90% token saving). Bypass: icmg strict off.\"; "
                         "exit 2"}}
                 })}
             });
@@ -989,7 +965,7 @@ private:
                 {"matcher", "Edit"},
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "INPUT=$(cat); echo \"$INPUT\" | jq -c '.tool_input | {old_string, new_string, file_path}' 2>/dev/null | icmg correction capture 2>/dev/null || true"}}
+                     {"command", "icmg correction capture 2>/dev/null || true"}}
                 })}
             },
             // Phase 70: Glob/Grep cap â€” both produce path/line lists that
@@ -1000,12 +976,12 @@ private:
                     {{"type", "command"},
                      {"command",
                       "INPUT=$(cat); "
-                      "OUT=$(echo \"$INPUT\" | jq -r '.tool_response.output // .tool_response.content // empty' 2>/dev/null); "
+                      "OUT=$(printf '%s' \"$INPUT\" | icmg hookio get tool_response.output 2>/dev/null); [ -z \"$OUT\" ] && OUT=$(printf '%s' \"$INPUT\" | icmg hookio get tool_response.content 2>/dev/null); "
                       "LINES=$(printf '%s' \"$OUT\" | wc -l); "
                       "[ \"$LINES\" -lt 50 ] && exit 0; "
                       "HEAD=$(printf '%s' \"$OUT\" | head -50); "
                       "MSG=$(printf '%s\\n... [%d total entries; first 50 shown â€” refine query for fewer] ...\\n' \"$HEAD\" \"$LINES\"); "
-                      "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
+                      "printf '%s' \"$MSG\" | icmg hookio emit PostToolUse --ctx-stdin"}}
                 })}
             },
             // Phase 70: WebFetch result cap â€” even after icmg fetch reduce,
@@ -1016,12 +992,12 @@ private:
                     {{"type", "command"},
                      {"command",
                       "INPUT=$(cat); "
-                      "OUT=$(echo \"$INPUT\" | jq -r '.tool_response.content // .tool_response.output // empty' 2>/dev/null); "
+                      "OUT=$(printf '%s' \"$INPUT\" | icmg hookio get tool_response.content 2>/dev/null); [ -z \"$OUT\" ] && OUT=$(printf '%s' \"$INPUT\" | icmg hookio get tool_response.output 2>/dev/null); "
                       "SZ=${#OUT}; "
                       "[ \"$SZ\" -lt 4096 ] && exit 0; "
                       "HEAD=$(printf '%s' \"$OUT\" | head -c 4000); "
                       "MSG=$(printf '%s\\n... [WebFetch capped from %d to 4KB; use icmg fetch for cached + reduced] ...\\n' \"$HEAD\" \"$SZ\"); "
-                      "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
+                      "printf '%s' \"$MSG\" | icmg hookio emit PostToolUse --ctx-stdin"}}
                 })}
             },
             // Phase 82 T2: PostToolUse:Read â€” graph-aware auto-reroute.
@@ -1033,8 +1009,8 @@ private:
                     {{"type", "command"},
                      {"command",
                       "INPUT=$(cat); "
-                      "FILE=$(echo \"$INPUT\" | jq -r '.tool_input.file_path // empty' 2>/dev/null); "
-                      "OUT=$(echo \"$INPUT\" | jq -r '.tool_response.content // .tool_response.output // empty' 2>/dev/null); "
+                      "FILE=$(printf '%s' \"$INPUT\" | icmg hookio get tool_input.file_path 2>/dev/null); "
+                      "OUT=$(printf '%s' \"$INPUT\" | icmg hookio get tool_response.content 2>/dev/null); [ -z \"$OUT\" ] && OUT=$(printf '%s' \"$INPUT\" | icmg hookio get tool_response.output 2>/dev/null); "
                       "SZ=${#OUT}; "
                       "THRESH=${ICMG_READ_THRESHOLD:-4096}; "
                       "[ \"$SZ\" -lt \"$THRESH\" ] && exit 0; "
@@ -1043,7 +1019,7 @@ private:
                       "  CTX=$(icmg context \"$FILE\" --max-bytes 3000 2>/dev/null); "
                       "  if [ -n \"$CTX\" ]; then "
                       "    MSG=$(printf '[Read auto-rerouted to icmg context (%dB â†’ structured)]\\n%s\\nHint: use `icmg context %s` directly.' \"$SZ\" \"$CTX\" \"$FILE\"); "
-                      "    jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'; "
+                      "    printf '%s' \"$MSG\" | icmg hookio emit PostToolUse --ctx-stdin; "
                       "    exit 0; "
                       "  fi; "
                       "fi; "
@@ -1052,7 +1028,7 @@ private:
                       "OZ=${#OUT}; SZ2=${#SHRUNK}; "
                       "[ \"$SZ2\" -ge \"$OZ\" ] && exit 0; "
                       "MSG=$(printf 'Read output shrunk (%dB â†’ %dB). Use `icmg context %s` for structured output.\\n%s' \"$OZ\" \"$SZ2\" \"$FILE\" \"$SHRUNK\"); "
-                      "jq -n --arg m \"$MSG\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$m}}'"}}
+                      "printf '%s' \"$MSG\" | icmg hookio emit PostToolUse --ctx-stdin"}}
                 })}
             },
             // v1.4.0 Task 3: PostToolUse:Edit|Write auto graph-update + memory draft.
