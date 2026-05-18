@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <set>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -324,19 +325,43 @@ std::string runPreToolUseEnforce(const std::string& stdin_raw) {
     } catch (...) { return allowJson(); }
 
     // Allow icmg's own invocations â€” they're the legitimate path.
-    if (tool == "Bash" && (starts_with(command, "icmg ") ||
-                            starts_with(command, "/icmg ") ||
-                            contains(command, "/bin/icmg"))) {
-        return allowJson();
-    }
+    auto is_icmg_invocation = [&](){
+        return starts_with(command, "icmg ") ||
+               starts_with(command, "/icmg ") ||
+               contains(command, "/bin/icmg") ||
+               contains(command, "icmg.exe");
+    };
+
+    if (tool == "Bash" && is_icmg_invocation()) return allowJson();
 
     if (tool == "Bash" && !command.empty()) {
         for (auto* r = kBashDenyRules; r->pattern; ++r) {
             if (contains(command, r->pattern)) {
                 auditDeny("Bash", command, r->reason);
-                return denyJson(std::string(r->reason));
+                return denyJson(std::string(r->reason)
+                    + "\n\nSubstitution table:\n"
+                      "  Read/cat        -> icmg context <file> [--lines A-B]\n"
+                      "  Grep/Glob       -> icmg graph search <kw> | icmg run grep ...\n"
+                      "  ls/find         -> icmg ls [path] | icmg run find ...\n"
+                      "  Bash git        -> icmg run git ... (filtered output)\n"
+                      "Bypass: ICMG_STRICT_BYPASS=1");
             }
         }
+    }
+
+    // v1.6.3: PowerShell bypass guard.
+    if (tool == "PowerShell" && !command.empty()) {
+        if (is_icmg_invocation()) return allowJson();
+        std::string reason =
+            "PowerShell bypasses icmg-first rule. Use:\n"
+            "  icmg context <file>     (replace Read/cat/Get-Content)\n"
+            "  icmg graph search <kw>  (replace Grep/Select-String)\n"
+            "  icmg run <cmd>          (replace generic shell)\n"
+            "  icmg ls [path]          (replace Get-ChildItem)\n"
+            "  icmg run git ...        (replace direct git invocation)\n"
+            "Bypass per-session: ICMG_STRICT_BYPASS=1";
+        auditDeny("PowerShell", command, "PowerShell bypass blocked");
+        return denyJson(reason);
     }
 
     if (tool == "Read" && !file_path.empty()) {
@@ -916,6 +941,30 @@ std::string runPostToolUseEditAutoSync(const std::string& stdin_raw) {
         // fail-soft: DB open failure, schema mismatch, etc.
     }
 
+    // v1.6.3: append touched file to pending graph-scan queue. Stop
+    // hook fires `icmg graph scan` once per turn (deferred) so the
+    // graph never lags the latest Edit/Write, but heavy scan does not
+    // block the live PostToolUse path.
+    try {
+        fs::path pending = homeDir() / ".icmg" / "pending-graph-scan.list";
+        std::error_code ec;
+        fs::create_directories(pending.parent_path(), ec);
+        // Read existing entries to dedupe (small set, expected <100).
+        std::set<std::string> seen;
+        {
+            std::ifstream rf(pending);
+            std::string line;
+            while (std::getline(rf, line)) {
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (!line.empty()) seen.insert(line);
+            }
+        }
+        if (seen.insert(fp.string()).second) {
+            std::ofstream af(pending, std::ios::app);
+            if (af) af << fp.string() << "\n";
+        }
+    } catch (...) {}
+
     // Always return "" -- this is a silent side-effect hook.
     return "";
 }
@@ -1034,7 +1083,7 @@ std::string runPostToolUseTestOutcome(const std::string& tool_input_command,
     try {
         std::string sid;
         const char* env_sid = std::getenv("ICMG_SESSION_ID");
-        sid = (env_sid && env_sid[0] != ' ') ? std::string(env_sid) : "default";
+        sid = (env_sid && env_sid[0] != '\0') ? std::string(env_sid) : "default";
 
         auto& cfg = Config::instance();
         Db db(cfg.projectDbPath("."));
@@ -1063,7 +1112,7 @@ std::string runPostToolUseTestOutcome(const std::string& tool_input_command,
 
     std::string session_id;
     const char* env_sid2 = std::getenv("ICMG_SESSION_ID");
-    if (env_sid2 && env_sid2[0] != ' ') session_id = std::string(env_sid2);
+    if (env_sid2 && env_sid2[0] != '\0') session_id = std::string(env_sid2);
 
     try {
         auto& cfg = Config::instance();

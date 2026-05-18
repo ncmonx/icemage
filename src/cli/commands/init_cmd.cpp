@@ -1070,6 +1070,13 @@ private:
                     // instead of cold icmg.exe spawn (~360ms).
                     {{"type", "command"},
                      {"command", "command -v icmg >/dev/null 2>&1 && icmg daemon start >/dev/null 2>&1 &"}},
+                    // v1.6.4: warm-up graph scan at session start so first
+                    // prompt of a fresh-clone or stale-cache session has a
+                    // current graph. Detached + truncated; cold scan ~30-180s
+
+                    // for big projects, warm <5s.
+                    {{"type", "command"},
+                     {"command", "command -v icmg >/dev/null 2>&1 && icmg graph scan >> .icmg/scan.log 2>&1 &"}},
                     {{"type", "command"},
                      {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-caveman-prompt.sh) || bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
                     {{"type", "command"},
@@ -1109,7 +1116,7 @@ private:
         // bypass via ICMG_STRICT_BYPASS=1.
         cfg["hooks"]["PreToolUse"] = json::array({
             {
-                {"matcher", "Bash|Read|Glob|Grep|WebFetch"},
+                {"matcher", "Bash|PowerShell|Read|Glob|Grep|WebFetch"},
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook pretooluse"}}

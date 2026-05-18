@@ -160,17 +160,29 @@ void McpServer::handleCallTool(const json& req) {
     }
     std::string toolName = params["name"].get<std::string>();
 
-    // A5: store node count check
+    // v1.6.3: memory store auto-evict at cap. Previous return -32603 blocked
+    // all icmg_store calls until manual purge; AI cannot recover mid-session.
+    // Now LRU-prune low-importance (<3) oldest 500 entries when count >= cap.
     if (toolName == "icmg_store") {
         int cnt = 0;
-        db_.query("SELECT COUNT(*) FROM memory_nodes", {},
+        db_.query("SELECT COUNT(*) FROM memory_nodes WHERE deleted_at IS NULL",
+                  {},
                   [&](const core::Row& r) {
                       if (!r.empty()) try { cnt = std::stoi(r[0]); } catch (...) {}
                   });
         if (cnt >= 10000) {
-            sendError(id, -32603,
-                      "Memory store full (10000 nodes). Run: icmg memory purge");
-            return;
+            try {
+                db_.run(
+                    "DELETE FROM memory_nodes WHERE id IN ("
+                    "SELECT id FROM memory_nodes "
+                    "WHERE deleted_at IS NULL AND importance < 3 "
+                    "ORDER BY COALESCE(last_used, created_at) ASC LIMIT 500)");
+            } catch (...) {
+                sendError(id, -32603,
+                          "Memory store full (>=10000); auto-evict failed. "
+                          "Run: icmg memory purge --older 30d");
+                return;
+            }
         }
     }
 

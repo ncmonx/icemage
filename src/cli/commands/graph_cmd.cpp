@@ -143,13 +143,29 @@ public:
         // an explicit `icmg embed memory` later.
         bool no_mem_sync = hasFlag(args, "--no-mem-sync") || hasFlag(args, "--no-embed");
 
+        // v1.6.4: --file <path> (repeatable) targeted scan — bypass full dir
+        // walk + mem-sync O(N) post-pass. Used by Stop hook to refresh only
+        // touched files from ~/.icmg/pending-graph-scan.list.
+        std::vector<std::string> file_targets;
+        for (size_t i = 0; i + 1 < args.size(); ++i) {
+            if (args[i] == "--file") file_targets.push_back(args[i + 1]);
+        }
+
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
         graph::GraphStore store(db);
         graph::Scanner scanner(store);
 
-        int count = scanner.scan(path, opts);
-        int mem_synced = no_mem_sync ? 0 : syncGraphToMemory(db, store);
+        int count = 0;
+        int mem_synced = 0;
+        if (!file_targets.empty()) {
+            // Targeted scan: each file independently. No mem-sync (too costly
+            // for single-file refresh; rely on next full scan).
+            for (auto& f : file_targets) count += scanner.scan(f, opts);
+        } else {
+            count = scanner.scan(path, opts);
+            mem_synced = no_mem_sync ? 0 : syncGraphToMemory(db, store);
+        }
         if (json_out) {
             std::cout << "{\"scanned\":" << count
                       << ",\"nodes\":" << store.nodeCount()

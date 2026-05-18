@@ -8,9 +8,11 @@
 #include <nlohmann/json.hpp>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -37,6 +39,42 @@ std::string runStopHook(const std::string& stdin_raw) {
 
     // Sync: cheap + immediate-feedback work only.
     toolBudgetReset();
+
+    // v1.6.4: process pending graph-scan queue (deferred from PostToolUse:Edit).
+    // Targeted per-file scan via `--file <path>` flag — fast (<500ms each),
+    // skips O(N) mem-sync post-pass. Single subprocess for all pending files.
+    // Detached + 60s budget cap so Stop hook returns immediately and runaway
+    // scans (e.g. corrupted file) cannot eat resources indefinitely.
+    try {
+        fs::path pending = fs::path(icmgGlobalDir()) / "pending-graph-scan.list";
+        if (fs::exists(pending)) {
+            std::vector<std::string> files;
+            {
+                std::ifstream f(pending);
+                std::string line;
+                while (std::getline(f, line)) {
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    if (!line.empty()) files.push_back(line);
+                }
+            }
+            std::error_code ec;
+            fs::remove(pending, ec);  // truncate to avoid double-processing
+            if (!files.empty()) {
+                std::string cmd = "icmg graph scan";
+                for (auto& f : files) {
+                    // Shell-escape: wrap in double quotes; backslashes are safe
+                    // on Windows; on POSIX no spaces in source-tree paths is
+                    // typical, but quoting handles edge cases either way.
+                    cmd += " --file \"" + f + "\"";
+                }
+                cmd += " >> .icmg/scan.log 2>&1";
+                // Detached: Stop hook returns ms. 60s budget cap on wall time —
+                // even cold scans of large repos finish well under this; runaway
+                // (corrupted file, parser hang) gets killed.
+                (void)safeExecShell(cmd, /*detach=*/true, /*timeout_ms=*/60000);
+            }
+        }
+    } catch (...) {}
 
     // Async: heavyweight work that the agent doesn't need synchronously.
     // Detach so the hook handler can return immediately. std::thread dtor
