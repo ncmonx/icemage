@@ -38,6 +38,12 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.8.1 — Hotfix: service-install wscript invocation shell-agnostic
+
+`icmg init` failed with `'MSYS_NO_PATHCONV' is not recognized as an internal or external command` when invoked from cmd.exe or PowerShell (v1.6.6 fix had used bash-style env prefix which cmd doesn't parse). Root fix: drop shell wrapper for wscript entirely — direct `CreateProcessW` with explicit argv. Works from bash, cmd, PS uniformly.
+
+---
+
 ## 🛠 v1.8.0 — `icmg hookio` drops jq dependency + launcher stub eliminates `B:/` popup
 
 Three big fixes in one release.
@@ -59,13 +65,7 @@ v1.6.5 only fixed schtasks `cmd.exe /c` mangle. Startup-folder fallback path use
 
 ---
 
-## 🛠 v1.6.5 — Hotfix: revert schtasks shell prefix (bash `/Create` flag fix)
-
-v1.6.1's `cmd.exe /c schtasks` wrap was breaking bash users (MSYS path-conv mangled `/Create` → `reate`). Reverted to `MSYS_NO_PATHCONV=1 schtasks ...` across 18 call sites. Bash works again; PS users see shell-parse error on service install only (non-critical).
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.6.4 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.6.5 and earlier.
 
 ---
 

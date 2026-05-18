@@ -4,6 +4,20 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.8.1 — Hotfix: wscript service-install fallback shell-agnostic
+
+v1.6.6 fixed the schtasks `/Create` mangle by reverting to `MSYS_NO_PATHCONV=1 ...` prefix — works from bash, but breaks when `icmg init` is invoked from **cmd.exe or PowerShell** (cmd doesn't understand `VAR=value cmd` syntax → `'MSYS_NO_PATHCONV' is not recognized as an internal or external command`). The toggle has bounced between bash-friendly and PS-friendly across v1.6.1 → v1.6.5 → v1.6.6.
+
+Root fix this release: `service_install.cpp` drops the shell wrapper entirely for wscript invocations. Direct `safeExec(argv, ...)` → CreateProcessW with explicit argv array → no shell layer, no MSYS path-conv, no prefix syntax compatibility issue. Works from bash, cmd.exe, PowerShell uniformly.
+
+Two call sites changed:
+1. `service-mklnk.vbs` shortcut creator → `safeExec({"wscript.exe","//B","//Nologo",mklnk.string()}, ...)`
+2. Immediate boot launch → `safeExec({"wscript.exe","//B","//Nologo",vbs.string()}, ...)`
+
+Schtasks `MSYS_NO_PATHCONV` prefix retained (v1.6.5 fix still correct — bash users see schtasks via standard PATH lookup).
+
+Drop-in. All v1.8.0 features intact.
+
 ## 1.8.0 — `icmg hookio` drops jq dependency + launcher stub eliminates `B:/` popup at DLL-loader stage
 
 **Big release.** Combines launcher refactor (v1.7.0 internal), orphan cleanup (v1.6.8), lazy-DB whitelist extension (v1.6.7), and **purges `jq` from every hook script**. Hooks now run silently on machines without jq installed.
