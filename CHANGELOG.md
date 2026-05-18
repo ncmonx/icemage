@@ -4,6 +4,15 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.6.6 — Hotfix: Startup-folder fallback wscript prefix MSYS-safe
+
+v1.6.5 only fixed the schtasks `cmd.exe /c` mangle. The Startup-folder fallback path (introduced v1.6.1) used the same bad pattern for wscript invocation, so the .lnk shortcut was never created when schtasks was elevation-denied. Both VBS-creator + boot calls now use `MSYS_NO_PATHCONV=1 wscript.exe ...` (matches v1.6.5 schtasks pattern).
+
+- `service_install.cpp`: `cmd.exe /c wscript.exe ...` → `MSYS_NO_PATHCONV=1 wscript.exe ...` (both invocations).
+- Error message now surfaces wscript stderr (or exit code + lnk_exists yes/no) when fallback fails. Generic "fallback failed" replaced with actionable detail.
+
+Drop-in. All v1.6.5 features intact.
+
 ## 1.6.5 — Hotfix: revert schtasks shell prefix (bash `/Create` flag fix)
 
 Single revert. v1.6.1's swap of `MSYS_NO_PATHCONV=1 schtasks ...` to `cmd.exe /c schtasks ...` was intended to help PowerShell users but broke bash users: MSYS path-conv mangled `/Create` flag to garbage, and `/c` to drive-letter `C:\`, causing `icmg service install skipped: 'reate' is not recognized`.
