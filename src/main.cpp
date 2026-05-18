@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
             || cmd == "--help" || cmd == "-h"
             || cmd == "completions" || cmd == "version"
             || cmd == "update" || cmd == "daemon" || cmd == "service"
-            || cmd == "cronjobs" || cmd == "shadow-upgrade";
+            || cmd == "cronjobs" || cmd == "shadow-upgrade" || cmd == "cleanup";
     };
 
     std::string db_path;

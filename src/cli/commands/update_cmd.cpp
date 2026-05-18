@@ -62,6 +62,28 @@ static int semverCmp(const std::string& a, const std::string& b) {
     return 0;
 }
 
+
+#ifdef _WIN32
+#include <tlhelp32.h>
+static int countOrphanIcmgInstances() {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+    int count = 0;
+    DWORD self_pid = GetCurrentProcessId();
+    PROCESSENTRY32 pe{}; pe.dwSize = sizeof(pe);
+    if (Process32First(snap, &pe)) {
+        do {
+            std::string name = pe.szExeFile;
+            std::transform(name.begin(), name.end(), name.begin(),
+                           [](unsigned char c){ return std::tolower(c); });
+            if (name == "icmg.exe" && pe.th32ProcessID != self_pid) ++count;
+        } while (Process32Next(snap, &pe));
+    }
+    CloseHandle(snap);
+    return count;
+}
+#endif
+
 class UpdateCommand : public BaseCommand {
 public:
     std::string name()        const override { return "update"; }
@@ -422,6 +444,21 @@ private:
             std::cerr << "icmg update: no platform asset on release " << r.tag << "\n";
             return 3;
         }
+#ifdef _WIN32
+        // v1.6.8: pre-flight orphan check. Other icmg.exe instances
+        // hold DB + file locks; swap will fail with ERROR_SHARING_VIOLATION.
+        // Hint user to run cleanup; do not auto-kill.
+        {
+            int orphan = countOrphanIcmgInstances();
+            if (orphan > 2) {
+                std::cerr << "icmg update: " << orphan
+                          << " other icmg.exe instances running\n"
+                          << "               DB/file lock risk. Run first:\n"
+                          << "                 icmg cleanup orphans\n"
+                          << "                 icmg cleanup kill-orphans --confirm\n";
+            }
+        }
+#endif
         fs::path self = selfPath();
         fs::path bak  = self; bak += ".bak";
         fs::path tmp  = self; tmp += ".new";  // staged binary (extracted exe)

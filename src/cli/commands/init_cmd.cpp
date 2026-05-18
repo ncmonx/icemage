@@ -102,6 +102,7 @@ static const char* SHRINK_READ_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 [ "${ICMG_NO_READ_HOOK:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
 exec icmg hook pretooluse-read
 )BASH";
 
@@ -187,6 +188,7 @@ static const char* PROMPT_RECALL_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 [ "${ICMG_NO_PROMPT_HOOK:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
 
 # Read hook input JSON from stdin.
 INPUT=$(cat)
@@ -212,6 +214,7 @@ static const char* WFLOG_STOP_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on session Stop.
 # Reminds to save workflow decisions when session had code changes.
 command -v icmg >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
 HAS_CHANGES=false
 if command -v git >/dev/null 2>&1; then
     { git diff --quiet HEAD 2>/dev/null && git diff --cached --quiet 2>/dev/null; } || HAS_CHANGES=true
@@ -231,6 +234,7 @@ static const char* RULE_ENFORCE_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. PreToolUse:Read|Glob|Grep enforcement.
 [ "${ICMG_NO_RULE_ENFORCE:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.pattern // empty' 2>/dev/null)
@@ -249,6 +253,7 @@ static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Pre-warms binary, clears session-reads dedup, injects hot context_nodes
 # plus skill discovery manifest (v1.2.0+).
 command -v icmg >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [ -d "$ICMG_HOME" ] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
@@ -288,6 +293,7 @@ static const char* WAKEUP_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Injects icmg wake-up briefing at start of every AI session.
 set -uo pipefail
 command -v icmg >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
 CONTENT=$(icmg wake-up 2>/dev/null) || true
 [[ -z "$CONTENT" ]] && exit 0
 jq -n --arg m "$CONTENT" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
@@ -299,6 +305,7 @@ static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Injects relevant cold context_nodes + skill suggestions via BM25 match.
 [ "${ICMG_NO_CONTEXT_HOOK:-0}" = "1" ] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | jq -r '.message // .prompt // empty' 2>/dev/null)
 [ -z "$PROMPT" ] && exit 0
