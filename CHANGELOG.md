@@ -4,6 +4,17 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.5.4 — Hotfix: `icmg shield` SEM gatekeeper wraps all bash hooks
+
+Final escalation for the recurring `B:/` popup. Win32 child processes inherit the parent's error mode via `CreateProcess` (unless `CREATE_DEFAULT_ERROR_MODE` is set). Popups therefore mean the entire process chain lacks an SEM-setting node. Claude Code → cmd.exe → bash → jq/git is one such chain — no node in it calls `SetErrorMode`, so a stray MSYS PATH entry translating to `B:\` triggers the dialog when bash spawns a Win32 helper.
+
+- **New `icmg shield -- <argv...>` subcommand** — sets `SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX` in process, then `execvp(argv)`. icmg.exe becomes the SEM gatekeeper at the top of the hook chain; bash, jq, git, python3 all inherit silently.
+- **`init_cmd` wraps 7 bash hook entries** — Stop/UserPromptSubmit are already pure icmg.exe (v1.5.3), but PreToolUse/PostToolUse/SessionStart hooks (`icmg-bash-rewrite.sh`, `icmg-rule-enforce.sh`, `icmg-shrink-read.sh`, `icmg-cap-output.sh`, `icmg-caveman-prompt.sh`, `icmg-context-session.sh`, `icmg-wakeup-session.sh`) still launch bash. They now run as `(command -v icmg >/dev/null 2>&1 && icmg shield -- bash X.sh) || bash X.sh` — graceful fallback if icmg vanishes.
+- **Global Read/Glob/Grep python3 hook wrapped** — `python3 -c "..."` → `icmg shield -- python3 -c "..."` in `installGlobalReadHook`.
+- **Re-run `icmg init --force` per project** to pick up the new wiring. Old hook lines persist until refreshed.
+
+Drop-in. No schema/migration. All v1.5.0/v1.5.1/v1.5.2/v1.5.3 features unchanged.
+
 ## 1.5.3 — Hotfix: B:/ popup eliminated (Stop + UserPromptSubmit go pure icmg.exe)
 
 Patch release. Removes the bash sidecar hook scripts that were spawning Win32 git/jq processes outside icmg's `SetErrorMode` coverage — the actual source of the recurring "B:/ — system cannot find drive" popup at end of turn.

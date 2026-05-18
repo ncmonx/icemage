@@ -38,6 +38,18 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.5.4 — Hotfix: `icmg shield` SEM gatekeeper wraps all bash hooks
+
+| Fix | What changed |
+| --- | --- |
+| **New `icmg shield -- <argv...>` subcommand** | Sets Win32 `SEM_FAILCRITICALERRORS \| SEM_NOOPENFILEERRORBOX` then `execvp(argv)`. Inserts icmg.exe as SEM gatekeeper into the hook chain. |
+| **`init_cmd` wraps 7 bash hook entries** | All PreToolUse/PostToolUse/SessionStart bash sidecars now run through `icmg shield -- bash X.sh` — bash, jq, git, python3 all inherit SEM silently. |
+| **Global Read/Glob/Grep python3 hook wrapped** | `installGlobalReadHook` prepends `icmg shield --`. |
+
+Final fix for the `B:/` popup chain. Re-run `icmg init --force` per project.
+
+---
+
 ## 🛠 v1.5.3 — Hotfix: B:/ popup eliminated (Stop + UserPromptSubmit pure icmg.exe)
 
 | Fix | What changed |
@@ -61,18 +73,7 @@ Re-run `icmg init --force` per project to pick up new hook wiring. v1.5.2 sideca
 
 Drop-in. All v1.5.0/v1.5.1 features unchanged.
 
----
-
-## 🛠 v1.5.1 — Hotfix: central version header + stale shadow-upgrade pin auto-discard
-
-| Fix | What changed |
-| --- | --- |
-| **`src/core/version.hpp`** | Single source of truth for `ICMG_VERSION`. All version-printing call sites read the same constant — eliminates the kind of drift that left `shadow-upgrade` hard-coded at `0.37.0`. |
-| **Stale pin auto-discard** | `icmg shadow-upgrade` now removes `pin-version.txt` automatically when the pinned version is older than the binary on disk. Legacy pins no longer block auto-upgrade. |
-
-Drop-in. All v1.5.0 features unchanged.
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.1 and earlier.
 
 ---
 
