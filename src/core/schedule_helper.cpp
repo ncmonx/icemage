@@ -198,11 +198,54 @@ bool queryWindowsSchedule(const std::string& task_name, std::string* status_out)
     return true;
 }
 
+int sweepLegacySchtasks() {
+    auto res = safeExecShell(
+        "MSYS_NO_PATHCONV=1 schtasks /Query /FO CSV /NH", false, 10000);
+    if (res.exit_code != 0 || res.out.empty()) return 0;
+    int deleted = 0;
+    std::istringstream iss(res.out);
+    std::string line;
+    static const char* kPrefixes[] = {
+        "icmg-backup-", "icmg-maintain-", "icmg-mirror-",
+        "icmg-sentinel-", "icmg-shadow-upgrade-",
+    };
+    while (std::getline(iss, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.empty() || line[0] != '"') continue;
+        size_t qe = line.find('"', 1);
+        if (qe == std::string::npos) continue;
+        std::string name = line.substr(1, qe - 1);
+        if (!name.empty() && name[0] == '\\') name.erase(0, 1);
+        bool match = false;
+        for (auto* pre_c : kPrefixes) {
+            std::string pre = pre_c;
+            if (name.size() == pre.size() + 8
+                && name.compare(0, pre.size(), pre) == 0) {
+                bool hex = true;
+                for (size_t i = pre.size(); i < name.size(); ++i) {
+                    char c = name[i];
+                    if (!((c >= '0' && c <= '9')
+                          || (c >= 'a' && c <= 'f')
+                          || (c >= 'A' && c <= 'F'))) { hex = false; break; }
+                }
+                if (hex) { match = true; break; }
+            }
+        }
+        if (!match) continue;
+        std::string del = "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \""
+                        + name + "\" /F";
+        auto d = safeExecShell(del, true, 5000);
+        if (d.exit_code == 0) ++deleted;
+    }
+    return deleted;
+}
+
 #else // POSIX — placeholders. Each command keeps its existing crontab impl.
 
 int registerWindowsSchedule(const ScheduleSpec&) { return 0; }
 int unregisterWindowsSchedule(const std::string&) { return 0; }
 bool queryWindowsSchedule(const std::string&, std::string*) { return false; }
+int sweepLegacySchtasks() { return 0; }
 
 #endif
 

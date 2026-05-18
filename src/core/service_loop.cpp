@@ -1,5 +1,8 @@
 #include "service_loop.hpp"
 #include "path_utils.hpp"
+#include "cron_store.hpp"
+#include "exec_utils.hpp"
+#include "config.hpp"
 #include "registry.hpp"
 #include "../cli/base_command.hpp"
 
@@ -124,6 +127,27 @@ void ServiceLoop::tickOnce() {
         }
     }
     if (any_ran) writeState(state);
+
+    // v1.6.0: also fire per-project cron_jobs (replaces N×5 schtasks).
+    try {
+        CronStore cs(Config::instance().globalDbPath());
+        auto due = cs.dueJobs(now);
+        for (auto& j : due) {
+            if (g_stop.load()) break;
+            std::error_code ec;
+            if (!fs::exists(j.project_path, ec)) {
+                cs.removeProject(j.project_path);  // auto-prune dead projects
+                continue;
+            }
+            // Detached subprocess: cd project_path && icmg <chore>. Sub
+            // process inherits icmg-service's SEM (no B:/ popup) and runs
+            // with project_path as cwd.
+            std::string cmd = "cd "" + j.project_path + "" && icmg " + j.chore
+                            + " >> .icmg/cron.log 2>&1";
+            (void)safeExecShell(cmd, /*detach=*/true, /*timeout_ms=*/300000);
+            cs.markRan(j.project_path, j.chore, now);
+        }
+    } catch (...) { /* swallow — cron_jobs is best-effort */ }
 }
 
 int ServiceLoop::run() {

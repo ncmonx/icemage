@@ -47,4 +47,9 @@ int unregisterWindowsSchedule(const std::string& task_name);
 // Query Windows scheduled task. Returns true if exists + status string.
 bool queryWindowsSchedule(const std::string& task_name, std::string* status_out = nullptr);
 
+// v1.6.0: remove legacy per-project schtasks (backup/maintain/mirror/sentinel/
+// shadow-upgrade-<hash>). Replaced by global cron_jobs iterator in icmg-service.
+// Returns count of tasks deleted. POSIX: no-op (always returns 0).
+int sweepLegacySchtasks();
+
 } // namespace icmg::core

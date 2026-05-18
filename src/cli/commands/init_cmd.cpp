@@ -768,57 +768,49 @@ public:
             }
         }
 
-        // Phase 74 T6: auto-enable self-protection on init (opt-out via --no-backup / --no-maintain).
-        // First snapshot fires synchronously so user has immediate recovery point.
-        if (!no_backup) {
-            std::cout << "  backup:     enabling hourly auto-snapshot...\n";
-            auto r1 = core::safeExecShell("icmg backup snapshot --note init", false, 30000);
-            if (r1.exit_code != 0)
-                std::cerr << "    [warn] initial snapshot failed (continuing)\n";
-            auto r2 = core::safeExecShell("icmg backup auto-on --interval 1h", false, 15000);
-            if (r2.exit_code != 0) {
-                std::cerr << "    [warn] auto-on failed â€” run manually: icmg backup auto-on\n";
-            } else {
-                std::cout << "    OK: scheduler armed (every 1h)\n";
+        // v1.6.0: consolidate per-project schtasks into single icmg-service
+        // iterator. cron_jobs table backs the tick loop in src/core/service_loop.cpp.
+        // Sweep any legacy `icmg-{backup,maintain,mirror,sentinel,shadow-upgrade}-<hash>`
+        // schtasks left over from earlier installs.
+        {
+            std::error_code _ec;
+            std::string cwd = fs::current_path(_ec).string();
+            int _swept = core::sweepLegacySchtasks();
+            if (_swept > 0) {
+                std::cout << "  cron:       swept " << _swept
+                          << " legacy per-project schtasks\n";
             }
-        }
-        if (!no_maintain) {
-            std::cout << "  maintain:   enabling 6h hygiene...\n";
-            auto r = core::safeExecShell("icmg maintain auto-on --interval 6h", false, 15000);
-            if (r.exit_code != 0) {
-                std::cerr << "    [warn] maintain auto-on failed â€” run manually: icmg maintain auto-on\n";
-            } else {
-                std::cout << "    OK: scheduler armed (every 6h)\n";
+            core::CronStore cs(core::Config::instance().globalDbPath());
+            if (!no_backup) {
+                std::cout << "  backup:     registering hourly auto-snapshot...\n";
+                auto r1 = core::safeExecShell("icmg backup snapshot --note init", false, 30000);
+                if (r1.exit_code != 0)
+                    std::cerr << "    [warn] initial snapshot failed (continuing)\n";
+                cs.upsert(cwd, "backup snapshot --note auto-hourly", 60);
+                std::cout << "    OK: cron_jobs every 60m\n";
             }
-        }
-        if (!no_mirror) {
-            std::cout << "  mirror:     enabling 15m dual-mirror...\n";
-            auto r1 = core::safeExecShell("icmg mirror sync", false, 30000);
-            if (r1.exit_code != 0)
-                std::cerr << "    [warn] initial mirror sync failed (continuing)\n";
-            auto r2 = core::safeExecShell("icmg mirror auto-on --every 15m", false, 15000);
-            if (r2.exit_code != 0) {
-                std::cerr << "    [warn] mirror auto-on failed â€” run manually: icmg mirror auto-on\n";
-            } else {
-                std::cout << "    OK: failover armed (refresh every 15m)\n";
+            if (!no_maintain) {
+                std::cout << "  maintain:   registering 6h hygiene...\n";
+                cs.upsert(cwd, "maintain run", 360);
+                std::cout << "    OK: cron_jobs every 360m\n";
             }
-        }
-        if (!hasFlag(args, "--no-sentinel")) {
-            std::cout << "  sentinel:   enabling 15m watchdog...\n";
-            auto r = core::safeExecShell("icmg sentinel auto-on --every 15m", false, 15000);
-            if (r.exit_code != 0) {
-                std::cerr << "    [warn] sentinel auto-on failed â€” run manually: icmg sentinel auto-on\n";
-            } else {
-                std::cout << "    OK: watchdog armed (heavy/idle + disk/audit checks)\n";
+            if (!no_mirror) {
+                std::cout << "  mirror:     registering 15m dual-mirror...\n";
+                auto r1 = core::safeExecShell("icmg mirror sync", false, 30000);
+                if (r1.exit_code != 0)
+                    std::cerr << "    [warn] initial mirror sync failed (continuing)\n";
+                cs.upsert(cwd, "mirror sync", 15);
+                std::cout << "    OK: cron_jobs every 15m\n";
             }
-        }
-        if (!hasFlag(args, "--no-auto-upgrade")) {
-            std::cout << "  upgrade:    enabling daily shadow check...\n";
-            auto r = core::safeExecShell("icmg shadow-upgrade auto-on --every 24h", false, 15000);
-            if (r.exit_code != 0) {
-                std::cerr << "    [warn] shadow-upgrade auto-on failed â€” run manually: icmg shadow-upgrade auto-on\n";
-            } else {
-                std::cout << "    OK: shadow auto-upgrade armed (daily check)\n";
+            if (!hasFlag(args, "--no-sentinel")) {
+                std::cout << "  sentinel:   registering 15m watchdog...\n";
+                cs.upsert(cwd, "sentinel run --quiet", 15);
+                std::cout << "    OK: cron_jobs every 15m\n";
+            }
+            if (!hasFlag(args, "--no-auto-upgrade")) {
+                std::cout << "  upgrade:    registering daily shadow check...\n";
+                cs.upsert(cwd, "shadow-upgrade check", 1440);
+                std::cout << "    OK: cron_jobs every 1440m\n";
             }
         }
 
