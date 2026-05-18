@@ -96,17 +96,15 @@ bool installResidentService(std::string* err_out) {
                       << "lk.Save\r\n";
                 }
             }
-            // v1.6.6: MSYS_NO_PATHCONV=1 prefix instead of cmd.exe /c —
-            // matches v1.6.5 schtasks pattern. Bash path-conv was mangling
-            // wscript flags.
-            std::string lcmd = "MSYS_NO_PATHCONV=1 wscript.exe //B //Nologo \""
-                             + mklnk.string() + "\"";
-            auto rlnk = safeExecShell(lcmd, true, 10000);
+            // v1.8.1: direct CreateProcess via safeExec(argv) — no shell
+            // layer. Works from bash, cmd.exe, PowerShell uniformly. No
+            // MSYS path-conv, no prefix syntax compat issue.
+            std::vector<std::string> lnk_argv{"wscript.exe","//B","//Nologo",mklnk.string()};
+            auto rlnk = safeExec(lnk_argv, true, 10000);
             std::error_code ec3;
             if (rlnk.exit_code == 0 && fs::exists(lnk, ec3)) {
-                std::string boot = "MSYS_NO_PATHCONV=1 wscript.exe //B //Nologo \""
-                                 + vbs.string() + "\"";
-                (void)safeExecShell(boot, true, 5000);
+                std::vector<std::string> boot_argv{"wscript.exe","//B","//Nologo",vbs.string()};
+                (void)safeExec(boot_argv, true, 5000);
                 return true;
             }
             // v1.6.6: surface wscript stderr to caller so root cause is
