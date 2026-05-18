@@ -42,6 +42,8 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <future>
+#include <thread>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -78,6 +80,36 @@ public:
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         const std::string& event = args[0];
+
+        // v1.6.2: wrap dispatch with timeout. Default 500ms (override via
+        // ICMG_HOOK_TIMEOUT_MS). On timeout, return 0 with empty stdout so
+        // Claude UI never stalls waiting on a slow icmg cold-start.
+        // Detached worker thread will finish + exit naturally.
+        int timeout_ms = 500;
+        if (const char* env = std::getenv("ICMG_HOOK_TIMEOUT_MS")) {
+            try { timeout_ms = std::stoi(env); } catch (...) {}
+        }
+        if (timeout_ms <= 0) {
+            // Disabled — direct dispatch.
+            return dispatch(event);
+        }
+
+        auto fut = std::async(std::launch::async, [this, event](){
+            return dispatch(event);
+        });
+        if (fut.wait_for(std::chrono::milliseconds(timeout_ms))
+                == std::future_status::ready) {
+            return fut.get();
+        }
+        std::cerr << "icmg hook " << event << ": timeout " << timeout_ms
+                  << "ms — skipping injection (still running async)\n";
+        // Note: process still alive; detached async future will finish on
+        // its own. Process exit waits for stack unwind but stdin/stdout
+        // already flushed so Claude proceeds without our injection.
+        return 0;
+    }
+
+    int dispatch(const std::string& event) {
         if (event == "userprompt")          return cmdUserPrompt();
         if (event == "pretooluse-read")     return cmdPreToolUseRead();
         if (event == "pretooluse")          return cmdPreToolUseEnforce();
@@ -88,7 +120,7 @@ public:
         if (event == "pretooluseedit")      return cmdPreToolUseEditDisambig();
         if (event == "posttooluse-edit")    return cmdPostToolUseEditAutoSync();
         std::cerr << "icmg hook: unknown event '" << event << "'\n";
-        return 0;  // hook fail-safe
+        return 0;
     }
 
 private:

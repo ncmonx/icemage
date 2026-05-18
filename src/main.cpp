@@ -140,19 +140,30 @@ int main(int argc, char* argv[]) {
     // Init logger
     icmg::core::Logger::instance().init(cfg.logPath());
 
-    // Auto-init project DB if needed. v1.6.1: degrade to warning on
-    // failure — many cmds (hook stop, --version, --help, shield) do NOT
-    // require DB. Failing here would make Stop hook exit non-zero and
-    // surface as a Claude Code error banner even on transient perm-denied /
-    // WAL-locked / OneDrive-conflict dirs. Cmds that actually need DB will
-    // fail with a clearer error when they try to open it.
+    // v1.6.2: skip eager DB init for hot-path commands that don't need DB.
+    // Reduces first-prompt latency on cold cache; hook handlers, shield, and
+    // popup-killer were paying ~50-200ms DB open + migration check on every
+    // invocation. Defer DB open to the cmd handler itself (lazy).
+    auto is_hot_path = [&]() {
+        if (args.empty()) return false;
+        const std::string& cmd = args[0];
+        return cmd == "hook" || cmd == "shield" || cmd == "popup-killer"
+            || cmd == "--help" || cmd == "-h"
+            || cmd == "completions" || cmd == "version";
+    };
+
     std::string db_path;
-    try {
-        db_path = cfg.projectDbPath(".");
-        icmg::core::ensureProjectDb(db_path);
-    } catch (const std::exception& e) {
-        std::cerr << "icmg: db init warning: " << e.what()
-                  << " (non-DB commands still work)\n";
+    if (!is_hot_path()) {
+        try {
+            db_path = cfg.projectDbPath(".");
+            icmg::core::ensureProjectDb(db_path);
+        } catch (const std::exception& e) {
+            std::cerr << "icmg: db init warning: " << e.what()
+                      << " (non-DB commands still work)\n";
+        }
+    } else {
+        // Resolve path lazily for cmds that may need it; do not open/migrate.
+        try { db_path = cfg.projectDbPath("."); } catch (...) {}
     }
 
     // MCP server mode — run stdio JSON-RPC loop

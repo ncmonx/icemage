@@ -1065,6 +1065,11 @@ private:
         cfg["hooks"]["SessionStart"] = json::array({
             {
                 {"hooks", json::array({
+                    // v1.6.2: warm-keep daemon. Fire-and-forget at session start
+                    // so subsequent UserPromptSubmit hooks hit daemon IPC (~5ms)
+                    // instead of cold icmg.exe spawn (~360ms).
+                    {{"type", "command"},
+                     {"command", "command -v icmg >/dev/null 2>&1 && icmg daemon start >/dev/null 2>&1 &"}},
                     {{"type", "command"},
                      {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-caveman-prompt.sh) || bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
                     {{"type", "command"},
