@@ -28,6 +28,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <algorithm>
 #include <vector>
 
 #ifdef _WIN32
@@ -45,12 +46,12 @@ namespace icmg::cli {
 
 namespace {
 
+#ifdef _WIN32
 struct ProcInfo {
     DWORD pid;
     int age_min;
 };
 
-#ifdef _WIN32
 // Return PIDs of all running icmg.exe processes (excluding `self_pid`).
 std::vector<ProcInfo> enumIcmgProcesses(DWORD self_pid) {
     std::vector<ProcInfo> out;
