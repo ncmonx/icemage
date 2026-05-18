@@ -4,6 +4,16 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.6.5 — Hotfix: revert schtasks shell prefix (bash `/Create` flag fix)
+
+Single revert. v1.6.1's swap of `MSYS_NO_PATHCONV=1 schtasks ...` to `cmd.exe /c schtasks ...` was intended to help PowerShell users but broke bash users: MSYS path-conv mangled `/Create` flag to garbage, and `/c` to drive-letter `C:\`, causing `icmg service install skipped: 'reate' is not recognized`.
+
+- 18 call sites across 9 files reverted to `MSYS_NO_PATHCONV=1 schtasks ...`.
+- Works correctly from bash (most dev environments).
+- PS users still see shell-parse error on this specific bash-syntax prefix. Acceptable trade-off — service install is non-critical (manual elevated cmd workaround documented).
+
+Drop-in upgrade. All v1.6.4 features intact.
+
 ## 1.6.4 — Hotfix: PS bypass + memory cap + targeted graph scan + warm-up
 
 Six fixes for shared-server / non-admin / cold-cache scenarios.
