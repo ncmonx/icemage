@@ -38,6 +38,21 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.8.0 — `icmg hookio` drops jq dependency + launcher stub eliminates `B:/` popup
+
+Three big fixes in one release.
+
+| Fix | What changed |
+| --- | --- |
+| **`icmg hookio` replaces jq** | New native C++ stdin-JSON helper. All bundled hook scripts refactored: `jq -r '.tool_input.command'` → `icmg hookio get tool_input.command`. **No more `jq: command not found` errors** on user machines without jq installed. Zero external dependency. |
+| **Launcher stub** | New `icmg.exe` is a 48 KB launcher (kernel32+user32 only); full binary moved to `icmg-core.exe`. Launcher sets `SetErrorMode` + sanitizes PATH **before** spawning core → DLL-loader probes can no longer trigger the `B:/` drive-not-found popup. Solved at root, not at user-space patch. |
+| **`icmg cleanup` orphans** | Enumerate + kill stuck `icmg.exe` instances holding SQLite WAL locks. `icmg update` now preflights and hints `icmg cleanup` when conflict detected. |
+| **Lazy-DB whitelist** | `hook`, `shield`, `popup-killer`, `update`, `daemon`, `service`, `cronjobs`, `shadow-upgrade`, `cleanup` skip `ensureProjectDb` → no WAL contention on hot paths. |
+
+Re-run `icmg init --force` per project after upgrading — hook scripts regenerate without jq calls.
+
+---
+
 ## 🛠 v1.6.6 — Hotfix: Startup-folder fallback wscript prefix MSYS-safe
 
 v1.6.5 only fixed schtasks `cmd.exe /c` mangle. Startup-folder fallback path used same bad pattern for wscript invocation; .lnk was never created when schtasks elevation-denied. Both VBS-creator + boot calls now use `MSYS_NO_PATHCONV=1 wscript.exe ...`. Error message now surfaces wscript stderr instead of generic "fallback failed".
@@ -50,20 +65,7 @@ v1.6.1's `cmd.exe /c schtasks` wrap was breaking bash users (MSYS path-conv mang
 
 ---
 
-## 🛠 v1.6.4 — Hotfix: PS bypass + memory cap + targeted graph scan + warm-up
-
-| Fix | What changed |
-| --- | --- |
-| **Memory auto-evict** | MCP `icmg_store` LRU-prunes 500 low-importance entries at cap instead of returning -32603. |
-| **PowerShell bypass closed** | PreToolUse matcher = `Bash\|PowerShell\|Read\|Glob\|Grep\|WebFetch`; non-icmg PS denied. |
-| **Substitution cheatsheet** | Deny reason appends `Read → icmg context`, `Grep → icmg graph search`, etc. |
-| **Deferred graph index** | PostToolUse:Edit queues file → Stop hook fires detached scan; graph fresh by next prompt. |
-| **`icmg graph scan --file <p>`** | Targeted scan ~500ms each vs full-project ~30-180s. |
-| **60s budget + warm-up** | Detached scan capped at 60s; SessionStart warm-up for fresh-clone first-prompt. |
-
-Re-run `icmg init --force` per project.
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.4 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.6.4 and earlier.
 
 ---
 

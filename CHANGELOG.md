@@ -4,6 +4,53 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.8.0 — `icmg hookio` drops jq dependency + launcher stub eliminates `B:/` popup at DLL-loader stage
+
+**Big release.** Combines launcher refactor (v1.7.0 internal), orphan cleanup (v1.6.8), lazy-DB whitelist extension (v1.6.7), and **purges `jq` from every hook script**. Hooks now run silently on machines without jq installed.
+
+### `icmg hookio` — native JSON helper (NEW)
+
+`src/cli/commands/hookio_cmd.cpp` — pure C++ stdin-JSON helper. Replaces every `jq` call in bundled hook scripts.
+
+- `icmg hookio get <dotted.path>` — read stdin JSON, print value at path (`.tool_input.command`, `.prompt`, `.tool_response.output`).
+- `icmg hookio emit <event> --ctx <str>` — emit `{"hookSpecificOutput":{"hookEventName":"X","additionalContext":"…"}}` envelope.
+- `icmg hookio emit <event> --deny <reason>` — `PreToolUse` deny envelope.
+- `icmg hookio escape` — JSON-quote a raw string (replaces `jq -Rs .`).
+
+All bundled hook scripts (`bash-rewrite`, `shrink-read`, `caveman-prompt`, `cap-output`, `prompt-recall`, `wflog-stop`, `rule-enforce`, `context-session`, `wakeup-session`, `context-prompt`) refactored. Inline dispatcher hook strings (WebFetch deny, correction capture, PostToolUse Write/Edit/Read/Bash) likewise. `command -v jq` guards dropped (now superfluous).
+
+**Why this matters:** v1.5.0–v1.7.0 worked only on machines that happened to have `jq` installed (dev machines, MSYS2 environments). On a fresh user laptop, every hook fired `jq: command not found` errors on every prompt. v1.8.0 ends that — zero external dependency.
+
+### Launcher stub (carried from internal v1.7.0)
+
+`src/launcher.c` — ~200 LOC C stub, **kernel32+user32 imports only**. The full `icmg-core.exe` imports `onnxruntime.dll`, `libtree-sitter`, `libzstd`, `wasmtime`, `libwinpthread`. Win32 DLL loader probes every PATH entry **before `main()` runs** — a stale `B:/` PATH entry triggers "system cannot find drive" popup at loader stage, before `SetErrorMode` can suppress it.
+
+Launcher solves at root:
+1. `SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX)` — inherited by child.
+2. `sanitize_path()` — strip PATH entries with non-existent drive letters (`GetLogicalDrives()` bitmask).
+3. `AttachConsole(ATTACH_PARENT_PROCESS)` — stdio inherits cmd/PS/bash terminal.
+4. `CreateProcessA` spawns `icmg-core.exe` with same argv, stdio inherited, exit code passed through.
+
+Packaging renames at zip stage: `icmg.exe` (launcher, 48 KB) wraps `icmg-core.exe` (full, 16 MB). User-transparent.
+
+### Cleanup orphan icmg processes (carried from internal v1.6.8)
+
+`icmg cleanup` — enumerate + kill orphan `icmg.exe` instances that hold SQLite WAL locks on `data.db`.
+
+- `icmg cleanup orphans` — list orphan PIDs (excludes service-pidfile + rule-daemon pidfile + self).
+- `icmg cleanup kill-orphans --confirm` — terminate listed orphans.
+- `icmg cleanup all` — list every icmg.exe instance with role tag (service/daemon/orphan).
+
+Under heavy hook load (cron tick + concurrent PostToolUse), stuck instances pile up → subsequent `icmg update --apply` failed with "unable to open database file". `icmg update` now preflights: if other instances detected, hints user to run `icmg cleanup` before retrying.
+
+### Lazy-DB whitelist extended (carried from internal v1.6.7)
+
+`main.cpp`'s `is_hot_path` lambda now skips `ensureProjectDb` for: `hook`, `shield`, `popup-killer`, `--help`, `-h`, `completions`, `version`, `update`, `daemon`, `service`, `cronjobs`, `shadow-upgrade`, `cleanup`. Update flows no longer crash with WAL-lock when another icmg holds the DB.
+
+### Drop-in upgrade
+
+Re-run `icmg init --force` per project after upgrading. Existing hooks regenerate without jq calls; the `jq: command not found` errors stop on next session.
+
 ## 1.6.6 — Hotfix: Startup-folder fallback wscript prefix MSYS-safe
 
 v1.6.5 only fixed the schtasks `cmd.exe /c` mangle. The Startup-folder fallback path (introduced v1.6.1) used the same bad pattern for wscript invocation, so the .lnk shortcut was never created when schtasks was elevation-denied. Both VBS-creator + boot calls now use `MSYS_NO_PATHCONV=1 wscript.exe ...` (matches v1.6.5 schtasks pattern).
