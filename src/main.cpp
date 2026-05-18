@@ -147,9 +147,14 @@ int main(int argc, char* argv[]) {
     auto is_hot_path = [&]() {
         if (args.empty()) return false;
         const std::string& cmd = args[0];
+        // v1.6.7: extended hot-path list. These cmds do NOT touch project
+        // DB. Skipping ensureProjectDb avoids WAL-lock contention when many
+        // icmg instances are concurrently active (cron tick, hook fires).
         return cmd == "hook" || cmd == "shield" || cmd == "popup-killer"
             || cmd == "--help" || cmd == "-h"
-            || cmd == "completions" || cmd == "version";
+            || cmd == "completions" || cmd == "version"
+            || cmd == "update" || cmd == "daemon" || cmd == "service"
+            || cmd == "cronjobs" || cmd == "shadow-upgrade";
     };
 
     std::string db_path;
