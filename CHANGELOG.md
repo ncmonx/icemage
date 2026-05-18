@@ -4,6 +4,29 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.6.4 — Hotfix: PS bypass + memory cap + targeted graph scan + warm-up
+
+Six fixes for shared-server / non-admin / cold-cache scenarios.
+
+- **Memory store auto-evict** — MCP `icmg_store` cap (10000 nodes) no longer returns -32603 mid-session. LRU-prunes 500 oldest low-importance entries when count >= cap, then continues.
+- **PowerShell bypass closed** — PreToolUse matcher extended with `PowerShell`. Non-icmg PS commands denied with substitution cheatsheet.
+- **Substitution cheatsheet in deny reason** — `Read/cat → icmg context`, `Grep/Glob → icmg graph search`, `ls/find → icmg ls`, `Bash git → icmg run git ...`.
+- **Deferred graph index** — `PostToolUse:Edit` queues touched file → `runStopHook` fires detached `icmg graph scan --file <p1> --file <p2> ...` after prompt. Graph fresh by next prompt without blocking current.
+- **Targeted graph scan** — `icmg graph scan --file <path>` (repeatable) skips full directory walk + O(N) mem-sync. ~500ms per file vs ~30-180s full.
+- **60s budget cap + SessionStart warm-up** — detached scan capped at 60s; SessionStart fires `icmg graph scan &` for fresh-clone first-prompt freshness.
+
+Plus `internals.cpp` null-byte file-corruption recovery.
+
+Re-run `icmg init --force` per project to register the SessionStart warm-up entry.
+
+## 1.6.2 — Hotfix: first-prompt latency (lazy DB + hook timeout + daemon warm-keep)
+
+Three perf fixes addressing slow AI response on cold session start.
+
+- **Lazy DB init** — `main.cpp` skips `ensureProjectDb` for hot-path commands (`hook`, `shield`, `popup-killer`, `--help`, `completions`, `version`). Saves 50-200ms cold-start per hook fire.
+- **500ms hook timeout** — `HookCommand::run` wraps dispatch via `std::async + future.wait_for(500ms)`. Exceeded → empty injection exit 0. Override `ICMG_HOOK_TIMEOUT_MS=N`.
+- **Daemon warm-keep** — SessionStart fires `icmg daemon start &`. Subsequent UserPromptSubmit hits daemon IPC (~5ms) vs cold spawn (~360ms).
+
 ## 1.6.1 — Hotfix: PS-safe schtasks + db init resilience + B:/ popup mitigation (no-elevation)
 
 Five robustness fixes for shared-server / non-admin Windows deployments.

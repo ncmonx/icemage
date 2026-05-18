@@ -38,6 +38,21 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.6.4 — Hotfix: PS bypass + memory cap + targeted graph scan + warm-up
+
+| Fix | What changed |
+| --- | --- |
+| **Memory auto-evict** | MCP `icmg_store` LRU-prunes 500 low-importance entries at cap instead of returning -32603. |
+| **PowerShell bypass closed** | PreToolUse matcher = `Bash\|PowerShell\|Read\|Glob\|Grep\|WebFetch`; non-icmg PS denied. |
+| **Substitution cheatsheet** | Deny reason appends `Read → icmg context`, `Grep → icmg graph search`, etc. |
+| **Deferred graph index** | PostToolUse:Edit queues file → Stop hook fires detached scan; graph fresh by next prompt. |
+| **`icmg graph scan --file <p>`** | Targeted scan ~500ms each vs full-project ~30-180s. |
+| **60s budget + warm-up** | Detached scan capped at 60s; SessionStart warm-up for fresh-clone first-prompt. |
+
+Re-run `icmg init --force` per project.
+
+---
+
 ## 🛠 v1.6.1 — Hotfix: PS-safe schtasks + B:/ popup mitigation (no-elevation)
 
 Five robustness fixes for shared-server / non-admin Windows deployments. **icmg now usable end-to-end without `Run as Administrator`.**
@@ -68,19 +83,7 @@ For shared-server installs with many users + projects: replaces the N projects �
 
 Re-run `icmg init --force` per project after upgrading.
 
----
-
-## 🛠 v1.5.4 — Hotfix: `icmg shield` SEM gatekeeper wraps all bash hooks
-
-| Fix | What changed |
-| --- | --- |
-| **New `icmg shield -- <argv...>` subcommand** | Sets Win32 `SEM_FAILCRITICALERRORS \| SEM_NOOPENFILEERRORBOX` then `execvp(argv)`. Inserts icmg.exe as SEM gatekeeper into the hook chain. |
-| **`init_cmd` wraps 7 bash hook entries** | All PreToolUse/PostToolUse/SessionStart bash sidecars now run through `icmg shield -- bash X.sh` — bash, jq, git, python3 all inherit SEM silently. |
-| **Global Read/Glob/Grep python3 hook wrapped** | `installGlobalReadHook` prepends `icmg shield --`. |
-
-Final fix for the `B:/` popup chain. Re-run `icmg init --force` per project.
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.3 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.4 and earlier.
 
 ---
 
