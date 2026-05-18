@@ -4,6 +4,22 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.6.0 — Cron consolidation: per-project schtasks → single `icmg-service` iterator
+
+**For shared-server deployments.** Eliminates icmg.exe process bloat caused by N projects × 5 per-project Windows scheduled tasks (`icmg-{backup,maintain,mirror,sentinel,shadow-upgrade}-<hash>` × N projects).
+
+- **New global table `cron_jobs`** (migration 0002 on `global.db`) — backs the consolidated cron iterator. Columns: `project_path`, `chore`, `every_min`, `last_run`.
+- **`ServiceLoop::tickOnce` extended** — after default global tasks, queries `cron_jobs.dueJobs(now)` and fires each via subprocess `cd $project_path && icmg <chore>`. Rows whose project_path no longer exists are auto-pruned.
+- **`sweepLegacySchtasks()`** in `core/schedule_helper.cpp` — parses `schtasks /Query /FO CSV`, regex-matches `icmg-{backup,maintain,mirror,sentinel,shadow-upgrade}-<8 hex>`, `schtasks /Delete` each. Called from `init_cmd` on `--force`.
+- **New CLI `icmg cronjobs`** — `list / remove / run-now / reregister / sweep`. Distinct from legacy `icmg cron` (memory-prune scheduler config).
+- **`init_cmd` rewired** — replaces 5 `safeExecShell("icmg X auto-on")` calls with `CronStore::upsert()`. Initial backup snapshot + mirror sync still fire synchronously for instant recovery.
+
+**Effect:** N projects × 5 schtasks → 1 schtask (`icmg-service`) + N×5 rows in global.db. Service tick iterates internally. Process spike during hook cascade now bounded by service tick cadence, not concurrent schtask fires.
+
+**Action required:** re-run `icmg init --force` per project after upgrading. Existing legacy schtasks are auto-swept.
+
+Drop-in. No project schema change. All v1.5.x features unchanged.
+
 ## 1.5.4 — Hotfix: `icmg shield` SEM gatekeeper wraps all bash hooks
 
 Final escalation for the recurring `B:/` popup. Win32 child processes inherit the parent's error mode via `CreateProcess` (unless `CREATE_DEFAULT_ERROR_MODE` is set). Popups therefore mean the entire process chain lacks an SEM-setting node. Claude Code → cmd.exe → bash → jq/git is one such chain — no node in it calls `SetErrorMode`, so a stray MSYS PATH entry translating to `B:\` triggers the dialog when bash spawns a Win32 helper.
