@@ -38,6 +38,12 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.6.6 — Hotfix: Startup-folder fallback wscript prefix MSYS-safe
+
+v1.6.5 only fixed schtasks `cmd.exe /c` mangle. Startup-folder fallback path used same bad pattern for wscript invocation; .lnk was never created when schtasks elevation-denied. Both VBS-creator + boot calls now use `MSYS_NO_PATHCONV=1 wscript.exe ...`. Error message now surfaces wscript stderr instead of generic "fallback failed".
+
+---
+
 ## 🛠 v1.6.5 — Hotfix: revert schtasks shell prefix (bash `/Create` flag fix)
 
 v1.6.1's `cmd.exe /c schtasks` wrap was breaking bash users (MSYS path-conv mangled `/Create` → `reate`). Reverted to `MSYS_NO_PATHCONV=1 schtasks ...` across 18 call sites. Bash works again; PS users see shell-parse error on service install only (non-critical).
@@ -56,38 +62,6 @@ v1.6.1's `cmd.exe /c schtasks` wrap was breaking bash users (MSYS path-conv mang
 | **60s budget + warm-up** | Detached scan capped at 60s; SessionStart warm-up for fresh-clone first-prompt. |
 
 Re-run `icmg init --force` per project.
-
----
-
-## 🛠 v1.6.1 — Hotfix: PS-safe schtasks + B:/ popup mitigation (no-elevation)
-
-Five robustness fixes for shared-server / non-admin Windows deployments. **icmg now usable end-to-end without `Run as Administrator`.**
-
-| Fix | What changed |
-| --- | --- |
-| **PS-safe schtasks** | 17 call sites `MSYS_NO_PATHCONV=1 schtasks` → `cmd.exe /c schtasks` (works from bash + PS + cmd). |
-| **DB init → warning** | `main.cpp` no longer exits 1 on broken DB; Stop hook tolerates transient perm/WAL/OneDrive issues. |
-| **`icmg popup-killer` (A)** | `EnumWindows` + `PostMessage(WM_CLOSE)` dismisses `#32770` dialogs with `[A-Z]:` titles (B:\ popup). Integrated into `ServiceLoop` tick. |
-| **Startup-folder fallback (B)** | `service_install` writes `.lnk` to `%APPDATA%\...\Startup\` when schtasks elevation denied. Boots service immediately + auto-starts next logon. |
-| **`Unblock-File` on extract (C)** | `update --apply` strips Zone.Identifier ADS from extracted artifacts → SmartScreen skips reputation scan → no drive-probe popup at root. |
-
-Re-run `icmg init --force` per project after upgrade.
-
----
-
-## 🚀 What's new in v1.6.0 — Cron consolidation (shared-server scale)
-
-For shared-server installs with many users + projects: replaces the N projects × 5 per-project Windows scheduled tasks with a single `icmg-service` iterator.
-
-| Feature | What changed |
-| --- | --- |
-| **Global `cron_jobs` table** | Migration 0002 on `global.db`. Backs consolidated iterator. Columns: `project_path`, `chore`, `every_min`, `last_run`. |
-| **`ServiceLoop::tickOnce` extended** | After default global tasks, queries `cron_jobs.dueJobs(now)`; fires subprocess `cd $proj && icmg <chore>`; auto-prunes dead projects. |
-| **`sweepLegacySchtasks()`** | Regex-matches `icmg-{backup,maintain,mirror,sentinel,shadow-upgrade}-<hash>` and `schtasks /Delete` each. Called on `icmg init --force`. |
-| **`icmg cronjobs` subcommand** | `list / remove / run-now / reregister / sweep`. Distinct from legacy `icmg cron` (memory-prune scheduler). |
-| **`init_cmd` rewired** | 5 `safeExecShell("icmg X auto-on")` calls → `CronStore::upsert()`. Initial backup + mirror sync still synchronous. |
-
-Re-run `icmg init --force` per project after upgrading.
 
 > 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.5.4 and earlier.
 
