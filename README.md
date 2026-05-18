@@ -38,6 +38,12 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.6.5 — Hotfix: revert schtasks shell prefix (bash `/Create` flag fix)
+
+v1.6.1's `cmd.exe /c schtasks` wrap was breaking bash users (MSYS path-conv mangled `/Create` → `reate`). Reverted to `MSYS_NO_PATHCONV=1 schtasks ...` across 18 call sites. Bash works again; PS users see shell-parse error on service install only (non-critical).
+
+---
+
 ## 🛠 v1.6.4 — Hotfix: PS bypass + memory cap + targeted graph scan + warm-up
 
 | Fix | What changed |
