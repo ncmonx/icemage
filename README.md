@@ -38,6 +38,18 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.9.0 — Multi-user dashboard + Active-users panel + per-session User column
+
+`icmg savings --html` per-session table now shows the OS user owning each transcript. Single-user systems display the current user; shared servers see per-user rows.
+
+**New: `icmg context-budget --all-users`** — enumerate sibling user homes and aggregate transcripts across every user that has run Claude Code in this project. Windows scans `C:\Users\*`, POSIX scans `/home/*` + `/root`. JSON output gains `user_count`, `users[]` totals, and per-session `user` field.
+
+Dashboard wiring: `ICMG_SAVINGS_ALL_USERS=1 icmg savings --html` adds an "Active users" panel.
+
+Drop-in. No DB migration.
+
+---
+
 ## 🛠 v1.8.1 — Hotfix: service-install wscript invocation shell-agnostic
 
 `icmg init` failed with `'MSYS_NO_PATHCONV' is not recognized as an internal or external command` when invoked from cmd.exe or PowerShell (v1.6.6 fix had used bash-style env prefix which cmd doesn't parse). Root fix: drop shell wrapper for wscript entirely — direct `CreateProcessW` with explicit argv. Works from bash, cmd, PS uniformly.
@@ -59,13 +71,7 @@ Re-run `icmg init --force` per project after upgrading — hook scripts regenera
 
 ---
 
-## 🛠 v1.6.6 — Hotfix: Startup-folder fallback wscript prefix MSYS-safe
-
-v1.6.5 only fixed schtasks `cmd.exe /c` mangle. Startup-folder fallback path used same bad pattern for wscript invocation; .lnk was never created when schtasks elevation-denied. Both VBS-creator + boot calls now use `MSYS_NO_PATHCONV=1 wscript.exe ...`. Error message now surfaces wscript stderr instead of generic "fallback failed".
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.6.5 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.6.6 and earlier.
 
 ---
 

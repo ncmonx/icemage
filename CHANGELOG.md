@@ -4,6 +4,39 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.9.0 — Multi-user dashboard + Active-users panel + per-session User column
+
+Two complementary additions to the savings dashboard and `context-budget` command:
+
+### Per-session "User" column (always-on)
+
+`icmg savings --html` per-session detail table now shows which OS user owns each transcript. Single-user systems display the current user (e.g. `Administrator`); shared servers see one row per user-session.
+
+### `--all-users` multi-user aggregate (opt-in)
+
+`icmg context-budget --all-users` enumerates sibling user homes and aggregates transcripts across every user that has run Claude Code in this project directory.
+
+- Windows: scans `C:\Users\*\.claude\projects\<encoded-cwd>\` (skips `Default`, `Public`, `WDAGUtilityAccount`, hidden dirs).
+- POSIX: scans `/home/*/.claude/projects/<encoded-cwd>/` plus `/root/.claude/...`.
+- JSON output gains `user_count`, `users[]` array (per-user totals), and `sessions[].user` field.
+
+Dashboard wiring:
+```bash
+ICMG_SAVINGS_ALL_USERS=1 icmg savings --html
+```
+Adds an "Active users" panel above per-session detail. Lists each user with their session count + total tokens. Default (env unset) = current OS user only.
+
+### Use case
+
+On shared servers where multiple developers run Claude Code on the same project tree, the dashboard previously hid all activity from sibling users (each `~/.claude/projects/` is OS-user-isolated). Now you can see the full team footprint without copy-pasting JSONLs between home dirs.
+
+### Files changed
+
+- `src/cli/commands/contextbudget_cmd.cpp` — `enumUserHomes()`, `currentUser()`, `--all-users` flag, JSON output with user metadata.
+- `src/cli/commands/savings_cmd.cpp` — `RealSessionRow.user` field, dashboard active-users panel, per-session User column, `ICMG_SAVINGS_ALL_USERS` env passthrough.
+
+Drop-in. No DB migration. All v1.8.x features intact.
+
 ## 1.8.1 — Hotfix: wscript service-install fallback shell-agnostic
 
 v1.6.6 fixed the schtasks `/Create` mangle by reverting to `MSYS_NO_PATHCONV=1 ...` prefix — works from bash, but breaks when `icmg init` is invoked from **cmd.exe or PowerShell** (cmd doesn't understand `VAR=value cmd` syntax → `'MSYS_NO_PATHCONV' is not recognized as an internal or external command`). The toggle has bounced between bash-friendly and PS-friendly across v1.6.1 → v1.6.5 → v1.6.6.
