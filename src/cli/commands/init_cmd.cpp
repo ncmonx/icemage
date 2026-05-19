@@ -88,7 +88,7 @@ static const char* SHRINK_READ_SH = R"BASH(#!/usr/bin/env bash
 # Replaces the previous shell chain (jq + stat + icmg summarize + icmg context)
 # with a single forked process. Saves ~100-300ms per Read on cold-start overhead.
 set -uo pipefail
-[ "${ICMG_NO_READ_HOOK:-0}" = "1" ] && exit 0
+[[ "${ICMG_NO_READ_HOOK:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
 exec icmg hook pretooluse-read
 )BASH";
@@ -142,7 +142,7 @@ static const char* CAP_OUTPUT_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 INPUT=$(cat)
 out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
-[ -z "$out" ] && out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.output 2>/dev/null)
+[[ -z "$out" ]] && out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.output 2>/dev/null)
 sz=${#out}
 CAP=${ICMG_CAP_BYTES:-8000}
 [[ "$sz" -le "$CAP" ]] && exit 0
@@ -170,7 +170,7 @@ static const char* PROMPT_RECALL_SH = R"BASH(#!/usr/bin/env bash
 # Phase 81: try daemon IPC first (~5ms); fall back to direct spawn (~360ms).
 # Daemon must be running: `icmg daemon start`.
 set -uo pipefail
-[ "${ICMG_NO_PROMPT_HOOK:-0}" = "1" ] && exit 0
+[[ "${ICMG_NO_PROMPT_HOOK:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
 
 # Read hook input JSON from stdin.
@@ -178,9 +178,9 @@ INPUT=$(cat)
 
 # Try daemon IPC first (~5ms); fall back to direct spawn (~360ms).
 PROMPT=$(printf '%s' "$INPUT" | icmg hookio get prompt 2>/dev/null)
-if [ -n "$PROMPT" ]; then
+if [[ -n "$PROMPT" ]]; then
     RESULT=$(icmg daemon client hook.userprompt --param "prompt=$PROMPT" 2>/dev/null)
-    if [ -n "$RESULT" ]; then
+    if [[ -n "$RESULT" ]]; then
         printf '%s' "$RESULT"
         exit 0
     fi
@@ -198,13 +198,13 @@ command -v icmg >/dev/null 2>&1 || exit 0
 HAS_CHANGES=false
 if command -v git >/dev/null 2>&1; then
     { git diff --quiet HEAD 2>/dev/null && git diff --cached --quiet 2>/dev/null; } || HAS_CHANGES=true
-    if [ "$HAS_CHANGES" = "false" ]; then
-        [ "$(git log --since='4 hours ago' --oneline 2>/dev/null | wc -l)" -gt 0 ] && HAS_CHANGES=true
+    if [[ "$HAS_CHANGES" = "false" ]]; then
+        [[ "$(git log --since='4 hours ago' --oneline 2>/dev/null | wc -l)" -gt 0 ]] && HAS_CHANGES=true
     fi
 fi
-[ "$HAS_CHANGES" = "false" ] && exit 0
+[[ "$HAS_CHANGES" = "false" ]] && exit 0
 LAST=$(icmg wflog recent --limit 1 2>/dev/null | head -1)
-[ -n "$LAST" ] && exit 0
+[[ -n "$LAST" ]] && exit 0
 icmg hookio emit Stop --ctx "WFLOG: session had changes — log decisions: icmg wflog save --goal \"...\" --decisions \"...\"" 2>/dev/null || true
 )BASH";
 
@@ -212,15 +212,15 @@ icmg hookio emit Stop --ctx "WFLOG: session had changes — log decisions: icmg 
 // Blocks Read/Glob/Grep on files >500 lines; warns at >200 lines.
 static const char* RULE_ENFORCE_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. PreToolUse:Read|Glob|Grep enforcement.
-[ "${ICMG_NO_RULE_ENFORCE:-0}" = "1" ] && exit 0
+[[ "${ICMG_NO_RULE_ENFORCE:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | icmg hookio get tool_name 2>/dev/null)
 FILE=$(echo "$INPUT" | icmg hookio get tool_input.file_path // .tool_input.pattern 2>/dev/null)
-[ -z "$TOOL" ] && exit 0
+[[ -z "$TOOL" ]] && exit 0
 icmg rule-eval --tool "$TOOL" --file "$FILE" 2>/dev/null
 EXIT=$?
-[ $EXIT -eq 2 ] && exit 2  # BLOCK â†’ hook deny
+[[ $EXIT -eq 2 ]] && exit 2  # BLOCK â†’ hook deny
 exit 0
 )BASH";
 
@@ -234,34 +234,34 @@ static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 command -v icmg >/dev/null 2>&1 || exit 0
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
-[ -d "$ICMG_HOME" ] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
+[[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
 HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
 SKILLS=$(icmg skill manifest 2>/dev/null)
 FOCUS=$(icmg focus inject 2>/dev/null)
 RULES=$(icmg rules inject 2>/dev/null)
 CONTENT="$HOT"
-if [ -n "$SKILLS" ]; then
-    if [ -n "$CONTENT" ]; then
+if [[ -n "$SKILLS" ]]; then
+    if [[ -n "$CONTENT" ]]; then
         CONTENT="$CONTENT"$'\n\n'"$SKILLS"
     else
         CONTENT="$SKILLS"
     fi
 fi
-if [ -n "$FOCUS" ]; then
-    if [ -n "$CONTENT" ]; then
+if [[ -n "$FOCUS" ]]; then
+    if [[ -n "$CONTENT" ]]; then
         CONTENT="$CONTENT"$'\n\n'"$FOCUS"
     else
         CONTENT="$FOCUS"
     fi
 fi
-if [ -n "$RULES" ]; then
-    if [ -n "$CONTENT" ]; then
+if [[ -n "$RULES" ]]; then
+    if [[ -n "$CONTENT" ]]; then
         CONTENT="$CONTENT"$'\n\n'"$RULES"
     else
         CONTENT="$RULES"
     fi
 fi
-[ -z "$CONTENT" ] && exit 0
+[[ -z "$CONTENT" ]] && exit 0
 printf '%s' "$CONTENT" | icmg hookio emit SessionStart --ctx-stdin
 )BASH";
 
@@ -280,24 +280,24 @@ printf '%s' "$CONTENT" | icmg hookio emit SessionStart --ctx-stdin
 static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on UserPromptSubmit.
 # Injects relevant cold context_nodes + skill suggestions via BM25 match.
-[ "${ICMG_NO_CONTEXT_HOOK:-0}" = "1" ] && exit 0
+[[ "${ICMG_NO_CONTEXT_HOOK:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | icmg hookio get message // .prompt 2>/dev/null)
-[ -z "$PROMPT" ] && exit 0
+[[ -z "$PROMPT" ]] && exit 0
 COLD=$(icmg context-node match "$PROMPT" --tier cold  --top 3 --fmt plain 2>/dev/null)
 SKILL=$(icmg context-node match "$PROMPT" --tier skill --top 2 --fmt plain 2>/dev/null)
 FOCUS=$(icmg focus inject 2>/dev/null)
 COMBINED="$COLD"
-[ -n "$SKILL" ] && COMBINED=$(printf '%s\n\n---\nSuggested skills:\n%s' "$COLD" "$SKILL")
-if [ -n "$FOCUS" ]; then
-    if [ -n "$COMBINED" ]; then
+[[ -n "$SKILL" ]] && COMBINED=$(printf '%s\n\n---\nSuggested skills:\n%s' "$COLD" "$SKILL")
+if [[ -n "$FOCUS" ]]; then
+    if [[ -n "$COMBINED" ]]; then
         COMBINED=$(printf '%s\n\n%s' "$COMBINED" "$FOCUS")
     else
         COMBINED="$FOCUS"
     fi
 fi
-[ -z "$COMBINED" ] && exit 0
+[[ -z "$COMBINED" ]] && exit 0
 printf '%s' "$COMBINED" | icmg hookio emit UserPromptSubmit --ctx-stdin
 )BASH";
 
