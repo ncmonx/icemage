@@ -38,6 +38,21 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.12.0 — Single resident `icmg-core.exe` per user (3 long-running procs → 1)
+
+Pre-v1.12.0 each user ran 3 resident icmg processes: `service` (cron iterator) + `daemon` (UserPromptSubmit IPC) + `rule-daemon` (PreToolUse rule eval). Plus launcher staying alive for service lifetime due to `WaitForSingleObject`. Total: 3-5 procs per user, with potential bloat from duplicate-launch races.
+
+v1.12.0 consolidates everything into **one `icmg-core.exe` per user**:
+- **Singleton mutex** `Global\icmg-service-<USERNAME>` → duplicate launches exit clean.
+- **Embedded rule-daemon** runs as a dedicated thread inside the service process (pipe protocol unchanged).
+- **`icmg daemon start` / `icmg rule-daemon start`** detect alive service → skip, no extra proc.
+- **VBS launcher bypass**: schtask invokes `icmg-core service run` directly, eliminating the launcher wrapper that previously stayed resident.
+- **Cron in-process**: due chores dispatch via in-process registry call instead of `icmg <chore>` subprocess spawn. No more orphan accumulation when chores hang.
+
+ctest 108/108. Drop-in. `icmg init --force` rewrites VBS; reboot or restart service to swap.
+
+---
+
 ## 🛠 v1.11.0 — POSIX systemd + macOS launchd service installers + TDD backlog (108/108)
 
 `icmg service install` now native on Linux (systemd `--user` unit) and macOS (launchd LaunchAgent plist). Auto-resolves icmg binary path via `/proc/self/exe` or `_NSGetExecutablePath`, writes unit/plist, enables + starts. Windows path unchanged (schtasks + Startup-folder fallback retained).
@@ -71,19 +86,7 @@ Drop-in. Re-run `icmg init --force` to refresh AGENTS.md command index.
 
 ---
 
-## 🛠 v1.9.0 — Multi-user dashboard + Active-users panel + per-session User column
-
-`icmg savings --html` per-session table now shows the OS user owning each transcript. Single-user systems display the current user; shared servers see per-user rows.
-
-**New: `icmg context-budget --all-users`** — enumerate sibling user homes and aggregate transcripts across every user that has run Claude Code in this project. Windows scans `C:\Users\*`, POSIX scans `/home/*` + `/root`. JSON output gains `user_count`, `users[]` totals, and per-session `user` field.
-
-Dashboard wiring: `ICMG_SAVINGS_ALL_USERS=1 icmg savings --html` adds an "Active users" panel.
-
-Drop-in. No DB migration.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.8.1 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.9.0 and earlier.
 
 ---
 
