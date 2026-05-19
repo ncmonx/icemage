@@ -38,6 +38,15 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.17.0 — Hook scripts use bash `[[ ]]` keyword + TDD backlog burn (111/111)
+
+- **Hook scripts resilient**: all bundled hooks migrated from POSIX `[ ]` (external `/usr/bin/[`) → bash `[[ ]]` (always builtin). Fixes `/usr/bin/[: cannot execute binary file` on users with broken MSYS coreutils.
+- **ctest 108 → 111**: new suites `test_turn_cache`, `test_inject_dedup`, `test_session_inject`.
+
+Drop-in. `icmg init --force` regenerates hook scripts.
+
+---
+
 ## 🛠 v1.16.0 — SessionStart hook consolidation (3 → 1) + turn_cache infrastructure
 
 - **SessionStart consolidation**: 3 sequential hook scripts (caveman + context + wakeup) → 1 IPC call via `icmg session-inject` (added in v1.15.0). **Saves ~1000ms per session start.** Legacy 3 scripts retained for backward compat.
@@ -56,18 +65,7 @@ ctest 108/108. Drop-in. Existing hooks continue to work; session-inject availabl
 
 ---
 
-## 🛠 v1.14.0 — Dedicated popup-killer thread (300× faster dismissal) + hook output dedup
-
-Two targeted fixes for residual v1.13.x deployment issues.
-
-- **Popup-killer thread**: scans `[A-Z]:/ drive not found` modals every 100ms (was 30s in cron tick). User input no longer blocked when SmartScreen/Defender raises stale-drive dialog.
-- **Hook output dedup**: `icmg hookio emit` skips re-injection of identical `additionalContext` already seen this session. ~20-40% inject token reduction on typical AI sessions. Security `deny` envelopes never deduped. Opt-out via `--no-dedup` or `ICMG_NO_DEDUP=1`.
-
-ctest 108/108. Drop-in. Restart service after upgrade.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.13.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.14.0 and earlier.
 
 ---
 

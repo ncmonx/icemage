@@ -4,6 +4,47 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.17.0 — Hook scripts use bash `[[ ]]` keyword + TDD backlog burn (108 → 111)
+
+### Hook scripts: bash keyword `[[ ]]`
+
+All bundled hook scripts in `init_cmd.cpp` migrated from POSIX test `[ ... ]` (external `/usr/bin/[`) to bash keyword `[[ ... ]]` (always builtin). Resilient against broken `/usr/bin/[` binary in user's MSYS coreutils install — error `/usr/bin/[: cannot execute binary file` no longer breaks hook execution.
+
+15 single-bracket sites converted across 10 hook scripts.
+
+### TDD backlog burn (ctest 108 → 111)
+
+3 new test suites covering v1.14-v1.16 additions:
+
+| Test | Coverage |
+| --- | --- |
+| `test_turn_cache` | lookup miss + hit, mtime invalidation, distinct keys, resetSession, empty content not recorded |
+| `test_inject_dedup` | first-call false, repeat true, distinct content tracked, empty never deduped, reset |
+| `test_session_inject` | registration, --help, --skip-all paths |
+
+### Compat
+
+- Hook script semantics preserved (bash `[[ ]]` is superset of `[ ]`)
+- `icmg init --force` rewrites scripts with new syntax
+- ctest 108/108 → 111/111 (Win + Linux)
+
+### Upgrade
+
+```cmd
+icmg update --apply       :: self-test + auto-rollback
+icmg init --force         :: regenerate hook scripts with [[ ]]
+taskkill /F /IM icmg-core.exe
+icmg service start
+```
+
+### Deferred to v1.18+
+
+- T4 Async prefetch session start
+- T5 Tiered hot-cache LRU
+- T7 turn_cache per-cmd wiring (icmg context, recall, graph)
+- Embedded MCP server
+- TDD: exec_server + exec_client + log_rotate + uninstall + hook_init + popup-killer + self-test
+
 ## 1.16.0 — SessionStart hook consolidation (3 → 1) + turn_cache infrastructure
 
 ### Hook consolidation (T3 final wire)
