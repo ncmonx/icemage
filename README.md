@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
-[![tests](https://img.shields.io/badge/tests-101%2F101%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-108%2F108%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-99%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -30,7 +30,7 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 |---|---|
 | **Platforms** | Windows x64 + Linux x64 — prebuilt binaries on every release |
 | **macOS arm64** | Source builds cleanly (verified via prior CI); no prebuilt binary yet — see install section |
-| **Stability gate** | 66/66 tests gate every release; sha256 sidecar on every binary |
+| **Stability gate** | 108/108 tests gate every release; sha256 sidecar on every binary |
 | **Self-healing** | Snapshot + dual-mirror + audit log + auto-recovery built into the binary itself |
 | **Hook overhead** | ~5-10 ms per session-boundary event (daemon RPC + zero-fork in-process runners) |
 
@@ -346,7 +346,7 @@ cd icm-graph
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DICMG_USE_ONNX=ON -DICMG_USE_TREESITTER=ON
 cmake --build build --parallel
-ctest --test-dir build --output-on-failure   # 65/65 should pass
+ctest --test-dir build --output-on-failure   # 108/108 should pass
 sudo install -m755 build/icmg /usr/local/bin/
 # ONNX runtime lib (if you enabled it) — put next to icmg or on LD_LIBRARY_PATH
 sudo install -m644 third_party/onnxruntime/lib/libonnxruntime.so.* /usr/local/lib/
