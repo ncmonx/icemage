@@ -38,6 +38,17 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.14.0 — Dedicated popup-killer thread (300× faster dismissal) + hook output dedup
+
+Two targeted fixes for residual v1.13.x deployment issues.
+
+- **Popup-killer thread**: scans `[A-Z]:/ drive not found` modals every 100ms (was 30s in cron tick). User input no longer blocked when SmartScreen/Defender raises stale-drive dialog.
+- **Hook output dedup**: `icmg hookio emit` skips re-injection of identical `additionalContext` already seen this session. ~20-40% inject token reduction on typical AI sessions. Security `deny` envelopes never deduped. Opt-out via `--no-dedup` or `ICMG_NO_DEDUP=1`.
+
+ctest 108/108. Drop-in. Restart service after upgrade.
+
+---
+
 ## 🛠 v1.13.0 — CLI-via-IPC + multi-user safety + uninstall + log rotation + hook scaffold
 
 Big architectural shift. CLI invocations now route through resident `icmg-core.exe` via IPC pipe instead of cold-spawning. ~5ms IPC vs ~360ms cold spawn = **~70× faster** hook calls.
@@ -67,22 +78,7 @@ ctest 108/108. Drop-in. `icmg init --force` rewrites VBS; reboot or restart serv
 
 ---
 
-## 🛠 v1.11.0 — POSIX systemd + macOS launchd service installers + TDD backlog (108/108)
-
-`icmg service install` now native on Linux (systemd `--user` unit) and macOS (launchd LaunchAgent plist). Auto-resolves icmg binary path via `/proc/self/exe` or `_NSGetExecutablePath`, writes unit/plist, enables + starts. Windows path unchanged (schtasks + Startup-folder fallback retained).
-
-ctest 106 → 108. New: `test_path_clean_cmd`, `test_sweep_legacy_schtasks`.
-
-Drop-in. After upgrade on POSIX:
-```bash
-icmg service install
-systemctl --user status icmg     :: Linux
-launchctl list | grep icmg       :: macOS
-```
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.10.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.11.0 and earlier.
 
 ---
 
