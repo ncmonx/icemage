@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 1.9.0 LANGUAGES CXX C)
+project(icmg VERSION 1.10.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -43,7 +43,7 @@ endif()
 option(ICMG_UNITY_BUILD "Merge .cpp files into batches for faster compilation" OFF)
 
 # ---------------------------------------------------------------------------
-# Third-party: SQLite3 amalgamation (auto-downloaded if missing — gitignored)
+# Third-party: SQLite3 amalgamation (auto-downloaded if missing ï¿½ gitignored)
 # ---------------------------------------------------------------------------
 set(SQLITE_AMALGAMATION_VERSION "3470100")  # 3.47.1, year 2024
 set(SQLITE_AMALGAMATION_ZIP "sqlite-amalgamation-${SQLITE_AMALGAMATION_VERSION}.zip")
@@ -69,7 +69,7 @@ if(NOT EXISTS ${SQLITE_DIR}/sqlite3.c)
     endif()
 endif()
 
-# nlohmann/json single-header (gitignored — auto-fetch if missing)
+# nlohmann/json single-header (gitignored ï¿½ auto-fetch if missing)
 set(NLOHMANN_JSON_VERSION "3.11.3")
 set(NLOHMANN_JSON_URL "https://github.com/nlohmann/json/releases/download/v${NLOHMANN_JSON_VERSION}/json.hpp")
 set(NLOHMANN_DIR ${CMAKE_SOURCE_DIR}/third_party/nlohmann)
@@ -169,7 +169,7 @@ if(ICMG_USE_ONNX)
             if(UNIX)
                 # v0.59.0: POSIX uses tar + cp -R so symlinks (.dylib / .so chain)
                 # are preserved. CMake file(ARCHIVE_EXTRACT) + file(COPY)
-                # dereference them — produced "unsupported mach-o filetype" on
+                # dereference them ï¿½ produced "unsupported mach-o filetype" on
                 # macOS because the .X.Y.Z.dylib alias became broken.
                 execute_process(
                     COMMAND tar -xzf ${CMAKE_BINARY_DIR}/_ort_archive
@@ -182,7 +182,7 @@ if(ICMG_USE_ONNX)
                         COMMAND bash -c "cp -RP ${CMAKE_BINARY_DIR}/_ort_unpack/*/lib/* ${ORT_LIB_DIR}/")
                 endif()
             else()
-                # Windows .zip — no symlinks in ORT-Win archive.
+                # Windows .zip ï¿½ no symlinks in ORT-Win archive.
                 file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/_ort_archive
                      DESTINATION ${CMAKE_BINARY_DIR}/_ort_unpack)
                 file(GLOB_RECURSE _ort_libs
@@ -228,7 +228,7 @@ endif()
 
 if(ICMG_USE_TREESITTER)
     # v0.59.0: vendor libtree-sitter source. Previously used find_library which
-    # picked up apt's v0.20.x on Linux — ABI-incompatible with v0.26 vendored
+    # picked up apt's v0.20.x on Linux ï¿½ ABI-incompatible with v0.26 vendored
     # grammars (silent empty parse trees). Building from source pinned to v0.24.5
     # guarantees grammar-runtime ABI match (parser.h v14).
     # Vendored grammars (parser.c LANGUAGE_VERSION 15) require runtime = v0.25.
@@ -242,7 +242,7 @@ if(ICMG_USE_TREESITTER)
         file(MAKE_DIRECTORY ${TS_RUNTIME_DIR})
         # CMake file(DOWNLOAD) follow_redirect handling is patchy on some
         # systems (TLS cert chain, redirect to codeload.github.com). Use curl
-        # via execute_process — universally available on CI runners (preinstalled
+        # via execute_process ï¿½ universally available on CI runners (preinstalled
         # on Win/Linux/macOS) and on MSYS2 dev workstations.
         # -k bypasses local CA-bundle errors (broken cert chain on some MSYS2
         # installs). Source integrity is verified by tarball content + grammar
@@ -332,7 +332,7 @@ if(ICMG_USE_TREESITTER)
             message(STATUS "icmg: tree-sitter-python ENABLED")
         endif()
 
-        # v0.59.0: vendored libtree-sitter is static — no more libtree-sitter*.dll
+        # v0.59.0: vendored libtree-sitter is static ï¿½ no more libtree-sitter*.dll
         # / wasmtime.dll / libzstd.dll runtime dependency. libwinpthread is still
         # needed (std::thread on MinGW posix-thread model) UNLESS the binary is
         # statically linked, which icmg.exe does via target_link_options below.
@@ -524,7 +524,7 @@ add_icmg_test(test_rules_cmd          tests/cli/test_rules_cmd.cpp)
 add_icmg_test(test_skill_ask_cmd      tests/cli/test_skill_ask_cmd.cpp)
 add_icmg_test(test_hook_skill_suggest tests/core/test_hook_skill_suggest.cpp)
 
-# test_claudemd / test_backup: standalone — helpers are static inline, no icmg_lib needed.
+# test_claudemd / test_backup: standalone ï¿½ helpers are static inline, no icmg_lib needed.
 add_executable(test_claudemd tests/cli/test_claudemd.cpp)
 target_include_directories(test_claudemd PRIVATE tests src third_party)
 if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -575,3 +575,9 @@ add_icmg_test(test_migration_0032       tests/core/test_migration_0032.cpp)
 add_icmg_test(test_approach_cmd         tests/cli/test_approach_cmd.cpp)
 add_icmg_test(test_hook_approach        tests/core/test_hook_approach.cpp)
 add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)
+# v1.10.0 backlog burn:
+add_icmg_test(test_hookio_cmd           tests/cli/test_hookio_cmd.cpp)
+add_icmg_test(test_cleanup_cmd          tests/cli/test_cleanup_cmd.cpp)
+add_icmg_test(test_cron_store           tests/core/test_cron_store.cpp)
+add_icmg_test(test_context_budget_users tests/cli/test_context_budget_users.cpp)
+add_icmg_test(test_savings_user_panel   tests/cli/test_savings_user_panel.cpp)
