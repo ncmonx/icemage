@@ -45,13 +45,17 @@ TEST("path-clean: registered") {
     ASSERT_EQ(cmd->name(), std::string("path-clean"));
 }
 
-TEST("path-clean: empty args prints usage") {
+TEST("path-clean: empty args prints usage (Win) or POSIX no-op message") {
     auto& reg = core::Registry<cli::BaseCommand>::instance();
     auto cmd = reg.create("path-clean");
     StdoutCapture cap;
     int rc = cmd->run({});
     ASSERT_EQ(rc, 0);
+#ifdef _WIN32
     ASSERT_CONTAINS(cap.str(), "Usage");
+#else
+    ASSERT_CONTAINS(cap.str(), "POSIX no-op");
+#endif
 }
 
 TEST("path-clean --help mentions status/apply/--system") {
