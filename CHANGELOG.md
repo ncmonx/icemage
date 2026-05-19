@@ -4,6 +4,46 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.12.0 — Single resident `icmg-core.exe` per user (3 → 1 long-running process)
+
+Before v1.12.0, each user typically ran 3 long-running icmg processes:
+1. `icmg-service` (cron iterator)
+2. `icmg daemon` (UserPromptSubmit IPC)
+3. `icmg rule-daemon` (PreToolUse rule eval IPC)
+
+Plus 2 transient procs per CLI invocation (launcher + core). On loaded boxes with many projects this caused proc bloat + WAL lock contention.
+
+v1.12.0 consolidates to **1 resident `icmg-core.exe` per user**.
+
+### Changes
+
+- **Singleton mutex**: `Global\icmg-service-<USERNAME>` (Win named mutex). Second `service run` invocation exits politely with "another instance already running". Eliminates duplicate-launch bloat from logon-trigger schtask + Startup-folder fallback + manual start racing.
+- **Embedded rule-daemon**: `ServiceLoop::run()` spawns `RuleDaemon::run()` on a dedicated thread inside the service process. Pipe protocol unchanged → existing hook clients (`icmg-rule-enforce.sh`, `RuleDaemonClient::ping/eval/shutdown`) work without modification.
+- **`icmg daemon start` skip-if-service**: detects `service.pid` alive → exits with "skipped — icmg-service already hosts embedded rule-daemon". No more separate daemon process.
+- **`icmg rule-daemon start` skip-if-service**: same pattern.
+- **VBS launcher bypass**: `service-launcher.vbs` now invokes `icmg-core service run` directly instead of `icmg service run`. Skips the launcher wrapper (whose `WaitForSingleObject` kept a 48 KB launcher process alive for service lifetime). Net: 2 → 1 long-running proc.
+- **Cron in-process** (carried from v1.11.x dev): `cron_jobs` due chores now dispatch via `Registry<BaseCommand>::create(cmd_name)->run(argv)` inside service tick instead of `safeExecShell("cd <proj> && icmg <chore>")`. Eliminates subprocess spawn cascade that previously caused orphan accumulation when chores hung on DB lock.
+
+### Steady-state proc count per user
+
+| Version | Long-running procs |
+| --- | --- |
+| ≤ v1.10.0 | 3-5 (service + daemon + rule-daemon + launcher × 1-2) |
+| v1.11.0 | 3-5 (same) |
+| v1.12.0 | **1** (`icmg-core.exe`) |
+
+### Drop-in upgrade
+
+Existing `icmg-service` schtask + Startup-folder fallback unchanged — `icmg init --force` rewrites VBS to use `icmg-core` direct. Reboot or `taskkill /F /IM icmg-core.exe` + `icmg service start` to swap.
+
+Existing hooks unchanged — embedded daemon listens on same pipe (`\\.\pipe\icmg-rule-daemon`). Hook scripts that called `icmg daemon start` or `icmg rule-daemon start` now no-op (warn + exit 0).
+
+### Build + test
+
+- ctest 108/108 passed (Win + Linux)
+- Singleton mutex tested: second service launch exits clean
+- Embedded daemon IPC verified: `icmg rule-daemon status` reports `running: yes`
+
 ## 1.11.0 — POSIX systemd + macOS launchd service installers + TDD backlog (108/108)
 
 ### Cross-platform service install
