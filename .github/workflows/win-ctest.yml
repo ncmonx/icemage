@@ -22,9 +22,8 @@ jobs:
 
       - name: Pre-fetch third-party (sqlite3 + nlohmann/json)
         shell: bash
-        env:
-          PATH: /c/msys64/mingw64/bin:${{ env.PATH }}
         run: |
+          export PATH="/c/msys64/mingw64/bin:$PATH"
           mkdir -p third_party/sqlite3 third_party/nlohmann
           if [ ! -f third_party/sqlite3/sqlite3.c ]; then
             curl -fsSLk -o sqlite.zip https://www.sqlite.org/2024/sqlite-amalgamation-3470100.zip
@@ -39,9 +38,8 @@ jobs:
 
       - name: Configure CMake (Release, MinGW)
         shell: bash
-        env:
-          PATH: /c/msys64/mingw64/bin:${{ env.PATH }}
         run: |
+          export PATH="/c/msys64/mingw64/bin:$PATH"
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DICMG_USE_ONNX=OFF \
@@ -49,16 +47,14 @@ jobs:
 
       - name: Build
         shell: bash
-        env:
-          PATH: /c/msys64/mingw64/bin:${{ env.PATH }}
         run: |
+          export PATH="/c/msys64/mingw64/bin:$PATH"
           cmake --build build --parallel
 
       - name: ctest
         shell: bash
-        env:
-          PATH: /c/msys64/mingw64/bin:${{ env.PATH }}
         run: |
+          export PATH="/c/msys64/mingw64/bin:$PATH"
           ctest --test-dir build --output-on-failure -j8
 
       - name: Emit badge JSON
