@@ -38,6 +38,15 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.16.0 — SessionStart hook consolidation (3 → 1) + turn_cache infrastructure
+
+- **SessionStart consolidation**: 3 sequential hook scripts (caveman + context + wakeup) → 1 IPC call via `icmg session-inject` (added in v1.15.0). **Saves ~1000ms per session start.** Legacy 3 scripts retained for backward compat.
+- **`core::turn_cache` module**: infrastructure for cross-turn result caching with mtime + TTL invalidation. Returns short `<icmg-cached:hex>` refs for unchanged inputs. Per-command wiring (`icmg context`, `recall`, etc.) deferred v1.17+.
+
+ctest 108/108. Drop-in. `icmg init --force` rewrites SessionStart entry.
+
+---
+
 ## 🛠 v1.15.0 — `icmg session-inject` (30× faster session start) + self-test on upgrade with auto-rollback
 
 - **`icmg session-inject`** — combines 3 SessionStart hooks (caveman + context + wakeup) into single in-process call. ~30× faster session start (~1080ms → ~10-50ms via exec_server IPC).
@@ -58,21 +67,7 @@ ctest 108/108. Drop-in. Restart service after upgrade.
 
 ---
 
-## 🛠 v1.13.0 — CLI-via-IPC + multi-user safety + uninstall + log rotation + hook scaffold
-
-Big architectural shift. CLI invocations now route through resident `icmg-core.exe` via IPC pipe instead of cold-spawning. ~5ms IPC vs ~360ms cold spawn = **~70× faster** hook calls.
-
-- **CLI-via-IPC** — new `icmg.exe` is hybrid client+launcher. Connects to `\\.\pipe\icmg-exec-<USERNAME>` → frames argv+cwd+stdin → streams stdout/stderr back. Falls back to direct spawn if service down.
-- **Multi-user safe** — all pipes now suffix with `<USERNAME>`. Previously global names collided when 2 OS users on same Win server.
-- **`icmg uninstall`** — clean removal (dry-run by default; `--confirm` to execute). POSIX includes systemd + launchd cleanup.
-- **Log rotation** — service logs auto-rotate at 5MB, retention 7 days. No more unbounded growth.
-- **`icmg hook-init <name>`** — scaffold custom hook scripts in `.claude/hooks/` with `hookio`-ready template.
-
-ctest 108/108. Drop-in. Restart service after upgrade.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.12.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.13.0 and earlier.
 
 ---
 
