@@ -32,6 +32,13 @@ namespace icmg::daemon {
 
 std::string RuleDaemon::pipeName() {
 #ifdef _WIN32
+    // v1.13.0: per-user pipe — avoids collision on multi-user servers
+    // where two OS users both run icmg-service. Falls back to global
+    // name when USERNAME unavailable (corner case).
+    const char* user = std::getenv("USERNAME");
+    if (user && *user) {
+        return std::string("\\\\.\\pipe\\icmg-rule-daemon-") + user;
+    }
     return "\\\\.\\pipe\\icmg-rule-daemon";
 #else
     const char* home = std::getenv("HOME");

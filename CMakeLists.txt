@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 1.12.0 LANGUAGES CXX C)
+project(icmg VERSION 1.13.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -380,7 +380,7 @@ add_executable(icmg src/main.cpp ${ICMG_WIN_RESOURCE})
 
 # v1.7.0: minimal launcher stub.
 if(WIN32)
-    add_executable(icmg-launcher src/launcher.c)
+    add_executable(icmg-launcher src/exec_client.c)
     target_link_libraries(icmg-launcher PRIVATE kernel32 user32)
     target_link_options(icmg-launcher PRIVATE -s -mwindows)
 endif()

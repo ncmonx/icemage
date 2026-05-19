@@ -23,9 +23,16 @@ namespace icmg::daemon {
 
 std::string RuleDaemonClient::sendRaw(const std::string& json_msg) {
 #ifdef _WIN32
+    // v1.13.0: try per-user pipe first, fall back to global name for
+    // backward compat with pre-v1.13 servers still running mid-upgrade.
     std::string name = RuleDaemon::pipeName();
     HANDLE h = CreateFileA(name.c_str(), GENERIC_READ | GENERIC_WRITE,
                            0, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        h = CreateFileA("\\\\.\\pipe\\icmg-rule-daemon",
+                        GENERIC_READ | GENERIC_WRITE,
+                        0, nullptr, OPEN_EXISTING, 0, nullptr);
+    }
     if (h == INVALID_HANDLE_VALUE) return "";
 
     DWORD written = 0;

@@ -51,6 +51,11 @@ namespace icmg::cli {
 
 static std::string daemonIpcPath() {
 #ifdef _WIN32
+    // v1.13.0: per-user pipe — avoids collision on multi-user servers.
+    const char* user = std::getenv("USERNAME");
+    if (user && *user) {
+        return std::string(R"(\\.\pipe\icmg-daemon-)") + user;
+    }
     return R"(\\.\pipe\icmg-daemon)";
 #else
     return (fs::path(core::icmgGlobalDir()) / "daemon.sock").string();

@@ -6,6 +6,8 @@
 #include "registry.hpp"
 #include "../cli/base_command.hpp"
 #include "../daemon/rule_daemon.hpp"
+#include "exec_server.hpp"
+#include "log_rotate.hpp"
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -129,6 +131,9 @@ void ServiceLoop::tickOnce() {
         return TRUE;
     }, 0);
 #endif
+    // v1.13.0: rotate logs (cheap, idempotent).
+    try { log_rotate::rotateIcmgLogs(); } catch (...) {}
+
     auto& reg = Registry<cli::BaseCommand>::instance();
     auto state = readState();
     int64_t now = (int64_t)std::time(nullptr);
@@ -284,7 +289,25 @@ int ServiceLoop::run() {
         std::cerr << "icmg service: rule-daemon thread spawn failed\n";
     }
 
-    std::cerr << "icmg service: started, tick=30s, rule-daemon embedded\n";
+    // v1.13.0: spawn exec_server thread — handles CLI invocations
+    // via per-user named pipe. Eliminates per-CLI icmg-core spawn.
+    std::thread exec_thread;
+    try {
+        exec_thread = std::thread([]{
+            try {
+                exec_server::run(g_stop);
+            } catch (const std::exception& e) {
+                std::cerr << "icmg service: exec_server thread threw: "
+                          << e.what() << "\n";
+            } catch (...) {
+                std::cerr << "icmg service: exec_server thread threw unknown\n";
+            }
+        });
+    } catch (...) {
+        std::cerr << "icmg service: exec_server thread spawn failed\n";
+    }
+
+    std::cerr << "icmg service: started, tick=30s, rule-daemon + exec-server embedded\n";
     while (!g_stop.load()) {
         tickOnce();
         for (int i = 0; i < 30 && !g_stop.load(); ++i) {
@@ -292,10 +315,11 @@ int ServiceLoop::run() {
         }
     }
 
-    // Detach daemon thread — pipe blocks on accept; clean shutdown via
-    // SHUTDOWN RPC would require sending to self. Detach is acceptable
-    // because process is exiting anyway; OS reclaims pipe + thread.
+    // Detach daemon + exec threads — pipes block on accept; clean shutdown
+    // via SHUTDOWN RPC would require sending to self. Detach acceptable
+    // because process exits anyway; OS reclaims pipes + threads.
     if (daemon_thread.joinable()) daemon_thread.detach();
+    if (exec_thread.joinable())   exec_thread.detach();
 
     // Cleanup PID file.
     std::error_code ec;
