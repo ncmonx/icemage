@@ -307,7 +307,37 @@ int ServiceLoop::run() {
         std::cerr << "icmg service: exec_server thread spawn failed\n";
     }
 
-    std::cerr << "icmg service: started, tick=30s, rule-daemon + exec-server embedded\n";
+    // v1.14.0: dedicated popup-killer thread. Scans for "X:/ drive
+    // not found" modal dialogs every 100ms and dismisses them via
+    // PostMessage(WM_CLOSE). Replaces the v1.6.1 in-tick scan which
+    // only fired every 30s — popup blocked user input meanwhile.
+#ifdef _WIN32
+    std::thread popup_thread;
+    try {
+        popup_thread = std::thread([]{
+            while (!g_stop.load()) {
+                EnumWindows([](HWND hwnd, LPARAM) -> BOOL {
+                    if (!IsWindowVisible(hwnd)) return TRUE;
+                    char title[64] = {0};
+                    int n = GetWindowTextA(hwnd, title, sizeof(title) - 1);
+                    if (n < 2 || n > 4) return TRUE;
+                    char c = title[0];
+                    if (!(c >= 'A' && c <= 'Z') || title[1] != ':') return TRUE;
+                    char cls[64] = {0};
+                    GetClassNameA(hwnd, cls, sizeof(cls) - 1);
+                    if (std::strcmp(cls, "#32770") != 0) return TRUE;
+                    PostMessageA(hwnd, WM_CLOSE, 0, 0);
+                    return TRUE;
+                }, 0);
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        });
+    } catch (...) {
+        std::cerr << "icmg service: popup-killer thread spawn failed\n";
+    }
+#endif
+
+    std::cerr << "icmg service: started, tick=30s, rule-daemon + exec-server + popup-killer embedded\n";
     while (!g_stop.load()) {
         tickOnce();
         for (int i = 0; i < 30 && !g_stop.load(); ++i) {
@@ -320,6 +350,9 @@ int ServiceLoop::run() {
     // because process exits anyway; OS reclaims pipes + threads.
     if (daemon_thread.joinable()) daemon_thread.detach();
     if (exec_thread.joinable())   exec_thread.detach();
+#ifdef _WIN32
+    if (popup_thread.joinable())  popup_thread.detach();
+#endif
 
     // Cleanup PID file.
     std::error_code ec;

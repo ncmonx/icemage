@@ -17,6 +17,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/inject_dedup.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -258,6 +259,21 @@ public:
                 } else if (args[i] == "--deny" && i + 1 < args.size()) {
                     deny_reason = args[++i]; has_deny = true;
                 }
+            }
+            // v1.14.0: dedup. If exact same ctx already injected this
+            // session, skip — LLM still has it from prior turn. Caller
+            // opts out via ICMG_NO_DEDUP=1 env or --no-dedup flag.
+            bool no_dedup = hasFlag(args, "--no-dedup");
+            const char* env_off = std::getenv("ICMG_NO_DEDUP");
+            if (env_off && (env_off[0]=='1'||env_off[0]=='y'||env_off[0]=='Y')) {
+                no_dedup = true;
+            }
+            if (has_ctx && !no_dedup && !has_deny &&
+                core::inject_dedup::seenBefore(ctx)) {
+                // Emit empty envelope — hook contract still satisfied.
+                std::cout << "{\"hookSpecificOutput\":{\"hookEventName\":"
+                          << jsonEscape(event) << "}}";
+                return 0;
             }
             std::cout << "{\"hookSpecificOutput\":{\"hookEventName\":"
                       << jsonEscape(event);
