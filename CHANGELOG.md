@@ -4,6 +4,70 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.13.0 — CLI-via-IPC + multi-user safety + uninstall + log rotation + hook scaffold
+
+Major architectural change. CLI invocations now route through resident `icmg-core.exe` via IPC pipe instead of cold-spawning a separate process. Eliminates ~70-90% of icmg-core process churn during AI sessions.
+
+### CLI-via-IPC (T1)
+
+- New `src/exec_client.c` replaces v1.7.0 launcher. Hybrid client + spawn fallback.
+- Detects per-user pipe `\\.\pipe\icmg-exec-<USERNAME>` → frames argv + cwd + stdin → sends RPC → streams stdout/stderr/exit back. Cold-start cost ~80ms one-time at session start; subsequent invocations ~10-50ms IPC roundtrip.
+- Fallback: pipe unavailable → spawns `icmg-core.exe` direct (v1.12 behavior). Graceful degradation.
+- Exec server: `src/core/exec_server.cpp`. Worker-thread-per-request (max 32 concurrent). Captures stdout/stderr via `cout.rdbuf` swap → framed JSON. cwd serialized via process-global mutex.
+- Excluded from IPC routing (require dedicated proc): `--mcp-server`, `service run`, `chat`, `serve`, `daemon`, `rule-daemon`, top-level flags (`--version`, `--help`, etc.), `--ipc-bypass`.
+- Stdin streaming: client slurps stdin (when pipe/file, not TTY) → JSON-escapes into request → server redirects `std::cin` rdbuf to istringstream during dispatch.
+
+### Multi-user safety (T2)
+
+- Pipe names now suffix with `<USERNAME>`. Previously global names collided when two OS users ran services on same Win box.
+  - `\\.\pipe\icmg-rule-daemon` → `\\.\pipe\icmg-rule-daemon-<USERNAME>`
+  - `\\.\pipe\icmg-daemon` → `\\.\pipe\icmg-daemon-<USERNAME>`
+  - `\\.\pipe\icmg-exec-<USERNAME>` (new)
+- Client falls back to old global name if user-scoped not found (mid-upgrade compat).
+- POSIX sockets already at `$HOME/.icmg/*.sock` → per-user automatic. No change.
+
+### `icmg uninstall` (T8)
+
+- Clean removal cmd. Lists or removes: schtask, Startup-folder shortcut, daemon pidfiles, ~/.icmg/ (with `--keep-state` opt), ~/bin/icmg.exe + icmg-core.exe + DLLs.
+- Default `--dry-run`. Use `--confirm` to execute.
+- POSIX: removes systemd unit + launchd plist + cron entries.
+
+### Log rotation (T9)
+
+- `src/core/log_rotate.cpp` — date-stamp rotate files >5MB, retention 7 days. Called each service tick.
+- Rotated files: `service.{out,err}.log`, `cron.log`, `popup-killer.log`, `strict-denials.jsonl`, `bfs-queries.jsonl`.
+
+### `icmg hook-init <name>` (T10)
+
+- Scaffold for user-authored custom hook scripts in `.claude/hooks/`. Template uses `icmg hookio` for stdin JSON parse.
+- `icmg hook-init my-hook --event PostToolUse --tool Edit` writes ready-to-edit `.sh` file.
+
+### Process count per user
+
+| State | v1.12.0 | v1.13.0 |
+| --- | --- | --- |
+| Resident long-running | 1 (`icmg-core.exe`) | 1 (`icmg-core.exe`) |
+| Per-CLI invocation | 1 launcher + 1 core (~2 procs × 300ms) | 1 client (~5ms IPC, then exits) |
+| Hook fire (cold) | ~360ms launcher+core cold | ~10-50ms IPC |
+| Hook fire (warm) | ~360ms (no caching) | ~5-15ms (cached state) |
+
+### Backward compat
+
+- Pipe-fallback in client → existing v1.12 clients/hooks still work
+- `ICMG_IPC=0` env → forces direct spawn (debug)
+- `--ipc-bypass` flag → same
+- All 108 ctest pass
+
+### Deferred to v1.14+
+
+- T3 Combined SessionStart RPC
+- T4 Async prefetch on session start
+- T5 Tiered hot-cache LRU
+- T6 Hook output dedup
+- T7 Cross-turn unchanged-cache
+- T11 Self-test on upgrade
+- Embedded MCP server
+
 ## 1.12.0 — Single resident `icmg-core.exe` per user (3 → 1 long-running process)
 
 Before v1.12.0, each user typically ran 3 long-running icmg processes:

@@ -38,6 +38,20 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.13.0 — CLI-via-IPC + multi-user safety + uninstall + log rotation + hook scaffold
+
+Big architectural shift. CLI invocations now route through resident `icmg-core.exe` via IPC pipe instead of cold-spawning. ~5ms IPC vs ~360ms cold spawn = **~70× faster** hook calls.
+
+- **CLI-via-IPC** — new `icmg.exe` is hybrid client+launcher. Connects to `\\.\pipe\icmg-exec-<USERNAME>` → frames argv+cwd+stdin → streams stdout/stderr back. Falls back to direct spawn if service down.
+- **Multi-user safe** — all pipes now suffix with `<USERNAME>`. Previously global names collided when 2 OS users on same Win server.
+- **`icmg uninstall`** — clean removal (dry-run by default; `--confirm` to execute). POSIX includes systemd + launchd cleanup.
+- **Log rotation** — service logs auto-rotate at 5MB, retention 7 days. No more unbounded growth.
+- **`icmg hook-init <name>`** — scaffold custom hook scripts in `.claude/hooks/` with `hookio`-ready template.
+
+ctest 108/108. Drop-in. Restart service after upgrade.
+
+---
+
 ## 🛠 v1.12.0 — Single resident `icmg-core.exe` per user (3 long-running procs → 1)
 
 Pre-v1.12.0 each user ran 3 resident icmg processes: `service` (cron iterator) + `daemon` (UserPromptSubmit IPC) + `rule-daemon` (PreToolUse rule eval). Plus launcher staying alive for service lifetime due to `WaitForSingleObject`. Total: 3-5 procs per user, with potential bloat from duplicate-launch races.
@@ -68,25 +82,7 @@ launchctl list | grep icmg       :: macOS
 
 ---
 
-## 🛠 v1.10.0 — `icmg path-clean` kills `B:/` popup at PATH source + TDD backlog (5 new tests)
-
-**Root-cause fix for the recurring `B:/` popup.** Turned out **not** to be a DLL-loader issue (v1.7.0 launcher stub addressed that). It's the OS shell PATH lookup probing every PATH entry before any binary runs — popup fires before `icmg.exe` even starts. Fix: rewrite the persisted PATH env var.
-
-```cmd
-icmg path-clean status            :: dry-run list
-icmg path-clean apply             :: clean User PATH (HKCU, no admin)
-icmg path-clean apply --system    :: also clean System PATH (HKLM, admin)
-```
-
-Broadcasts `WM_SETTINGCHANGE` after apply. Restart Claude Code + open terminals → popup gone permanently.
-
-**ctest: 101 → 106 passed.** New suites: `test_hookio_cmd`, `test_cleanup_cmd`, `test_cron_store`, `test_context_budget_users`, `test_savings_user_panel`.
-
-Drop-in. Re-run `icmg init --force` to refresh AGENTS.md command index.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.9.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.10.0 and earlier.
 
 ---
 
