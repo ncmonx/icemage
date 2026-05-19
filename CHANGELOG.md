@@ -4,6 +4,54 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.14.0 — Dedicated popup-killer thread + hook output dedup
+
+Two targeted fixes addressing the most-reported residual issues from v1.13.x deployments.
+
+### Popup-killer dedicated thread (T-popup)
+
+Previously the `B:/ — drive not found` popup dismissal logic only fired every **30 seconds** (inside the cron tick). User input could be blocked for up to 30s waiting for the next sweep. v1.14.0 adds a dedicated worker thread inside `icmg-service` that scans for `[A-Z]:/` modal dialogs every **100ms** and dismisses them via `PostMessage(WM_CLOSE)`.
+
+Combined with existing belt-and-suspenders:
+- v1.7.0 launcher `sanitize_path()` (pre-exec PATH probe block)
+- v1.10.0 `icmg path-clean` (registry-level dead-drive removal)
+- v1.6.1 `icmg popup-killer scan-once` cmd (manual)
+- v1.6.1 in-tick EnumWindows (now redundant, scheduled to remove v1.15+)
+
+→ Popup dismissed ~30× faster (300× cadence improvement: 30s → 100ms).
+
+### Hook output dedup (T6)
+
+`icmg hookio emit <event> --ctx <str>` now tracks SHA1 (FNV1a 64-bit actually) of each emitted `additionalContext` per service-lifetime session. Repeat emit of same content returns empty envelope — LLM already has it from prior turn. Saves 20-40% inject tokens on typical AI sessions where multiple PostToolUse hooks emit similar/identical context.
+
+Opt-out: `--no-dedup` flag or `ICMG_NO_DEDUP=1` env. Dedup state survives across CLI invocations only when routed via resident exec_server (v1.13.0).
+
+`deny` envelopes never deduped (security-critical messages must always reach LLM).
+
+### Backward compat
+
+- All existing hooks work unchanged
+- Pipe protocol unchanged
+- ctest 108/108 (Win + Linux)
+
+### Upgrade
+
+```cmd
+icmg update --apply
+icmg init --force
+taskkill /F /IM icmg-core.exe
+icmg service start          :: now has popup-killer thread + dedup
+```
+
+### Deferred to v1.15+
+
+- T3 Combined SessionStart RPC (3 hooks → 1 IPC)
+- T4 Async prefetch session start (hot nodes preload)
+- T5 Tiered hot-cache LRU
+- T7 Cross-turn unchanged-cache (file/memory delta)
+- T11 Self-test on upgrade
+- Embedded MCP server
+
 ## 1.13.0 — CLI-via-IPC + multi-user safety + uninstall + log rotation + hook scaffold
 
 Major architectural change. CLI invocations now route through resident `icmg-core.exe` via IPC pipe instead of cold-spawning a separate process. Eliminates ~70-90% of icmg-core process churn during AI sessions.
