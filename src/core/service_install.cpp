@@ -65,7 +65,9 @@ bool installResidentService(std::string* err_out) {
     {
         std::ofstream f(vbs, std::ios::binary);
         if (!f) { setErr("cannot write VBS launcher"); return false; }
-        f << "CreateObject(\"Wscript.Shell\").Run \"icmg service run\", 0, False\r\n";
+        // v1.12.0: invoke icmg-core.exe directly (skip launcher wrapper)
+        // → 1 long-running proc instead of 2 (launcher + core).
+        f << "CreateObject(\"Wscript.Shell\").Run \"icmg-core service run\", 0, False\r\n";
     }
 
     // 2) Register logon-trigger task (overwrite with /F). v1.6.1: use cmd.exe

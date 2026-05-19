@@ -291,6 +291,21 @@ private:
     }
 
     int cmdStart(const std::vector<std::string>& args) {
+        // v1.12.0: if icmg-service is alive, it already hosts an embedded
+        // rule-daemon. No need to spawn separate icmg daemon process —
+        // would just bloat per-user proc count. Exit politely.
+        {
+            fs::path svc_pid = fs::path(core::icmgGlobalDir()) / "service.pid";
+            if (fs::exists(svc_pid)) {
+                std::ifstream pf(svc_pid);
+                int64_t pid = 0; pf >> pid;
+                if (pid > 0 && pidAlive(pid)) {
+                    std::cout << "icmg daemon: skipped — icmg-service (pid="
+                              << pid << ") already hosts embedded rule-daemon\n";
+                    return 0;
+                }
+            }
+        }
         if (fs::exists(daemonPidFile())) {
             std::ifstream pf(daemonPidFile());
             int64_t pid = 0; pf >> pid;

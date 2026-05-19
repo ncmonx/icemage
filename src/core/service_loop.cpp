@@ -5,8 +5,10 @@
 #include "config.hpp"
 #include "registry.hpp"
 #include "../cli/base_command.hpp"
+#include "../daemon/rule_daemon.hpp"
 
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -20,6 +22,7 @@
 
 #ifdef _WIN32
 #  include <windows.h>
+#  include <tlhelp32.h>
 #  include <process.h>
 #else
 #  include <unistd.h>
@@ -148,7 +151,16 @@ void ServiceLoop::tickOnce() {
     }
     if (any_ran) writeState(state);
 
-    // v1.6.0: also fire per-project cron_jobs (replaces N×5 schtasks).
+    // v1.6.0 + v1.11.1: fire per-project cron_jobs IN-PROCESS.
+    //
+    // Previous (v1.6.0-v1.11.0): each due chore spawned `cd <proj> && icmg
+    // <chore>` as detached subprocess. With 10+ jobs across N projects
+    // every 15min, this leaked stale icmg.exe orphans when any chore hung
+    // (DB lock, wscript stuck). Process bloat + WAL contention.
+    //
+    // Now: tokenize chore -> registry lookup -> cmd->run(argv) directly in
+    // this process. chdir saved+restored per chore. try/catch isolates
+    // chore crashes from service main loop.
     try {
         CronStore cs(Config::instance().globalDbPath());
         auto due = cs.dueJobs(now);
@@ -156,22 +168,89 @@ void ServiceLoop::tickOnce() {
             if (g_stop.load()) break;
             std::error_code ec;
             if (!fs::exists(j.project_path, ec)) {
-                cs.removeProject(j.project_path);  // auto-prune dead projects
+                cs.removeProject(j.project_path);
                 continue;
             }
-            // Detached subprocess: cd project_path && icmg <chore>. Sub
-            // process inherits icmg-service's SEM (no B:/ popup) and runs
-            // with project_path as cwd.
-            std::string cmd = "cd "" + j.project_path + "" && icmg " + j.chore
-                            + " >> .icmg/cron.log 2>&1";
-            (void)safeExecShell(cmd, /*detach=*/true, /*timeout_ms=*/300000);
+
+            // Tokenize chore on whitespace into argv.
+            std::vector<std::string> argv;
+            {
+                std::string cur;
+                for (char c : j.chore) {
+                    if (c == ' ' || c == '\t') {
+                        if (!cur.empty()) { argv.push_back(cur); cur.clear(); }
+                    } else cur += c;
+                }
+                if (!cur.empty()) argv.push_back(cur);
+            }
+            if (argv.empty()) { cs.markRan(j.project_path, j.chore, now); continue; }
+
+            std::string cmd_name = argv.front();
+            std::vector<std::string> rest(argv.begin() + 1, argv.end());
+
+            // Save + switch cwd. SetCurrentDirectory is process-global -
+            // safe here because tickOnce runs serially in single thread.
+            fs::path saved_cwd = fs::current_path(ec);
+            if (ec) { ec.clear(); }
+            fs::current_path(j.project_path, ec);
+            if (ec) {
+                std::cerr << "icmg service: cwd switch failed for "
+                          << j.project_path << ": " << ec.message() << "\n";
+                ec.clear();
+                continue;
+            }
+
+            try {
+                auto cmd = reg.create(cmd_name);
+                if (cmd) {
+                    (void)cmd->run(rest);
+                } else {
+                    std::cerr << "icmg service: unknown chore cmd '"
+                              << cmd_name << "' for " << j.project_path << "\n";
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "icmg service: chore '" << j.chore
+                          << "' threw: " << e.what() << "\n";
+            } catch (...) {
+                std::cerr << "icmg service: chore '" << j.chore
+                          << "' threw unknown exception\n";
+            }
+
+            // Restore cwd unconditionally - even if chore threw.
+            if (!saved_cwd.empty()) {
+                fs::current_path(saved_cwd, ec);
+                if (ec) ec.clear();
+            }
+
             cs.markRan(j.project_path, j.chore, now);
         }
-    } catch (...) { /* swallow — cron_jobs is best-effort */ }
+    } catch (...) { /* swallow - cron_jobs is best-effort */ }
 }
 
 int ServiceLoop::run() {
     installSignalHandlers();
+
+    // v1.12.0: singleton lock — refuse second icmg-service instance for
+    // this user. Prevents process bloat from duplicate service starts
+    // (logon trigger + manual start + Startup-folder fallback).
+#ifdef _WIN32
+    {
+        char user[256] = {0}; DWORD len = sizeof(user);
+        GetUserNameA(user, &len);
+        std::string mtx_name = std::string("Global\\icmg-service-") + user;
+        HANDLE mtx = CreateMutexA(nullptr, FALSE, mtx_name.c_str());
+        if (mtx == nullptr) {
+            std::cerr << "icmg service: mutex create failed (err="
+                      << GetLastError() << ")\n";
+        } else if (GetLastError() == ERROR_ALREADY_EXISTS) {
+            std::cerr << "icmg service: another instance already running"
+                      << " (mutex " << mtx_name << " held). Exiting.\n";
+            CloseHandle(mtx);
+            return 0;  // not an error — duplicate launches are normal
+        }
+        // Keep handle alive for process lifetime (mutex released on exit).
+    }
+#endif
 
     // Write PID file so `icmg service status` can identify us.
     try {
@@ -185,13 +264,38 @@ int ServiceLoop::run() {
 #endif
     } catch (...) {}
 
-    std::cerr << "icmg service: started, tick=30s\n";
+    // v1.12.0: spawn rule-daemon IPC server on dedicated thread.
+    // Merges what was previously a separate `icmg-rule-daemon` process.
+    // Pipe protocol identical → existing clients (hooks) unaffected.
+    std::thread daemon_thread;
+    try {
+        daemon_thread = std::thread([]{
+            try {
+                daemon::RuleDaemon d(Config::instance().globalDbPath());
+                d.run();
+            } catch (const std::exception& e) {
+                std::cerr << "icmg service: rule-daemon thread threw: "
+                          << e.what() << "\n";
+            } catch (...) {
+                std::cerr << "icmg service: rule-daemon thread threw unknown\n";
+            }
+        });
+    } catch (...) {
+        std::cerr << "icmg service: rule-daemon thread spawn failed\n";
+    }
+
+    std::cerr << "icmg service: started, tick=30s, rule-daemon embedded\n";
     while (!g_stop.load()) {
         tickOnce();
         for (int i = 0; i < 30 && !g_stop.load(); ++i) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }
+
+    // Detach daemon thread — pipe blocks on accept; clean shutdown via
+    // SHUTDOWN RPC would require sending to self. Detach is acceptable
+    // because process is exiting anyway; OS reclaims pipe + thread.
+    if (daemon_thread.joinable()) daemon_thread.detach();
 
     // Cleanup PID file.
     std::error_code ec;

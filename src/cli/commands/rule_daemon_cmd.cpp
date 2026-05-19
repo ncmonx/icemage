@@ -9,6 +9,7 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
+#include "../../core/path_utils.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../daemon/rule_daemon.hpp"
 #include "../../daemon/rule_daemon_client.hpp"
@@ -85,6 +86,20 @@ public:
         }
 
         if (sub == "start") {
+            // v1.12.0: icmg-service embeds rule-daemon. Skip if service alive.
+            {
+                std::filesystem::path svc_pid =
+                    std::filesystem::path(core::icmgGlobalDir()) / "service.pid";
+                if (std::filesystem::exists(svc_pid)) {
+                    std::ifstream pf(svc_pid);
+                    long long pid = 0; pf >> pid;
+                    if (pid > 0 && RuleDaemonClient::ping()) {
+                        std::cout << "rule-daemon: skipped — icmg-service (pid="
+                                  << pid << ") already hosts embedded rule-daemon\n";
+                        return 0;
+                    }
+                }
+            }
             if (RuleDaemonClient::ping()) {
                 std::cout << "rule-daemon: already running (pid=" << readPid() << ")\n";
                 return 0;
