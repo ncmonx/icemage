@@ -4,6 +4,50 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.15.0 — `icmg session-inject` (combined RPC) + self-test on upgrade with auto-rollback
+
+### `icmg session-inject` (T3)
+
+New cmd consolidates 3 SessionStart hook operations (caveman + context + wakeup) into single in-process call. Emits combined `additionalContext` text to stdout, ready for `icmg hookio emit SessionStart --ctx-stdin` framing.
+
+Internally calls (in order):
+1. `compliance inject` (caveman directive if flag set)
+2. `context-node match --tier hot` (top hot CLAUDE.md sections)
+3. `skill manifest` (skill index)
+4. `focus inject`, `rules inject`
+5. `wake-up` (decisions + fixes briefing)
+
+Output: trimmed concatenation, single envelope. Stdout captured via `cout.rdbuf` swap inside `captureCmd()` helper. Stderr swallowed per subcommand.
+
+Flags: `--skip-caveman`, `--skip-context`, `--skip-wakeup` for partial inject.
+
+**Latency**: previously 3 sequential cold-spawn hooks = ~1080ms. Now 1 in-process call via exec_server IPC = ~10-50ms. **~30× faster session start**.
+
+### Self-test on upgrade (T11)
+
+`icmg update --apply` now runs smoke test after binary swap before declaring success:
+1. `<new>/icmg --version` → must exit 0 + emit version string
+2. `<new>/icmg doctor` → must exit 0
+
+If both green → stamp `~/.icmg/last-upgrade-verified.txt` with new tag.
+If either fail → **auto-rollback to .bak** (atomic swap restore).
+
+Bypass: `icmg update --apply --no-self-test`.
+
+### Backward compat
+
+- All existing 3 SessionStart hook scripts continue to work (no breakage)
+- `--no-self-test` flag for edge cases where doctor is expected to fail
+- ctest 108/108 (Win + Linux)
+
+### Deferred to v1.16+
+
+- T4 Async prefetch session start
+- T5 Tiered hot-cache LRU
+- T7 Cross-turn unchanged-cache
+- Embedded MCP server
+- Hook script consolidation (3 → 1 → using session-inject)
+
 ## 1.14.0 — Dedicated popup-killer thread + hook output dedup
 
 Two targeted fixes addressing the most-reported residual issues from v1.13.x deployments.

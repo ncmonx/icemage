@@ -38,6 +38,15 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.15.0 — `icmg session-inject` (30× faster session start) + self-test on upgrade with auto-rollback
+
+- **`icmg session-inject`** — combines 3 SessionStart hooks (caveman + context + wakeup) into single in-process call. ~30× faster session start (~1080ms → ~10-50ms via exec_server IPC).
+- **Self-test on upgrade** — `icmg update --apply` runs smoke (`--version` + `doctor`) on new binary. Auto-rollback to `.bak` on failure. Marker file `~/.icmg/last-upgrade-verified.txt`. Bypass via `--no-self-test`.
+
+ctest 108/108. Drop-in. Existing hooks continue to work; session-inject available for opt-in adoption.
+
+---
+
 ## 🛠 v1.14.0 — Dedicated popup-killer thread (300× faster dismissal) + hook output dedup
 
 Two targeted fixes for residual v1.13.x deployment issues.
@@ -63,22 +72,7 @@ ctest 108/108. Drop-in. Restart service after upgrade.
 
 ---
 
-## 🛠 v1.12.0 — Single resident `icmg-core.exe` per user (3 long-running procs → 1)
-
-Pre-v1.12.0 each user ran 3 resident icmg processes: `service` (cron iterator) + `daemon` (UserPromptSubmit IPC) + `rule-daemon` (PreToolUse rule eval). Plus launcher staying alive for service lifetime due to `WaitForSingleObject`. Total: 3-5 procs per user, with potential bloat from duplicate-launch races.
-
-v1.12.0 consolidates everything into **one `icmg-core.exe` per user**:
-- **Singleton mutex** `Global\icmg-service-<USERNAME>` → duplicate launches exit clean.
-- **Embedded rule-daemon** runs as a dedicated thread inside the service process (pipe protocol unchanged).
-- **`icmg daemon start` / `icmg rule-daemon start`** detect alive service → skip, no extra proc.
-- **VBS launcher bypass**: schtask invokes `icmg-core service run` directly, eliminating the launcher wrapper that previously stayed resident.
-- **Cron in-process**: due chores dispatch via in-process registry call instead of `icmg <chore>` subprocess spawn. No more orphan accumulation when chores hang.
-
-ctest 108/108. Drop-in. `icmg init --force` rewrites VBS; reboot or restart service to swap.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.11.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.12.0 and earlier.
 
 ---
 
