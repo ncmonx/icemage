@@ -20,6 +20,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Pre-fetch third-party (sqlite3 + nlohmann/json)
+        shell: bash
+        env:
+          PATH: /c/msys64/mingw64/bin:${{ env.PATH }}
+        run: |
+          mkdir -p third_party/sqlite3 third_party/nlohmann
+          if [ ! -f third_party/sqlite3/sqlite3.c ]; then
+            curl -fsSLk -o sqlite.zip https://www.sqlite.org/2024/sqlite-amalgamation-3470100.zip
+            unzip -j -o sqlite.zip 'sqlite-amalgamation-*/sqlite3.[ch]' -d third_party/sqlite3
+            rm -f sqlite.zip
+          fi
+          if [ ! -f third_party/nlohmann/json.hpp ]; then
+            curl -fsSLk -o third_party/nlohmann/json.hpp \
+              https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
+          fi
+          ls -la third_party/sqlite3/sqlite3.c third_party/nlohmann/json.hpp
+
       - name: Configure CMake (Release, MinGW)
         shell: bash
         env:
