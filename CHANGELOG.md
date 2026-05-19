@@ -4,6 +4,41 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.11.0 — POSIX systemd + macOS launchd service installers + TDD backlog (108/108)
+
+### Cross-platform service install
+
+Before v1.11.0, `icmg service install` was Windows-only (schtasks/Startup-folder fallback). POSIX users had to hand-craft systemd units or cron entries. v1.11.0 wires up native init systems:
+
+**Linux (systemd user unit):**
+- Writes `~/.config/systemd/user/icmg.service` with `ExecStart=<icmg> service run`, `Restart=on-failure`, log files to `~/.icmg/service.{out,err}.log`.
+- Runs `systemctl --user daemon-reload && enable && start`. Graceful degrade if user session bus unavailable (writes unit, prints manual command).
+
+**macOS (launchd user agent):**
+- Writes `~/Library/LaunchAgents/com.icmg.service.plist` with `RunAtLoad=true`, `KeepAlive=true`, stdio paths to `~/.icmg/service.{out,err}.log`.
+- Runs `launchctl unload + load` (idempotent unload first ignored on error).
+
+Binary path resolved via `/proc/self/exe` (Linux) or `_NSGetExecutablePath` (macOS).
+
+Windows path unchanged: schtasks ONLOGON → Startup-folder fallback when elevation denied (v1.6.6+v1.8.1 wscript fix retained).
+
+### TDD backlog (ctest 106 → 108)
+
+| Test | Coverage |
+| --- | --- |
+| `test_path_clean_cmd` | registration, --help, status dry-run, unknown action, POSIX no-op branch |
+| `test_sweep_legacy_schtasks` | returns non-negative count, idempotent second-call, icmgTaskHash stability + distinctness |
+
+### Drop-in upgrade
+
+No DB migration. On POSIX after upgrade:
+
+```bash
+icmg service install     # writes unit/plist + enables
+systemctl --user status icmg     # Linux verify
+launchctl list | grep icmg       # macOS verify
+```
+
 ## 1.10.0 — `icmg path-clean` kills `B:/` popup at PATH source + TDD backlog burn (5 new tests)
 
 ### New: `icmg path-clean`
