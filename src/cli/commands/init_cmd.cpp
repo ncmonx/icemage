@@ -1060,12 +1060,13 @@ private:
                     // for big projects, warm <5s.
                     {{"type", "command"},
                      {"command", "command -v icmg >/dev/null 2>&1 && icmg graph scan >> .icmg/scan.log 2>&1 &"}},
+                    // v1.16.0: combined SessionStart inject via session-inject
+                    // (replaces 3 sequential cold-spawn hooks: caveman + context
+                    // + wakeup). ~30× faster session start via in-process call.
+                    // Existing 3 hook scripts still written for backward compat
+                    // (manual invocation, debugging) but no longer registered.
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-caveman-prompt.sh) || bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
-                    {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-context-session.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-context-session.sh) || bash .claude/hooks/icmg-context-session.sh || exit 0"}},
-                    {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-wakeup-session.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-wakeup-session.sh) || bash .claude/hooks/icmg-wakeup-session.sh || exit 0"}}
+                     {"command", "command -v icmg >/dev/null 2>&1 && icmg session-inject 2>/dev/null | icmg hookio emit SessionStart --ctx-stdin || exit 0"}}
                 })}
             }
         });
