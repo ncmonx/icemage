@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 1.10.0 LANGUAGES CXX C)
+project(icmg VERSION 1.11.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -581,3 +581,6 @@ add_icmg_test(test_cleanup_cmd          tests/cli/test_cleanup_cmd.cpp)
 add_icmg_test(test_cron_store           tests/core/test_cron_store.cpp)
 add_icmg_test(test_context_budget_users tests/cli/test_context_budget_users.cpp)
 add_icmg_test(test_savings_user_panel   tests/cli/test_savings_user_panel.cpp)
+# v1.11.0 backlog:
+add_icmg_test(test_path_clean_cmd       tests/cli/test_path_clean_cmd.cpp)
+add_icmg_test(test_sweep_legacy_schtasks tests/core/test_sweep_legacy_schtasks.cpp)
