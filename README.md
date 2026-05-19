@@ -38,6 +38,21 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.11.0 — POSIX systemd + macOS launchd service installers + TDD backlog (108/108)
+
+`icmg service install` now native on Linux (systemd `--user` unit) and macOS (launchd LaunchAgent plist). Auto-resolves icmg binary path via `/proc/self/exe` or `_NSGetExecutablePath`, writes unit/plist, enables + starts. Windows path unchanged (schtasks + Startup-folder fallback retained).
+
+ctest 106 → 108. New: `test_path_clean_cmd`, `test_sweep_legacy_schtasks`.
+
+Drop-in. After upgrade on POSIX:
+```bash
+icmg service install
+systemctl --user status icmg     :: Linux
+launchctl list | grep icmg       :: macOS
+```
+
+---
+
 ## 🛠 v1.10.0 — `icmg path-clean` kills `B:/` popup at PATH source + TDD backlog (5 new tests)
 
 **Root-cause fix for the recurring `B:/` popup.** Turned out **not** to be a DLL-loader issue (v1.7.0 launcher stub addressed that). It's the OS shell PATH lookup probing every PATH entry before any binary runs — popup fires before `icmg.exe` even starts. Fix: rewrite the persisted PATH env var.
@@ -68,13 +83,7 @@ Drop-in. No DB migration.
 
 ---
 
-## 🛠 v1.8.1 — Hotfix: service-install wscript invocation shell-agnostic
-
-`icmg init` failed with `'MSYS_NO_PATHCONV' is not recognized as an internal or external command` when invoked from cmd.exe or PowerShell (v1.6.6 fix had used bash-style env prefix which cmd doesn't parse). Root fix: drop shell wrapper for wscript entirely — direct `CreateProcessW` with explicit argv. Works from bash, cmd, PS uniformly.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.8.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.8.1 and earlier.
 
 ---
 
