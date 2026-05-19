@@ -4,6 +4,48 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.10.0 — `icmg path-clean` kills `B:/` popup at PATH source + TDD backlog burn (5 new tests)
+
+### New: `icmg path-clean`
+
+The `B:/ — The system cannot find the drive specified` popup turned out to **not** be a DLL-loader issue (which v1.7.0 launcher stub fixed). It's the OS **shell PATH lookup** firing before any binary runs: when cmd.exe / PowerShell / bash resolves `icmg` (or any other command), it walks every PATH entry. Entries on non-existent drives raise the modal **before icmg.exe even starts**, so the launcher's `sanitize_path()` runs too late.
+
+Fix: rewrite the persisted PATH env var to drop dead-drive entries.
+
+- `icmg path-clean status` — dry-run; list dead-drive entries in HKCU and HKLM PATH.
+- `icmg path-clean apply` — clean User PATH (`HKCU\Environment\Path`); no admin needed.
+- `icmg path-clean apply --system` — also clean System PATH (`HKLM\…\Environment\Path`); admin required.
+
+After apply, `WM_SETTINGCHANGE` broadcast notifies live procs. Restart Claude Code + open terminals for popup to stop permanently.
+
+POSIX: no-op (no Win32 shell drive-probe issue).
+
+### TDD backlog burn — 5 new test suites
+
+ctest count: **101 → 106** passed.
+
+| Test | Coverage |
+| --- | --- |
+| `test_hookio_cmd` | `get` (nested path, escape, null, leading dot, number), `emit` (--ctx, --deny, --ctx-stdin), `escape` |
+| `test_cleanup_cmd` | Win-only smoke: registration, `--help`, `all`, `orphans`, `kill-orphans` confirm-gate, unknown action |
+| `test_cron_store` | `upsert` idempotency, `remove`/`removeProject`, `dueJobs` interval respect, `markRan` |
+| `test_context_budget_users` | `--all-users` flag accepted, JSON output gains `user_count` + `users[]` |
+| `test_savings_user_panel` | Registration smoke (DB-init throw-safe on clean machines) |
+
+### Housekeeping (private remote only)
+
+29 stale branches deleted on `ncmonx/icm-graph-src`: every `release/vX.Y.Z` (v0.55 through v1.8.1), legacy `feat/phase-50-*` / `feat/phase-82..84-*`, `fix/claudemd-import-recursive-scan`, `docs/health-schema-fix`, `wip/b2-daemon-refactor`. Backup branches (`backup-pre-*`, `restore/private-main`) retained as safety nets. All v0.55+ tags retained — content fully preserved.
+
+### Drop-in upgrade
+
+No DB migration. Re-run `icmg init --force` to refresh AGENTS.md command index (now includes `path-clean`). Then:
+
+```cmd
+icmg path-clean status
+icmg path-clean apply
+:: restart Claude Code → B:/ popup gone permanently
+```
+
 ## 1.9.0 — Multi-user dashboard + Active-users panel + per-session User column
 
 Two complementary additions to the savings dashboard and `context-budget` command:

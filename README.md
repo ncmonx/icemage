@@ -38,6 +38,24 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.10.0 — `icmg path-clean` kills `B:/` popup at PATH source + TDD backlog (5 new tests)
+
+**Root-cause fix for the recurring `B:/` popup.** Turned out **not** to be a DLL-loader issue (v1.7.0 launcher stub addressed that). It's the OS shell PATH lookup probing every PATH entry before any binary runs — popup fires before `icmg.exe` even starts. Fix: rewrite the persisted PATH env var.
+
+```cmd
+icmg path-clean status            :: dry-run list
+icmg path-clean apply             :: clean User PATH (HKCU, no admin)
+icmg path-clean apply --system    :: also clean System PATH (HKLM, admin)
+```
+
+Broadcasts `WM_SETTINGCHANGE` after apply. Restart Claude Code + open terminals → popup gone permanently.
+
+**ctest: 101 → 106 passed.** New suites: `test_hookio_cmd`, `test_cleanup_cmd`, `test_cron_store`, `test_context_budget_users`, `test_savings_user_panel`.
+
+Drop-in. Re-run `icmg init --force` to refresh AGENTS.md command index.
+
+---
+
 ## 🛠 v1.9.0 — Multi-user dashboard + Active-users panel + per-session User column
 
 `icmg savings --html` per-session table now shows the OS user owning each transcript. Single-user systems display the current user; shared servers see per-user rows.
@@ -56,22 +74,7 @@ Drop-in. No DB migration.
 
 ---
 
-## 🛠 v1.8.0 — `icmg hookio` drops jq dependency + launcher stub eliminates `B:/` popup
-
-Three big fixes in one release.
-
-| Fix | What changed |
-| --- | --- |
-| **`icmg hookio` replaces jq** | New native C++ stdin-JSON helper. All bundled hook scripts refactored: `jq -r '.tool_input.command'` → `icmg hookio get tool_input.command`. **No more `jq: command not found` errors** on user machines without jq installed. Zero external dependency. |
-| **Launcher stub** | New `icmg.exe` is a 48 KB launcher (kernel32+user32 only); full binary moved to `icmg-core.exe`. Launcher sets `SetErrorMode` + sanitizes PATH **before** spawning core → DLL-loader probes can no longer trigger the `B:/` drive-not-found popup. Solved at root, not at user-space patch. |
-| **`icmg cleanup` orphans** | Enumerate + kill stuck `icmg.exe` instances holding SQLite WAL locks. `icmg update` now preflights and hints `icmg cleanup` when conflict detected. |
-| **Lazy-DB whitelist** | `hook`, `shield`, `popup-killer`, `update`, `daemon`, `service`, `cronjobs`, `shadow-upgrade`, `cleanup` skip `ensureProjectDb` → no WAL contention on hot paths. |
-
-Re-run `icmg init --force` per project after upgrading — hook scripts regenerate without jq calls.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.6.6 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.8.0 and earlier.
 
 ---
 
