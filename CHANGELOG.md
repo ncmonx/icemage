@@ -4,6 +4,71 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.16.0 — SessionStart hook consolidation (3 → 1) + turn_cache infrastructure
+
+### Hook consolidation (T3 final wire)
+
+v1.15.0 introduced `icmg session-inject` cmd. v1.16.0 wires it into `init_cmd`'s `.claude/settings.local.json` SessionStart entry — 3 sequential hook calls collapsed to 1 IPC call.
+
+Before (v1.15 default):
+```json
+"SessionStart": [{"hooks": [
+  {"command": "icmg daemon start ... &"},
+  {"command": "icmg graph scan ... &"},
+  {"command": "... icmg-caveman-prompt.sh ..."},   ← cold spawn ~360ms
+  {"command": "... icmg-context-session.sh ..."},   ← cold spawn ~360ms
+  {"command": "... icmg-wakeup-session.sh ..."}     ← cold spawn ~360ms
+]}]
+```
+
+After (v1.16):
+```json
+"SessionStart": [{"hooks": [
+  {"command": "icmg daemon start ... &"},
+  {"command": "icmg graph scan ... &"},
+  {"command": "icmg session-inject | icmg hookio emit SessionStart --ctx-stdin"}  ← 1 IPC ~10-50ms
+]}]
+```
+
+Net cold-start savings: **~1000ms per session start**.
+
+The 3 legacy hook scripts (`icmg-caveman-prompt.sh`, `icmg-context-session.sh`, `icmg-wakeup-session.sh`) are still written for backward compat + manual debug. Just no longer registered.
+
+### `core::turn_cache` infrastructure
+
+New module `src/core/turn_cache.{hpp,cpp}` — cross-turn result cache for expensive commands. Tracks `(cmd, args)` → result hash + mtime + timestamp. On repeat call with unchanged inputs within TTL (5 min default), can return short `<icmg-cached:abc12345>` ref instead of full content.
+
+API:
+- `turn_cache::lookup(cmd, args, mtime) → ref or ""`
+- `turn_cache::recordResult(cmd, args, mtime, content)`
+- `turn_cache::resetSession()`
+- `turn_cache::hits()` / `misses()` for metrics
+
+Per-command wiring (icmg context, icmg recall, etc.) deferred to v1.17+ once turn_cache design validated.
+
+### Compat
+
+- Existing hooks unchanged (legacy 3 scripts retained as files)
+- `icmg init --force` rewrites settings.local.json with consolidated entry
+- ctest 108/108 (Win + Linux)
+
+### Upgrade
+
+```cmd
+icmg update --apply       :: self-test on upgrade (v1.15.0 feature)
+icmg init --force         :: wire consolidated SessionStart hook
+taskkill /F /IM icmg-core.exe
+icmg service start
+```
+
+### Deferred to v1.17+
+
+- T4 Async prefetch session start (hot nodes pre-warm)
+- T5 Tiered hot-cache LRU (RAM > SQLite)
+- T7 turn_cache per-cmd wiring (icmg context, recall, graph, etc.)
+- Embedded MCP server
+- TDD backlog (session-inject, turn_cache, popup thread, etc.)
+
 ## 1.15.0 — `icmg session-inject` (combined RPC) + self-test on upgrade with auto-rollback
 
 ### `icmg session-inject` (T3)
