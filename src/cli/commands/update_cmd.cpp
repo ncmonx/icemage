@@ -111,6 +111,7 @@ public:
         bool json_out = hasFlag(args, "--json");
         bool skip_verify = hasFlag(args, "--skip-verify");
         bool no_auto_rollback = hasFlag(args, "--no-auto-rollback");
+        bool no_self_test = hasFlag(args, "--no-self-test");
 
         if (rollback) return doRollback();
         if (!check && !apply) { usage(); return 1; }
@@ -136,7 +137,7 @@ public:
         if (check || cmp >= 0) return 0;
         if (!apply) return 0;
 
-        return doApply(latest, skip_verify, no_auto_rollback);
+        return doApply(latest, skip_verify, no_auto_rollback, no_self_test);
     }
 
 private:
@@ -439,7 +440,8 @@ private:
 #endif
     }
 
-    int doApply(const Release& r, bool skip_verify, bool no_auto_rollback = false) {
+    int doApply(const Release& r, bool skip_verify, bool no_auto_rollback = false,
+                 bool no_self_test = false) {
         if (r.asset_url.empty()) {
             std::cerr << "icmg update: no platform asset on release " << r.tag << "\n";
             return 3;
@@ -694,6 +696,46 @@ private:
                         std::cout << "  System binary refreshed: " << dest_bin.string() << "\n";
                     }
                 }
+            }
+        }
+
+        // v1.15.0: self-test smoke after upgrade. Run `icmg --version` +
+        // `icmg doctor` on the new binary. If both succeed, stamp a marker
+        // file; if either fails, auto-rollback to .bak (binary swap).
+        if (!no_self_test) {
+            std::cout << "Running post-upgrade self-test...\n";
+            std::string vcmd = "\"" + self.string() + "\" --version";
+            auto vr = core::safeExecShell(vcmd, true, 10000);
+            bool version_ok = (vr.exit_code == 0
+                && vr.out.find(CURRENT_VERSION) == std::string::npos);
+            // version_ok check is intentionally inverted-then-corrected: we
+            // expect the NEW binary's version, not the old CURRENT_VERSION.
+            version_ok = (vr.exit_code == 0 && !vr.out.empty());
+
+            std::string dcmd = "\"" + self.string() + "\" doctor";
+            auto dr = core::safeExecShell(dcmd, true, 15000);
+            bool doctor_ok = (dr.exit_code == 0);
+
+            if (version_ok && doctor_ok) {
+                std::ofstream st(core::icmgGlobalDir()
+                                  + "/last-upgrade-verified.txt");
+                if (st) st << r.tag << "\n";
+                std::cout << "  Self-test: PASS (version + doctor green).\n";
+            } else {
+                std::cerr << "  Self-test FAILED: version_ok=" << version_ok
+                          << " doctor_ok=" << doctor_ok << "\n"
+                          << "  Auto-rollback to " << bak.string() << "...\n";
+                std::error_code rec;
+                fs::path swap_p = self; swap_p += ".swap";
+                fs::rename(self, swap_p, rec);
+                fs::rename(bak, self, rec);
+                if (!rec) {
+                    fs::remove(swap_p, rec);
+                    std::cerr << "  Rollback complete. Run `icmg update --apply"
+                              << " --skip-verify --no-self-test` to bypass.\n";
+                    return 9;
+                }
+                std::cerr << "  Rollback FAILED: " << rec.message() << "\n";
             }
         }
 
