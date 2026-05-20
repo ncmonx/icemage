@@ -3,6 +3,8 @@
 #include <vector>
 #include <filesystem>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "core/config.hpp"
 #include "core/version.hpp"
 #include "core/db.hpp"
@@ -103,6 +105,46 @@ int main(int argc, char* argv[]) {
     // silently instead of showing a system dialog; SEM_NOOPENFILEERRORBOX
     // suppresses the "file not found" UI.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+
+    // v1.19.0: sanitize PATH inside icmg-core too — when icmg-core is invoked
+    // directly (Task Scheduler, Startup folder, schtask, user manual exec),
+    // exec_client's sanitize_path() never ran. Strip PATH entries pointing
+    // to non-existent drives (B:\ from MSYS /b/ paths is the chronic culprit).
+    // This must run BEFORE any DLL LoadLibrary or fs::exists() probe so the
+    // Win loader's PATH scan for delay-loaded DLLs sees the clean PATH.
+    {
+        char* path = std::getenv("PATH");
+        if (path) {
+            DWORD drives = GetLogicalDrives();
+            size_t len = std::strlen(path);
+            std::vector<char> out(len + 1, '\0');
+            size_t oi = 0;
+            const char* start = path;
+            for (const char* p = path; ; ++p) {
+                if (*p == ';' || *p == '\0') {
+                    size_t seg_len = (size_t)(p - start);
+                    bool skip = false;
+                    if (seg_len >= 2 && start[1] == ':') {
+                        char drv = start[0];
+                        if (drv >= 'a' && drv <= 'z') drv = (char)(drv - 32);
+                        if (drv >= 'A' && drv <= 'Z') {
+                            int bit = drv - 'A';
+                            if (!((drives >> bit) & 1)) skip = true;
+                        }
+                    }
+                    if (!skip && seg_len > 0) {
+                        if (oi > 0) out[oi++] = ';';
+                        std::memcpy(out.data() + oi, start, seg_len);
+                        oi += seg_len;
+                    }
+                    if (*p == '\0') break;
+                    start = p + 1;
+                }
+            }
+            SetEnvironmentVariableA("PATH", out.data());
+        }
+    }
+
     attachParentConsoleIfAny();
     sweepDllOldSidecars();
 #endif

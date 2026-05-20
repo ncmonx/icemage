@@ -714,8 +714,9 @@ public:
         }
 
         // v0.42.0 T-18: auto-start rule-daemon if not already running.
+        // v1.19.0: ping timeout 3s → 1s (PING IPC trivial).
         {
-            auto ping = core::safeExecShell("icmg rule-eval --tool PING 2>/dev/null", false, 3000);
+            auto ping = core::safeExecShell("icmg rule-eval --tool PING 2>/dev/null", false, 1000);
             if (ping.exit_code != 0) {
                 auto r = core::safeExecShell("icmg rule-daemon start 2>&1", false, 5000);
                 if (r.exit_code == 0) {
@@ -728,42 +729,30 @@ public:
             }
         }
 
-        // v0.44.0 + v1.18.1: auto-import + slim CLAUDE.md(s).
+        // v0.44.0 + v1.18.1 + v1.19.0: auto-import + slim CLAUDE.md(s).
         // ICMG_NO_AUTOSPAWN=1 prevents exec_client cascade spawn race.
-        // Reduced timeouts: imports should be fast (<5s typical).
+        // v1.19.0: 3 independent imports fan-out in parallel via icmg parallel
+        // → wall-clock = max(claudemd, plan, skill) instead of sum.
 #ifdef _WIN32
         const char* env_prefix = "set ICMG_NO_AUTOSPAWN=1 && ";
 #else
         const char* env_prefix = "ICMG_NO_AUTOSPAWN=1 ";
 #endif
         {
-            std::string cmd = std::string(env_prefix)
-                            + "icmg claudemd import --slim 2>&1";
-            auto r = core::safeExecShell(cmd, false, 10000);
+            // Parallel fan-out: 3 sub-imports.
+            std::string parallel_cmd = std::string(env_prefix)
+                + "icmg parallel"
+                + " --task \"icmg claudemd import --slim\""
+                + " --task \"icmg plan import\""
+                + " --task \"icmg skill index\""
+                + " --timeout 15 2>&1";
+            auto r = core::safeExecShell(parallel_cmd, false, 18000);
             if (r.exit_code == 0) {
                 std::cout << "  context-graph: CLAUDE.md imported + slimmed (backup in .icmg/)\n";
-            } else {
-                std::cout << "  context-graph: run `icmg claudemd import --slim` to slim CLAUDE.md\n";
-            }
-        }
-        // v0.44.0: auto-import plan files.
-        {
-            std::string cmd = std::string(env_prefix)
-                            + "icmg plan import 2>&1";
-            auto r = core::safeExecShell(cmd, false, 8000);
-            if (r.exit_code == 0) {
                 std::cout << "  plan-graph:    plan files imported to context_nodes\n";
-            }
-        }
-
-        // v0.45.1 + v1.18.1: auto-index skill files. Hash-based skip if
-        // skill dir unchanged (saves ~5-10s on no-op re-init).
-        {
-            std::string cmd = std::string(env_prefix)
-                            + "icmg skill index 2>&1";
-            auto r = core::safeExecShell(cmd, false, 15000);
-            if (r.exit_code == 0) {
                 std::cout << "  skill-index:   skill files indexed for feature discovery\n";
+            } else {
+                std::cout << "  imports:       run `icmg claudemd import --slim`, `icmg plan import`, `icmg skill index` manually\n";
             }
         }
 
@@ -781,12 +770,10 @@ public:
             }
             core::CronStore cs(core::Config::instance().globalDbPath());
             if (!no_backup) {
-                std::cout << "  backup:     registering hourly auto-snapshot...\n";
-                auto r1 = core::safeExecShell("icmg backup snapshot --note init", false, 30000);
-                if (r1.exit_code != 0)
-                    std::cerr << "    [warn] initial snapshot failed (continuing)\n";
+                // v1.19.0: skip eager initial snapshot (was ≤30s).
+                // First cron tick fires within 60m anyway; init now <1s here.
                 cs.upsert(cwd, "backup snapshot --note auto-hourly", 60);
-                std::cout << "    OK: cron_jobs every 60m\n";
+                std::cout << "  backup:     cron registered every 60m (initial snapshot deferred)\n";
             }
             if (!no_maintain) {
                 std::cout << "  maintain:   registering 6h hygiene...\n";
@@ -794,12 +781,10 @@ public:
                 std::cout << "    OK: cron_jobs every 360m\n";
             }
             if (!no_mirror) {
-                std::cout << "  mirror:     registering 15m dual-mirror...\n";
-                auto r1 = core::safeExecShell("icmg mirror sync", false, 30000);
-                if (r1.exit_code != 0)
-                    std::cerr << "    [warn] initial mirror sync failed (continuing)\n";
+                // v1.19.0: skip eager initial mirror sync (was ≤30s).
+                // First cron tick fires within 15m anyway.
                 cs.upsert(cwd, "mirror sync", 15);
-                std::cout << "    OK: cron_jobs every 15m\n";
+                std::cout << "  mirror:     cron registered every 15m (initial sync deferred)\n";
             }
             if (!hasFlag(args, "--no-sentinel")) {
                 std::cout << "  sentinel:   registering 15m watchdog...\n";
