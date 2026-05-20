@@ -84,9 +84,17 @@ Detector::Detector() {
         {"find ",  CmdType::Search},
         {"fd ",    CmdType::Search},
 
+        // v1.20.4 (F6): logs commands route to log-dedup filter — order
+        // matters; these match BEFORE generic "docker build"/"docker-compose"
+        // because vector lookup walks in declaration order (longest specific).
+        {"docker compose logs", CmdType::Logs},
+        {"docker-compose logs", CmdType::Logs},
+        {"docker logs",         CmdType::Logs},
+        {"kubectl logs",        CmdType::Logs},
+        {"journalctl",          CmdType::Logs},
+
         // Docker
         {"docker build",   CmdType::Docker},
-        {"docker logs",    CmdType::Docker},
         {"docker-compose", CmdType::Docker},
         {"docker compose", CmdType::Docker},
 

@@ -31,6 +31,7 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
         {CmdType::Playwright,     "playwright"},
         {CmdType::Tsc,            "tsc"},
         {CmdType::Lint,           "lint"},
+        {CmdType::Logs,           "log-dedup"},  // v1.20.4 (F6)
         {CmdType::Default,        "default"},
     };
     auto& reg = core::Registry<icmg::tkil::BaseFilter>::instance();

@@ -768,10 +768,13 @@ public:
                         fs::perms::owner_read | fs::perms::owner_write,
                         fs::perm_options::replace, ec);
 #else
-                // Windows: icacls to remove inherited + grant owner-only.
+                // v1.20.4: icacls WITHOUT /T (was recursive — slow on .icmg
+                // containing many WAL/mirror sidecars on large projects).
+                // Permissions on parent dir suffice; children inherit on create.
+                // /C continues on error; 5s cap to prevent stall on locked files.
                 std::string p = icmg_dir.string();
-                std::string cmd = "icacls \"" + p + "\" /inheritance:r /grant:r \"%USERNAME%\":F /T /Q";
-                core::safeExecShell(cmd, true);
+                std::string cmd = "icacls \"" + p + "\" /inheritance:r /grant:r \"%USERNAME%\":F /C /Q";
+                core::safeExecShell(cmd, true, 5000);
 #endif
             }
         }
@@ -802,32 +805,39 @@ public:
             }
         }
 
-        // v0.44.0 + v1.18.1 + v1.19.0: auto-import + slim CLAUDE.md(s).
-        // ICMG_NO_AUTOSPAWN=1 prevents exec_client cascade spawn race.
-        // v1.19.0: 3 independent imports fan-out in parallel via icmg parallel
-        // → wall-clock = max(claudemd, plan, skill) instead of sum.
+        // v0.44.0 + v1.18.1 + v1.19.0 + v1.20.4: auto-import CLAUDE.md / plan
+        // files / skill index.
+        // v1.20.4: detached background fan-out — no longer blocks init.
+        //   Reports from users that init was hanging ~1h on real projects
+        //   pointed to icmg parallel spawning 3 cold-start child icmg.exe
+        //   processes, each hit by Defender real-time scan on shared binary
+        //   in multi-user installs. Detaching ensures init returns immediately;
+        //   imports complete async and write into the same project DB.
+        // Logs written to .icmg/init-imports.log for post-mortem.
 #ifdef _WIN32
-        const char* env_prefix = "set ICMG_NO_AUTOSPAWN=1 && ";
-#else
-        const char* env_prefix = "ICMG_NO_AUTOSPAWN=1 ";
-#endif
         {
-            // Parallel fan-out: 3 sub-imports.
-            std::string parallel_cmd = std::string(env_prefix)
-                + "icmg parallel"
-                + " --task \"icmg claudemd import --slim\""
-                + " --task \"icmg plan import\""
-                + " --task \"icmg skill index\""
-                + " --timeout 15 2>&1";
-            auto r = core::safeExecShell(parallel_cmd, false, 18000);
-            if (r.exit_code == 0) {
-                std::cout << "  context-graph: CLAUDE.md imported + slimmed (backup in .icmg/)\n";
-                std::cout << "  plan-graph:    plan files imported to context_nodes\n";
-                std::cout << "  skill-index:   skill files indexed for feature discovery\n";
-            } else {
-                std::cout << "  imports:       run `icmg claudemd import --slim`, `icmg plan import`, `icmg skill index` manually\n";
-            }
+            std::string log_path = (root / ".icmg" / "init-imports.log").string();
+            // start /B = no new console window; detach.
+            std::string bg_cmd =
+                "start /B cmd /C \"set ICMG_NO_AUTOSPAWN=1 && "
+                "(icmg claudemd import --slim & icmg plan import & icmg skill index) "
+                "> \"" + log_path + "\" 2>&1\"";
+            core::safeExecShell(bg_cmd, true, 3000);
+            std::cout << "  imports:       claudemd / plan / skill running in background\n";
+            std::cout << "                 (log: .icmg/init-imports.log)\n";
         }
+#else
+        {
+            std::string log_path = (root / ".icmg" / "init-imports.log").string();
+            std::string bg_cmd =
+                "ICMG_NO_AUTOSPAWN=1 nohup sh -c '"
+                "icmg claudemd import --slim; icmg plan import; icmg skill index"
+                "' > \"" + log_path + "\" 2>&1 &";
+            core::safeExecShell(bg_cmd, true, 3000);
+            std::cout << "  imports:       claudemd / plan / skill running in background\n";
+            std::cout << "                 (log: .icmg/init-imports.log)\n";
+        }
+#endif
 
         // v1.6.0: consolidate per-project schtasks into single icmg-service
         // iterator. cron_jobs table backs the tick loop in src/core/service_loop.cpp.
@@ -872,10 +882,23 @@ public:
         }
 
         // v0.45.0: auto-add icmg.exe to Windows Defender exclusion list.
-        // Root cause: icmg spawns on every hook turn â†’ Defender scans each spawn â†’ CPU spike.
-        // Non-fatal: skips silently if elevation unavailable (prints hint).
+        // v1.20.4: skip if cache marker present — Add-MpPreference is slow
+        // (~5-30s incl. PowerShell cold start) and the result is persistent
+        // per-user. Cache marker at %USERPROFILE%\.icmg\defender-excluded.flag.
+        // Non-fatal: skips silently if elevation unavailable.
 #ifdef _WIN32
         {
+            bool _defender_skip = false;
+            const char* home = std::getenv("USERPROFILE");
+            if (home && *home) {
+                fs::path marker = fs::path(home) / ".icmg" / "defender-excluded.flag";
+                if (fs::exists(marker)) {
+                    std::cout << "  defender:   cached exclusion (skip; remove "
+                              << marker.string() << " to re-apply)\n";
+                    _defender_skip = true;
+                }
+            }
+          if (!_defender_skip) {
             char self_path[1024];
             DWORD n = GetModuleFileNameA(nullptr, self_path, sizeof(self_path));
             if (n > 0 && n < sizeof(self_path)) {
@@ -894,13 +917,23 @@ public:
                     GetExitCodeProcess(pi.hProcess, &ec);
                     CloseHandle(pi.hProcess);
                     CloseHandle(pi.hThread);
-                    if (ec == 0)
+                    if (ec == 0) {
                         std::cout << "  defender:   icmg.exe excluded (faster hook spawns)\n";
-                    else
+                        // v1.20.4: cache success so next init skips PowerShell.
+                        const char* home2 = std::getenv("USERPROFILE");
+                        if (home2 && *home2) {
+                            std::error_code _ec_dir;
+                            fs::create_directories(fs::path(home2) / ".icmg", _ec_dir);
+                            std::ofstream m((fs::path(home2) / ".icmg" / "defender-excluded.flag").string());
+                            m << "ok\n";
+                        }
+                    } else {
                         std::cout << "  defender:   exclusion needs elevation"
                                   << " â€” run `icmg init` as Administrator once to reduce Defender overhead\n";
+                    }
                 }
             }
+          } // !_defender_skip
         }
 #endif
 

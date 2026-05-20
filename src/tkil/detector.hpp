@@ -17,6 +17,7 @@ enum class CmdType {
     Playwright,     // playwright test runner
     Tsc,            // typescript compiler
     Lint,           // eslint, clippy, ruff, golangci-lint, etc.
+    Logs,           // v1.20.4: docker logs, kubectl logs, journalctl (dedup)
     Default         // unknown
 };
 
@@ -46,6 +47,7 @@ inline std::ostream& operator<<(std::ostream& os, CmdType t) {
         case CmdType::Playwright:     return os << "Playwright";
         case CmdType::Tsc:            return os << "Tsc";
         case CmdType::Lint:           return os << "Lint";
+        case CmdType::Logs:           return os << "Logs";
         case CmdType::Default:        return os << "Default";
     }
     return os << "Unknown";
