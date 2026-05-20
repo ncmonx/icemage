@@ -4,6 +4,29 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.20.4 — Hotfix: `icmg init` no longer blocks on imports + log-dedup filter
+
+User-reported regression: `icmg init` hung for up to an hour even on tiny projects. Three layered causes were identified:
+
+1. **`icmg parallel` for sub-imports waited for completion.** Each of `claudemd import`, `plan import`, `skill index` cold-started a full `icmg.exe`. On shared multi-user installs, Defender real-time scan added 5–30 s per launch — three serial cold starts plus a fan-out service spawn cascade compounded into minutes.
+2. **`icacls /T` walked `.icmg/` recursively.** On large DBs the WAL plus mirror sidecars push the entry count into the thousands; the ACL pass took minutes.
+3. **`Add-MpPreference -ExclusionProcess` ran every init** even after the exclusion was already in place — another ~5–30 s of PowerShell cold start.
+
+### Fix
+
+- **Detach sub-imports as background fire-and-forget.** `init_cmd.cpp` now spawns the three imports via `start /B cmd /C ...` on Windows / `nohup ... &` on POSIX. `icmg init` returns immediately; import progress is written to `.icmg/init-imports.log` for post-mortem.
+- **Drop `/T` flag from `icacls`** — child ACLs inherit on creation. Also added a 5 s cap to prevent stalls on locked files.
+- **Cache the Defender exclusion result** in `%USERPROFILE%/.icmg/defender-excluded.flag` so subsequent inits skip the PowerShell spawn entirely.
+
+### Also in v1.20.4 (from the v1.20.0 plan)
+
+- **Log dedup filter (F6, new)**: `CmdType::Logs` routes `docker logs`, `docker compose logs`, `kubectl logs`, and `journalctl` through a new `log-dedup` filter that strips the timestamp prefix and collapses consecutive identical lines as `[xN]`. 70–90 % token cut on noisy container output.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade. Re-emit hooks via `icmg init --force`.
+
 ## 1.20.3 — Hotfix: leash + bash-rewrite use bash `=~` ERE (drop external grep fork)
 
 `icmg-git-leash.sh` and `icmg-bash-rewrite.sh` (the PreToolUse:Bash hook scripts emitted by `icmg init`) were still invoking `echo "$VAR" | grep -qE 'pattern'` for every safety/redirect rule. Each match meant an extra subprocess fork + pipe; the chain was also fragile against a broken `/usr/bin/grep` on MSYS coreutils. Per the v1.17.0 hook-resilience rule the generator should have used bash `[[ "$VAR" =~ pattern ]]` for these — the two embedded constants in `init_cmd.cpp` had not been migrated.

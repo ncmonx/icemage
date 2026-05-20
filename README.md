@@ -38,32 +38,33 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## 🛠 v1.20.3 — Hotfix: leash + bash-rewrite use bash `=~` ERE (drop external grep fork)
+## 🛠 v1.20.4 — Hotfix: `icmg init` no longer blocks on imports + log-dedup filter
 
-`icmg-git-leash.sh` and `icmg-bash-rewrite.sh` (PreToolUse:Bash hook scripts emitted by `icmg init`) still invoked `echo "$VAR" | grep -qE 'pattern'` for every rule — extra fork + pipe per match, fragile against a broken `/usr/bin/grep`. Per the v1.17.0 hook-resilience rule both should have used bash `[[ "$VAR" =~ pattern ]]`. v1.20.3 migrates both embedded constants in `init_cmd.cpp`. Net: ~10 subprocess forks eliminated per Bash hook invocation, measurable cold-startup cut.
+User-reported regression: `icmg init` hung for up to an hour even on tiny projects. Three layered causes — synchronous `icmg parallel` for the 3 sub-imports (Defender scan x3 cold-starts), recursive `icacls /T` over `.icmg/`, and unconditional `Add-MpPreference` every init. v1.20.4 detaches sub-imports as background fire-and-forget (log → `.icmg/init-imports.log`), drops `/T` from `icacls`, and caches the Defender exclusion in `%USERPROFILE%/.icmg/defender-excluded.flag`.
+
+Also new (from v1.20.0 plan): **log-dedup filter (F6)** — `docker logs`, `docker compose logs`, `kubectl logs`, `journalctl` now strip timestamp prefix and collapse consecutive identical lines as `[xN]`. 70-90% cut on noisy container output.
 
 ctest 111/111. Drop-in upgrade. Re-emit hooks via `icmg init --force`.
 
 ---
 
+## 🛠 v1.20.3 — Hotfix: leash + bash-rewrite use bash `=~` ERE (drop external grep fork)
+
+`icmg-git-leash.sh` and `icmg-bash-rewrite.sh` (PreToolUse:Bash hook scripts emitted by `icmg init`) still invoked `echo "$VAR" | grep -qE 'pattern'`. v1.20.3 migrates both embedded constants in `init_cmd.cpp` to bash `[[ "$VAR" =~ pattern ]]`. Net: ~10 subprocess forks eliminated per Bash hook invocation.
+
+ctest 111/111. Drop-in upgrade.
+
+---
+
 ## 🛠 v1.20.2 — Hotfix: cross-project context auto-detect + multi-user IPC safety
 
-`icmg context <abs-path>` to a file in another registered project returned data from the caller's CWD project. Fix: when the input path is absolute, `context` now looks up the owning project in the global registry via longest-prefix match. Multi-user hardening added: `ICMG_NO_IPC=1` opt-out env + `USERPROFILE`-hash fallback for the IPC pipe name.
+`icmg context <abs-path>` to a file in another registered project returned data from the caller's CWD project. Fix: longest-prefix match against the global project registry. Multi-user hardening: `ICMG_NO_IPC=1` opt-out + `USERPROFILE`-hash fallback for the IPC pipe name.
 
 ctest 111/111. Drop-in upgrade.
 
 ---
 
-## 🛠 v1.20.1 — Hotfix: `icmg graph rebuild` alias + cross-project context leak
-
-- `icmg graph rebuild` aliased to `graph-update --force` (verb missing since older versions).
-- `core::Config::projectDbOverride` now cleared via RAII guards in `dispatcher.cpp` + `exec_server.cpp` so long-lived processes don't leak `--project X` state across CLI invocations.
-
-ctest 111/111. Drop-in upgrade.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.20.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.20.1 and earlier.
 
 ---
 
