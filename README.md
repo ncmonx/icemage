@@ -38,26 +38,21 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## 🛠 v1.19.1 — Hotfix: restore single-binary + embedded manifest B:/ popup fix
+## 🛠 v1.19.2 — Hotfix: generate `icmg-git-leash.sh` + `icmg-graph-update.sh` on init
 
-v1.19.0's dual-binary repack broke `icmg update --apply` upgrades — `update_cmd.cpp` only extracted `icmg.exe` from the zip, so users who upgraded got the new thin launcher without its `icmg-core.exe` sibling and every invocation hung at the 60s subprocess timeout (incl. Claude Code's PreToolUse hook).
-
-v1.19.1 restores single-binary shipping (heavy `icmg.exe` + 6 DLLs as in v1.18.x) and prevents the B:/ popup via a different mechanism: an **embedded `RT_MANIFEST` resource** with private-assembly `<file>` entries for each bundled DLL. Per Windows SxS DLL isolation, listed DLLs are resolved by the loader only from the app directory — both for the direct import and for their transitive deps. `PATH` is never scanned.
-
-The `icmg init` speedup from v1.19.0 (parallel sub-imports + deferred eager `backup snapshot`/`mirror sync`) is preserved.
+Two hook scripts referenced by the generated `.claude/settings.local.json` were not being created by `icmg init`: `icmg-git-leash.sh` (PreToolUse mechanical safety — blocks destructive git ops, `rm -rf`, `curl|sh`, force-kills, `settings.local.json` writes) and `icmg-graph-update.sh` (PostToolUse:Edit|Write shim → in-process graph + memory autoupdate). Both have been silently inactive since v1.4.0. v1.19.2 embeds them in `init_cmd.cpp` and writes them on `icmg init [--force]`.
 
 ctest 111/111. Drop-in upgrade.
 
-**Recovery for users stuck on v1.19.0**: download `icmg-1.19.1-win-x64.zip` manually, extract `icmg.exe`, overwrite the broken launcher in your install directory. Bundled DLLs are unchanged.
-
 ---
 
-## 🛠 v1.19.0 — `icmg init` speedup + B:/ popup hardening (superseded by v1.19.1)
+## 🛠 v1.19.1 — Hotfix: restore single-binary + embedded manifest B:/ popup fix
 
-- **`icmg init` speedup (60-120s → ≤5s typical)**: claudemd/plan/skill sub-imports fan out in PARALLEL via `icmg parallel`. Eager `backup snapshot` + `mirror sync` initial run removed — first cron tick handles them within 60m / 15m anyway. Rule-daemon ping timeout 3s → 1s.
-- **B:/ popup hardening — dual-binary shipping (broke `update --apply`, see v1.19.1)**
+v1.19.0's dual-binary repack broke `icmg update --apply`. v1.19.1 restores single-binary shipping (heavy `icmg.exe` + 6 DLLs as in v1.18.x) and prevents the B:/ popup via an **embedded `RT_MANIFEST` resource** with private-assembly `<file>` entries for each bundled DLL — Win loader resolves all bundled DLLs (and their transitive deps) from app dir only, never scans `PATH`.
 
-ctest 111/111. **Upgrade directly to v1.19.1 — do not pin v1.19.0.**
+The `icmg init` speedup from v1.19.0 is preserved.
+
+ctest 111/111. Drop-in upgrade.
 
 ---
 
@@ -65,9 +60,9 @@ ctest 111/111. **Upgrade directly to v1.19.1 — do not pin v1.19.0.**
 
 - **`exec_client` mutex pre-check + start sentinel**: eliminates the N-client race during fan-out (`update --apply`, parallel CLI calls) that left 30+ stuck pre-init `icmg-core.exe` processes and caused Claude tool calls to hang at 120s timeout.
 - **`update --apply` cascade fixed**: `ICMG_NO_AUTOSPAWN=1` set at 3 fan-out sites so children no longer cascade-spawn services.
-- **`icmg init` speedup**: claudemd/plan/skill sub-imports wrapped with `ICMG_NO_AUTOSPAWN=1` + reduced timeouts (20s/15s/30s → 10s/8s/15s). No more 1-minute first-init stall.
+- **`icmg init` speedup**: claudemd/plan/skill sub-imports wrapped with `ICMG_NO_AUTOSPAWN=1` + reduced timeouts (20s/15s/30s → 10s/8s/15s).
 
-ctest 111/111. Drop-in. No schema or CLI surface change.
+ctest 111/111. Drop-in.
 
 ---
 
