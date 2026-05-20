@@ -38,6 +38,7 @@ public:
             "Options:\n"
             "  --all, -a       Include hidden (dotfiles)\n"
             "  --tree          One-level tree view\n"
+            "  --summary       Per-dir summary: `subdir/ (N files, M dirs)` (v1.20.0)\n"
             "  --json          JSON output\n"
             "  --limit N       Max entries (default 100)\n"
             "  --ext E         Filter by extension (e.g. --ext cs)\n";
@@ -47,6 +48,7 @@ public:
         if (hasFlag(args, "--help") || hasFlag(args, "-h")) { usage(); return 0; }
         bool show_hidden = hasFlag(args, "--all") || hasFlag(args, "-a");
         bool tree        = hasFlag(args, "--tree");
+        bool summary     = hasFlag(args, "--summary"); // v1.20.0 (F4)
         bool json        = hasFlag(args, "--json");
         int  limit       = 100;
         try { limit = std::stoi(flagValue(args, "--limit", "100")); } catch (...) {}
@@ -126,11 +128,30 @@ public:
             return 0;
         }
 
+        // v1.20.0 (F4): per-dir summary mode — for each subdir count files/dirs.
+        // Replaces full recursion with compact `subdir/ (N files, M dirs)` lines
+        // → 10× fewer tokens on dense repos.
+        auto subDirCount = [](const fs::path& p) -> std::pair<int,int> {
+            int n_files = 0, n_dirs = 0;
+            std::error_code ec_inner;
+            for (auto it = fs::directory_iterator(p, ec_inner);
+                 !ec_inner && it != fs::directory_iterator(); ++it) {
+                if (it->is_directory(ec_inner)) ++n_dirs;
+                else                            ++n_files;
+            }
+            return {n_files, n_dirs};
+        };
+
         if (tree) {
             std::cout << root.string() << "\n";
             for (auto& d : dirs) {
                 if (++shown > limit) break;
-                std::cout << "  " << d.name << "/\n";
+                if (summary) {
+                    auto [nf, nd] = subDirCount(root / d.name);
+                    std::cout << "  " << d.name << "/ (" << nf << " files, " << nd << " dirs)\n";
+                } else {
+                    std::cout << "  " << d.name << "/\n";
+                }
             }
             for (auto& f : files) {
                 if (++shown > limit) break;
@@ -139,7 +160,12 @@ public:
         } else {
             for (auto& d : dirs) {
                 if (++shown > limit) break;
-                std::cout << d.name << "/\n";
+                if (summary) {
+                    auto [nf, nd] = subDirCount(root / d.name);
+                    std::cout << d.name << "/ (" << nf << " files, " << nd << " dirs)\n";
+                } else {
+                    std::cout << d.name << "/\n";
+                }
             }
             for (auto& f : files) {
                 if (++shown > limit) break;

@@ -53,6 +53,8 @@ private:
     std::string document(const MemoryNode& node) const;
     double bm25(const std::string& query, const MemoryNode& node) const;
     double recencyDecay(int64_t last_used) const;
+    // v1.20.0 (M1): access-aware variant — hot memos (high freq) decay slower.
+    double accessAwareDecay(int64_t last_used, int freq) const;
     double ageDecay(int64_t created_at) const;
     double idf(const std::string& term) const;
 };

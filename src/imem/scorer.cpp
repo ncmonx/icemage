@@ -91,6 +91,20 @@ double Scorer::recencyDecay(int64_t last_used) const {
     return std::exp(-0.01 * hours);
 }
 
+// v1.20.0 (Task M1): access-aware decay. Hot memories (frequently recalled)
+// decay slower than cold ones. Formula: decay_factor = 1 / (1 + freq*0.1).
+// freq=0 → factor=1.0 (no boost); freq=10 → 0.5 (decay rate halved);
+// freq=100 → 0.09 (decay nearly suppressed). Multiplied INTO recencyDecay
+// (effectively flattens the exponential curve for hot memos).
+double Scorer::accessAwareDecay(int64_t last_used, int freq) const {
+    double base = recencyDecay(last_used);
+    if (freq <= 0) return base;
+    // Approach 1.0 asymptotically as freq grows. Bounded so very-hot memos
+    // don't escape decay entirely.
+    double boost = 1.0 / (1.0 + freq * 0.1);
+    return base + (1.0 - base) * (1.0 - boost);
+}
+
 // Phase 67 T15: age-based exponential decay envelope (created_at, days).
 // Complements recencyDecay (which resets on use): even frequently-used
 // memories get demoted if their underlying knowledge is months old, since
@@ -112,7 +126,8 @@ Scorer::ScoreDetail Scorer::scoreDetailed(const std::string& query,
                                            const MemoryNode& node) const {
     ScoreDetail d;
     d.bm25           = bm25(query, node);
-    d.recency        = recencyDecay(node.last_used);
+    // v1.20.0 (M1): access-aware decay — hot memos decay slower.
+    d.recency        = accessAwareDecay(node.last_used, node.frequency);
     // log(2 + freq): floor at log(2)≈0.69 so unvisited nodes (freq=0) are still rankable.
     d.freq           = std::log(2.0 + node.frequency);
 

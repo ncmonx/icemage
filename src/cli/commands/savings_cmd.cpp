@@ -66,6 +66,7 @@ public:
             "Options:\n"
             "  --window <Nd>      Time window (default 30d)\n"
             "  --html [-o FILE]   Generate self-contained HTML dashboard\n"
+            "  --ascii            ASCII sparkline (v1.20.0)\n"
             "  --json             Machine output\n"
             "  --rate-input N     Input $/MTok (default 3.0 = Sonnet)\n"
             "  --rate-output N    Output $/MTok (default 15.0)\n";
@@ -356,11 +357,26 @@ public:
                 by_day[dbuf] += r.total;
             }
             if (!by_day.empty()) {
+                // v1.20.0 (U1): ASCII sparkline. --ascii flag toggles compact bar view.
+                bool ascii_mode = hasFlag(args, "--ascii");
                 std::cout << "\nDaily real-token history (this project, newest first):\n";
                 int shown = 0;
-                for (auto& [d, tok] : by_day) {
-                    if (shown++ >= 14) break;
-                    std::cout << "  " << d << "  " << std::setw(10) << tok << " tok\n";
+                if (ascii_mode) {
+                    int64_t maxv = 0;
+                    for (auto& [_, t] : by_day) if (t > maxv) maxv = t;
+                    if (maxv == 0) maxv = 1;
+                    for (auto& [d, tok] : by_day) {
+                        if (shown++ >= 14) break;
+                        int bars = (int)((tok * 30) / maxv);
+                        std::string bar(bars > 0 ? bars : 0, '#');
+                        std::cout << "  " << d << "  " << std::left << std::setw(30) << bar
+                                  << std::right << std::setw(10) << tok << " tok\n";
+                    }
+                } else {
+                    for (auto& [d, tok] : by_day) {
+                        if (shown++ >= 14) break;
+                        std::cout << "  " << d << "  " << std::setw(10) << tok << " tok\n";
+                    }
                 }
             }
         }
