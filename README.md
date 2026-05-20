@@ -38,12 +38,26 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## 🛠 v1.19.0 — `icmg init` speedup + B:/ popup hardening (dual-binary repack)
+## 🛠 v1.19.1 — Hotfix: restore single-binary + embedded manifest B:/ popup fix
 
-- **`icmg init` speedup (60-120s → ≤5s typical)**: claudemd/plan/skill sub-imports fan out in PARALLEL via `icmg parallel` (wall-clock = max instead of sum). Eager `backup snapshot` + `mirror sync` initial run removed — first cron tick handles them within 60m / 15m anyway. Rule-daemon ping timeout 3s → 1s.
-- **B:/ popup hardening — dual-binary shipping restored**: from v1.8 - v1.18.x the release zip shipped only the heavy binary, so the Win loader scanned `PATH` for `onnxruntime.dll`/`wasmtime.dll`/etc. BEFORE `main()` ran. If `PATH` contained a dead-drive entry (typical for MSYS-translated `/b/foo` → `B:\foo`), Windows surfaced its "system cannot find drive B:" modal. v1.19.0 restores the v1.7.0 pattern: `icmg.exe` in the zip is a tiny zero-DLL launcher that calls `SetErrorMode` + `sanitize_path` first, then spawns `icmg-core.exe` (the heavy binary) with a clean environment. User-facing CLI is unchanged. Defense in depth: `main()` of `icmg-core` also calls `sanitize_path` for direct invocations (Task Scheduler, Startup folder, manual exec).
+v1.19.0's dual-binary repack broke `icmg update --apply` upgrades — `update_cmd.cpp` only extracted `icmg.exe` from the zip, so users who upgraded got the new thin launcher without its `icmg-core.exe` sibling and every invocation hung at the 60s subprocess timeout (incl. Claude Code's PreToolUse hook).
 
-ctest 111/111. Drop-in. No schema or CLI surface change.
+v1.19.1 restores single-binary shipping (heavy `icmg.exe` + 6 DLLs as in v1.18.x) and prevents the B:/ popup via a different mechanism: an **embedded `RT_MANIFEST` resource** with private-assembly `<file>` entries for each bundled DLL. Per Windows SxS DLL isolation, listed DLLs are resolved by the loader only from the app directory — both for the direct import and for their transitive deps. `PATH` is never scanned.
+
+The `icmg init` speedup from v1.19.0 (parallel sub-imports + deferred eager `backup snapshot`/`mirror sync`) is preserved.
+
+ctest 111/111. Drop-in upgrade.
+
+**Recovery for users stuck on v1.19.0**: download `icmg-1.19.1-win-x64.zip` manually, extract `icmg.exe`, overwrite the broken launcher in your install directory. Bundled DLLs are unchanged.
+
+---
+
+## 🛠 v1.19.0 — `icmg init` speedup + B:/ popup hardening (superseded by v1.19.1)
+
+- **`icmg init` speedup (60-120s → ≤5s typical)**: claudemd/plan/skill sub-imports fan out in PARALLEL via `icmg parallel`. Eager `backup snapshot` + `mirror sync` initial run removed — first cron tick handles them within 60m / 15m anyway. Rule-daemon ping timeout 3s → 1s.
+- **B:/ popup hardening — dual-binary shipping (broke `update --apply`, see v1.19.1)**
+
+ctest 111/111. **Upgrade directly to v1.19.1 — do not pin v1.19.0.**
 
 ---
 
@@ -57,19 +71,7 @@ ctest 111/111. Drop-in. No schema or CLI surface change.
 
 ---
 
-## 🛠 v1.18.0 — Service self-healing + popup-killer broadened + prefetch + observability + skill completion
-
-- **Service self-healing**: `service status` PID-validated (no more stale-pidfile false positives). `exec_client` auto-spawns service detached when pipe dead + service PID dead. Popup-killer thread auto-recovers.
-- **Popup-killer broadened**: accept Win11 `TaskDialogClass` + `DirectUIHWND*` + `WS_POPUP` style fallback. Same 100ms scan.
-- **Prefetch + observability**: `core::prefetch_cache` warms hot context_nodes + skill manifest at service start. `core::query_cache` adds 5min TTL BM25 result cache (foundation). `icmg metrics` shows cache hit-rates + service health. `icmg whatchanged` reports memory delta since last stamp.
-- **Skill completion**: `icmg skill stats` (per-skill size + total). `icmg skill suggest <prompt>` (BM25 intent predict, top-N).
-- Session boundary: `session-inject` resets dedup + turn_cache.
-
-ctest 111/111. Drop-in. Restart service after upgrade.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.17.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.18.0 and earlier.
 
 ---
 

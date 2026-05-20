@@ -4,6 +4,34 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.19.1 — Hotfix: restore single-binary + embedded manifest B:/ popup fix
+
+v1.19.0's dual-binary repack broke `icmg update --apply` upgrades. `update_cmd.cpp` only extracts `icmg.exe` from the release zip; users who upgraded via `--apply` got the new thin launcher renamed as `icmg.exe` but no `icmg-core.exe` sibling on disk. The launcher then failed to spawn `icmg-core` on every invocation, hanging at the 60s subprocess timeout — including Claude Code's PreToolUse hook (`icmg shield -- python3 ...`), which cascaded to *"Subprocess initialization did not complete within 60000ms"* errors across every project on the same machine.
+
+### Fix
+
+v1.19.1 restores single-binary shipping (heavy `icmg.exe` + 6 DLLs, same layout as v1.18.x and earlier), and prevents the B:/ popup via a different mechanism: an **embedded `RT_MANIFEST` resource** with private-assembly `<file>` entries for each bundled DLL. Per Windows SxS DLL isolation rules, listed DLLs are resolved by the loader **only from the app directory** — both for the direct import and for their transitive dependencies. `PATH` is never scanned, so stale MSYS-translated `/b/foo` → `B:oo` entries no longer surface the system popup.
+
+- `src/icmg.exe.manifest` (new): manifest with 6 `<file>` entries (`onnxruntime.dll`, `onnxruntime_providers_shared.dll`, `libtree-sitter-0.26.dll`, `libwinpthread-1.dll`, `libzstd.dll`, `wasmtime.dll`).
+- `src/icmg.rc`: embeds the manifest as resource `1` of type `24` (`RT_MANIFEST`).
+- `update_cmd.cpp` continues to work — no schema or extraction change needed.
+- Defense in depth: `main.cpp` PATH sanitize (from v1.19.0) retained for direct invocations that bypass the manifest path entirely.
+
+The `icmg init` speedup from v1.19.0 (parallel sub-imports + deferred eager `backup snapshot` / `mirror sync`) is preserved.
+
+### Recovery for users stuck on v1.19.0
+
+If `icmg update --apply` left you with a broken install (launcher present, no `icmg-core.exe`):
+
+1. Download `icmg-1.19.1-win-x64.zip` from the release page manually.
+2. Extract `icmg.exe` and overwrite the file in your install directory.
+3. The bundled DLLs are unchanged; you can leave them as-is.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade from v1.18.x; no schema or CLI surface change
+
 ## 1.19.0 — `icmg init` speedup + B:/ popup hardening (dual-binary repack)
 
 Two user-reported pain points fixed in one release.
