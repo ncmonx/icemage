@@ -4,6 +4,60 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.18.0 — Service self-healing + popup-killer broadened + prefetch + observability + skill completion
+
+Multi-feature release targeting residual deployment robustness + latency + skill UX.
+
+### Service self-healing
+
+- **`service status` PID validation**: previously trusted pidfile, returned false positive after taskkill/crash. Now opens process handle, checks `STILL_ACTIVE`, cleans stale pidfile.
+- **`exec_client` auto-spawn**: when IPC pipe dead AND service.pid points to dead PID, client spawns `icmg-core service run` detached. Re-arms popup-killer thread + cron tick for next CLI invocation. Opt-out: `ICMG_NO_AUTOSPAWN=1`.
+
+### Popup-killer broadened
+
+- Accept Win11 `TaskDialogClass` + `DirectUIHWND*` in addition to legacy `#32770`.
+- Title-pattern match + `WS_POPUP` style fallback for unknown dialog classes.
+- Same 100ms scan cadence.
+
+### Prefetch + observability
+
+- **`core::prefetch_cache`** (new): on service start, pre-load hot context_nodes + skill manifest into RAM. Subsequent SessionStart serves from cache (sub-ms). Invalidate on memory.store / context-node insert.
+- **`core::query_cache`** (new): per-query result cache (5min TTL, `ICMG_QUERY_CACHE_TTL_SEC` override). Foundation for BM25 recall caching (per-cmd wiring v1.19+).
+- **`icmg metrics`** (new cmd): `show` / `json` / `reset`. Reports inject_dedup unique count, turn_cache hits/misses/rate, service + rule-daemon PID alive state.
+- **`icmg whatchanged`** (new cmd): delta vs last invocation stamp. New memory_nodes + known_issues entries since last call. Auto-stamps unless `--peek`.
+
+### Skill completion
+
+- **`icmg skill stats`**: per-skill size + total count.
+- **`icmg skill suggest <prompt>`**: BM25-match prompt vs skill descriptions, return top-N matches.
+
+### Session boundary improvements
+
+- `icmg session-inject` now calls `inject_dedup::resetSession()` + `turn_cache::resetSession()`. Fresh session = fresh dedup state.
+
+### Compat
+
+- All v1.17 features intact
+- 14 source files changed, 4 new (.{hpp,cpp} pairs + 2 new cmds)
+- ctest 111/111 (Win)
+
+### Upgrade
+
+```cmd
+icmg update --apply       :: self-test + auto-rollback
+icmg init --force         :: regenerate hooks + AGENTS.md command index
+taskkill /F /IM icmg-core.exe
+icmg service start
+icmg metrics              :: verify service alive + counters reset
+```
+
+### Deferred v1.19+
+
+- T4 full prefetch (memory entries too — currently only context+skill manifest)
+- T5 Tiered hot-cache LRU
+- T7 turn_cache per-cmd wiring (icmg recall, icmg graph)
+- Embedded MCP server
+- TDD backlog: prefetch_cache, query_cache, metrics, whatchanged, skill stats/suggest
 ## 1.17.0 — Hook scripts use bash `[[ ]]` keyword + TDD backlog burn (108 → 111)
 
 ### Hook scripts: bash keyword `[[ ]]`
