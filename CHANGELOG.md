@@ -4,6 +4,40 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.20.5 — Hotfix: Claude first-launch 60s timeout + graph rebuild speedup + jq auto-install
+
+### Bug 1 (user-reported) — Claude Code first launch failed with "Subprocess initialization did not complete within 60000ms"
+
+The v1.20.x `icmg init` generator emitted hook entries that cold-spawned `icmg.exe` at every SessionStart / UserPromptSubmit / PreToolUse fire (`exec icmg hook …` plus `icmg shield --` wrapper). On the very first Claude Code launch — with Windows Defender real-time scanning a shared multi-user `icmg.exe` — those spawns saturated Claude's 60 s subprocess-init budget and the editor surfaced the *"Subprocess initialization did not complete within 60000ms"* modal.
+
+Fix: revert generated `settings.local.json` to the script-based pattern that users confirmed works.
+
+- **SessionStart**: 3 bash-script entries (`icmg-caveman-prompt.sh`, `icmg-context-session.sh`, `icmg-wakeup-session.sh`), each with 5 s timeout + `|| exit 0` fail-soft. Drop the v1.6.2 `icmg daemon start &` and v1.6.4 `icmg graph scan &` warm-up lines and the v1.16.0 combined `icmg session-inject | icmg hookio emit` — all three were extra cold spawns landing in the init window.
+- **UserPromptSubmit**: `bash icmg-prompt-recall.sh`, not `exec icmg hook userprompt`.
+- **PreToolUse**: per-matcher script entries (`Bash`, `Write`, `Read|Glob|Grep`, `Read`), each with 5–10 s timeout. Drop the `icmg shield --` wrapper that added another cold spawn per tool call.
+- Drop the duplicate single-matcher `PreToolUse` overwrite block.
+
+### Bug 2 (user-reported) — `icmg graph rebuild` took 7+ minutes on small projects
+
+Every per-file / per-symbol upsert was its own SQLite write, so N fsyncs piled up.
+
+Fix: `scanner.cpp` wraps the full scan + resolve pass in a single `BEGIN TRANSACTION` / `COMMIT`. Minutes → seconds. RAII-safe rollback on exception.
+
+### Bug 3 (user-reported) — `icmg --version` from CMD prompt didn't return until a key was pressed
+
+The GUI-subsystem binary (chosen in v0.58.1 to suppress the B:/ popup) means CMD doesn't block on the child, so the parent's prompt redraws before the child's last output flushes.
+
+Fix: when attached to a parent console, `main.cpp` installs an `atexit` handler that flushes stdio, injects a CR into the parent's input buffer, and frees the console.
+
+### Enhancement — jq auto-install on `icmg init`
+
+The generated hooks rely on `jq` for cheap JSON extraction. `icmg init` now probes `jq --version` first and, on Windows, downloads the official `jq-windows-amd64.exe` into `icmg.exe`'s install dir (sibling). POSIX prints `apt`/`dnf`/`pacman`/`brew` hints. Failure is non-fatal.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade. Re-emit hooks via `icmg init --force`.
+
 ## 1.20.4 — Hotfix: `icmg init` no longer blocks on imports + log-dedup filter
 
 User-reported regression: `icmg init` hung for up to an hour even on tiny projects. Three layered causes were identified:
