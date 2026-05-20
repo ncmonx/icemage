@@ -38,36 +38,36 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.20.6 — F7 transparent wrapper peek in bash-rewrite hook
+
+From the v1.20.0 plan (F7). The PreToolUse:Bash rewrite hook matched its regex against the raw tool input, so wrapper shells (`bash -c "grep ..."`, `xargs cargo test`, `npx vitest`, `pnpm exec next build`) silently bypassed the icmg-run redirect — the agent ended up running the noisy underlying command at full output. v1.20.6 peels up to 3 layers of known wrapper prefixes before matching, then suggests the un-wrapped icmg-run form.
+
+ctest 111/111. Drop-in upgrade.
+
+---
+
 ## 🛠 v1.20.5 — Hotfix: Claude first-launch 60s timeout + graph rebuild speedup + jq auto-install
 
-Three user-reported regressions plus an enhancement, all in one hotfix.
+Three user-reported regressions plus an enhancement:
 
-- **Claude first-launch "Subprocess initialization did not complete within 60000ms"**: the v1.20.x generator emitted `exec icmg hook …` + `icmg shield --` hook entries that cold-spawned `icmg.exe` at every SessionStart / UserPromptSubmit / PreToolUse fire — on first launch (Defender cold scan + multi-user shared binary) those spawns saturated Claude's 60 s init budget. v1.20.5 reverts to the script-based pattern users confirmed works: bash script invocations with 5-10 s timeouts and `|| exit 0` fail-soft tails.
-- **`icmg graph rebuild` 7+ min on tiny projects**: every per-file / per-symbol upsert was an independent SQLite fsync. v1.20.5 wraps the full scan in a single `BEGIN TRANSACTION` / `COMMIT`. Minutes → seconds.
-- **`icmg --version` from CMD didn't return until keypress**: GUI-subsystem binary doesn't block CMD, so the prompt redrew before output flushed. v1.20.5 installs an `atexit` handler that flushes stdio + injects CR into parent's input buffer + frees the console.
-- **jq auto-install**: `icmg init` probes `jq --version`; on Windows downloads the official `jq-windows-amd64.exe` into `icmg.exe`'s install dir; on POSIX prints `apt`/`dnf`/`pacman`/`brew` hints.
+- **Claude first-launch 60s subprocess-init timeout**: hook entries cold-spawned `icmg.exe` at every fire — saturated Claude's init budget on multi-user shared binary with Defender scan. v1.20.5 reverts to script-based pattern with timeouts + fail-soft tails.
+- **`icmg graph rebuild` 7+ min**: wraps full scan in a single `BEGIN TRANSACTION`/`COMMIT`. Minutes → seconds.
+- **`icmg --version` from CMD didn't return until keypress**: atexit handler now flushes stdio + injects CR + frees console.
+- **jq auto-install**: `icmg init` probes `jq --version`; downloads on Windows or prints install hints on POSIX.
 
-ctest 111/111. Drop-in upgrade. Re-emit hooks via `icmg init --force`.
+ctest 111/111. Drop-in upgrade.
 
 ---
 
 ## 🛠 v1.20.4 — Hotfix: `icmg init` no longer blocks on imports + log-dedup filter
 
-`icmg init` hung up to an hour on tiny projects. Three layered causes — synchronous `icmg parallel` (Defender scan ×3 cold-starts), recursive `icacls /T`, unconditional `Add-MpPreference` every init. v1.20.4 detaches sub-imports as background fire-and-forget (log → `.icmg/init-imports.log`), drops `/T` from `icacls`, and caches the Defender exclusion. Also new: **log-dedup filter (F6)** for `docker logs` / `kubectl logs` / `journalctl`.
+`icmg init` hung up to an hour on tiny projects — sync `icmg parallel`, recursive `icacls /T`, unconditional `Add-MpPreference`. v1.20.4 detaches sub-imports, drops `/T`, caches Defender exclusion. Also new: **log-dedup filter (F6)** for `docker logs` / `kubectl logs` / `journalctl`.
 
 ctest 111/111. Drop-in upgrade.
 
 ---
 
-## 🛠 v1.20.3 — Hotfix: leash + bash-rewrite use bash `=~` ERE (drop external grep fork)
-
-`icmg-git-leash.sh` and `icmg-bash-rewrite.sh` still invoked `echo "$VAR" | grep -qE 'pattern'`. v1.20.3 migrates both embedded constants in `init_cmd.cpp` to bash `[[ "$VAR" =~ pattern ]]`. ~10 subprocess forks eliminated per Bash hook invocation.
-
-ctest 111/111. Drop-in upgrade.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.20.2 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.20.3 and earlier.
 
 ---
 

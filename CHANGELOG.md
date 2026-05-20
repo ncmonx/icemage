@@ -4,6 +4,19 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.20.6 — F7 transparent wrapper peek in bash-rewrite hook
+
+From the v1.20.0 plan (F7). The PreToolUse:Bash rewrite hook matched its regex against the raw tool input, so wrapper shells silently bypassed the icmg-run redirect. The agent ended up running the noisy underlying command at full output:
+
+- `bash -c "grep ..."`
+- `xargs cargo test`
+- `npx vitest`
+- `pnpm exec next build`
+
+Fix: `init_cmd.cpp::BASH_REWRITE_SH` now peels up to 3 layers of known wrapper prefixes (`bash -c "..."`, `bash -c '...'`, `sh -c`, `xargs`, `npx`, `pnpm exec`, `yarn exec`, `dotenv --`) and runs the rewrite regex against the inner command. The original `$CMD` is preserved for the user-facing message so the agent sees the exact form to retry through `icmg run`.
+
+ctest 111/111. Drop-in upgrade. Re-emit hooks via `icmg init --force`.
+
 ## 1.20.5 — Hotfix: Claude first-launch 60s timeout + graph rebuild speedup + jq auto-install
 
 ### Bug 1 (user-reported) — Claude Code first launch failed with "Subprocess initialization did not complete within 60000ms"
