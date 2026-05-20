@@ -4,6 +4,28 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.20.1 — Hotfix: `icmg graph rebuild` alias + cross-project context leak
+
+### Bug 1 — `icmg graph rebuild` returned "unknown subcommand"
+
+The `rebuild` verb was never registered in the `graph` dispatcher. Users coming from older versions expected it as the "full rescan" shorthand.
+
+Fix: the `graph` root command now aliases `rebuild` → `graph-update --force`. Help text updated.
+
+### Bug 2 — Cross-project context leak (user-reported)
+
+`core::Config` is a process singleton. `dispatcher.cpp` and a handful of MCP tools call `setProjectDbOverride()` to redirect reads for the `--project X` flag, but the override was never cleared after the command completed. In long-lived processes (`exec_server` worker thread, MCP server), the override persisted across CLI invocations: a `context` query from project B silently hit the DB of project A from a prior `--project A` call. Data appeared to "leak" between projects.
+
+Fix: RAII clear guards added at two enforcement points:
+
+1. `dispatcher.cpp` — local guard at the top of `run()` ensures the override is cleared on every return path.
+2. `exec_server.cpp` — per-request guard around the registry dispatch ensures one CLI invocation's state cannot taint the next.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade. No schema migration.
+
 ## 1.20.0 — Memory access-aware decay + 3 new viewers (RTK + ICM Tier-A picks)
 
 First scoped delivery from the v1.20.0 plan (4 of 21 tasks). The remaining items (typed memoir relations, 3-layer auto-extract, tee-on-failure spill, in-RAM graph cache, feedback + transcript subsystems, bench-recall harness, …) are deferred to v1.20.1+ for incremental review.
