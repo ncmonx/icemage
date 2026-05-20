@@ -13,6 +13,7 @@
 #include "../../core/tool_call_cache.hpp"
 #include <cstdlib>
 #include "../../core/config.hpp"
+#include "../../core/global_db.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/output_cap.hpp"
@@ -97,6 +98,56 @@ public:
         try { cap = (size_t)std::stoul(flagValue(args, "--max-bytes", "4096")); } catch (...) {}
 
         auto& cfg = core::Config::instance();
+
+        // v1.20.2 (bugfix): when caller passes an absolute file path, auto-detect
+        // its owning project from the global registry and use THAT project's DB
+        // — not the caller's CWD project. This restores the ability to inspect
+        // files from another registered project without --project flag.
+        // Silent: only switches if file path is absolute AND owned by a different
+        // registered project than CWD; falls through to CWD DB otherwise.
+        {
+            std::error_code _ec_abs;
+            std::filesystem::path _fp(file);
+            if (_fp.is_absolute() && std::filesystem::exists(_fp, _ec_abs)) {
+                auto _norm_fp = std::filesystem::weakly_canonical(_fp, _ec_abs).string();
+                std::error_code _ec_cwd;
+                auto _cwd = std::filesystem::weakly_canonical(
+                    std::filesystem::current_path(_ec_cwd), _ec_cwd).string();
+                try {
+                    auto& _gdb = core::GlobalDb::instance();
+                    _gdb.init();
+                    auto _projs = _gdb.listProjects();
+                    // Find longest matching project root that contains file path
+                    // AND differs from CWD project (avoid pointless switch).
+                    std::string _best_db;
+                    size_t _best_len = 0;
+                    for (auto& _p : _projs) {
+                        if (_p.path.empty()) continue;
+                        std::error_code _ec_p;
+                        auto _proot = std::filesystem::weakly_canonical(_p.path, _ec_p).string();
+                        if (_proot.empty()) continue;
+                        // Case-insensitive prefix match on Windows; exact on POSIX.
+                        auto _norm_lc = _norm_fp;
+                        auto _proot_lc = _proot;
+#ifdef _WIN32
+                        for (auto& c : _norm_lc) c = (char)std::tolower((unsigned char)c);
+                        for (auto& c : _proot_lc) c = (char)std::tolower((unsigned char)c);
+#endif
+                        if (_norm_lc.size() >= _proot_lc.size()
+                            && _norm_lc.compare(0, _proot_lc.size(), _proot_lc) == 0
+                            && _proot_lc.size() > _best_len) {
+                            _best_len = _proot_lc.size();
+                            _best_db = _p.db_path;
+                        }
+                    }
+                    // Only override if matched project differs from CWD project.
+                    if (!_best_db.empty() && _best_db != cfg.projectDbPath(_cwd)) {
+                        cfg.setProjectDbOverride(_best_db);
+                    }
+                } catch (...) { /* fail-open: stay on CWD DB */ }
+            }
+        }
+
         core::Db db(cfg.projectDbPath("."));
 
         // Phase 74 T5: hot-context cache — re-issue of same `context <file>` w/

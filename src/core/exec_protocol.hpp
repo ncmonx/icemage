@@ -23,15 +23,31 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace icmg::core::exec_proto {
 
 #ifdef _WIN32
 inline std::string pipeName() {
+    // Per-user pipe naming. Multi-user safety (v1.20.2): if $USERNAME is
+    // empty (e.g., detached SYSTEM service context), use a stable salted
+    // fallback instead of an unsalted shared pipe — prevents cross-user
+    // collision in shared installs.
     const char* user = std::getenv("USERNAME");
     if (user && *user) {
         return std::string("\\\\.\\pipe\\icmg-exec-") + user;
+    }
+    // Fallback uses USERPROFILE-hash so each user-session still gets unique
+    // pipe even if USERNAME absent.
+    const char* prof = std::getenv("USERPROFILE");
+    if (prof && *prof) {
+        size_t h = 0;
+        for (const char* p = prof; *p; ++p) h = h * 131 + (unsigned char)*p;
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "\\\\.\\pipe\\icmg-exec-h%zx", h);
+        return std::string(buf);
     }
     return "\\\\.\\pipe\\icmg-exec";
 }

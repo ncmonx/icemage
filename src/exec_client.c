@@ -493,7 +493,13 @@ int main(int argc, char* argv[]) {
     attach_parent_console();
     sanitize_path();
 
-    if (!needs_direct_spawn(argc, argv)) {
+    /* v1.20.2: multi-user safety — ICMG_NO_IPC=1 opts out of IPC + autospawn
+     * entirely. Useful when multiple Windows users share a single icmg.exe
+     * install: each user's exec_client should NOT try connecting to another
+     * user's icmg-service pipe and should NOT spawn a service of its own. */
+    int no_ipc = (getenv("ICMG_NO_IPC") != NULL);
+
+    if (!no_ipc && !needs_direct_spawn(argc, argv)) {
         int rc = try_ipc(argc, argv);
         if (rc >= 0) return rc;
         /* IPC unavailable → service may be dead. Auto-spawn it for
