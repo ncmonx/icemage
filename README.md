@@ -38,11 +38,17 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.20.3 — Hotfix: leash + bash-rewrite use bash `=~` ERE (drop external grep fork)
+
+`icmg-git-leash.sh` and `icmg-bash-rewrite.sh` (PreToolUse:Bash hook scripts emitted by `icmg init`) still invoked `echo "$VAR" | grep -qE 'pattern'` for every rule — extra fork + pipe per match, fragile against a broken `/usr/bin/grep`. Per the v1.17.0 hook-resilience rule both should have used bash `[[ "$VAR" =~ pattern ]]`. v1.20.3 migrates both embedded constants in `init_cmd.cpp`. Net: ~10 subprocess forks eliminated per Bash hook invocation, measurable cold-startup cut.
+
+ctest 111/111. Drop-in upgrade. Re-emit hooks via `icmg init --force`.
+
+---
+
 ## 🛠 v1.20.2 — Hotfix: cross-project context auto-detect + multi-user IPC safety
 
-**Bug 1 (user-reported)**: `icmg context <abs-path>` to a file in another registered project returned data from the caller's CWD project instead of the file's owning project. Fix: when the input path is absolute, `context` now looks up the owning project in the global registry via longest-prefix match (case-insensitive on Windows). Override cleared on exit via RAII (no singleton leak).
-
-**Multi-user safety hardening**: shared `icmg.exe` install across multiple Windows users is now defended with `ICMG_NO_IPC=1` opt-out env (skip IPC + autospawn entirely) and a `USERPROFILE`-hash fallback for the IPC pipe name when `$USERNAME` is empty (detached service context).
+`icmg context <abs-path>` to a file in another registered project returned data from the caller's CWD project. Fix: when the input path is absolute, `context` now looks up the owning project in the global registry via longest-prefix match. Multi-user hardening added: `ICMG_NO_IPC=1` opt-out env + `USERPROFILE`-hash fallback for the IPC pipe name.
 
 ctest 111/111. Drop-in upgrade.
 
@@ -51,26 +57,13 @@ ctest 111/111. Drop-in upgrade.
 ## 🛠 v1.20.1 — Hotfix: `icmg graph rebuild` alias + cross-project context leak
 
 - `icmg graph rebuild` aliased to `graph-update --force` (verb missing since older versions).
-- `core::Config::projectDbOverride` now cleared via RAII guards in `dispatcher.cpp` + `exec_server.cpp` so long-lived processes (`exec_server` worker, MCP server) don't leak `--project X` state across CLI invocations.
+- `core::Config::projectDbOverride` now cleared via RAII guards in `dispatcher.cpp` + `exec_server.cpp` so long-lived processes don't leak `--project X` state across CLI invocations.
 
 ctest 111/111. Drop-in upgrade.
 
 ---
 
-## 🛠 v1.20.0 — Memory access-aware decay + 3 new viewers
-
-First scoped delivery from the v1.20.0 plan — highest-ROI, lowest-risk memory + viewer enhancements.
-
-- **Access-aware decay (M1)**: hot memories decay slower; cold ones decay normally. Tighter top-K → smaller injection budget.
-- **`icmg ls --summary` (F4)**: per-dir `subdir/ (N files, M dirs)` count instead of recursion.
-- **`icmg json` (F5, new)**: schema-only JSON viewer. ~80% token cut on large configs.
-- **`icmg savings --ascii` (U1)**: 30-cell ASCII sparkline on the daily-history table.
-
-ctest 111/111. Drop-in. No schema migration.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.19.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.20.0 and earlier.
 
 ---
 
