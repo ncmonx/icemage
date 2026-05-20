@@ -4,6 +4,29 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.18.1 — Hotfix: exec_client race + `icmg init` speedup
+
+Hotfix targeting two user-reported symptoms after v1.18.0 service auto-spawn rollout: Claude tool calls hanging at 120s timeout when icmg already running, and bloat (30+ stuck `icmg-core.exe` processes at ~648KB each) when running `icmg update --apply` across many projects.
+
+### Bug fix — auto-spawn race
+
+- **`exec_client` singleton mutex pre-check**: before spawning a service, the client now `OpenMutexA` on the global mutex (`Global\icmg-service-<USER>`). If the mutex exists (service starting OR alive), spawn is skipped — eliminates the N-client race during fan-out scenarios.
+- **Atomic start sentinel**: `CreateFileA` with `CREATE_NEW` on `service.starting` ensures that even with N parallel `exec_client` callers all observing a dead service, only one wins the right to spawn.
+- Net effect: the cascade of stuck pre-init `icmg-core.exe` processes is gone. The 120s Bash-tool timeout caused by `exec_client` blocking on `CreateNamedPipe` contention is gone.
+
+### Bug fix — `update --apply` cascade
+
+- **`update_cmd.cpp`**: set `ICMG_NO_AUTOSPAWN=1` at 3 fan-out sites (per-project update loop, status check, rollback). Child subprocesses no longer cascade-spawn services; the parent service handles all work.
+
+### Speedup — `icmg init`
+
+- **`init_cmd.cpp`**: the 3 sub-imports invoked by `icmg init` (`claudemd import --slim`, `plan import`, `skill index`) are wrapped with `ICMG_NO_AUTOSPAWN=1` and have reduced timeouts (20s/15s/30s → 10s/8s/15s). Eliminates the user-reported "1+ minute no response" stall on first init.
+
+### Verification
+
+- 111/111 ctest (Windows).
+- Drop-in upgrade; no schema or CLI surface change.
+
 ## 1.18.0 — Service self-healing + popup-killer broadened + prefetch + observability + skill completion
 
 Multi-feature release targeting residual deployment robustness + latency + skill UX.

@@ -38,6 +38,16 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.18.1 — Hotfix: exec_client race + `icmg init` speedup
+
+- **`exec_client` mutex pre-check + start sentinel**: eliminates the N-client race during fan-out (`update --apply`, parallel CLI calls) that left 30+ stuck pre-init `icmg-core.exe` processes and caused Claude tool calls to hang at 120s timeout.
+- **`update --apply` cascade fixed**: `ICMG_NO_AUTOSPAWN=1` set at 3 fan-out sites so children no longer cascade-spawn services.
+- **`icmg init` speedup**: claudemd/plan/skill sub-imports wrapped with `ICMG_NO_AUTOSPAWN=1` + reduced timeouts (20s/15s/30s → 10s/8s/15s). No more 1-minute first-init stall.
+
+ctest 111/111. Drop-in. No schema or CLI surface change.
+
+---
+
 ## 🛠 v1.18.0 — Service self-healing + popup-killer broadened + prefetch + observability + skill completion
 
 - **Service self-healing**: `service status` PID-validated (no more stale-pidfile false positives). `exec_client` auto-spawns service detached when pipe dead + service PID dead. Popup-killer thread auto-recovers.
@@ -59,16 +69,7 @@ Drop-in. `icmg init --force` regenerates hook scripts.
 
 ---
 
-## 🛠 v1.16.0 — SessionStart hook consolidation (3 → 1) + turn_cache infrastructure
-
-- **SessionStart consolidation**: 3 sequential hook scripts (caveman + context + wakeup) → 1 IPC call via `icmg session-inject` (added in v1.15.0). **Saves ~1000ms per session start.** Legacy 3 scripts retained for backward compat.
-- **`core::turn_cache` module**: infrastructure for cross-turn result caching with mtime + TTL invalidation. Returns short `<icmg-cached:hex>` refs for unchanged inputs. Per-command wiring (`icmg context`, `recall`, etc.) deferred v1.17+.
-
-ctest 108/108. Drop-in. `icmg init --force` rewrites SessionStart entry.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.15.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.16.x and earlier.
 
 ---
 
