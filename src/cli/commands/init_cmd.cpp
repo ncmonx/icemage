@@ -224,6 +224,72 @@ EXIT=$?
 exit 0
 )BASH";
 
+// v1.19.2: git-leash — mechanical enforcement of icmg safety rules
+// (git destructive ops, rm -rf, curl|sh, force-kill, settings.local.json
+// writes, leash-self-overwrite). PreToolUse:Bash|PowerShell + Write.
+// Opt-out: ICMG_LEASH_OFF=1.
+static const char* GIT_LEASH_SH = R"BASH(#!/usr/bin/env bash
+# icmg-git-leash.sh — mechanical enforcement of icmg safety rules.
+# Auto-installed by `icmg init`. Do not remove.
+set -uo pipefail
+export PATH="$PATH:/c/msys64/mingw64/bin:/c/Program Files/Git/usr/bin:/c/Windows/System32:/usr/local/bin:/usr/bin"
+[[ "${ICMG_LEASH_OFF:-0}" = "1" ]] && exit 0
+INPUT=$(cat)
+TOOL=$(echo "$INPUT" | icmg hookio get tool_name 2>/dev/null)
+CMD=$(echo "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
+FILEPATH=$(echo "$INPUT" | icmg hookio get tool_input.file_path 2>/dev/null)
+log_block() {
+    local rule="$1" msg="$2"
+    local h="${USERPROFILE:-${HOME:-/tmp}}"
+    mkdir -p "$h/.icmg" 2>/dev/null || true
+    printf '{"ts":%s,"rule":"%s","cmd":"%s"}\n' "$(date +%s 2>/dev/null||echo 0)" "$rule" "$(echo "$msg"|head -c 120)" >> "$h/.icmg/leash-blocks.jsonl" 2>/dev/null || true
+}
+block() {
+    local rule="$1" msg="$2"
+    log_block "$rule" "$msg"
+    icmg hookio emit PreToolUse --deny "LEASH [$rule]: $msg  (bypass: ICMG_LEASH_OFF=1 — logged)"
+    exit 2
+}
+NCMD=$(echo "$CMD" | tr -s '\t\n' '  ')
+if [[ "$TOOL" == "Bash" || "$TOOL" == "PowerShell" ]]; then
+    echo "$NCMD"|grep -qE 'git\s+(checkout|switch)(\s|$)'      && block "ID=12" "git checkout/switch requires explicit user instruction."
+    if echo "$NCMD"|grep -qE 'git\s+push\s+origin'; then
+        echo "$NCMD"|grep -qE 'git\s+push\s+origin\s+docs/' || block "ID=13" "git push origin blocked for non-docs branches. Use private remote."
+    fi
+    echo "$NCMD"|grep -qE 'git\s+push.*(--force|-f\b|--force-with-lease)' && block "ID=14" "git push --force blocked. Confirm with user."
+    echo "$NCMD"|grep -qE 'git\s+reset\s+--hard'               && block "ID=15" "git reset --hard blocked. Destroys uncommitted work."
+    echo "$NCMD"|grep -qE 'git\s+clean\s+-[a-zA-Z]*f'          && block "ID=16" "git clean -f blocked. Deletes untracked files."
+    echo "$NCMD"|grep -qE 'git\s+branch\s+-D\b'                && block "ID=17" "git branch -D blocked. Confirm with user."
+    echo "$NCMD"|grep -qE 'git\s+push\s+\S+\s+(main|master)\b' && block "ID=18" "Direct push to main/master blocked. Use PR workflow."
+    echo "$NCMD"|grep -qE 'git\s+(filter-branch|filter-repo)'  && block "ID=19" "git history-rewrite blocked."
+    if echo "$NCMD"|grep -qE '(^|[|;&[:space:]])\s*rm\s+-[a-zA-Z]*(r[a-zA-Z]*f|f[a-zA-Z]*r)'; then
+        echo "$NCMD"|grep -qE 'rm.*\s+(build|dist|out|__pycache__|\.cache|tmp|temp|node_modules)' || block "ID=20" "rm -rf blocked on non-build paths."
+    fi
+    echo "$NCMD"|grep -qiE 'rmdir\s+/s|Remove-Item\s+-Recurse\s+-Force' && ! echo "$NCMD"|grep -qiE '(build|dist|tmp|temp)' && block "ID=20" "Force-recursive-delete blocked on non-build paths."
+    echo "$NCMD"|grep -qE '(curl|wget).*\|\s*(ba)?sh' && block "ID=21" "curl|bash blocked — remote code execution risk."
+    echo "$NCMD"|grep -qE 'kill\s+-(9|SIGKILL)|taskkill\s+/F.*(icmg|claude)' && block "ID=22" "Force-kill of agent processes blocked."
+fi
+if [[ "$TOOL" == "Write" ]]; then
+    echo "$FILEPATH"|grep -qE 'icmg-git-leash\.sh'    && block "ID=30" "Cannot overwrite leash script."
+    echo "$FILEPATH"|grep -qE 'settings\.local\.json' && block "ID=31" "settings.local.json write blocked — hook removal requires user confirmation."
+fi
+exit 0
+)BASH";
+
+// v1.19.2: graph-update shim — PostToolUse:Edit|Write fires this script
+// which delegates to in-process `icmg hook posttooluse-edit` (auto graph
+// update + memory draft). Shim exists for settings.local.json files that
+// reference the script path; the in-process handler does the real work.
+static const char* GRAPH_UPDATE_SH = R"BASH(#!/usr/bin/env bash
+# icmg-graph-update.sh — PostToolUse:Edit|Write graph + memory autoupdate.
+# Auto-installed by `icmg init`. Delegates to in-process handler.
+[[ "${ICMG_NO_GRAPH_UPDATE:-0}" = "1" ]] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+INPUT=$(cat)
+printf '%s' "$INPUT" | icmg hook posttooluse-edit 2>/dev/null || true
+exit 0
+)BASH";
+
 // v0.42.0 + v1.2.0: SessionStart inject â€” hot context_nodes + skill manifest.
 // Skill manifest gives the agent direct access patterns for every ingested
 // skill so it doesn't fall back to grep/Read when the user names one.
@@ -877,6 +943,9 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-wakeup-session.sh", WAKEUP_SESSION_SH, true);
         // v0.42.0: rule enforcement hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-rule-enforce.sh", RULE_ENFORCE_SH, true);
+        // v1.19.2: git-leash + graph-update shim. settings.local.json wires both.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-git-leash.sh",    GIT_LEASH_SH,    true);
+        n += writeFile(root / ".claude" / "hooks" / "icmg-graph-update.sh", GRAPH_UPDATE_SH, true);
 
 #ifndef _WIN32
         // chmod +x on POSIX
@@ -901,10 +970,28 @@ private:
             {
                 {"matcher", "Bash"},
                 {"hooks",   json::array({
+                    // v1.19.2: leash fires FIRST (mechanical safety: git destruct,
+                    // rm -rf, curl|sh, force-kill). Hard-deny exit 2 short-circuits
+                    // remaining hooks in the matcher chain.
+                    {{"type", "command"},
+                     {"timeout", 10},
+                     {"command",
+                        std::string("[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0")}},
                     {{"type", "command"}, {"command",
                         std::string("[ -f .claude/hooks/icmg-bash-rewrite.sh ] && ") +
                         (strict_read ? "ICMG_STRICT_BASH=1 " : "") +
                         "(command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-bash-rewrite.sh) || bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
+                })}
+            },
+            // v1.19.2: PreToolUse:Write also fires leash (catches Write attempts
+            // to settings.local.json + icmg-git-leash.sh self-overwrite).
+            {
+                {"matcher", "Write"},
+                {"hooks",   json::array({
+                    {{"type", "command"},
+                     {"timeout", 10},
+                     {"command",
+                        std::string("[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0")}}
                 })}
             },
             {
@@ -1029,13 +1116,17 @@ private:
                       "printf '%s' \"$MSG\" | icmg hookio emit PostToolUse --ctx-stdin"}}
                 })}
             },
-            // v1.4.0 Task 3: PostToolUse:Edit|Write auto graph-update + memory draft.
-            // Silently writes a draft context node; no additionalContext emitted.
+            // v1.4.0 Task 3 + v1.19.2: PostToolUse:Edit|Write auto graph-update + memory draft.
+            // v1.19.2: route via icmg-graph-update.sh shim (settings.local.json
+            // visibility) which delegates to in-process posttooluse-edit handler.
             {
                 {"matcher", "Edit|Write"},
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 && echo \"$(cat)\" | icmg hook posttooluse-edit 2>/dev/null || true"}}
+                     {"timeout", 30},
+                     {"async", true},
+                     {"command",
+                      "[ -f .claude/hooks/icmg-graph-update.sh ] && bash .claude/hooks/icmg-graph-update.sh || (command -v icmg >/dev/null 2>&1 && echo \"$(cat)\" | icmg hook posttooluse-edit 2>/dev/null || true)"}}
                 })}
             }
         });
