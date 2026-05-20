@@ -38,13 +38,23 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## 🛠 v1.20.0 — Memory access-aware decay + 3 new viewers (RTK + ICM Tier-A picks)
+## 🛠 v1.20.1 — Hotfix: `icmg graph rebuild` alias + cross-project context leak
 
-First scoped delivery from the v1.20.0 plan. Picks the highest-ROI, lowest-risk subset of the RTK + ICM comparison study; remaining tasks (typed memoir relations, 3-layer auto-extract, tee-on-failure spill, in-RAM graph cache, feedback + transcript subsystems) deferred to v1.20.1+.
+**Bug 1**: `icmg graph rebuild` returned *"unknown subcommand"*. The verb was never registered; users coming from older versions expected it as the full-rescan shorthand. v1.20.1 aliases `rebuild` → `graph-update --force`.
 
-- **Access-aware decay (M1)**: `Scorer::accessAwareDecay(last_used, freq)` replaces flat `recencyDecay` in the score blend. Hot memories decay slower; cold ones decay normally. Net: tighter top-K → smaller injection budget.
-- **`icmg ls --summary` (F4)**: per-dir `subdir/ (N files, M dirs)` count instead of recursion. Works with `--tree`.
-- **`icmg json` (F5, new)**: schema-only JSON viewer. Replaces leaf values with type strings. Arrays show 1 sample + `<+N more>`. `--max-depth N` (default 8). ~80% token cut on large configs.
+**Bug 2 (user-reported)**: `core::Config` is a process singleton, and `setProjectDbOverride()` (set by `--project X` flag and a few MCP tools) was never cleared after the command completed. In long-lived processes (exec_server worker, MCP server), the override leaked between CLI invocations — a `context` query from project B silently hit project A's DB. Fix: RAII clear guards added to `dispatcher.cpp` and `exec_server.cpp` so the override is wiped per request.
+
+ctest 111/111. Drop-in upgrade.
+
+---
+
+## 🛠 v1.20.0 — Memory access-aware decay + 3 new viewers
+
+First scoped delivery from the v1.20.0 plan (RTK + ICM Tier-A picks).
+
+- **Access-aware decay (M1)**: hot memories decay slower; cold ones decay normally. Tighter top-K → smaller injection budget.
+- **`icmg ls --summary` (F4)**: per-dir `subdir/ (N files, M dirs)` count instead of recursion.
+- **`icmg json` (F5, new)**: schema-only JSON viewer. ~80% token cut on large configs.
 - **`icmg savings --ascii` (U1)**: 30-cell ASCII sparkline on the daily-history table.
 
 ctest 111/111. Drop-in. No schema migration.
@@ -59,15 +69,7 @@ ctest 111/111. Drop-in upgrade.
 
 ---
 
-## 🛠 v1.19.1 — Hotfix: restore single-binary + embedded manifest B:/ popup fix
-
-v1.19.0's dual-binary repack broke `icmg update --apply`. v1.19.1 restores single-binary shipping (heavy `icmg.exe` + 6 DLLs as in v1.18.x) and prevents the B:/ popup via an **embedded `RT_MANIFEST` resource** with private-assembly `<file>` entries — Win loader resolves all bundled DLLs (and their transitive deps) from app dir only, never scans `PATH`.
-
-ctest 111/111. Drop-in upgrade.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.19.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.19.1 and earlier.
 
 ---
 
