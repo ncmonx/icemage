@@ -79,6 +79,39 @@ static void attachParentConsoleIfAny() {
     std::cout.clear();
     std::cerr.clear();
     std::cin.clear();
+
+    // v1.20.5: when attached to a parent CMD prompt, install an atexit
+    // handler that flushes stdio, sends a newline to the parent console
+    // input buffer, and frees the console. Without this, CMD's prompt
+    // appears BEFORE the child's last output flushes (GUI-subsystem child
+    // doesn't block CMD), and the user has to press a key to wake the
+    // shell. Idempotent: no-op when not attached.
+    if (attached) {
+        static const bool _exit_handler_installed = [](){
+            std::atexit([](){
+                std::fflush(stdout);
+                std::fflush(stderr);
+                // Inject a CR into parent's input buffer so the CMD shell
+                // redraws its prompt cleanly on a fresh line.
+                HANDLE h_in = GetStdHandle(STD_INPUT_HANDLE);
+                if (h_in && h_in != INVALID_HANDLE_VALUE) {
+                    INPUT_RECORD r[2] = {};
+                    r[0].EventType = KEY_EVENT;
+                    r[0].Event.KeyEvent.bKeyDown = TRUE;
+                    r[0].Event.KeyEvent.wRepeatCount = 1;
+                    r[0].Event.KeyEvent.wVirtualKeyCode = VK_RETURN;
+                    r[0].Event.KeyEvent.uChar.AsciiChar = '\r';
+                    r[1] = r[0];
+                    r[1].Event.KeyEvent.bKeyDown = FALSE;
+                    DWORD written = 0;
+                    WriteConsoleInputA(h_in, r, 2, &written);
+                }
+                FreeConsole();
+            });
+            return true;
+        }();
+        (void)_exit_handler_installed;
+    }
 }
 #endif
 

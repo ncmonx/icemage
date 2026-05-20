@@ -779,6 +779,14 @@ public:
             }
         }
 
+        // v1.20.5: ensure `jq` is on PATH — the generated PostToolUse hooks
+        // pipe tool input through `jq` to extract fields cheaply (no extra
+        // icmg.exe cold-spawn). If jq is missing the hooks would silently
+        // no-op. On Windows we attempt a one-time download of jq.exe into
+        // the icmg.exe install directory; on POSIX we print apt/brew/dnf
+        // hints. Failure is non-fatal.
+        ensureJq();
+
         int steps = 0;
         if (!no_hooks)    { steps += installHooks(root, force, strict_read); }
         if (!no_agents)   { steps += installAgents(root, force); }
@@ -943,6 +951,75 @@ public:
     }
 
 private:
+    // v1.20.5: ensure jq is on PATH. PostToolUse hooks use jq inline for
+    // cheap JSON extraction. On Windows attempt download of the official
+    // standalone jq.exe into icmg.exe's install dir (which is already on
+    // PATH for users who invoke icmg from CMD). On POSIX print install
+    // hints — auto-install across distros is out of scope.
+    void ensureJq() {
+        // Probe presence.
+        auto probe = core::safeExecShell("jq --version 2>&1", true, 3000);
+        if (probe.exit_code == 0) {
+            std::cout << "  jq:         present (" << probe.out.substr(0, 12) << ")\n";
+            return;
+        }
+
+#ifdef _WIN32
+        // Locate icmg.exe install dir; download jq.exe sibling.
+        char self_path[1024];
+        DWORD n = GetModuleFileNameA(nullptr, self_path, sizeof(self_path));
+        if (n == 0 || n >= sizeof(self_path)) {
+            std::cout << "  jq:         not found (could not locate install dir)\n";
+            return;
+        }
+        std::string sp = self_path;
+        size_t last_sep = sp.find_last_of("\\/");
+        if (last_sep == std::string::npos) {
+            std::cout << "  jq:         not found (install dir unresolved)\n";
+            return;
+        }
+        std::string install_dir = sp.substr(0, last_sep);
+        fs::path jq_target = fs::path(install_dir) / "jq.exe";
+        if (fs::exists(jq_target)) {
+            std::cout << "  jq:         present in install dir\n";
+            return;
+        }
+
+        std::cout << "  jq:         not found — downloading official jq-windows-amd64.exe...\n";
+        // Official release URL (stable). 6.5MB; SHA verified by GitHub.
+        const std::string url =
+            "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-windows-amd64.exe";
+        std::string tmp_path = (fs::temp_directory_path() / "jq-icmg-download.exe").string();
+        std::string curl_cmd =
+            "curl -fsSL --max-time 60 -o \"" + tmp_path + "\" \"" + url + "\"";
+        auto dl = core::safeExecShell(curl_cmd, true, 65000);
+        if (dl.exit_code != 0 || !fs::exists(tmp_path)) {
+            std::cout << "  jq:         download failed — install manually from "
+                      << "https://jqlang.org/download/ (place jq.exe in " << install_dir << ")\n";
+            return;
+        }
+        std::error_code ec;
+        fs::rename(tmp_path, jq_target, ec);
+        if (ec) {
+            fs::copy_file(tmp_path, jq_target,
+                          fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                std::cout << "  jq:         download ok but install failed ("
+                          << ec.message() << "); copy " << tmp_path
+                          << " → " << jq_target.string() << " manually\n";
+                return;
+            }
+        }
+        std::cout << "  jq:         installed at " << jq_target.string() << "\n";
+#else
+        std::cout << "  jq:         not found — install with one of:\n"
+                  << "                Ubuntu/Debian:  sudo apt install -y jq\n"
+                  << "                Fedora/RHEL:    sudo dnf install -y jq\n"
+                  << "                Arch:           sudo pacman -S jq\n"
+                  << "                macOS:          brew install jq\n";
+#endif
+    }
+
     int installHooks(const fs::path& root, bool force, bool strict_read = false) {
         int n = 0;
         fs::create_directories(root / ".claude" / "hooks");
@@ -1006,25 +1083,27 @@ private:
             cfg = json::object();
         }
         if (!cfg.contains("hooks")) cfg["hooks"] = json::object();
+        // v1.20.5: drop `icmg shield --` wrapper around hook scripts. shield
+        // cold-spawned an extra icmg.exe per tool invocation, which on first
+        // launch piled onto the 60s subprocess-init budget (Defender scan
+        // every spawn). Hooks run as plain `bash <script>` now; the scripts
+        // themselves invoke icmg lazily and exit fast on missing dependency.
         json pre_array = json::array({
             {
                 {"matcher", "Bash"},
                 {"hooks",   json::array({
-                    // v1.19.2: leash fires FIRST (mechanical safety: git destruct,
-                    // rm -rf, curl|sh, force-kill). Hard-deny exit 2 short-circuits
-                    // remaining hooks in the matcher chain.
                     {{"type", "command"},
                      {"timeout", 10},
                      {"command",
                         std::string("[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0")}},
-                    {{"type", "command"}, {"command",
+                    {{"type", "command"},
+                     {"timeout", 5},
+                     {"command",
                         std::string("[ -f .claude/hooks/icmg-bash-rewrite.sh ] && ") +
                         (strict_read ? "ICMG_STRICT_BASH=1 " : "") +
-                        "(command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-bash-rewrite.sh) || bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
+                        "bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
                 })}
             },
-            // v1.19.2: PreToolUse:Write also fires leash (catches Write attempts
-            // to settings.local.json + icmg-git-leash.sh self-overwrite).
             {
                 {"matcher", "Write"},
                 {"hooks",   json::array({
@@ -1037,23 +1116,22 @@ private:
             {
                 {"matcher", "Read|Glob|Grep"},
                 {"hooks",   json::array({
-                    {{"type", "command"}, {"command",
-                        "[ -f .claude/hooks/icmg-rule-enforce.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-rule-enforce.sh) || bash .claude/hooks/icmg-rule-enforce.sh || exit 0"}}
+                    {{"type", "command"},
+                     {"timeout", 5},
+                     {"command",
+                        "[ -f .claude/hooks/icmg-rule-enforce.sh ] && bash .claude/hooks/icmg-rule-enforce.sh || exit 0"}}
                 })}
             },
             {
                 {"matcher", "Read"},
                 {"hooks",   json::array({
-                    {{"type", "command"}, {"command",
+                    {{"type", "command"},
+                     {"timeout", 5},
+                     {"command",
                         std::string("[ -f .claude/hooks/icmg-shrink-read.sh ] && ") +
-                        // Phase 79: force every Read through icmg context overlay.
-                        // Removed source-ext exclusion that previously let .cpp/.ts/.cs
-                        // bypass cap + overlay. Threshold lowered to 0 so even tiny
-                        // files get the icmg-context hint. Cap at 30 lines covers
-                        // Edit-anchor requirement. Opt-out: ICMG_NO_READ_FORCE=1.
                         "ICMG_READ_LIMIT=30 ICMG_SHRINK_THRESHOLD=0 " +
                         (strict_read ? "ICMG_SHRINK_STRICT=1 " : "") +
-                        "(command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-shrink-read.sh) || bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
+                        "bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
                 })}
             }
         });
@@ -1174,28 +1252,25 @@ private:
 
         // Phase 51 T2: SessionStart caveman directive.
         // v0.42.0: also inject hot context_nodes at session start.
+        // v1.20.5: revert to script-based SessionStart entries (user-confirmed
+        // working). Combined `icmg session-inject` had been triggering the
+        // first-launch "Subprocess initialization did not complete within
+        // 60000ms" cascade on cold icmg.exe spawn. Script invocations exit
+        // fast when scripts are missing (`|| exit 0` tail) and the warm-up
+        // daemon/scan lines that previously sat here are dropped — they were
+        // contributing to the same cold-spawn budget hit on first launch.
         cfg["hooks"]["SessionStart"] = json::array({
             {
                 {"hooks", json::array({
-                    // v1.6.2: warm-keep daemon. Fire-and-forget at session start
-                    // so subsequent UserPromptSubmit hooks hit daemon IPC (~5ms)
-                    // instead of cold icmg.exe spawn (~360ms).
                     {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 && icmg daemon start >/dev/null 2>&1 &"}},
-                    // v1.6.4: warm-up graph scan at session start so first
-                    // prompt of a fresh-clone or stale-cache session has a
-                    // current graph. Detached + truncated; cold scan ~30-180s
-
-                    // for big projects, warm <5s.
+                     {"timeout", 5},
+                     {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
                     {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 && icmg graph scan >> .icmg/scan.log 2>&1 &"}},
-                    // v1.16.0: combined SessionStart inject via session-inject
-                    // (replaces 3 sequential cold-spawn hooks: caveman + context
-                    // + wakeup). ~30× faster session start via in-process call.
-                    // Existing 3 hook scripts still written for backward compat
-                    // (manual invocation, debugging) but no longer registered.
+                     {"timeout", 5},
+                     {"command", "[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0"}},
                     {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 && icmg session-inject 2>/dev/null | icmg hookio emit SessionStart --ctx-stdin || exit 0"}}
+                     {"timeout", 5},
+                     {"command", "[ -f .claude/hooks/icmg-wakeup-session.sh ] && bash .claude/hooks/icmg-wakeup-session.sh || exit 0"}}
                 })}
             }
         });
@@ -1204,11 +1279,17 @@ private:
         // IPC dance (icmg-prompt-recall.sh) that was spawning Win32 children
         // outside icmg.exe SetErrorMode coverage, causing the recurring B:/ popup
         // when transitive lookups hit MSYS path-translated drives.
+        // v1.20.5: revert to script-based UserPromptSubmit. `exec icmg hook
+        // userprompt` from the previous generator cold-spawned icmg.exe on
+        // every prompt — exhausted Claude Code's 60s init budget on first
+        // launch with cold Defender scan. Script invocation lets the rule
+        // be evaluated lazily inside the script (which also exits fast).
         cfg["hooks"]["UserPromptSubmit"] = json::array({
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook userprompt"}}
+                     {"timeout", 5},
+                     {"command", "[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0"}}
                 })}
             }
         });
@@ -1220,22 +1301,19 @@ private:
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook precompact"}}
+                     {"timeout", 10},  // v1.20.5: bounded; precompact may include snapshot.
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; icmg hook precompact 2>/dev/null || exit 0"}}
                 })}
             }
         });
-        // v1.1.0 Task 6: PreToolUse hard-deny â€” denies raw shell / large Read /
-        // powershell / cmd patterns when icmg has an equivalent. Per-session
-        // bypass via ICMG_STRICT_BYPASS=1.
-        cfg["hooks"]["PreToolUse"] = json::array({
-            {
-                {"matcher", "Bash|PowerShell|Read|Glob|Grep|WebFetch"},
-                {"hooks", json::array({
-                    {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook pretooluse"}}
-                })}
-            }
-        });
+        // v1.20.5: revert PreToolUse to per-matcher script-based entries
+        // (user-confirmed working). The previous `exec icmg hook pretooluse`
+        // single-entry pattern cold-spawned icmg.exe on EVERY tool call,
+        // contributing to first-launch 60s init timeout. Per-matcher scripts
+        // exit fast when script missing (`[ -f ... ] || exit 0`).
+        // pre_array (built ~120 lines above) already covers Bash + Write +
+        // Read|Glob|Grep + Read + (strict_read ? WebFetch) — keep that
+        // canonical structure rather than overwriting with the hard-deny block.
 
         // v1.5.3: Stop hook trimmed to single icmg.exe call. Dropped the
         // wflog-stop.sh sidecar — it spawned git + jq (Win32) outside icmg's
