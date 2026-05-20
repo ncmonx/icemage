@@ -38,6 +38,18 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.18.0 — Service self-healing + popup-killer broadened + prefetch + observability + skill completion
+
+- **Service self-healing**: `service status` PID-validated (no more stale-pidfile false positives). `exec_client` auto-spawns service detached when pipe dead + service PID dead. Popup-killer thread auto-recovers.
+- **Popup-killer broadened**: accept Win11 `TaskDialogClass` + `DirectUIHWND*` + `WS_POPUP` style fallback. Same 100ms scan.
+- **Prefetch + observability**: `core::prefetch_cache` warms hot context_nodes + skill manifest at service start. `core::query_cache` adds 5min TTL BM25 result cache (foundation). `icmg metrics` shows cache hit-rates + service health. `icmg whatchanged` reports memory delta since last stamp.
+- **Skill completion**: `icmg skill stats` (per-skill size + total). `icmg skill suggest <prompt>` (BM25 intent predict, top-N).
+- Session boundary: `session-inject` resets dedup + turn_cache.
+
+ctest 111/111. Drop-in. Restart service after upgrade.
+
+---
+
 ## 🛠 v1.17.0 — Hook scripts use bash `[[ ]]` keyword + TDD backlog burn (111/111)
 
 - **Hook scripts resilient**: all bundled hooks migrated from POSIX `[ ]` (external `/usr/bin/[`) → bash `[[ ]]` (always builtin). Fixes `/usr/bin/[: cannot execute binary file` on users with broken MSYS coreutils.
@@ -56,16 +68,7 @@ ctest 108/108. Drop-in. `icmg init --force` rewrites SessionStart entry.
 
 ---
 
-## 🛠 v1.15.0 — `icmg session-inject` (30× faster session start) + self-test on upgrade with auto-rollback
-
-- **`icmg session-inject`** — combines 3 SessionStart hooks (caveman + context + wakeup) into single in-process call. ~30× faster session start (~1080ms → ~10-50ms via exec_server IPC).
-- **Self-test on upgrade** — `icmg update --apply` runs smoke (`--version` + `doctor`) on new binary. Auto-rollback to `.bak` on failure. Marker file `~/.icmg/last-upgrade-verified.txt`. Bypass via `--no-self-test`.
-
-ctest 108/108. Drop-in. Existing hooks continue to work; session-inject available for opt-in adoption.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.14.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.15.0 and earlier.
 
 ---
 
