@@ -4,6 +4,26 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.20.2 — Hotfix: cross-project context auto-detect + multi-user IPC safety
+
+### Bug 1 (user-reported) — `icmg context <abs-path>` returned wrong project's data
+
+When the caller passed an absolute file path that belongs to a different registered project, `icmg context` still queried the CWD project's DB and returned unrelated graph/memory hits. Root cause: `bundle_cmd` hardcoded `cfg.projectDbPath(".")` so the resolution always followed the working directory.
+
+Fix: when the input path is absolute and exists, `context` now looks up the owning project in the global registry via longest-prefix match (case-insensitive on Windows). If a match is found and differs from the CWD project, `projectDbOverride` is set to that project's DB for the duration of the command. Relative paths and unregistered targets keep their existing CWD-resolved behaviour. The RAII clear guards from v1.20.1 still wipe the override on exit so singleton state cannot leak across invocations.
+
+### Multi-user safety hardening
+
+When multiple Windows users share a single `icmg.exe` install, per-user resources (IPC pipe, service mutex, state directory, PID file) are already namespaced by `USERNAME`. v1.20.2 adds two defensive layers:
+
+- `ICMG_NO_IPC=1` env opts the caller's `exec_client` out of IPC + service autospawn entirely (direct exec only). Useful on shared machines where service ownership is murky.
+- `exec_protocol.hpp::pipeName()`: when `$USERNAME` is empty (detached service context), the fallback pipe name now includes a `USERPROFILE`-hash suffix instead of using an unsalted shared name — prevents cross-user collision in unusual environments.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade. No schema migration.
+
 ## 1.20.1 — Hotfix: `icmg graph rebuild` alias + cross-project context leak
 
 ### Bug 1 — `icmg graph rebuild` returned "unknown subcommand"
