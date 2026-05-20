@@ -38,9 +38,22 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.20.0 — Memory access-aware decay + 3 new viewers (RTK + ICM Tier-A picks)
+
+First scoped delivery from the v1.20.0 plan. Picks the highest-ROI, lowest-risk subset of the RTK + ICM comparison study; remaining tasks (typed memoir relations, 3-layer auto-extract, tee-on-failure spill, in-RAM graph cache, feedback + transcript subsystems) deferred to v1.20.1+.
+
+- **Access-aware decay (M1)**: `Scorer::accessAwareDecay(last_used, freq)` replaces flat `recencyDecay` in the score blend. Hot memories decay slower; cold ones decay normally. Net: tighter top-K → smaller injection budget.
+- **`icmg ls --summary` (F4)**: per-dir `subdir/ (N files, M dirs)` count instead of recursion. Works with `--tree`.
+- **`icmg json` (F5, new)**: schema-only JSON viewer. Replaces leaf values with type strings. Arrays show 1 sample + `<+N more>`. `--max-depth N` (default 8). ~80% token cut on large configs.
+- **`icmg savings --ascii` (U1)**: 30-cell ASCII sparkline on the daily-history table.
+
+ctest 111/111. Drop-in. No schema migration.
+
+---
+
 ## 🛠 v1.19.2 — Hotfix: generate `icmg-git-leash.sh` + `icmg-graph-update.sh` on init
 
-Two hook scripts referenced by the generated `.claude/settings.local.json` were not being created by `icmg init`: `icmg-git-leash.sh` (PreToolUse mechanical safety — blocks destructive git ops, `rm -rf`, `curl|sh`, force-kills, `settings.local.json` writes) and `icmg-graph-update.sh` (PostToolUse:Edit|Write shim → in-process graph + memory autoupdate). Both have been silently inactive since v1.4.0. v1.19.2 embeds them in `init_cmd.cpp` and writes them on `icmg init [--force]`.
+Two hook scripts referenced by `.claude/settings.local.json` were not being created by `icmg init` (silently inactive since v1.4.0). v1.19.2 embeds them in `init_cmd.cpp` and writes them on `icmg init [--force]`.
 
 ctest 111/111. Drop-in upgrade.
 
@@ -48,25 +61,13 @@ ctest 111/111. Drop-in upgrade.
 
 ## 🛠 v1.19.1 — Hotfix: restore single-binary + embedded manifest B:/ popup fix
 
-v1.19.0's dual-binary repack broke `icmg update --apply`. v1.19.1 restores single-binary shipping (heavy `icmg.exe` + 6 DLLs as in v1.18.x) and prevents the B:/ popup via an **embedded `RT_MANIFEST` resource** with private-assembly `<file>` entries for each bundled DLL — Win loader resolves all bundled DLLs (and their transitive deps) from app dir only, never scans `PATH`.
-
-The `icmg init` speedup from v1.19.0 is preserved.
+v1.19.0's dual-binary repack broke `icmg update --apply`. v1.19.1 restores single-binary shipping (heavy `icmg.exe` + 6 DLLs as in v1.18.x) and prevents the B:/ popup via an **embedded `RT_MANIFEST` resource** with private-assembly `<file>` entries — Win loader resolves all bundled DLLs (and their transitive deps) from app dir only, never scans `PATH`.
 
 ctest 111/111. Drop-in upgrade.
 
 ---
 
-## 🛠 v1.18.1 — Hotfix: exec_client race + `icmg init` speedup
-
-- **`exec_client` mutex pre-check + start sentinel**: eliminates the N-client race during fan-out (`update --apply`, parallel CLI calls) that left 30+ stuck pre-init `icmg-core.exe` processes and caused Claude tool calls to hang at 120s timeout.
-- **`update --apply` cascade fixed**: `ICMG_NO_AUTOSPAWN=1` set at 3 fan-out sites so children no longer cascade-spawn services.
-- **`icmg init` speedup**: claudemd/plan/skill sub-imports wrapped with `ICMG_NO_AUTOSPAWN=1` + reduced timeouts (20s/15s/30s → 10s/8s/15s).
-
-ctest 111/111. Drop-in.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.18.0 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.19.0 and earlier.
 
 ---
 
