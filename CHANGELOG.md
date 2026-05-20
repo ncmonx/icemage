@@ -4,6 +4,24 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.20.3 — Hotfix: leash + bash-rewrite use bash `=~` ERE (drop external grep fork)
+
+`icmg-git-leash.sh` and `icmg-bash-rewrite.sh` (the PreToolUse:Bash hook scripts emitted by `icmg init`) were still invoking `echo "$VAR" | grep -qE 'pattern'` for every safety/redirect rule. Each match meant an extra subprocess fork + pipe; the chain was also fragile against a broken `/usr/bin/grep` on MSYS coreutils. Per the v1.17.0 hook-resilience rule the generator should have used bash `[[ "$VAR" =~ pattern ]]` for these — the two embedded constants in `init_cmd.cpp` had not been migrated.
+
+### Fix
+
+- `GIT_LEASH_SH`: every `echo "$NCMD"|grep -qE '…'` and `echo "$FILEPATH"|grep -qE '…'` rewritten as bash `[[ … =~ … ]]`. `\s` replaced with `[[:space:]]`; `` boundaries rewritten as bounded alternatives. Case-insensitive `grep -qi` checks now use `${VAR,,}` (bash lowercase) + ERE.
+- `BASH_REWRITE_SH`: the `^RAW=1 `, `(icmg|rtk)` prefix guards and the long noisy-command `$PATTERN` test all converted to bash `=~`. `rtk` dropped from the icmg-prefix bypass.
+
+### Performance
+
+~10 subprocess forks eliminated per PreToolUse:Bash hook invocation → measurable cut on cold-hook startup time.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade. Hooks re-emitted via `icmg init --force`.
+
 ## 1.20.2 — Hotfix: cross-project context auto-detect + multi-user IPC safety
 
 ### Bug 1 (user-reported) — `icmg context <abs-path>` returned wrong project's data
