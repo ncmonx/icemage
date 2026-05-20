@@ -26,7 +26,7 @@ Fix: RAII clear guards added at two enforcement points:
 - 111/111 ctest (Windows + Linux)
 - Drop-in upgrade. No schema migration.
 
-## 1.20.0 — Memory access-aware decay + 3 new viewers (RTK + ICM Tier-A picks)
+## 1.20.0 — Memory access-aware decay + 3 new viewers
 
 First scoped delivery from the v1.20.0 plan (4 of 21 tasks). The remaining items (typed memoir relations, 3-layer auto-extract, tee-on-failure spill, in-RAM graph cache, feedback + transcript subsystems, bench-recall harness, …) are deferred to v1.20.1+ for incremental review.
 
