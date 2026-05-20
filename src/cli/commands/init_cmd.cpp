@@ -50,6 +50,30 @@ CMD=$(echo "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
 [[ "$CMD" =~ ^RAW=1[[:space:]] ]] && exit 0
 [[ "$CMD" =~ (^|[[:space:]\|\&\;])icmg[[:space:]]+ ]] && exit 0
 
+# v1.20.6 (F7): transparent prefix scan — peek through wrapper shells so the
+# pattern check sees the *real* inner command. Without this `bash -c "grep ..."`
+# or `xargs cargo test` bypassed the rewrite filter. Strips known wrappers:
+#   bash -c "..."   sh -c "..."   xargs <cmd>   npx <cmd>   pnpm exec <cmd>
+#   yarn exec <cmd>   dotenv -- <cmd>   env [VAR=val ...] <cmd>
+INNER_CMD="$CMD"
+# Iterate up to 3 layers (handles nested wrappers like xargs bash -c "..."):
+for _ in 1 2 3; do
+    case "$INNER_CMD" in
+        bash\ -c\ \"*) INNER_CMD="${INNER_CMD#bash -c \"}"; INNER_CMD="${INNER_CMD%\"}" ;;
+        bash\ -c\ \'*) INNER_CMD="${INNER_CMD#bash -c \'}"; INNER_CMD="${INNER_CMD%\'}" ;;
+        sh\ -c\ \"*)   INNER_CMD="${INNER_CMD#sh -c \"}";   INNER_CMD="${INNER_CMD%\"}" ;;
+        sh\ -c\ \'*)   INNER_CMD="${INNER_CMD#sh -c \'}";   INNER_CMD="${INNER_CMD%\'}" ;;
+        xargs\ *)      INNER_CMD="${INNER_CMD#xargs }" ;;
+        npx\ *)        INNER_CMD="${INNER_CMD#npx }" ;;
+        pnpm\ exec\ *) INNER_CMD="${INNER_CMD#pnpm exec }" ;;
+        yarn\ exec\ *) INNER_CMD="${INNER_CMD#yarn exec }" ;;
+        dotenv\ --\ *) INNER_CMD="${INNER_CMD#dotenv -- }" ;;
+        *) break ;;
+    esac
+done
+# Use INNER_CMD for pattern matching below; original $CMD kept for messages.
+CMD_MATCH="$INNER_CMD"
+
 # Phase 58: log strict denial as JSONL (~/.icmg/strict-denials.jsonl).
 log_denial() {
     local hook="$1" target="$2" reason="$3"
@@ -76,7 +100,7 @@ if [[ "${ICMG_STRICT_BASH:-0}" = "1" ]]; then
 fi
 
 PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status)([[:space:]]|$)'
-if [[ "$CMD" =~ $PATTERN ]]; then
+if [[ "$CMD_MATCH" =~ $PATTERN ]]; then
     log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
     icmg hookio emit PreToolUse --deny "Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix."
     exit 2
