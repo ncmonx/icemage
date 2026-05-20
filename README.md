@@ -38,11 +38,20 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.20.2 — Hotfix: cross-project context auto-detect + multi-user IPC safety
+
+**Bug 1 (user-reported)**: `icmg context <abs-path>` to a file in another registered project returned data from the caller's CWD project instead of the file's owning project. Fix: when the input path is absolute, `context` now looks up the owning project in the global registry via longest-prefix match (case-insensitive on Windows). Override cleared on exit via RAII (no singleton leak).
+
+**Multi-user safety hardening**: shared `icmg.exe` install across multiple Windows users is now defended with `ICMG_NO_IPC=1` opt-out env (skip IPC + autospawn entirely) and a `USERPROFILE`-hash fallback for the IPC pipe name when `$USERNAME` is empty (detached service context).
+
+ctest 111/111. Drop-in upgrade.
+
+---
+
 ## 🛠 v1.20.1 — Hotfix: `icmg graph rebuild` alias + cross-project context leak
 
-**Bug 1**: `icmg graph rebuild` returned *"unknown subcommand"*. The verb was never registered; users coming from older versions expected it as the full-rescan shorthand. v1.20.1 aliases `rebuild` → `graph-update --force`.
-
-**Bug 2 (user-reported)**: `core::Config` is a process singleton, and `setProjectDbOverride()` (set by `--project X` flag and a few MCP tools) was never cleared after the command completed. In long-lived processes (exec_server worker, MCP server), the override leaked between CLI invocations — a `context` query from project B silently hit project A's DB. Fix: RAII clear guards added to `dispatcher.cpp` and `exec_server.cpp` so the override is wiped per request.
+- `icmg graph rebuild` aliased to `graph-update --force` (verb missing since older versions).
+- `core::Config::projectDbOverride` now cleared via RAII guards in `dispatcher.cpp` + `exec_server.cpp` so long-lived processes (`exec_server` worker, MCP server) don't leak `--project X` state across CLI invocations.
 
 ctest 111/111. Drop-in upgrade.
 
@@ -61,15 +70,7 @@ ctest 111/111. Drop-in. No schema migration.
 
 ---
 
-## 🛠 v1.19.2 — Hotfix: generate `icmg-git-leash.sh` + `icmg-graph-update.sh` on init
-
-Two hook scripts referenced by `.claude/settings.local.json` were not being created by `icmg init` (silently inactive since v1.4.0). v1.19.2 embeds them in `init_cmd.cpp` and writes them on `icmg init [--force]`.
-
-ctest 111/111. Drop-in upgrade.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.19.1 and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.19.x and earlier.
 
 ---
 
