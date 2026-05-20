@@ -728,27 +728,40 @@ public:
             }
         }
 
-        // v0.44.0: auto-import + slim CLAUDE.md(s) on init/upgrade.
-        // Skips already-slim files; backup saved to .icmg/ before overwrite.
+        // v0.44.0 + v1.18.1: auto-import + slim CLAUDE.md(s).
+        // ICMG_NO_AUTOSPAWN=1 prevents exec_client cascade spawn race.
+        // Reduced timeouts: imports should be fast (<5s typical).
+#ifdef _WIN32
+        const char* env_prefix = "set ICMG_NO_AUTOSPAWN=1 && ";
+#else
+        const char* env_prefix = "ICMG_NO_AUTOSPAWN=1 ";
+#endif
         {
-            auto r = core::safeExecShell("icmg claudemd import --slim 2>&1", false, 20000);
+            std::string cmd = std::string(env_prefix)
+                            + "icmg claudemd import --slim 2>&1";
+            auto r = core::safeExecShell(cmd, false, 10000);
             if (r.exit_code == 0) {
                 std::cout << "  context-graph: CLAUDE.md imported + slimmed (backup in .icmg/)\n";
             } else {
                 std::cout << "  context-graph: run `icmg claudemd import --slim` to slim CLAUDE.md\n";
             }
         }
-        // v0.44.0: auto-import plan files (PROGRESS.md, docs/plans/) into context_nodes.
+        // v0.44.0: auto-import plan files.
         {
-            auto r = core::safeExecShell("icmg plan import 2>&1", false, 15000);
+            std::string cmd = std::string(env_prefix)
+                            + "icmg plan import 2>&1";
+            auto r = core::safeExecShell(cmd, false, 8000);
             if (r.exit_code == 0) {
                 std::cout << "  plan-graph:    plan files imported to context_nodes\n";
             }
         }
 
-        // v0.45.1: auto-index skill files so Claude discovers icmg features via BM25.
+        // v0.45.1 + v1.18.1: auto-index skill files. Hash-based skip if
+        // skill dir unchanged (saves ~5-10s on no-op re-init).
         {
-            auto r = core::safeExecShell("icmg skill index 2>&1", false, 30000);
+            std::string cmd = std::string(env_prefix)
+                            + "icmg skill index 2>&1";
+            auto r = core::safeExecShell(cmd, false, 15000);
             if (r.exit_code == 0) {
                 std::cout << "  skill-index:   skill files indexed for feature discovery\n";
             }

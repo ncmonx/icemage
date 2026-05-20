@@ -616,8 +616,18 @@ private:
                            || fs::exists(cwd / ".claude" / "settings.local.json");
             if (is_project) {
                 std::cout << "Refreshing project hooks...\n";
-                std::string cmd = "\"" + self.string() + "\" init --install-hooks --force "
+                // v1.18.1: ICMG_NO_AUTOSPAWN prevents exec_client from
+                // triggering service spawn during update fan-out (caused
+                // bloat — 32+ stuck icmg-core procs).
+#ifdef _WIN32
+                std::string cmd = "set ICMG_NO_AUTOSPAWN=1 && \""
+                                + self.string() + "\" init --install-hooks --force "
                                   "--no-agents --no-embedder --no-scan";
+#else
+                std::string cmd = "ICMG_NO_AUTOSPAWN=1 \""
+                                + self.string() + "\" init --install-hooks --force "
+                                  "--no-agents --no-embedder --no-scan";
+#endif
                 auto res = core::safeExecShell(cmd, false, 15000);
                 if (res.exit_code == 0) {
                     std::cout << "  Hooks refreshed.\n\n";
@@ -646,14 +656,18 @@ private:
                         for (auto& p : proj_paths) {
                             if (!fs::exists(p) || !fs::exists(fs::path(p) / ".icmg")) continue;
 #ifdef _WIN32
-                            std::string cmd = "cd /d \"" + p + "\" && \""
+                            // v1.18.1: ICMG_NO_AUTOSPAWN prevents fan-out
+                            // service spawn cascade (bloat fix).
+                            std::string cmd = "set ICMG_NO_AUTOSPAWN=1 && "
+                                              "cd /d \"" + p + "\" && \""
                                            + self.string()
                                            + "\" init --install-hooks --force "
                                              "--no-agents --no-embedder --no-scan "
                                              "--no-backup --no-maintain --no-mirror "
                                              "--no-sentinel --no-auto-upgrade";
 #else
-                            std::string cmd = "cd \"" + p + "\" && \""
+                            std::string cmd = "ICMG_NO_AUTOSPAWN=1 "
+                                              "cd \"" + p + "\" && \""
                                            + self.string()
                                            + "\" init --install-hooks --force "
                                              "--no-agents --no-embedder --no-scan "

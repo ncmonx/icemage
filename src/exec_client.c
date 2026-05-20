@@ -399,12 +399,31 @@ static int needs_direct_spawn(int argc, char** argv) {
  * future invocations. Reads ~/.icmg/service.pid, checks PID alive, and
  * if dead → spawns `icmg-core.exe service run` detached. Best-effort. */
 static void maybe_autospawn_service(void) {
-    /* Only attempt once per env tick to avoid loops; honor opt-out. */
+    /* v1.18.1: opt-out via env (used by update --apply fan-out to prevent
+     * cascade spawn while loop iterates registered projects). */
     if (getenv("ICMG_NO_AUTOSPAWN")) return;
+
     const char* user = getenv("USERPROFILE");
     if (!user || !*user) return;
 
-    /* Read pid file. */
+    /* v1.18.1: PRE-CHECK singleton mutex via OpenMutexA. If mutex exists
+     * → service starting OR alive → skip spawn. Prevents N-client race
+     * where each thinks service dead + all spawn simultaneously. */
+    {
+        const char* username = getenv("USERNAME");
+        if (username && *username) {
+            char mtx_name[256];
+            _snprintf_s(mtx_name, sizeof(mtx_name), _TRUNCATE,
+                        "Global\\icmg-service-%s", username);
+            HANDLE existing = OpenMutexA(SYNCHRONIZE, FALSE, mtx_name);
+            if (existing) {
+                CloseHandle(existing);
+                return;  /* service already running or being started */
+            }
+        }
+    }
+
+    /* Read pid file as belt-and-suspenders. */
     char pidfile[MAX_PATH];
     _snprintf_s(pidfile, sizeof(pidfile), _TRUNCATE,
                 "%s\\.icmg\\service.pid", user);
@@ -428,9 +447,27 @@ static void maybe_autospawn_service(void) {
     }
     if (alive) return;
 
+    /* v1.18.1: starting-sentinel — atomic CreateFile EXCLUSIVE. If sentinel
+     * exists, another client is mid-spawn → skip. Self-delete after spawn. */
+    char sentinel[MAX_PATH];
+    _snprintf_s(sentinel, sizeof(sentinel), _TRUNCATE,
+                "%s\\.icmg\\service.starting", user);
+    HANDLE sh = CreateFileA(sentinel, GENERIC_WRITE, 0, NULL,
+                            CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (sh == INVALID_HANDLE_VALUE) {
+        /* Sentinel exists → another instance mid-spawn. Skip. */
+        return;
+    }
+    /* Hold handle until spawn done (auto-deletes via FILE_FLAG_DELETE_ON_CLOSE
+     * not used; manual cleanup at end). */
+
     /* Spawn icmg-core service run detached. */
     char core_path[MAX_PATH];
-    if (locate_core(core_path, sizeof(core_path)) != 0) return;
+    if (locate_core(core_path, sizeof(core_path)) != 0) {
+        CloseHandle(sh);
+        DeleteFileA(sentinel);
+        return;
+    }
     char cmd[MAX_PATH + 32];
     _snprintf_s(cmd, sizeof(cmd), _TRUNCATE,
                 "\"%s\" service run", core_path);
@@ -447,6 +484,8 @@ static void maybe_autospawn_service(void) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
     }
+    CloseHandle(sh);
+    DeleteFileA(sentinel);
 }
 
 int main(int argc, char* argv[]) {
