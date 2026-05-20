@@ -4,6 +4,37 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.19.0 — `icmg init` speedup + B:/ popup hardening (dual-binary repack)
+
+Two user-reported pain points fixed in one release.
+
+### `icmg init` speedup (60-120s → ≤5s typical on a new project)
+
+- **Parallel sub-imports**: `icmg init` previously ran three independent sub-imports (`claudemd import --slim`, `plan import`, `skill index`) sequentially; v1.19.0 fans them out via `icmg parallel`. Wall-clock becomes `max` instead of `sum`.
+- **Eager cron jobs deferred**: `backup snapshot` + `mirror sync` initial runs (each ≤30s) are no longer invoked at init time. The first cron tick (within 60m / 15m respectively) handles them — no functional change, just no blocking the init terminal.
+- **Tighter rule-daemon ping timeout**: 3s → 1s. The PING IPC is trivial; the longer timeout was leaking ~2s on every init.
+
+### B:/ popup hardening — dual-binary shipping restored
+
+For releases v1.8 - v1.18.x we shipped only the heavy binary (`icmg.exe` linked against `onnxruntime.dll`/`wasmtime.dll`/`libzstd.dll`/etc.). When the user's `PATH` contained a stale entry pointing to a non-existent drive (typically `B:\` from MSYS-translated `/b/foo` paths), the Windows DLL loader would scan `PATH` during process startup — **before** `main()` runs — and Windows would surface the `"B: — system cannot find drive"` modal popup.
+
+The original v1.7.0 architecture solved this by splitting into two binaries:
+
+- `icmg-launcher.exe` — a tiny C launcher with **zero DLL dependencies**. Calls `SetErrorMode` + `sanitize_path` (strips dead-drive `PATH` entries via `GetLogicalDrives`) FIRST, then spawns the heavy binary with the clean environment.
+- `icmg-core.exe` — the full binary with all the DLLs.
+
+v1.19.0 restores that shipping pattern in the release zip:
+
+- `icmg.exe` in the zip is the launcher (thin, ~52KB)
+- `icmg-core.exe` is the big binary (~16MB)
+- The user still invokes `icmg.exe` exactly as before — the launcher handles the dispatch transparently
+- Defense in depth: `main.cpp` now also calls `sanitize_path` at the top of `main()`, so even direct invocations of `icmg-core.exe` (Task Scheduler, Startup folder, manual exec) get the same treatment.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade; no schema or CLI surface change
+
 ## 1.18.1 — Hotfix: exec_client race + `icmg init` speedup
 
 Hotfix targeting two user-reported symptoms after v1.18.0 service auto-spawn rollout: Claude tool calls hanging at 120s timeout when icmg already running, and bloat (30+ stuck `icmg-core.exe` processes at ~648KB each) when running `icmg update --apply` across many projects.

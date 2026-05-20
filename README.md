@@ -38,6 +38,15 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
+## 🛠 v1.19.0 — `icmg init` speedup + B:/ popup hardening (dual-binary repack)
+
+- **`icmg init` speedup (60-120s → ≤5s typical)**: claudemd/plan/skill sub-imports fan out in PARALLEL via `icmg parallel` (wall-clock = max instead of sum). Eager `backup snapshot` + `mirror sync` initial run removed — first cron tick handles them within 60m / 15m anyway. Rule-daemon ping timeout 3s → 1s.
+- **B:/ popup hardening — dual-binary shipping restored**: from v1.8 - v1.18.x the release zip shipped only the heavy binary, so the Win loader scanned `PATH` for `onnxruntime.dll`/`wasmtime.dll`/etc. BEFORE `main()` ran. If `PATH` contained a dead-drive entry (typical for MSYS-translated `/b/foo` → `B:\foo`), Windows surfaced its "system cannot find drive B:" modal. v1.19.0 restores the v1.7.0 pattern: `icmg.exe` in the zip is a tiny zero-DLL launcher that calls `SetErrorMode` + `sanitize_path` first, then spawns `icmg-core.exe` (the heavy binary) with a clean environment. User-facing CLI is unchanged. Defense in depth: `main()` of `icmg-core` also calls `sanitize_path` for direct invocations (Task Scheduler, Startup folder, manual exec).
+
+ctest 111/111. Drop-in. No schema or CLI surface change.
+
+---
+
 ## 🛠 v1.18.1 — Hotfix: exec_client race + `icmg init` speedup
 
 - **`exec_client` mutex pre-check + start sentinel**: eliminates the N-client race during fan-out (`update --apply`, parallel CLI calls) that left 30+ stuck pre-init `icmg-core.exe` processes and caused Claude tool calls to hang at 120s timeout.
@@ -60,16 +69,7 @@ ctest 111/111. Drop-in. Restart service after upgrade.
 
 ---
 
-## 🛠 v1.17.0 — Hook scripts use bash `[[ ]]` keyword + TDD backlog burn (111/111)
-
-- **Hook scripts resilient**: all bundled hooks migrated from POSIX `[ ]` (external `/usr/bin/[`) → bash `[[ ]]` (always builtin). Fixes `/usr/bin/[: cannot execute binary file` on users with broken MSYS coreutils.
-- **ctest 108 → 111**: new suites `test_turn_cache`, `test_inject_dedup`, `test_session_inject`.
-
-Drop-in. `icmg init --force` regenerates hook scripts.
-
----
-
-> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.16.x and earlier.
+> 📜 **Older releases:** see [`CHANGELOG.md`](CHANGELOG.md) for v1.17.x and earlier.
 
 ---
 
