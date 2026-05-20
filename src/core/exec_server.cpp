@@ -14,6 +14,7 @@
 #include "exec_server.hpp"
 #include "exec_protocol.hpp"
 #include "registry.hpp"
+#include "config.hpp"
 #include "../cli/base_command.hpp"
 
 #include <nlohmann/json.hpp>
@@ -206,6 +207,13 @@ void handleClient(int sock_fd) {
                     auto* old_cin  = std::cin.rdbuf(in_stream.rdbuf());
                     auto* old_cout = std::cout.rdbuf(&out_buf);
                     auto* old_cerr = std::cerr.rdbuf(&err_buf);
+                    // v1.20.0 (bugfix): RAII clear projectDbOverride per request
+                    // so cross-project context leak from prior `--project X`
+                    // CLI does not persist in singleton Config.
+                    struct OverrideClearer {
+                        ~OverrideClearer() { ::icmg::core::Config::instance().clearProjectDbOverride(); }
+                    } _clear_at_end;
+                    ::icmg::core::Config::instance().clearProjectDbOverride(); // pre-clear
                     try {
                         auto& reg = Registry<cli::BaseCommand>::instance();
                         auto cmd = reg.create(argv.front());

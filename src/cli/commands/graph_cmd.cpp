@@ -1229,6 +1229,15 @@ public:
         if (!args.empty() && args[0][0] != '-') {
             std::string compound = "graph-" + args[0];
             auto& reg = core::Registry<BaseCommand>::instance();
+            // v1.20.0 (bugfix): alias `rebuild` → `update --force` (full rescan).
+            // Users coming from older versions expected this verb.
+            if (args[0] == "rebuild") {
+                compound = "graph-update";
+                std::vector<std::string> rest(args.begin() + 1, args.end());
+                rest.push_back("--force");
+                auto handler = reg.create(compound);
+                if (handler) return handler->run(rest);
+            }
             if (reg.has(compound)) {
                 auto handler = reg.create(compound);
                 return handler->run(std::vector<std::string>(args.begin() + 1, args.end()));
@@ -1243,7 +1252,8 @@ public:
             "Usage: icmg graph <subcommand> [options]\n\n"
             "Subcommands:\n"
             "  scan <dir>                    Scan directory into graph\n"
-            "  update [dir]                  Re-scan current project\n"
+            "  update [dir]                  Re-scan current project (incremental)\n"
+            "  rebuild [dir]                 Alias: full rescan (= update --force)\n"
             "  context <file>                Show graph context for a file\n"
             "  related <file>                Show related files\n"
             "  impact <file> [--edge-type T] Files impacted by changing a file\n"

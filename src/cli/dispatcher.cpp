@@ -199,6 +199,14 @@ int Dispatcher::run(const std::vector<std::string>& args) {
     if (cmd.empty()) { printHelp(); return 0; }
     std::vector<std::string> rest(cleaned.begin() + 1, cleaned.end());
 
+    // v1.20.0 (bugfix): RAII guard — clear project-DB override on any return path
+    // so the singleton Config doesn't leak `--project X` state across CLI
+    // invocations in long-lived service / exec_server processes (cross-project
+    // data appearing in active project's context query).
+    struct OverrideGuard {
+        ~OverrideGuard() { core::Config::instance().clearProjectDbOverride(); }
+    } _override_guard;
+
     // Check registry first (real implementations from later phases)
     auto& reg = icmg::core::Registry<icmg::cli::BaseCommand>::instance();
     if (reg.has(cmd)) {
