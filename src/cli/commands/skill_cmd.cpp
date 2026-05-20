@@ -890,10 +890,63 @@ public:
         if (sub == "search")   return doSearch(store, rest);
         if (sub == "chunk")    return doChunk(store, *db, rest);
         if (sub == "ask")      return doAsk(*db, rest);
+        if (sub == "stats")    return doStats(store, rest);
+        if (sub == "suggest")  return doSuggest(store, rest);
 
         std::cerr << "skill: unknown subcommand '" << sub << "'. Try --help.\n";
         return 1;
     }
+
+// v1.18.0: per-skill size summary + total count.
+static int doStats(ContextNodeStore& store,
+                    const std::vector<std::string>& rest) {
+    (void)rest;
+    auto nodes = store.list("skill", true);
+    std::cout << "icmg skill stats - " << nodes.size() << " skill(s) indexed\n";
+    std::cout << "  "
+              << std::left << std::setw(50) << "name"
+              << std::setw(10) << "size_b" << "\n";
+    size_t total = 0;
+    for (auto& n : nodes) {
+        std::cout << "  " << std::setw(50) << n.title.substr(0, 49)
+                  << n.content.size() << "\n";
+        total += n.content.size();
+    }
+    std::cout << "  total: " << total << " bytes across "
+              << nodes.size() << " skills\n";
+    return 0;
+}
+
+// v1.18.0: BM25-match prompt vs skill descriptions, return top-N.
+static int doSuggest(ContextNodeStore& store,
+                      const std::vector<std::string>& rest) {
+    if (rest.empty() || rest[0].empty()) {
+        std::cerr << "skill suggest: requires <prompt>\n";
+        return 1;
+    }
+    std::string prompt = rest[0];
+    int top = 3;
+    for (size_t i = 1; i + 1 < rest.size(); ++i) {
+        if (rest[i] == "--top") {
+            try { top = std::stoi(rest[i+1]); } catch (...) {}
+        }
+    }
+    auto hits = store.search(prompt, "skill", top, 0.05);
+    std::cout << "icmg skill suggest - top " << hits.size()
+              << " for: " << prompt.substr(0, 80) << "\n";
+    for (auto& h : hits) {
+        std::cout << "  - " << h.title << "  (" << h.node_key << ")\n";
+        if (!h.content.empty()) {
+            std::string snippet = h.content.substr(0, 120);
+            std::cout << "    " << snippet
+                      << (h.content.size() > 120 ? "..." : "") << "\n";
+        }
+    }
+    if (hits.empty()) {
+        std::cout << "  (no matches - try `icmg skill index`)\n";
+    }
+    return 0;
+}
 };
 
 ICMG_REGISTER_COMMAND("skill", SkillCommand);

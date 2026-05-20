@@ -8,6 +8,7 @@
 #include "../daemon/rule_daemon.hpp"
 #include "exec_server.hpp"
 #include "log_rotate.hpp"
+#include "prefetch_cache.hpp"
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -307,10 +308,13 @@ int ServiceLoop::run() {
         std::cerr << "icmg service: exec_server thread spawn failed\n";
     }
 
-    // v1.14.0: dedicated popup-killer thread. Scans for "X:/ drive
+    // v1.14.0 + v1.18.0: dedicated popup-killer thread. Scans for "X:/ drive
     // not found" modal dialogs every 100ms and dismisses them via
-    // PostMessage(WM_CLOSE). Replaces the v1.6.1 in-tick scan which
-    // only fired every 30s — popup blocked user input meanwhile.
+    // PostMessage(WM_CLOSE).
+    //
+    // v1.18.0: broaden class match — Win11 may use TaskDialogClass instead
+    // of legacy #32770. Also: title-only fallback when class doesn't match
+    // (covers any unknown dialog class with matching drive-letter title).
 #ifdef _WIN32
     std::thread popup_thread;
     try {
@@ -323,9 +327,20 @@ int ServiceLoop::run() {
                     if (n < 2 || n > 4) return TRUE;
                     char c = title[0];
                     if (!(c >= 'A' && c <= 'Z') || title[1] != ':') return TRUE;
+                    // Title matches drive-letter pattern. Check class but
+                    // accept multiple known dialog classes.
                     char cls[64] = {0};
                     GetClassNameA(hwnd, cls, sizeof(cls) - 1);
-                    if (std::strcmp(cls, "#32770") != 0) return TRUE;
+                    bool known_dialog =
+                        std::strcmp(cls, "#32770") == 0 ||           // legacy MessageBox
+                        std::strcmp(cls, "TaskDialogClass") == 0 ||  // Win11 task dialogs
+                        std::strncmp(cls, "Direct", 6) == 0;         // DirectUIHWND variants
+                    if (!known_dialog) {
+                        // Title pattern strong signal — verify it's a dialog
+                        // (popup, modal-ish) via window style.
+                        LONG style = GetWindowLongA(hwnd, GWL_STYLE);
+                        if (!(style & WS_POPUP)) return TRUE;
+                    }
                     PostMessageA(hwnd, WM_CLOSE, 0, 0);
                     return TRUE;
                 }, 0);
@@ -337,7 +352,13 @@ int ServiceLoop::run() {
     }
 #endif
 
-    std::cerr << "icmg service: started, tick=30s, rule-daemon + exec-server + popup-killer embedded\n";
+    // v1.18.0: prefetch hot data into RAM cache for sub-ms first-prompt
+    // serve. Runs once on warm path; ~50-200ms one-time cost.
+    try {
+        prefetch_cache::warm();
+    } catch (...) { /* best-effort */ }
+
+    std::cerr << "icmg service: started, tick=30s, rule-daemon + exec-server + popup-killer + prefetch embedded\n";
     while (!g_stop.load()) {
         tickOnce();
         for (int i = 0; i < 30 && !g_stop.load(); ++i) {

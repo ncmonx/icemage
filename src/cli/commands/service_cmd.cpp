@@ -28,6 +28,12 @@
 #include <sstream>
 #include <string>
 
+#ifdef _WIN32
+#  include <windows.h>
+#else
+#  include <signal.h>
+#endif
+
 namespace fs = std::filesystem;
 using nlohmann::json;
 
@@ -111,6 +117,27 @@ private:
         }
         long long pid = 0;
         { std::ifstream f(pidf); f >> pid; }
+        // v1.18.0: validate PID alive — pidfile alone is false positive
+        // after taskkill / crash.
+        bool alive = false;
+#ifdef _WIN32
+        if (pid > 0) {
+            HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
+            if (h) {
+                DWORD ec = 0;
+                if (GetExitCodeProcess(h, &ec) && ec == STILL_ACTIVE) alive = true;
+                CloseHandle(h);
+            }
+        }
+#else
+        if (pid > 0) alive = (kill((pid_t)pid, 0) == 0);
+#endif
+        if (!alive) {
+            std::cout << "  running: no (stale pidfile pid=" << pid << ")\n";
+            std::error_code ec;
+            fs::remove(pidf, ec);
+            return 0;
+        }
         std::cout << "  running: yes\n  pid:     " << pid << "\n";
 
         std::ifstream sf(core::serviceStatePath());

@@ -394,6 +394,61 @@ static int needs_direct_spawn(int argc, char** argv) {
     return 0;
 }
 
+/* v1.18.0: auto-spawn icmg-core service if dead. Called when IPC pipe
+ * unavailable AND we want background service alive for popup-killer +
+ * future invocations. Reads ~/.icmg/service.pid, checks PID alive, and
+ * if dead → spawns `icmg-core.exe service run` detached. Best-effort. */
+static void maybe_autospawn_service(void) {
+    /* Only attempt once per env tick to avoid loops; honor opt-out. */
+    if (getenv("ICMG_NO_AUTOSPAWN")) return;
+    const char* user = getenv("USERPROFILE");
+    if (!user || !*user) return;
+
+    /* Read pid file. */
+    char pidfile[MAX_PATH];
+    _snprintf_s(pidfile, sizeof(pidfile), _TRUNCATE,
+                "%s\\.icmg\\service.pid", user);
+    FILE* pf = NULL;
+    fopen_s(&pf, pidfile, "r");
+    int alive = 0;
+    if (pf) {
+        long pid = 0;
+        if (fscanf_s(pf, "%ld", &pid) == 1 && pid > 0) {
+            HANDLE ph = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                    FALSE, (DWORD)pid);
+            if (ph) {
+                DWORD ec = 0;
+                if (GetExitCodeProcess(ph, &ec) && ec == STILL_ACTIVE) {
+                    alive = 1;
+                }
+                CloseHandle(ph);
+            }
+        }
+        fclose(pf);
+    }
+    if (alive) return;
+
+    /* Spawn icmg-core service run detached. */
+    char core_path[MAX_PATH];
+    if (locate_core(core_path, sizeof(core_path)) != 0) return;
+    char cmd[MAX_PATH + 32];
+    _snprintf_s(cmd, sizeof(cmd), _TRUNCATE,
+                "\"%s\" service run", core_path);
+
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi = { 0 };
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    BOOL ok = CreateProcessA(core_path, cmd, NULL, NULL, FALSE,
+                              CREATE_NO_WINDOW | DETACHED_PROCESS
+                              | CREATE_NEW_PROCESS_GROUP,
+                              NULL, NULL, &si, &pi);
+    if (ok) {
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+}
+
 int main(int argc, char* argv[]) {
     set_safe_error_mode();
     attach_parent_console();
@@ -402,7 +457,10 @@ int main(int argc, char* argv[]) {
     if (!needs_direct_spawn(argc, argv)) {
         int rc = try_ipc(argc, argv);
         if (rc >= 0) return rc;
-        /* IPC unavailable → fall through to direct spawn. */
+        /* IPC unavailable → service may be dead. Auto-spawn it for
+         * future invocations (popup-killer thread etc.), then fall back
+         * to direct spawn for THIS invocation. */
+        maybe_autospawn_service();
     }
     return fallback_spawn(argc, argv);
 }

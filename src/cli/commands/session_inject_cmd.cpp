@@ -16,6 +16,8 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/inject_dedup.hpp"
+#include "../../core/turn_cache.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -75,6 +77,13 @@ public:
         bool skip_caveman = hasFlag(args, "--skip-caveman");
         bool skip_context = hasFlag(args, "--skip-context");
         bool skip_wakeup  = hasFlag(args, "--skip-wakeup");
+
+        // v1.18.0: session boundary — reset hash-based dedup state.
+        // SessionStart fires once per Claude Code session. Dedup that
+        // persisted across prior session would falsely skip content
+        // user expects to see on fresh session.
+        core::inject_dedup::resetSession();
+        core::turn_cache::resetSession();
 
         std::string out;
 
