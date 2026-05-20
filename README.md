@@ -50,7 +50,7 @@ ctest 111/111. Drop-in upgrade.
 
 ## 🛠 v1.20.0 — Memory access-aware decay + 3 new viewers
 
-First scoped delivery from the v1.20.0 plan (RTK + ICM Tier-A picks).
+First scoped delivery from the v1.20.0 plan — highest-ROI, lowest-risk memory + viewer enhancements.
 
 - **Access-aware decay (M1)**: hot memories decay slower; cold ones decay normally. Tighter top-K → smaller injection budget.
 - **`icmg ls --summary` (F4)**: per-dir `subdir/ (N files, M dirs)` count instead of recursion.
