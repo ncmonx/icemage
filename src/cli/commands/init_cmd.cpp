@@ -46,8 +46,9 @@ set -uo pipefail
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
 [[ -z "$CMD" ]] && exit 0
-echo "$CMD" | grep -qE '^RAW=1 ' && exit 0
-echo "$CMD" | grep -qE '(^|[ |&;])(icmg|rtk)[ ]+' && exit 0
+# v1.20.3: bash =~ ERE (no external grep fork).
+[[ "$CMD" =~ ^RAW=1[[:space:]] ]] && exit 0
+[[ "$CMD" =~ (^|[[:space:]\|\&\;])icmg[[:space:]]+ ]] && exit 0
 
 # Phase 58: log strict denial as JSONL (~/.icmg/strict-denials.jsonl).
 log_denial() {
@@ -75,7 +76,7 @@ if [[ "${ICMG_STRICT_BASH:-0}" = "1" ]]; then
 fi
 
 PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status)([[:space:]]|$)'
-if echo "$CMD" | grep -qE "$PATTERN"; then
+if [[ "$CMD" =~ $PATTERN ]]; then
     log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
     icmg hookio emit PreToolUse --deny "Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix."
     exit 2
@@ -251,27 +252,33 @@ block() {
     exit 2
 }
 NCMD=$(echo "$CMD" | tr -s '\t\n' '  ')
+# Lowercased copy for case-insensitive checks (PowerShell). Avoids forking grep -qi.
+NCMD_LC="${NCMD,,}"
+# v1.20.3: bash =~ ERE (no external grep). `\s` → [[:space:]], `\b` → \> (POSIX
+# word boundary on most ERE engines; bash =~ accepts it on Linux/MSYS).
 if [[ "$TOOL" == "Bash" || "$TOOL" == "PowerShell" ]]; then
-    echo "$NCMD"|grep -qE 'git\s+(checkout|switch)(\s|$)'      && block "ID=12" "git checkout/switch requires explicit user instruction."
-    if echo "$NCMD"|grep -qE 'git\s+push\s+origin'; then
-        echo "$NCMD"|grep -qE 'git\s+push\s+origin\s+docs/' || block "ID=13" "git push origin blocked for non-docs branches. Use private remote."
+    [[ "$NCMD" =~ git[[:space:]]+(checkout|switch)([[:space:]]|$) ]]      && block "ID=12" "git checkout/switch requires explicit user instruction."
+    if [[ "$NCMD" =~ git[[:space:]]+push[[:space:]]+origin ]]; then
+        [[ "$NCMD" =~ git[[:space:]]+push[[:space:]]+origin[[:space:]]+docs/ ]] || block "ID=13" "git push origin blocked for non-docs branches. Use private remote."
     fi
-    echo "$NCMD"|grep -qE 'git\s+push.*(--force|-f\b|--force-with-lease)' && block "ID=14" "git push --force blocked. Confirm with user."
-    echo "$NCMD"|grep -qE 'git\s+reset\s+--hard'               && block "ID=15" "git reset --hard blocked. Destroys uncommitted work."
-    echo "$NCMD"|grep -qE 'git\s+clean\s+-[a-zA-Z]*f'          && block "ID=16" "git clean -f blocked. Deletes untracked files."
-    echo "$NCMD"|grep -qE 'git\s+branch\s+-D\b'                && block "ID=17" "git branch -D blocked. Confirm with user."
-    echo "$NCMD"|grep -qE 'git\s+push\s+\S+\s+(main|master)\b' && block "ID=18" "Direct push to main/master blocked. Use PR workflow."
-    echo "$NCMD"|grep -qE 'git\s+(filter-branch|filter-repo)'  && block "ID=19" "git history-rewrite blocked."
-    if echo "$NCMD"|grep -qE '(^|[|;&[:space:]])\s*rm\s+-[a-zA-Z]*(r[a-zA-Z]*f|f[a-zA-Z]*r)'; then
-        echo "$NCMD"|grep -qE 'rm.*\s+(build|dist|out|__pycache__|\.cache|tmp|temp|node_modules)' || block "ID=20" "rm -rf blocked on non-build paths."
+    [[ "$NCMD" =~ git[[:space:]]+push.*(--force|-f([[:space:]]|$)|--force-with-lease) ]] && block "ID=14" "git push --force blocked. Confirm with user."
+    [[ "$NCMD" =~ git[[:space:]]+reset[[:space:]]+--hard ]]                && block "ID=15" "git reset --hard blocked. Destroys uncommitted work."
+    [[ "$NCMD" =~ git[[:space:]]+clean[[:space:]]+-[a-zA-Z]*f ]]           && block "ID=16" "git clean -f blocked. Deletes untracked files."
+    [[ "$NCMD" =~ git[[:space:]]+branch[[:space:]]+-D([[:space:]]|$) ]]    && block "ID=17" "git branch -D blocked. Confirm with user."
+    [[ "$NCMD" =~ git[[:space:]]+push[[:space:]]+[^[:space:]]+[[:space:]]+(main|master)([[:space:]]|$) ]] && block "ID=18" "Direct push to main/master blocked. Use PR workflow."
+    [[ "$NCMD" =~ git[[:space:]]+(filter-branch|filter-repo) ]]            && block "ID=19" "git history-rewrite blocked."
+    if [[ "$NCMD" =~ (^|[|\;\&[:space:]])[[:space:]]*rm[[:space:]]+-[a-zA-Z]*(r[a-zA-Z]*f|f[a-zA-Z]*r) ]]; then
+        [[ "$NCMD" =~ rm.*[[:space:]]+(build|dist|out|__pycache__|\.cache|tmp|temp|node_modules) ]] || block "ID=20" "rm -rf blocked on non-build paths."
     fi
-    echo "$NCMD"|grep -qiE 'rmdir\s+/s|Remove-Item\s+-Recurse\s+-Force' && ! echo "$NCMD"|grep -qiE '(build|dist|tmp|temp)' && block "ID=20" "Force-recursive-delete blocked on non-build paths."
-    echo "$NCMD"|grep -qE '(curl|wget).*\|\s*(ba)?sh' && block "ID=21" "curl|bash blocked — remote code execution risk."
-    echo "$NCMD"|grep -qE 'kill\s+-(9|SIGKILL)|taskkill\s+/F.*(icmg|claude)' && block "ID=22" "Force-kill of agent processes blocked."
+    if [[ "$NCMD_LC" =~ (rmdir[[:space:]]+/s|remove-item[[:space:]]+-recurse[[:space:]]+-force) ]]; then
+        [[ "$NCMD_LC" =~ (build|dist|tmp|temp) ]] || block "ID=20" "Force-recursive-delete blocked on non-build paths."
+    fi
+    [[ "$NCMD" =~ (curl|wget).*\|[[:space:]]*(ba)?sh ]]                    && block "ID=21" "curl|bash blocked — remote code execution risk."
+    [[ "$NCMD" =~ (kill[[:space:]]+-(9|SIGKILL)|taskkill[[:space:]]+/F.*(icmg|claude)) ]] && block "ID=22" "Force-kill of agent processes blocked."
 fi
 if [[ "$TOOL" == "Write" ]]; then
-    echo "$FILEPATH"|grep -qE 'icmg-git-leash\.sh'    && block "ID=30" "Cannot overwrite leash script."
-    echo "$FILEPATH"|grep -qE 'settings\.local\.json' && block "ID=31" "settings.local.json write blocked — hook removal requires user confirmation."
+    [[ "$FILEPATH" =~ icmg-git-leash\.sh ]]    && block "ID=30" "Cannot overwrite leash script."
+    [[ "$FILEPATH" =~ settings\.local\.json ]] && block "ID=31" "settings.local.json write blocked — hook removal requires user confirmation."
 fi
 exit 0
 )BASH";
