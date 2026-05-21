@@ -32,6 +32,9 @@
 
 #ifdef _WIN32
 #  include <process.h>
+#  define NOMINMAX
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
 #  define ICMG_GETPID() _getpid()
 #else
 #  include <unistd.h>
@@ -43,6 +46,7 @@
 #include <cctype>
 #include <chrono>
 #include <future>
+#include <mutex>
 #include <thread>
 #include <cstdio>
 #include <cstdlib>
@@ -77,36 +81,169 @@ public:
             "separate icmg invocations into one, eliminating per-prompt fork overhead.\n";
     }
 
+    // v1.21.8: per-event injection cache. When the dispatch budget is
+    // exceeded, serve the last successful result instead of dropping the
+    // injection entirely. The background future continues running and will
+    // refresh the cache for the NEXT invocation — so the slow path
+    // self-heals after one timeout.
+    static std::filesystem::path injectionCachePath(const std::string& event) {
+        namespace fs = std::filesystem;
+        const char* home = std::getenv("USERPROFILE");
+        if (!home) home = std::getenv("HOME");
+        return fs::path(home ? home : ".") / ".icmg"
+             / (std::string("hook-cache-") + event + ".txt");
+    }
+
+    static void writeInjectionCache(const std::string& event,
+                                    const std::string& payload) {
+        namespace fs = std::filesystem;
+        try {
+            auto p = injectionCachePath(event);
+            std::error_code ec;
+            fs::create_directories(p.parent_path(), ec);
+            std::ofstream(p, std::ios::binary) << payload;
+        } catch (...) {}
+    }
+
+    static std::string readInjectionCache(const std::string& event,
+                                          int max_age_seconds = 60) {
+        namespace fs = std::filesystem;
+        try {
+            auto p = injectionCachePath(event);
+            if (!fs::exists(p)) return "";
+            auto mtime = fs::last_write_time(p);
+            auto sys_now = std::chrono::system_clock::now();
+            auto fs_now  = fs::file_time_type::clock::now();
+            auto age_clk = fs_now - mtime;
+            auto age = std::chrono::duration_cast<std::chrono::seconds>(age_clk).count();
+            (void)sys_now;
+            if (age > max_age_seconds) return "";
+            std::ifstream f(p, std::ios::binary);
+            std::ostringstream ss; ss << f.rdbuf();
+            return ss.str();
+        } catch (...) { return ""; }
+    }
+
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         const std::string& event = args[0];
 
         // v1.6.2: wrap dispatch with timeout. Default 500ms (override via
-        // ICMG_HOOK_TIMEOUT_MS). On timeout, return 0 with empty stdout so
-        // Claude UI never stalls waiting on a slow icmg cold-start.
-        // Detached worker thread will finish + exit naturally.
+        // ICMG_HOOK_TIMEOUT_MS). On timeout, v1.21.8 serves the cached
+        // injection (≤60s old) rather than dropping it — keeps the prompt
+        // useful even when DB lock contention or cold-start eats the budget.
         int timeout_ms = 500;
         if (const char* env = std::getenv("ICMG_HOOK_TIMEOUT_MS")) {
             try { timeout_ms = std::stoi(env); } catch (...) {}
         }
         if (timeout_ms <= 0) {
-            // Disabled — direct dispatch.
-            return dispatch(event);
+            // Disabled — direct dispatch + still update cache for next call.
+            std::ostringstream captured;
+            auto* old = std::cout.rdbuf(captured.rdbuf());
+            int rc = dispatch(event);
+            std::cout.rdbuf(old);
+            std::cout << captured.str();
+            writeInjectionCache(event, captured.str());
+            return rc;
         }
 
-        auto fut = std::async(std::launch::async, [this, event](){
-            return dispatch(event);
-        });
+        // Stale-while-revalidate pattern (HTTP-cache style). If a recent
+        // cache exists, serve it INSTANTLY and refresh in the background.
+        // If no cache yet, fall through to synchronous dispatch with the
+        // timeout budget. After timeout, serve stale cache as last resort.
+        //
+        // This makes the hook effectively multi-tasked: every call returns
+        // fast (≤ a few ms when warm), the slow dispatch runs in parallel
+        // with the user's next reasoning step, and the cache rolls forward.
+        //
+        // Disable via ICMG_HOOK_NO_CACHE=1 (forces sync path every call).
+        bool use_cache = !std::getenv("ICMG_HOOK_NO_CACHE");
+        int  cache_max_age = 30;  // seconds — fresh-while-warm window
+        if (const char* env = std::getenv("ICMG_HOOK_CACHE_MAX_AGE")) {
+            try { cache_max_age = std::stoi(env); } catch (...) {}
+        }
+
+        std::string ev_copy = event;
+
+        if (use_cache) {
+            std::string fresh_cached = readInjectionCache(event, cache_max_age);
+            if (!fresh_cached.empty()) {
+                std::cout << fresh_cached;
+                // Background refresh: do not delay user — fire+forget.
+                std::thread([this, ev_copy]() {
+                    std::ostringstream local;
+                    auto* old = std::cout.rdbuf(local.rdbuf());
+                    (void)dispatch(ev_copy);
+                    std::cout.rdbuf(old);
+                    writeInjectionCache(ev_copy, local.str());
+                }).detach();
+                return 0;
+            }
+        }
+
+        // No fresh cache → synchronous dispatch with the timeout budget. The
+        // worker writes cache from inside its lambda so even on timeout the
+        // next call benefits.
+        auto sh_out = std::make_shared<std::string>();
+        auto sh_mu  = std::make_shared<std::mutex>();
+        auto prom   = std::make_shared<std::promise<int>>();
+        std::future<int> fut = prom->get_future();
+
+        std::thread([this, ev_copy, prom, sh_out, sh_mu]() {
+            std::ostringstream local;
+            int rc = 0;
+            {
+                std::lock_guard<std::mutex> lk(*sh_mu);
+                auto* old = std::cout.rdbuf(local.rdbuf());
+                rc = dispatch(ev_copy);
+                std::cout.rdbuf(old);
+                *sh_out = local.str();
+            }
+            writeInjectionCache(ev_copy, local.str());
+            try { prom->set_value(rc); } catch (...) {}
+        }).detach();
+
         if (fut.wait_for(std::chrono::milliseconds(timeout_ms))
                 == std::future_status::ready) {
-            return fut.get();
+            int rc = fut.get();
+            std::string out;
+            {
+                std::lock_guard<std::mutex> lk(*sh_mu);
+                out = *sh_out;
+            }
+            std::cout << out;
+            return rc;
         }
-        std::cerr << "icmg hook " << event << ": timeout " << timeout_ms
-                  << "ms — skipping injection (still running async)\n";
-        // Note: process still alive; detached async future will finish on
-        // its own. Process exit waits for stack unwind but stdin/stdout
-        // already flushed so Claude proceeds without our injection.
+
+        // Timeout AND no fresh cache → try stale cache as last resort.
+        // IMPORTANT: at this point the detached worker may still hold the
+        // cout rdbuf swap, so `std::cout << ...` could write into the
+        // worker's local stringstream instead of the real stdout. Use a
+        // raw OS write to fd 1 to bypass C++ iostream state.
+        std::string stale = readInjectionCache(event, /*max_age=*/3600);
+        if (!stale.empty()) {
+            rawWriteStdout(stale);
+            std::cerr << "icmg hook " << event << ": timeout " << timeout_ms
+                      << "ms — served stale cache (" << stale.size()
+                      << " bytes); background refresh running\n";
+        } else {
+            std::cerr << "icmg hook " << event << ": timeout " << timeout_ms
+                      << "ms — no cache yet (first slow run); background continues\n";
+        }
         return 0;
+    }
+
+    static void rawWriteStdout(const std::string& s) {
+#ifdef _WIN32
+        HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (h && h != INVALID_HANDLE_VALUE) {
+            DWORD written = 0;
+            WriteFile(h, s.data(), (DWORD)s.size(), &written, nullptr);
+        }
+#else
+        ssize_t n = ::write(1, s.data(), s.size());
+        (void)n;
+#endif
     }
 
     int dispatch(const std::string& event) {

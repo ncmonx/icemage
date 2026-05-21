@@ -2,6 +2,7 @@
 #include "graph_node.hpp"
 #include "../core/db.hpp"
 #include <optional>
+#include <unordered_map>
 #include <vector>
 #include <string>
 
@@ -106,10 +107,27 @@ public:
     int nodeCount() const;
     int edgeCount() const;
 
+    // v1.21.8 (S1): clear in-memory caches. Called automatically on any
+    // mutating method (upsertNode/removeNode/etc). Exposed publicly for
+    // callers that mutate via direct SQL (e.g. scan_db helpers).
+    void clearCache();
+
 private:
     core::Db& db_;
     GraphNode rowToNode(const core::Row& row) const;
     GraphEdge rowToEdge(const core::Row& row) const;
+
+    // v1.21.8 (S1): in-RAM cache for getNode(path). Bounded FIFO eviction.
+    // Coarse invalidation: any write op clears the whole cache (simple +
+    // safe — graph mutations are typically batched in scan passes, so we
+    // pay invalidation cost once per scan, not per edit). Opt-out via
+    // ICMG_NO_GRAPH_CACHE=1 (checked lazily).
+    mutable std::unordered_map<std::string, GraphNode> node_cache_;
+    mutable std::vector<std::string> node_cache_order_;  // FIFO insertion order
+    static constexpr size_t NODE_CACHE_MAX = 256;
+    bool cacheEnabled() const;
+    std::optional<GraphNode> cacheGetNode(const std::string& path) const;
+    void cachePutNode(const std::string& path, const GraphNode& node) const;
 };
 
 } // namespace icmg::graph

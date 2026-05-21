@@ -14,6 +14,39 @@
 namespace fs = std::filesystem;
 namespace icmg::graph {
 
+// ---- v1.21.8 (S1): in-RAM graph cache ------------------------------------
+
+bool GraphStore::cacheEnabled() const {
+    return std::getenv("ICMG_NO_GRAPH_CACHE") == nullptr;
+}
+
+void GraphStore::clearCache() {
+    node_cache_.clear();
+    node_cache_order_.clear();
+}
+
+std::optional<GraphNode> GraphStore::cacheGetNode(const std::string& path) const {
+    if (!cacheEnabled()) return std::nullopt;
+    auto it = node_cache_.find(path);
+    if (it == node_cache_.end()) return std::nullopt;
+    return it->second;
+}
+
+void GraphStore::cachePutNode(const std::string& path,
+                              const GraphNode& node) const {
+    if (!cacheEnabled()) return;
+    // FIFO eviction when capacity reached. Cheap O(1) front-pop; we keep
+    // insertion order in a parallel vector. Lookup remains O(1) via map.
+    if (node_cache_.size() >= NODE_CACHE_MAX && !node_cache_order_.empty()) {
+        node_cache_.erase(node_cache_order_.front());
+        node_cache_order_.erase(node_cache_order_.begin());
+    }
+    auto [it, inserted] = node_cache_.emplace(path, node);
+    if (inserted) node_cache_order_.push_back(path);
+    else it->second = node;  // refresh; order unchanged
+}
+
+
 // Normalize path for DB lookup: try canonical abs path, then stored relative variants
 static std::vector<std::string> pathVariants(const std::string& path) {
     std::vector<std::string> v;
@@ -80,6 +113,7 @@ GraphEdge GraphStore::rowToEdge(const core::Row& row) const {
 }
 
 int64_t GraphStore::upsertNode(const GraphNode& node) {
+    clearCache();  // v1.21.8 (S1): coarse invalidate on any node write
     int64_t now = nowEpoch();
     std::string zone = node.zone.empty() ? "default" : node.zone;
     std::string kind = node.kind.empty() ? "file" : node.kind;
@@ -110,6 +144,11 @@ int64_t GraphStore::upsertNode(const GraphNode& node) {
 }
 
 std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
+    // v1.21.8 (S1): cache hit short-circuits all DB roundtrips. Cache key
+    // is the input path verbatim (variants are derived deterministically,
+    // so a hit for the original path is sufficient).
+    if (auto cached = cacheGetNode(path)) return cached;
+
     // Try exact match first, then normalized variants
     for (auto& v : pathVariants(path)) {
         std::optional<GraphNode> result;
@@ -118,7 +157,10 @@ std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
             " FROM graph_nodes WHERE path=?",
             {v},
             [&](const core::Row& r) { result = rowToNode(r); });
-        if (result) return result;
+        if (result) {
+            cachePutNode(path, *result);
+            return result;
+        }
     }
     // Last resort: match by filename suffix
     std::optional<GraphNode> result;
@@ -136,6 +178,7 @@ std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
                 if (!result) result = rowToNode(r); // take first match
             });
     }
+    if (result) cachePutNode(path, *result);  // v1.21.8 (S1)
     return result;
 }
 
@@ -211,6 +254,7 @@ std::vector<GraphNode> GraphStore::findSymbol(const std::string& name) {
 }
 
 void GraphStore::removeSymbolsOf(int64_t parent_id) {
+    clearCache();  // v1.21.8 (S1)
     db_.run("DELETE FROM graph_nodes WHERE parent_id=?", {std::to_string(parent_id)});
 }
 
@@ -499,6 +543,7 @@ std::vector<GraphNode> GraphStore::impactAll(
 }
 
 void GraphStore::removeNode(const std::string& path) {
+    clearCache();  // v1.21.8 (S1)
     // Manual cascade (SQLite foreign keys may be off)
     auto node = getNode(path);
     if (!node) return;
