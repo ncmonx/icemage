@@ -1317,8 +1317,9 @@ private:
                     {{"type", "command"},
                      {"timeout", 30},
                      {"async", true},
+                     // v1.22.1: bash -c wrap (same fix as v1.21.9 for other entries).
                      {"command",
-                      "[ -f .claude/hooks/icmg-graph-update.sh ] && bash .claude/hooks/icmg-graph-update.sh || (command -v icmg >/dev/null 2>&1 && echo \"$(cat)\" | icmg hook posttooluse-edit 2>/dev/null || true)"}}
+                      "bash -c '[ -f .claude/hooks/icmg-graph-update.sh ] && bash .claude/hooks/icmg-graph-update.sh || (command -v icmg >/dev/null 2>&1 && echo \"$(cat)\" | icmg hook posttooluse-edit 2>/dev/null || true)'"}}
                 })}
             }
         });
@@ -1335,16 +1336,17 @@ private:
         // contributing to the same cold-spawn budget hit on first launch.
         cfg["hooks"]["SessionStart"] = json::array({
             {
+                // v1.22.1: bash -c wrap on all SessionStart entries.
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"timeout", 5},
-                     {"command", "[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0"}},
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0'"}},
                     {{"type", "command"},
                      {"timeout", 5},
-                     {"command", "[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0"}},
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0'"}},
                     {{"type", "command"},
                      {"timeout", 5},
-                     {"command", "[ -f .claude/hooks/icmg-wakeup-session.sh ] && bash .claude/hooks/icmg-wakeup-session.sh || exit 0"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-wakeup-session.sh ] && bash .claude/hooks/icmg-wakeup-session.sh || exit 0'"}}
                 })}
             }
         });
@@ -1360,10 +1362,11 @@ private:
         // be evaluated lazily inside the script (which also exits fast).
         cfg["hooks"]["UserPromptSubmit"] = json::array({
             {
+                // v1.22.1: bash -c wrap on UserPromptSubmit entry.
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"timeout", 5},
-                     {"command", "[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0'"}}
                 })}
             }
         });
@@ -1465,13 +1468,20 @@ private:
         if (!gcfg["hooks"].is_object()) gcfg["hooks"] = json::object();
 
         const std::string matcher = "Read|Glob|Grep";
+        // v1.22.1: pure-bash hook (no python3 dependency). Earlier versions
+        // shelled out to `python3 -c "..."` which broke on hosts without
+        // python (Alpine, minimal Docker, fresh Win without Python install).
+        // printf with a here-string literal so the JSON survives shell
+        // escaping unchanged. `cat >/dev/null` drains stdin so Claude Code
+        // doesn't see EBADF.
         const std::string hook_cmd =
-            "icmg shield -- python3 -c \"import json,sys; sys.stdin.read(); "
-            "print(json.dumps({'hookSpecificOutput':{'hookEventName':'PreToolUse',"
-            "'additionalContext':'ICMG-FIRST RULE: Before Read/Glob/Grep, use icmg first: "
-            "icmg context <file>, icmg pack <task>, icmg graph symbol <Name>, "
-            "icmg recall <query>, icmg graph search <query>. "
-            "Direct tools only if icmg cannot cover it.'}}))\"";
+            "bash -c 'cat >/dev/null; "
+            "printf %s "
+            "'\\''{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\","
+            "\"additionalContext\":\"ICMG-FIRST RULE: Before Read/Glob/Grep, "
+            "use icmg first: icmg context <file>, icmg pack <task>, "
+            "icmg graph symbol <Name>, icmg recall <query>, "
+            "icmg graph search <query>. Direct tools only if icmg cannot cover it.\"}}'\\'''";
 
         json& pre = gcfg["hooks"]["PreToolUse"];
         if (!pre.is_array()) pre = json::array();
