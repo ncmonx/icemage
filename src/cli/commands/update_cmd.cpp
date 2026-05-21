@@ -701,6 +701,46 @@ private:
             fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
             fs::perm_options::add, ec);
 #endif
+        // v1.21.6: dual-binary install auto-sync. Older v1.18.x installs
+        // shipped `icmg.exe` (launcher, ~52 KB) + `icmg-core.exe` (worker,
+        // ~17 MB). v1.19.1+ shipped a single monolithic `icmg.exe`. Users on
+        // the legacy layout had `update --apply` overwriting only the file
+        // matching `self` (which routes via icmg-core for IPC-served commands)
+        // — the OTHER file silently drifted out-of-version. Symptoms:
+        // launcher-era IPC quirks, slow init, mismatched feature detection.
+        //
+        // Fix: after a successful swap, detect the sibling and overwrite it
+        // with the same new monolithic binary so BOTH entry-points run the
+        // same code regardless of which one the user invokes.
+        {
+            fs::path sibling;
+            std::string self_name = self.filename().string();
+            std::transform(self_name.begin(), self_name.end(), self_name.begin(),
+                           [](unsigned char c){ return std::tolower(c); });
+            if (self_name == "icmg.exe" || self_name == "icmg") {
+                sibling = self.parent_path() / "icmg-core.exe";
+            } else if (self_name == "icmg-core.exe" || self_name == "icmg-core") {
+                sibling = self.parent_path() / "icmg.exe";
+            }
+            if (!sibling.empty() && fs::exists(sibling) && sibling != self) {
+                std::error_code sc;
+                // Backup sibling before overwrite (keep .bak parallel to self.bak).
+                fs::path sibling_bak = sibling; sibling_bak += ".bak";
+                fs::remove(sibling_bak, sc);
+                fs::copy_file(sibling, sibling_bak, sc);
+                fs::copy_file(self, sibling,
+                              fs::copy_options::overwrite_existing, sc);
+                if (!sc) {
+                    std::cout << "  dual-binary: synced " << sibling.filename().string()
+                              << " (" << fs::file_size(sibling) / 1024 << " KB)\n";
+                } else {
+                    std::cerr << "  dual-binary: sibling sync failed: "
+                              << sc.message() << " — old "
+                              << sibling.filename().string() << " may stay outdated\n";
+                }
+            }
+        }
+
         std::cout << "Installed " << r.tag << ". Old binary kept at " << bak.string() << "\n"
                   << "  Verify: icmg --version\n"
                   << "  Rollback: icmg update --rollback\n\n";
