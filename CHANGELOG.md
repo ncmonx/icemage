@@ -4,6 +4,22 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.6 — Dual-binary install auto-sync in `update --apply`
+
+Hotfix for users on legacy v1.18.x dual-binary installs (`icmg.exe` launcher + `icmg-core.exe` worker). v1.19.1+ ships a single monolithic binary, but `update --apply` was only refreshing the file matching `self` (the IPC-served worker → `icmg-core.exe`). The OLD launcher silently drifted out of version for months, causing launcher-era IPC quirks and slow `icmg init`.
+
+Fix: after a successful swap, `update --apply` now detects the sibling (`icmg.exe` ↔ `icmg-core.exe`) in the same install dir. If present and distinct, the sibling is backed up to `.bak` and overwritten with the same new monolithic binary so BOTH entry-points run the same code.
+
+Output line confirms the sync:
+
+```
+dual-binary: synced icmg.exe (20090 KB)
+```
+
+Single-binary installs are unaffected (no sibling → no-op).
+
+Verification: 112/112 ctest (Windows + Linux).
+
 ## 1.21.5 — TDD catchup (18 tests) + hot-reload-friendly `update --apply`
 
 Two-part release: tighten the test gate around v1.21.3/v1.21.4 features, and fix a long-standing UX wart on `icmg update --apply`.
