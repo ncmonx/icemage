@@ -13,9 +13,12 @@
 #include "../../core/inject_dedup.hpp"
 #include "../../core/turn_cache.hpp"
 #include "../../core/path_utils.hpp"
+#include "../../core/config.hpp"
+#include "../../core/db.hpp"
 
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -64,11 +67,12 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg metrics [show|json|reset]\n\n"
+            "Usage: icmg metrics [show|json|reset|per-cmd]\n\n"
             "Reports:\n"
             "  inject_dedup unique-hash count\n"
             "  turn_cache hits / misses / hit-rate\n"
-            "  service + daemon process state\n";
+            "  service + daemon process state\n"
+            "  per-cmd: v1.20.7 — top-10 filtered commands with shrink ratio\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -80,6 +84,57 @@ public:
             core::turn_cache::resetSession();
             std::cout << "icmg metrics: counters reset\n";
             return 0;
+        }
+
+        // v1.20.7 (S3): per-cmd shrink stats from project's commands table.
+        if (sub == "per-cmd") {
+            try {
+                core::Db db(core::Config::instance().projectDbPath("."));
+                struct Row { std::string cmd; long freq, orig, filt; };
+                std::vector<Row> rows;
+                db.query(
+                    "SELECT command, frequency, "
+                    "COALESCE(total_original_lines, 0), "
+                    "COALESCE(total_filtered_lines, 0) "
+                    "FROM commands "
+                    "WHERE total_original_lines > 0 "
+                    "ORDER BY (total_original_lines - total_filtered_lines) DESC "
+                    "LIMIT 10",
+                    {},
+                    [&](const std::vector<std::string>& r) {
+                        if (r.size() < 4) return;
+                        Row row;
+                        row.cmd = r[0];
+                        try { row.freq = std::stol(r[1]); } catch (...) { row.freq = 0; }
+                        try { row.orig = std::stol(r[2]); } catch (...) { row.orig = 0; }
+                        try { row.filt = std::stol(r[3]); } catch (...) { row.filt = 0; }
+                        rows.push_back(std::move(row));
+                    });
+                if (rows.empty()) {
+                    std::cout << "icmg metrics per-cmd: no filtered commands yet\n";
+                    return 0;
+                }
+                std::cout << "icmg metrics — top-10 filtered commands\n\n";
+                std::cout << std::left << std::setw(30) << "command"
+                          << std::right << std::setw(7) << "freq"
+                          << std::setw(10) << "raw"
+                          << std::setw(10) << "filtered"
+                          << std::setw(8) << "shrink\n";
+                for (auto& row : rows) {
+                    int pct = row.orig > 0
+                        ? (int)(100.0 - 100.0 * row.filt / row.orig + 0.5) : 0;
+                    std::string cmd = row.cmd.substr(0, 28);
+                    std::cout << std::left << std::setw(30) << cmd
+                              << std::right << std::setw(7) << row.freq
+                              << std::setw(10) << row.orig
+                              << std::setw(10) << row.filt
+                              << std::setw(7) << pct << "%\n";
+                }
+                return 0;
+            } catch (const std::exception& e) {
+                std::cerr << "icmg metrics per-cmd: " << e.what() << "\n";
+                return 1;
+            }
         }
 
         size_t dedup_n      = core::inject_dedup::uniqueCount();
