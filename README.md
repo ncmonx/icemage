@@ -55,11 +55,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.21.1** — `icmg update --apply` now stops old processes before swap; new `icmg feedback-loop` command; per-project `.icmg/filters.toml` for custom strip rules; large files automatically spilled to a pointer file on Read; `grep` / `git status` results cached per-turn.
 - **v1.21.0** — three convenience picks: silent dedup mode for memories, `icmg memoir export --format ai|ascii` for LLM-ready dumps, and `icmg init --tool <name>` accepts hints for non-Claude AI assistants.
 - **v1.20.8** — `icmg memoir link --relation <type>` records what kind of relationship two memoir entries have (depends_on, contradicts, refines, ...).
 - **v1.20.7** — new `icmg metrics per-cmd` shows your top filtered commands at a glance.
 - **v1.20.6** — smarter command-wrapper detection: wrapped invocations (`bash -c …`, `xargs …`, `npx …`, `pnpm exec …`) are now also redirected through the token-trimmer, not just bare commands.
-- **v1.20.5** — fixed a first-launch hiccup where some hooks could time out on cold start; faster project rebuild; cleaner exit from the CMD prompt; `jq` auto-installed on Windows during `icmg init`.
 
 ---
 
