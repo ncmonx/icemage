@@ -4,6 +4,47 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.9 — Final v1.20.0 plan items (M2 + M4 + M6-dot) + two hotfixes
+
+Re-audit of `docs/plans/2026-05-20-v1.20.0-memory-filter-bundle.md` after the v1.21.8 ship revealed three items still unshipped. v1.21.9 closes them and bundles two user-reported hotfixes from server installs.
+
+### M2: importance-tier decay rate
+
+Memories now decay at a tier-aware rate so high-signal nodes stay relevant longer:
+
+- `critical` — frozen (never decays)
+- `high` — half rate (half-life ~180 d vs 90 d baseline)
+- `medium` — baseline
+- `low` — double rate (~45 d half-life)
+
+`icmg store --importance critical|high|medium|low` accepted as long forms (legacy `crit|high|med|low` still work).
+
+### M4: zone consolidation hint
+
+After every `icmg store` the destination zone is counted; if it now holds more than 7 entries you get a nudge:
+
+```
+[hint] zone 'auth' has 12 entries; consider 'icmg consolidate --zone auth'
+```
+
+JSON mode (`--json`) returns the same string under a new `warnings` array.
+
+### M6: `memoir export --format dot` (Graphviz)
+
+`icmg memoir export -f dot` now emits a `digraph` for `dot -Tsvg`. Nodes are colored by importance (critical=red / high=orange / medium=yellow / low=gray) and labelled with `#id title`. Edges are parsed from the keyword field's `rel:<type>:<dst-id>` tokens (the v1.20.8 typed-relation format) and the legacy `linked:N` form.
+
+### Hotfix #1: stale `.old-<PID>` cleanup
+
+`update --apply` sometimes leaves files like `libwinpthread-1.dll.old-9100` behind when a still-running icmg process holds the DLL handle. On every subsequent icmg invocation a new startup pass now scans the bin dir, checks if the named PID is dead, and deletes orphaned `.old-<PID>` files. The bin dir self-cleans within one cycle of the orphan process exiting.
+
+### Hotfix #2: `bash -c` wrap for hook commands
+
+Some Claude Code hosts exec hook commands directly (without an implicit `sh -c`). The previous one-liner `[ -f X ] && bash X` was being read as a direct call to `/usr/bin/[`, producing `cannot execute binary file` on stderr. All settings.local.json hook entries are now wrapped in `bash -c '...'` so shell parsing is guaranteed.
+
+Existing users on legacy `settings.local.json` should run `icmg init --force` after upgrading to v1.21.9 to regenerate hook entries.
+
+Verification: 112/112 ctest (Windows + Linux).
+
 ## 1.21.8 — Stale-while-revalidate hook cache + S1 in-RAM graph cache
 
 Bundles the final v1.20.0 plan item (S1) with a fix for the `icmg hook userprompt: timeout 500ms — skipping injection` symptom users saw under DB-lock contention.
