@@ -4,6 +4,42 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.1 — update_cmd hardening + FB1 feedback loop + F2 filters.toml + F8 spill + S2 turn_cache
+
+Five v1.20.0-plan picks plus a user-reported `update --apply` hardening. No CLI surface break; one additive schema migration (0033).
+
+### update_cmd hardening (user-reported)
+
+`icmg update --apply` previously renamed the old binary aside but left running `icmg.exe` / `icmg-core.exe` processes alive, so the old code lingered in memory even after the swap. v1.21.1 enumerates all running instances (except self), gives them a 3 s grace window, then `TerminateProcess` survivors. Stale `service.pid` / `rule-daemon.pid` / `service.starting` files are wiped so the post-swap service restart spawns fresh from the new binary.
+
+### FB1 — `icmg feedback-loop` (new command)
+
+Records predicted-vs-actual corrections so future similar prediction paths can search past mistakes.
+
+- `icmg feedback-loop record --topic X --predicted "Y" --actual "Z" [--note ...]`
+- `icmg feedback-loop search "<query>"` — substring scan across topic + predicted + actual
+- `icmg feedback-loop stats` — counts by topic + most-applied entries
+- `icmg feedback-loop apply <id>` — bump applied_count
+
+Backed by `feedbacks` table (mig 0033 — additive; existing `feedback` table for recall reranking is preserved untouched).
+
+### F2 — per-project `filters.toml`
+
+`.icmg/filters.toml` lets each project add user-supplied regex strip rules on top of the built-in filter pipeline. Minimal TOML — `[[filter]]` blocks with `match` and `strip` arrays. Loader is mtime-tracked, first-match-wins, no-op when file absent.
+
+### F8 — auto-spill big Read (>50KB)
+
+PreToolUse:Read hook now copies the source file to `.icmg/spill/<ts>_<base>.txt`, caps Read to the first 50 lines, and emits a pointer in `additionalContext`. The LLM expands the spill file only when it needs the rest. Threshold tunable via `ICMG_AUTO_SPILL_THRESHOLD`.
+
+### S2 — `turn_cache` wiring
+
+`tkil.cpp` now consults `core::turn_cache::lookup` for `grep / rg / git status / git diff`. Repeat-within-TTL emits a 2-line reference pointer instead of full output. Bypass: `ICMG_NO_TURN_CACHE=1`.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade. One additive schema migration.
+
 ## 1.21.0 — M3 silent dedup + M6 memoir export `-f ai|ascii` + I1 `--tool` flag (minor)
 
 Three v1.20.0-plan picks bundled as a minor version. No schema change, backward compatible.
