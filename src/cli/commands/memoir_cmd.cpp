@@ -381,13 +381,17 @@ private:
         return 0;
     }
 
-    // Phase 36 T2: bulk export memoirs to markdown files.
+    // Phase 36 T2 + v1.21.0 (M6): bulk export memoirs.
+    // v1.21.0: `--format <md|ai|ascii>` controls output style.
+    //   md    — original per-file YAML+markdown (default)
+    //   ai    — single stdout dump optimized for LLM context (no YAML noise,
+    //           compact heading + bullet keywords + content body)
+    //   ascii — single stdout dump with box-drawing memoir cards, links shown
     int exportCmd(core::Db& db, const std::vector<std::string>& args) {
+        std::string fmt     = flagValue(args, "--format", "md");
         std::string out_dir = flagValue(args, "--out", "memoirs");
         std::string filter  = flagValue(args, "--filter");
         bool force = hasFlag(args, "--force");
-
-        std::filesystem::create_directories(out_dir);
 
         std::string sql = "SELECT id, topic, content, importance, "
                           "COALESCE(keywords,''), zone, created_at "
@@ -400,6 +404,45 @@ private:
         }
         sql += " ORDER BY id";
 
+        if (fmt == "ai") {
+            int n = 0;
+            db.query(sql, params, [&](const core::Row& r){
+                if (r.size() < 7) return;
+                std::string title = r[1].size() > 7 ? r[1].substr(7) : r[1];
+                std::cout << "## " << title << " (#" << r[0] << ")\n";
+                if (!r[4].empty()) std::cout << "**tags:** " << r[4] << "\n";
+                if (r[3] != "1") std::cout << "**importance:** " << r[3] << "\n";
+                std::cout << "\n" << r[2] << "\n\n---\n\n";
+                ++n;
+            });
+            std::cerr << "memoir export -f ai: " << n << " memoir(s) emitted\n";
+            return 0;
+        }
+        if (fmt == "ascii") {
+            int n = 0;
+            db.query(sql, params, [&](const core::Row& r){
+                if (r.size() < 7) return;
+                std::string title = r[1].size() > 7 ? r[1].substr(7) : r[1];
+                std::string content = r[2];
+                if (content.size() > 200) content = content.substr(0, 200) + "...";
+                std::cout << "+" << std::string(70, '-') << "+\n"
+                          << "| #" << std::left << std::setw(4) << r[0]
+                          << " " << std::setw(63) << title.substr(0, 63) << " |\n"
+                          << "+" << std::string(70, '-') << "+\n"
+                          << "| " << std::setw(68) << content.substr(0, 68) << " |\n";
+                if (!r[4].empty()) {
+                    std::string kw = r[4]; if (kw.size() > 65) kw = kw.substr(0, 62) + "...";
+                    std::cout << "| tags: " << std::setw(62) << kw << " |\n";
+                }
+                std::cout << "+" << std::string(70, '-') << "+\n\n";
+                ++n;
+            });
+            std::cerr << "memoir export -f ascii: " << n << " memoir(s)\n";
+            return 0;
+        }
+
+        // md (default) — file-per-memoir
+        std::filesystem::create_directories(out_dir);
         int written = 0, skipped = 0;
         db.query(sql, params, [&](const core::Row& r){
             if (r.size() < 7) return;

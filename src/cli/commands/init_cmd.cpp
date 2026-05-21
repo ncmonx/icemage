@@ -719,6 +719,9 @@ public:
             "  ~/.icmg/embed/icmg_embedder.py â€” embedder sidecar (semantic recall)\n\n"
             "Options:\n"
             "  --no-hooks      Skip .claude/ setup\n"
+            "  --tool <name>   Target tool: claude-code (default) | cursor | windsurf | zed |\n"
+            "                  codex | copilot | opencode | gemini | amp (v1.21.0; native\n"
+            "                  install for non-claude-code is hint-only for now)\n"
             "  --no-agents     Skip AGENTS.md update\n"
             "  --no-embedder   Skip embedder sidecar drop\n"
             "  --no-scan       Skip initial graph scan\n"
@@ -743,6 +746,24 @@ public:
         bool no_mirror   = hasFlag(args, "--no-mirror");
         bool force       = hasFlag(args, "--force");
         bool strict_read = hasFlag(args, "--strict-read");
+        // v1.21.0 (I1, partial): --tool flag accepts cursor/windsurf/zed/codex/
+        // copilot/opencode/gemini/amp. Currently emits a hint pointing at
+        // each tool's per-project config location so the user can wire icmg
+        // manually. Native auto-install per tool deferred to v1.21.x+.
+        std::string tool = flagValue(args, "--tool", "claude-code");
+        if (tool != "claude-code") {
+            std::cout << "  --tool " << tool << ": auto-install not yet implemented (v1.21.x+).\n"
+                      << "  Manual config locations:\n"
+                      << "    cursor    .cursor/rules/\n"
+                      << "    windsurf  .windsurfrules\n"
+                      << "    zed       .zed/settings.json\n"
+                      << "    codex     ~/.codex/hooks.json\n"
+                      << "    copilot   .github/hooks/icm.json\n"
+                      << "    opencode  ~/.config/opencode/plugins/icm.ts\n"
+                      << "    gemini    ~/.gemini/settings.json\n"
+                      << "    amp       (see Amp docs)\n"
+                      << "  Falling through to default Claude Code setup.\n\n";
+        }
 
         // Global strict flag: ~/.icmg/strict.flag â†’ enforce on every init/upgrade.
         if (!strict_read) {

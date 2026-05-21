@@ -161,6 +161,16 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     if (!force) {
         auto similar = findSimilar(effective.topic, effective.content, 0.85);
         if (!similar.empty()) {
+            // v1.21.0 (M3): silent upsert mode — `ICMG_DEDUP_SILENT=1` env
+            // makes store() return the existing id + bump frequency instead
+            // of throwing. Used by 3-layer auto-extract hooks where dup
+            // throws would spam stderr. Default behavior (throw) preserved
+            // for interactive `icmg store` so users still see warnings.
+            const char* silent = std::getenv("ICMG_DEDUP_SILENT");
+            if (silent && *silent && std::string(silent) != "0") {
+                bumpFrequency(similar[0].id);
+                return similar[0].id;
+            }
             DuplicateError err("Similar to existing node #" +
                                std::to_string(similar[0].id) +
                                " [" + similar[0].topic + "]. Use --force to store anyway.");
