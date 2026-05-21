@@ -4,6 +4,31 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.0 — M3 silent dedup + M6 memoir export `-f ai|ascii` + I1 `--tool` flag (minor)
+
+Three v1.20.0-plan picks bundled as a minor version. No schema change, backward compatible.
+
+### M3 — silent dedup (`imem/memory_store::store`)
+
+The existing dedup pathway threw `DuplicateError` on ≥85% Jaccard match to the same topic. v1.21.0 adds an opt-in `ICMG_DEDUP_SILENT=1` env: when set, `store()` returns the existing memoir id and bumps its frequency instead of throwing. Designed for future 3-layer auto-extract hooks where dup warnings would spam stderr. Interactive `icmg store` keeps throw-on-dup so user-driven inserts still surface the warning.
+
+### M6 — `icmg memoir export --format ai|ascii`
+
+`icmg memoir export` now accepts a `--format` flag:
+
+- `md` — original per-file YAML + markdown (default, unchanged)
+- `ai` — single stdout dump optimized for LLM context (heading + tags + content, no YAML noise)
+- `ascii` — single stdout dump with box-drawing memoir cards
+
+### I1 — `icmg init --tool <name>` (partial)
+
+`icmg init --tool` accepts `claude-code` (default), `cursor`, `windsurf`, `zed`, `codex`, `copilot`, `opencode`, `gemini`, `amp`. Non-`claude-code` prints config-path hints and falls through to default Claude Code setup. Native auto-install per non-Claude tool deferred to v1.21.x+.
+
+### Verification
+
+- 111/111 ctest (Windows + Linux)
+- Drop-in upgrade. No schema migration. Backward compatible.
+
 ## 1.20.8 — M5 typed memoir relations
 
 From the v1.20.0 plan (M5). `icmg memoir link --to <id>` now accepts an `--relation <type>` flag for explicit relationship semantics between memoir entries. Nine valid types: `related_to` (default), `depends_on`, `refines`, `contradicts`, `alternative_to`, `caused_by`, `instance_of`, `part_of`, `supersedes`.
