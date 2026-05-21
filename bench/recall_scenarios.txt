@@ -1,0 +1,10 @@
+# bench-recall scenarios — customise per project.
+# Format: <query>|<expect-csv>[|<top-k>]
+# `expect` substrings are case-insensitive; ALL must appear in top-K topic+content.
+#
+# Example (uncomment + adapt to your stored knowledge):
+# decisions about database|sqlite,WAL|10
+# auth flow|JWT,refresh|5
+
+# Placeholder neutral scenario that should pass on any memory store with >=1 node.
+icmg|icmg|10

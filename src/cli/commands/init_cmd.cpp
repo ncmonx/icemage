@@ -192,18 +192,40 @@ printf '%s' "$msg" | icmg hookio emit PostToolUse --ctx-stdin
 // compress/store/graph) into Claude's awareness on every turn instead of
 // passive existence in DB.
 static const char* PROMPT_RECALL_SH = R"BASH(#!/usr/bin/env bash
-# Phase 81: try daemon IPC first (~5ms); fall back to direct spawn (~360ms).
-# Daemon must be running: `icmg daemon start`.
+# Phase 81 + v1.21.2 (X2): try daemon IPC first (~5ms); fall back to direct
+# spawn (~360ms). Daemon must be running: `icmg daemon start`.
+# v1.21.2: zero-LLM keyword-pattern extract from prompt. If prompt matches
+# decision/fix/error/preference patterns, silent-store to memory_nodes via
+# ICMG_DEDUP_SILENT=1 so future recalls surface the captured detail.
 set -uo pipefail
 [[ "${ICMG_NO_PROMPT_HOOK:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
 
 # Read hook input JSON from stdin.
 INPUT=$(cat)
+PROMPT=$(printf '%s' "$INPUT" | icmg hookio get prompt 2>/dev/null)
+
+# v1.21.2 (X2): pattern-extract decision/fix/preference snippets BEFORE
+# the recall+inject step. Zero-LLM, regex-only. Matches lines starting
+# with strong decision verbs or containing diagnostic markers.
+if [[ -n "${PROMPT:-}" ]] && [[ "${ICMG_NO_EXTRACT:-0}" != "1" ]]; then
+    # Only consider prompts >40 chars (avoid trivial inputs).
+    if [[ ${#PROMPT} -ge 40 ]]; then
+        # Patterns: "decision: ...", "fix: ...", "prefer: ...", "TODO: ...",
+        # "known issue: ...", "use X not Y", "always X", "never X"
+        if [[ "$PROMPT" =~ (decision|fix|prefer|TODO|known.issue|always.use|never.use)[[:space:]]*:?[[:space:]]+ ]]; then
+            # Silent dedup-or-store. Failure swallowed (best-effort).
+            ICMG_DEDUP_SILENT=1 icmg store \
+                --topic "auto:prompt-$(date +%s 2>/dev/null || echo 0)" \
+                --content "$PROMPT" \
+                --importance low \
+                >/dev/null 2>&1 || true
+        fi
+    fi
+fi
 
 # Try daemon IPC first (~5ms); fall back to direct spawn (~360ms).
-PROMPT=$(printf '%s' "$INPUT" | icmg hookio get prompt 2>/dev/null)
-if [[ -n "$PROMPT" ]]; then
+if [[ -n "${PROMPT:-}" ]]; then
     RESULT=$(icmg daemon client hook.userprompt --param "prompt=$PROMPT" 2>/dev/null)
     if [[ -n "$RESULT" ]]; then
         printf '%s' "$RESULT"

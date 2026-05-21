@@ -3,6 +3,9 @@
 #include "filters/filter_utils.hpp"
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
+#include <cctype>
+#include <filesystem>
+#include <fstream>
 #include <chrono>
 #include <iostream>
 #include <iomanip>
@@ -211,6 +214,49 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             {command, std::to_string(raw_b), std::to_string(filt_b),
              std::to_string(in_t), std::to_string(out_t), std::to_string(saved)});
     } catch (...) { /* table missing on un-migrated DB — skip */ }
+
+    // v1.21.2 (F1): tee-on-failure spill. When command exited non-zero AND
+    // the filter shrunk output significantly (>50%), save the raw stream to
+    // `.icmg/spill/<ts>_<cmd>.log` and append a pointer so the agent can
+    // expand it on demand. Successful runs skip spill (no loss possible).
+    // Tunable: ICMG_NO_SPILL=1 to disable; ICMG_SPILL_SHRINK_PCT (default 50).
+    if (result.exit_code != 0 && fr.was_truncated
+        && !std::getenv("ICMG_NO_SPILL")) {
+        int min_shrink_pct = 50;
+        const char* env_pct = std::getenv("ICMG_SPILL_SHRINK_PCT");
+        if (env_pct) { try { min_shrink_pct = std::stoi(env_pct); } catch (...) {} }
+        int actual_pct = fr.original_lines > 0
+            ? (int)(100 - (100.0 * fr.filtered_lines / fr.original_lines)) : 0;
+        if (actual_pct >= min_shrink_pct && !combined.empty()) {
+            try {
+                namespace fs = std::filesystem;
+                fs::path spill_dir = fs::path(".icmg") / "spill";
+                std::error_code ec;
+                fs::create_directories(spill_dir, ec);
+                auto ts = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                // Sanitize first cmd token for filename.
+                std::string base;
+                for (char c : command) {
+                    if (base.size() >= 24) break;
+                    if (c == ' ' || c == '\t') break;
+                    if (std::isalnum((unsigned char)c) || c == '_' || c == '-') base += c;
+                }
+                if (base.empty()) base = "cmd";
+                fs::path spill = spill_dir / (std::to_string(ts) + "_" + base + ".log");
+                std::ofstream sf(spill, std::ios::binary);
+                if (sf) {
+                    sf << combined;
+                    sf.close();
+                    if (!json) {
+                        std::cerr << "[F1 tee-on-failure] full raw stream saved to "
+                                  << spill.string() << " (exit=" << result.exit_code
+                                  << ", filter shrink=" << actual_pct << "%)\n";
+                    }
+                }
+            } catch (...) { /* spill best-effort */ }
+        }
+    }
 
     return result.exit_code;
 }
