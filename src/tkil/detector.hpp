@@ -18,6 +18,13 @@ enum class CmdType {
     Tsc,            // typescript compiler
     Lint,           // eslint, clippy, ruff, golangci-lint, etc.
     Logs,           // v1.20.4: docker logs, kubectl logs, journalctl (dedup)
+    // v1.21.3 (F3): per-language dedicated filters — sharper than generic Build.
+    Rust,           // cargo build/check/run (rustc errors + Compiling noise)
+    Go,             // go build/test/run (go: downloading + --- FAIL noise)
+    Java,           // mvn/gradle ([INFO] flood + dep download noise)
+    Dotnet,         // dotnet build/run/test (MSBuild noise)
+    Swift,          // swift build / xcodebuild (xcbeautify-grade noise)
+    Kotlin,         // kotlinc / gradle :compileKotlin (gradle noise)
     Default         // unknown
 };
 
@@ -48,6 +55,12 @@ inline std::ostream& operator<<(std::ostream& os, CmdType t) {
         case CmdType::Tsc:            return os << "Tsc";
         case CmdType::Lint:           return os << "Lint";
         case CmdType::Logs:           return os << "Logs";
+        case CmdType::Rust:           return os << "Rust";
+        case CmdType::Go:             return os << "Go";
+        case CmdType::Java:           return os << "Java";
+        case CmdType::Dotnet:         return os << "Dotnet";
+        case CmdType::Swift:          return os << "Swift";
+        case CmdType::Kotlin:         return os << "Kotlin";
         case CmdType::Default:        return os << "Default";
     }
     return os << "Unknown";

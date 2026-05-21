@@ -36,6 +36,12 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
         {CmdType::Tsc,            "tsc"},
         {CmdType::Lint,           "lint"},
         {CmdType::Logs,           "log-dedup"},  // v1.20.4 (F6)
+        {CmdType::Rust,           "rust"},       // v1.21.3 (F3)
+        {CmdType::Go,             "go"},
+        {CmdType::Java,           "java"},
+        {CmdType::Dotnet,         "dotnet"},
+        {CmdType::Swift,          "swift"},
+        {CmdType::Kotlin,         "kotlin"},
         {CmdType::Default,        "default"},
     };
     auto& reg = core::Registry<icmg::tkil::BaseFilter>::instance();

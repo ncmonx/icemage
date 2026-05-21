@@ -26,9 +26,9 @@ TEST("detector: git status → GitLog") {
     ASSERT_EQ(d.detect("git status"), CmdType::GitLog);
 }
 
-TEST("detector: cargo build → Build") {
+TEST("detector: cargo build → Rust") {  // v1.21.3 (F3): dedicated lang filter
     Detector d;
-    ASSERT_EQ(d.detect("cargo build --release"), CmdType::Build);
+    ASSERT_EQ(d.detect("cargo build --release"), CmdType::Rust);
 }
 
 TEST("detector: cmake build → Build") {
@@ -41,9 +41,39 @@ TEST("detector: make → Build") {
     ASSERT_EQ(d.detect("make -j8"), CmdType::Build);
 }
 
-TEST("detector: cargo test → Test") {
+TEST("detector: cargo test → Rust") {  // v1.21.3 (F3): dedicated lang filter
     Detector d;
-    ASSERT_EQ(d.detect("cargo test"), CmdType::Test);
+    ASSERT_EQ(d.detect("cargo test"), CmdType::Rust);
+}
+
+TEST("detector: go build → Go") {  // v1.21.3 (F3)
+    Detector d;
+    ASSERT_EQ(d.detect("go build ./..."), CmdType::Go);
+}
+
+TEST("detector: mvn package → Java") {  // v1.21.3 (F3)
+    Detector d;
+    ASSERT_EQ(d.detect("mvn package -DskipTests"), CmdType::Java);
+}
+
+TEST("detector: gradlew build → Java") {  // v1.21.3 (F3)
+    Detector d;
+    ASSERT_EQ(d.detect("./gradlew build"), CmdType::Java);
+}
+
+TEST("detector: dotnet build → Dotnet") {  // v1.21.3 (F3)
+    Detector d;
+    ASSERT_EQ(d.detect("dotnet build -c Release"), CmdType::Dotnet);
+}
+
+TEST("detector: swift build → Swift") {  // v1.21.3 (F3)
+    Detector d;
+    ASSERT_EQ(d.detect("swift build"), CmdType::Swift);
+}
+
+TEST("detector: kotlinc → Kotlin") {  // v1.21.3 (F3)
+    Detector d;
+    ASSERT_EQ(d.detect("kotlinc Main.kt"), CmdType::Kotlin);
 }
 
 TEST("detector: pytest → Test") {
