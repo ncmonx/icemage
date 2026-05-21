@@ -4,6 +4,53 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.22.0 — `icmg style-clone` — UI propagation toolkit
+
+New subsystem for the "apply Menu A's UI to N other menus" use case. Reduces token cost from O(N × file-size) to O(1 reference + per-target diff) — typically 30–50× on real projects.
+
+### What it does
+
+```bash
+# Read reference once, cache the structural layout.
+icmg style-clone extract menus/MenuA.vue --save-as menu-template
+
+# Apply to a glob of targets (dry-run by default).
+icmg style-clone apply menu-template --to "menus/*.vue"
+icmg style-clone apply menu-template --to "menus/*.vue" --write   # mutate
+
+# Compare two files structurally.
+icmg style-clone diff menus/MenuA.vue menus/MenuB.vue
+
+# Surface drifted targets after upstream changes.
+icmg style-clone verify menu-template --glob "menus/*.vue"
+
+icmg style-clone list
+icmg style-clone show menu-template
+```
+
+The pattern stores tag + class list + attr-name set + nesting (no literal text, no bound expressions). Apply rewrites ONLY `class=` / `:class=` / `className=` attributes — target's data bindings, props, event handlers, slot content all preserved.
+
+Supported langs: vue (SFC `<template>` isolated), jsx, tsx, html, svelte. Unknown extensions fall back to generic HTML-ish parsing.
+
+### MCP tools
+
+- `icmg_style_clone_apply` (mutating, takes `name + glob + write`)
+- `icmg_style_clone_verify`
+
+Total MCP tools: 36 → 38.
+
+### Schema
+
+mig 0035 `style_patterns(name UNIQUE, source_path, lang, layout_tree JSON, class_tokens, structural_hash, node_count, applied_count, created_at, updated_at)`. `applied_count` bumped on each apply call (parallel to v1.21.1 FB1 feedback-loop telemetry).
+
+### Design notes
+
+- Default is **dry-run** — explicit `--write` required to mutate. Avoids accidental N-file corruption.
+- Implementation uses a regex-based scanner rather than tree-sitter (vendored grammars cover only c/php/python/ts). Trade-off: cannot tell JSX `{expr}` apart from literal text in extreme edge cases, but for style-clone we only need tag+class+attr-name structure. Tree-sitter migration is scoped for v1.23+.
+- 9 new unit tests covering language detection, hash stability/divergence, Vue SFC isolation, JSX binding detection, JSON round-trip, self-closing tag handling. ctest 112 → 113.
+
+Verification: 113/113 ctest (Windows + Linux).
+
 ## 1.21.9 — Final v1.20.0 plan items (M2 + M4 + M6-dot) + two hotfixes
 
 Re-audit of `docs/plans/2026-05-20-v1.20.0-memory-filter-bundle.md` after the v1.21.8 ship revealed three items still unshipped. v1.21.9 closes them and bundles two user-reported hotfixes from server installs.
