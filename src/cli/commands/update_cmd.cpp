@@ -83,10 +83,38 @@ static int countOrphanIcmgInstances() {
     return count;
 }
 
+// v1.21.5: poll process list for icmg.exe / icmg-core.exe (except self) until
+// all gone or timeout. Belt-and-suspenders after stopOrphanIcmgInstances.
+static bool waitForIcmgGone(int timeout_ms) {
+    DWORD self_pid = GetCurrentProcessId();
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        int alive = 0;
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32 pe{}; pe.dwSize = sizeof(pe);
+            if (Process32First(snap, &pe)) {
+                do {
+                    std::string name = pe.szExeFile;
+                    std::transform(name.begin(), name.end(), name.begin(),
+                                   [](unsigned char c){ return std::tolower(c); });
+                    if ((name == "icmg.exe" || name == "icmg-core.exe")
+                        && pe.th32ProcessID != self_pid) ++alive;
+                } while (Process32Next(snap, &pe));
+            }
+            CloseHandle(snap);
+        }
+        if (alive == 0) return true;
+        Sleep(200);
+        elapsed += 200;
+    }
+    return false;
+}
+
 // v1.21.1: stop ALL running icmg.exe / icmg-core.exe instances (except self)
 // before binary swap so the rename-aside doesn't leave the old code running
-// in memory. Graceful shutdown first (signal mutex / WM_CLOSE), then 3s grace
-// period, then TerminateProcess fallback. Returns count killed.
+// in memory. v1.21.5: enhanced — taskkill /F fallback after TerminateProcess,
+// then poll-until-gone (waitForIcmgGone) so swap doesn't race re-spawn.
 static int stopOrphanIcmgInstances() {
     DWORD self_pid = GetCurrentProcessId();
     std::vector<DWORD> targets;
@@ -109,21 +137,9 @@ static int stopOrphanIcmgInstances() {
     }
     if (targets.empty()) return 0;
 
-    // Phase 1: graceful — signal each via console ctrl event (best-effort).
-    // Many will simply not respond (GUI subsystem) and fall through to step 2.
-    for (DWORD pid : targets) {
-        HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pid);
-        if (h) {
-            // No graceful signal channel available for GUI children — skip to
-            // soft wait, then TerminateProcess if still alive.
-            CloseHandle(h);
-        }
-    }
-
-    // Phase 2: 3s grace window.
-    Sleep(3000);
-
-    // Phase 3: TerminateProcess any survivors.
+    // v1.21.5: Phase 1 — TerminateProcess directly. The old no-op "graceful"
+    // phase wasted 3s with no actual signal channel for GUI children. New
+    // flow is just kill-fast, then verify with poll loop.
     int killed = 0;
     for (DWORD pid : targets) {
         HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pid);
@@ -134,6 +150,22 @@ static int stopOrphanIcmgInstances() {
         }
         CloseHandle(h);
     }
+
+    // v1.21.5: Phase 2 — taskkill /F fallback for survivors that
+    // TerminateProcess couldn't reach (admin-only handles, antivirus shield).
+    for (DWORD pid : targets) {
+        HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (!h) continue;
+        DWORD ec = STILL_ACTIVE;
+        bool still_alive = GetExitCodeProcess(h, &ec) && ec == STILL_ACTIVE;
+        CloseHandle(h);
+        if (!still_alive) continue;
+        std::string cmd = "taskkill /F /PID " + std::to_string(pid) + " > nul 2>&1";
+        std::system(cmd.c_str());
+    }
+
+    // v1.21.5: Phase 3 — poll until all gone, max 5s. Catches re-spawn races.
+    (void)waitForIcmgGone(5000);
 
     // Wipe stale pid files so next service start doesn't see a "alive" PID
     // that now belongs to some other unrelated process.
@@ -149,6 +181,28 @@ static int stopOrphanIcmgInstances() {
     return killed;
 }
 #endif
+
+// v1.21.5: write `~/.icmg/updating.lock` sentinel. While present, any
+// auto-spawn paths (exec_client maybe_autospawn_service, hook scripts) MUST
+// skip launching icmg-core — this keeps a freshly-killed service from
+// re-spawning on the old binary before swap completes. Cross-platform: on
+// POSIX the sentinel is harmless (no exec_client to check it) but kept for
+// symmetry + future Linux hook checks.
+static fs::path updatingLockPath() {
+    const char* prof = std::getenv("USERPROFILE");
+    if (!prof) prof = std::getenv("HOME");
+    return fs::path(prof ? prof : ".") / ".icmg" / "updating.lock";
+}
+static void writeUpdatingLock() {
+    auto p = updatingLockPath();
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    std::ofstream(p) << std::time(nullptr) << "\n";
+}
+static void clearUpdatingLock() {
+    std::error_code ec;
+    fs::remove(updatingLockPath(), ec);
+}
 
 class UpdateCommand : public BaseCommand {
 public:
@@ -573,6 +627,11 @@ private:
         }
         fs::remove(zip);
 
+        // v1.21.5: write updating.lock sentinel BEFORE killing the service
+        // so exec_client maybe_autospawn_service skips re-spawn during the
+        // swap window. Cleared after new service confirmed alive.
+        writeUpdatingLock();
+
         // v1.21.1: stop running icmg / icmg-core instances before binary swap
         // so the old code path doesn't linger in memory after rename. Service
         // pidfiles wiped so post-swap restart spawns fresh from the new exe.
@@ -604,6 +663,7 @@ private:
                 fs::path pending = self; pending += ".pending-restart";
                 std::ofstream pf(pending);
                 if (pf) pf << r.tag << "\n" << tmp.string() << "\n";
+                clearUpdatingLock();
                 return 0;
             }
             // Helper spawn failed — fall back to pending-only flag.
@@ -614,11 +674,13 @@ private:
                 pf << r.tag << "\n" << tmp.string() << "\n";
                 std::cerr << "  PENDING UPGRADE flagged.\n"
                           << "  Run ANY `icmg <cmd>` in a NEW terminal to complete.\n";
+                clearUpdatingLock();
                 return 0;
             }
             std::cerr << "  Workaround: taskkill /F /IM icmg.exe (Windows) or "
                       << "killall icmg (Unix), then re-run `icmg update --apply`.\n";
             fs::remove(tmp);
+            clearUpdatingLock();
             return 6;
         }
         // Move new in.
@@ -630,6 +692,7 @@ private:
                 std::cerr << "icmg update: install new failed: " << ec.message() << "\n"
                           << "  Restoring .bak. Run `icmg update --rollback` if needed.\n";
                 fs::rename(bak, self, ec);
+                clearUpdatingLock();
                 return 7;
             }
         }
@@ -663,11 +726,33 @@ private:
                 CloseHandle(pi_s.hThread);
                 CloseHandle(pi_s.hProcess);
                 std::cout << "  service: restarted (running new binary)\n";
+
+                // v1.21.5: wait for new service to write its pidfile so the
+                // user's NEXT `icmg <cmd>` invocation lands on the fresh
+                // service rather than racing the spawn. Max 5s, then proceed.
+                const char* prof = std::getenv("USERPROFILE");
+                if (prof && *prof) {
+                    fs::path pidf = fs::path(prof) / ".icmg" / "service.pid";
+                    int waited = 0;
+                    while (waited < 5000 && !fs::exists(pidf)) {
+                        Sleep(200);
+                        waited += 200;
+                    }
+                    if (fs::exists(pidf)) {
+                        std::cout << "  service: ready after "
+                                  << waited << " ms\n";
+                    }
+                }
             } else {
                 std::cerr << "  service: restart failed; run `icmg service start` manually\n";
             }
         }
 #endif
+
+        // v1.21.5: clear updating.lock so auto-spawn paths resume working.
+        // Done AFTER service-ready verification so the brief window between
+        // service-start and pidfile-write is also protected.
+        clearUpdatingLock();
 
         // Re-add new binary to Windows Defender exclusion after path swap.
         // New path == same path (atomic rename), but re-add ensures fresh hash is excluded.

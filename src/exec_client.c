@@ -406,6 +406,18 @@ static void maybe_autospawn_service(void) {
     const char* user = getenv("USERPROFILE");
     if (!user || !*user) return;
 
+    /* v1.21.5: hot-reload-friendly update — `update --apply` writes
+     * ~/.icmg/updating.lock before binary swap. While present, any
+     * auto-spawn paths skip launching icmg-core so the swap can complete
+     * without racing against a new service starting on the old binary. */
+    {
+        char update_lock[MAX_PATH];
+        _snprintf_s(update_lock, sizeof(update_lock), _TRUNCATE,
+                    "%s\\.icmg\\updating.lock", user);
+        DWORD attrs = GetFileAttributesA(update_lock);
+        if (attrs != INVALID_FILE_ATTRIBUTES) return;
+    }
+
     /* v1.18.1: PRE-CHECK singleton mutex via OpenMutexA. If mutex exists
      * → service starting OR alive → skip spawn. Prevents N-client race
      * where each thinks service dead + all spawn simultaneously. */

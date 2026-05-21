@@ -136,4 +136,26 @@ TEST("runners: runPostToolUseReadHook small content → empty (no compress)") {
     ASSERT_TRUE(r.empty());
 }
 
+// ---- X1: extractPreCompactSnippets ----------------------------------------
+
+TEST("hook_internals: X1 extractPreCompactSnippets honors ICMG_NO_X1_EXTRACT") {
+    setEnv("ICMG_NO_X1_EXTRACT", "1");
+    std::string text(500, 'x');
+    text += "Decision: never block on icmg-core spawn — use sentinel file. ";
+    int n = icmg::core::hooks::extractPreCompactSnippets(text);
+    setEnv("ICMG_NO_X1_EXTRACT", "");
+    ASSERT_EQ(n, 0);
+}
+
+TEST("hook_internals: X1 short input → 0 (no DB hit)") {
+    int n = icmg::core::hooks::extractPreCompactSnippets("too short");
+    ASSERT_EQ(n, 0);
+}
+
+TEST("hook_internals: X1 plain noise no statements → 0") {
+    std::string text(500, 'y');
+    int n = icmg::core::hooks::extractPreCompactSnippets(text);
+    ASSERT_EQ(n, 0);
+}
+
 int main() { return icmg::test::run_all(); }

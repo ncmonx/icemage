@@ -183,6 +183,68 @@ TEST("mcp: tool schema has required fields") {
     ASSERT_TRUE(schema["properties"].contains("query"));
 }
 
+// ---- v1.21.5 (FB3 TDD): the 8 new tools shipped in v1.21.4 register
+// and expose schemas. They wrap CLI subcommands via safeExecShell — full
+// execution is integration-tested elsewhere; here we only verify registration.
+
+TEST("mcp FB3: all 8 v1.21.4 tools registered") {
+    auto& reg = core::Registry<mcp::BaseMcpTool>::instance();
+    for (auto k : {
+            "icmg_bench_recall",
+            "icmg_feedback_record",
+            "icmg_feedback_search",
+            "icmg_feedback_stats",
+            "icmg_memoir_list",
+            "icmg_memoir_show",
+            "icmg_metrics_per_cmd",
+            "icmg_known_issue_match"}) {
+        ASSERT_TRUE(reg.has(k));
+    }
+}
+
+TEST("mcp FB3: required-arg schemas reject empty input") {
+    auto& reg = core::Registry<mcp::BaseMcpTool>::instance();
+    // icmg_feedback_record requires topic + predicted + actual; validateArgs
+    // should throw on empty payload — before any shell exec happens.
+    auto tool = reg.create("icmg_feedback_record");
+    ASSERT_TRUE(tool != nullptr);
+    auto db = openTestDb();
+    bool threw = false;
+    try { (void)tool->call(json::object(), db); }
+    catch (const std::exception&) { threw = true; }
+    ASSERT_TRUE(threw);
+}
+
+TEST("mcp FB3: icmg_feedback_search rejects missing query") {
+    auto& reg = core::Registry<mcp::BaseMcpTool>::instance();
+    auto tool = reg.create("icmg_feedback_search");
+    auto db = openTestDb();
+    bool threw = false;
+    try { (void)tool->call(json::object(), db); }
+    catch (const std::exception&) { threw = true; }
+    ASSERT_TRUE(threw);
+}
+
+TEST("mcp FB3: icmg_known_issue_match rejects missing error") {
+    auto& reg = core::Registry<mcp::BaseMcpTool>::instance();
+    auto tool = reg.create("icmg_known_issue_match");
+    auto db = openTestDb();
+    bool threw = false;
+    try { (void)tool->call(json::object(), db); }
+    catch (const std::exception&) { threw = true; }
+    ASSERT_TRUE(threw);
+}
+
+TEST("mcp FB3: icmg_memoir_show rejects missing id") {
+    auto& reg = core::Registry<mcp::BaseMcpTool>::instance();
+    auto tool = reg.create("icmg_memoir_show");
+    auto db = openTestDb();
+    bool threw = false;
+    try { (void)tool->call(json::object(), db); }
+    catch (const std::exception&) { threw = true; }
+    ASSERT_TRUE(threw);
+}
+
 TEST("mcp: icmg_stats returns row counts") {
     auto db = openTestDb();
     json result = callTool("icmg_stats", {}, db);
