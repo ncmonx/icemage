@@ -4,6 +4,29 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.5 — TDD catchup (18 tests) + hot-reload-friendly `update --apply`
+
+Two-part release: tighten the test gate around v1.21.3/v1.21.4 features, and fix a long-standing UX wart on `icmg update --apply`.
+
+### TDD catchup
+
+- `test_lang_filters.cpp` (new, 10 tests) — F3 filter behavior for rust / go / java / dotnet / swift / kotlin: each verifies its language-specific noise is stripped while errors/warnings/summary are kept.
+- `test_hook_internals.cpp` (+3 tests) — X1 `extractPreCompactSnippets`: `ICMG_NO_X1_EXTRACT` opt-out, short-input skip, noise-only → 0 (no DB hit).
+- `test_mcp.cpp` (+5 tests) — FB3 8-tool registration check + `validateArgs` throws on missing required args for `icmg_feedback_record` / `icmg_feedback_search` / `icmg_known_issue_match` / `icmg_memoir_show`.
+- ctest count 111 → 112.
+
+### Hot-reload-friendly `update --apply`
+
+Old behaviour: after `update --apply` you sometimes had to manually `taskkill /F /IM icmg.exe` before the new binary would actually take effect — the old service had re-spawned mid-swap on the old code.
+
+New behaviour:
+
+1. `~/.icmg/updating.lock` sentinel — written BEFORE the kill, cleared after the new service is confirmed alive. `exec_client.maybe_autospawn_service` checks for it and skips auto-spawning while it exists → no more re-spawn race during the swap window.
+2. `stopOrphanIcmgInstances` dropped its 3-second no-op "graceful" phase. New flow: `TerminateProcess` → `taskkill /F /PID` fallback for handle-protected survivors → poll-until-gone (5 s).
+3. Post-swap: poll `~/.icmg/service.pid` up to 5 s so the user's NEXT `icmg <cmd>` invocation lands on the new service code.
+
+Verification: 112/112 ctest (Windows + Linux).
+
 ## 1.21.4 — X1 PreCompact per-snippet preservation + FB3 8 new MCP tools
 
 Two of the last deferred items from the v1.20.0 plan. No CLI break.
