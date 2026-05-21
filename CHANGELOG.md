@@ -4,6 +4,16 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.2 — X2 prompt-extract + F1 tee-on-failure spill + U2 bench-recall harness
+
+Three more v1.20.0-plan picks. No CLI break; one new command (`bench-recall`) registered.
+
+- **X2** — auto-extract decision/fix/preference snippets from prompts ≥40 chars matching `decision|fix|prefer|TODO|known.issue|always.use|never.use`. Silent store via `ICMG_DEDUP_SILENT=1`. Zero-LLM, regex-only. Opt-out: `ICMG_NO_EXTRACT=1`.
+- **F1** — Tkil tee-on-failure spill. When a wrapped command exits non-zero **and** the filter shrank output by ≥50%, the raw stream is saved to `.icmg/spill/<ts>_<cmd>.log` so you don't lose the original error context. Tunable via `ICMG_NO_SPILL` and `ICMG_SPILL_SHRINK_PCT`.
+- **U2** — new `icmg bench-recall` scenario harness. Plain-text file with `query|expect-csv|top-k` lines; passes if all expected substrings appear in top-K recall results. Exits 1 on any failure (CI-gate friendly). Modes: default BM25, `--semantic` blend, `--json` for machine output.
+
+Verification: 111/111 ctest.
+
 ## 1.21.1 — update_cmd hardening + FB1 feedback loop + F2 filters.toml + F8 spill + S2 turn_cache
 
 Five v1.20.0-plan picks plus a user-reported `update --apply` hardening. No CLI surface break; one additive schema migration (0033).
