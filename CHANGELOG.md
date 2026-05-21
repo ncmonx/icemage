@@ -4,6 +4,20 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.4 — X1 PreCompact per-snippet preservation + FB3 8 new MCP tools
+
+Two of the last deferred items from the v1.20.0 plan. No CLI break.
+
+- **X1** — when Claude Code fires the PreCompact event (just before a session transcript is compacted away), Icemage now scans the transcript for individual `Decision:`, `Fix:`, `Root cause:`, `IMPORTANT:`, `Conclusion:`, `Workaround:`, `TODO:`, `Prefer:`, `Always:`, `Never:`, `Known issue:` statements and stores each as its own memory node (`auto:precompact-<date>-<idx>`). The summary node still gets written; X1 just makes the individual snippets independently recallable after the transcript is gone. Cap 30 per pass, prefix-dedup. Opt-out: `ICMG_NO_X1_EXTRACT=1`.
+- **FB3** — eight new MCP tools (28 → 36):
+  - `icmg_bench_recall` — run recall scenario harness via MCP.
+  - `icmg_feedback_record` (mutating), `icmg_feedback_search`, `icmg_feedback_stats` — wrap the v1.21.1 feedback-loop subsystem.
+  - `icmg_memoir_list`, `icmg_memoir_show` — expose long-form memoirs (ADRs / post-mortems).
+  - `icmg_metrics_per_cmd` — top filtered commands by absolute lines saved.
+  - `icmg_known_issue_match` — match an error text against the known-issue table.
+
+Verification: 111/111 ctest (Windows + Linux).
+
 ## 1.21.3 — F3 6 per-language Tkil filters (rust/go/java/dotnet/swift/kotlin)
 
 Six new dedicated noise-strippers for language ecosystems whose output was previously routed through the generic Build/Test filters. Each filter knows what its toolchain spews and what to keep.
