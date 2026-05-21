@@ -4,6 +4,29 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.8 — Stale-while-revalidate hook cache + S1 in-RAM graph cache
+
+Bundles the final v1.20.0 plan item (S1) with a fix for the `icmg hook userprompt: timeout 500ms — skipping injection` symptom users saw under DB-lock contention.
+
+### Hook cache (stale-while-revalidate)
+
+Hooks now follow the HTTP-cache pattern: a fresh cache (≤30 s old) is served instantly, and the slow dispatch runs in the background to refresh the cache for the next call. If no fresh cache exists, the call falls back to the synchronous timeout-bounded dispatch; on timeout, a stale cache (≤1 h) is served via a raw `WriteFile`/`write` to fd 1 — bypassing a `std::cout` rdbuf swap race with the still-running worker thread.
+
+- Cache file: `~/.icmg/hook-cache-<event>.txt` (one entry per event).
+- Envs: `ICMG_HOOK_NO_CACHE=1` (disable), `ICMG_HOOK_CACHE_MAX_AGE=N` (fresh window seconds, default 30).
+
+Net effect: hook calls are effectively multi-task — the prompt-side path is microseconds, dispatch runs in parallel with the user's next reasoning step.
+
+### S1 in-RAM graph cache (last v1.20.0 deferred item)
+
+- Bounded FIFO cache (cap 256) for `GraphStore::getNode(path)` — the hottest single-key read.
+- Coarse invalidation: any node mutation (`upsertNode`, `removeNode`, `removeSymbolsOf`) clears the whole cache. Edge methods are no-op (they don't change node content).
+- Opt-out env `ICMG_NO_GRAPH_CACHE=1`.
+
+The v1.20.0 plan is now complete (21 items shipped across v1.21.0 → v1.21.8).
+
+Verification: 112/112 ctest (Windows + Linux).
+
 ## 1.21.7 — FB2 transcript FTS5 search
 
 Last item from the v1.20.0 plan. Captures session transcripts before Claude Code compacts them away and exposes a full-text search over the history.
