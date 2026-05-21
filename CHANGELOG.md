@@ -4,6 +4,21 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.7 — FB2 transcript FTS5 search
+
+Last item from the v1.20.0 plan. Captures session transcripts before Claude Code compacts them away and exposes a full-text search over the history.
+
+- **Schema (mig 0034)**: new `transcripts` table + `transcripts_fts` FTS5 virtual mirror (porter + unicode61 tokenizer) + insert/delete/update triggers keeping FTS in sync.
+- **Ingest**: PreCompact hook calls `recordTranscript()` BEFORE the X1 snippet extract + summary distill so the raw transcript is preserved even if those steps fail. Cap 200 KB per recording. Opt-out: `ICMG_NO_TRANSCRIPT_STORE=1`.
+- **New `icmg transcript` command**:
+  - `search "<query>" [--limit N] [--session SID]` — FTS5 search with `[match]` snippet markers ranked by FTS rank.
+  - `list [--limit N]` — recent recordings.
+  - `stats` — row count + total bytes + top-5 sessions.
+  - `show <id>` — full dump of one entry.
+  - `prune --older Nd` — delete entries older than N days.
+
+Verification: 112/112 ctest (Windows + Linux). 2 new tests in `test_hook_internals` cover `recordTranscript` opt-out + empty-input skip.
+
 ## 1.21.6 — Dual-binary install auto-sync in `update --apply`
 
 Hotfix for users on legacy v1.18.x dual-binary installs (`icmg.exe` launcher + `icmg-core.exe` worker). v1.19.1+ ships a single monolithic binary, but `update --apply` was only refreshing the file matching `self` (the IPC-served worker → `icmg-core.exe`). The OLD launcher silently drifted out of version for months, causing launcher-era IPC quirks and slow `icmg init`.
