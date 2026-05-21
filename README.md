@@ -55,11 +55,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.21.7** — new `icmg transcript search "<query>"`: full-text search across your past Claude Code sessions. Transcripts are captured automatically before compaction destroys them, so you can answer "what did we decide about X two weeks ago?" without scrolling.
 - **v1.21.6** — hotfix for older installs: if your Icemage was first installed in the v1.18 era (dual-file layout with a separate launcher), `update --apply` now auto-syncs both files so the launcher stops drifting out of version. Single-binary installs are unaffected.
 - **v1.21.5** — `icmg update --apply` is now hot-reload: the new binary takes effect on your very next `icmg <cmd>` without any manual taskkill or shell restart; plus 18 new internal tests tightening the gate on the v1.21.3/v1.21.4 features.
 - **v1.21.4** — when Claude Code is about to compact a session transcript, Icemage now grabs each individual decision/fix/root-cause statement and stores it permanently so it stays recallable; eight new MCP tools (bench-recall, feedback loop, memoir, metrics, known-issue) — total 36 MCP tools.
 - **v1.21.3** — six new language-aware output strippers (Rust, Go, Java, .NET, Swift, Kotlin) so noisy build/test output gets trimmed to just the errors and summary that matter, instead of the generic catch-all filter.
-- **v1.21.2** — auto-extract decision/fix snippets from prompts that mention them; commands that fail noisily now save their full raw output to a spill file so you don't lose context; new `icmg bench-recall` lets you test your recall quality with a plain-text scenario file.
 
 ---
 
