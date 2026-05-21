@@ -17,7 +17,9 @@
 
 > **Stop burning tokens. Stop losing context. Ship faster.**
 
-A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70–90% cheaper** to run, without making them less helpful.
+A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
+
+**38 MCP tools · 113/113 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
@@ -39,27 +41,30 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## 📊 Headline numbers
 
-| Metric | Typical | Best |
-|---|---|---|
-| File-read savings | 70 – 85 % fewer tokens | up to 92 % |
-| Test / build output | 60 – 80 % shorter | up to 90 % |
-| Repeat-context cost | near-zero (cached) | — |
-| First-prompt warmup | < 1 s | — |
-| Cost per AI session | **down 70 – 90 %** vs. raw | — |
+| Metric | Typical | Best | Since |
+|---|---|---|---|
+| File-read savings | 70 – 85 % fewer tokens | up to 92 % | v0.5 |
+| Test / build output | 60 – 80 % shorter | up to 90 % | v0.5 |
+| **Multi-file UI propagation** (style-clone) | **30 – 50× cheaper** | up to 98 % | v1.22.0 |
+| Web-fetch reduction | 70 – 90 % smaller | up to 95 % | v0.4 |
+| Repeat-context recall | near-zero, **< 5 ms cached** | — | v1.21.8 |
+| Past-chat full-text search | **< 10 ms** across months | — | v1.21.7 |
+| Graph symbol lookup | **256-slot in-RAM cache** | — | v1.21.8 |
+| First-prompt warmup | < 1 s | — | v1.18 |
+| Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
 Measured on real-world sessions. Your mileage will vary with project size and habits — anyone running a busy AI agent for a day already sees meaningful savings.
-
 ---
 
 ## ✨ What's new
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.22.1** — hotfix follow-up to v1.21.9: hooks are now **pure-bash** (no Python or jq required), and the remaining 5 hook entries that v1.21.9 missed are now wrapped — no more `cannot execute binary file` errors on any host. **Run `icmg init --force` after upgrade** to regenerate the hook entries.
 - **v1.22.0** — new `icmg style-clone` workflow for the "apply Menu A's UI to 100+ other menus" case. Read the reference file once, cache its layout, then apply (with dry-run preview) to a glob of targets. Typical token saving: 30–50× over re-reading the reference per target. Also exposed as 2 MCP tools (`icmg_style_clone_apply` + `_verify`) — total 38.
 - **v1.21.9** — three more memory features (importance tiers control how fast a memory decays, zone-overflow hints suggest when to consolidate, `memoir export -f dot` for Graphviz visualisation) plus two hotfixes: leftover `*.old-<PID>` files from previous updates now auto-clean themselves, and hook commands no longer trigger `cannot execute binary file` errors on hosts that exec without a shell wrapper. **If you already had Icemage installed, run `icmg init --force` once after upgrade** to regenerate the hook entries.
 - **v1.21.8** — hook injections are now instant: the per-prompt context Icemage attaches to Claude is served from a fresh cache while the slow dispatch refreshes in the background. No more "skipping injection" timeouts under heavy DB load. Also caches hot graph-node lookups in RAM so the same path isn't re-queried on every call.
 - **v1.21.7** — new `icmg transcript search "<query>"`: full-text search across your past Claude Code sessions. Transcripts are captured automatically before compaction destroys them, so you can answer "what did we decide about X two weeks ago?" without scrolling.
-- **v1.21.6** — hotfix for older installs: if your Icemage was first installed in the v1.18 era (dual-file layout with a separate launcher), `update --apply` now auto-syncs both files so the launcher stops drifting out of version. Single-binary installs are unaffected.
 
 ---
 
