@@ -1159,16 +1159,22 @@ private:
             {
                 {"matcher", "Bash"},
                 {"hooks",   json::array({
+                    // v1.21.9: wrap every test+exec one-liner in `bash -c`. Some
+                    // Claude Code hook runners exec the command directly (without
+                    // an implicit `sh -c`), and on those `[ -f X ]` becomes a
+                    // call to `/usr/bin/[` binary with the rest of the string as
+                    // a single argv — yielding `cannot execute binary file`.
+                    // The bash -c wrapper guarantees shell parsing on every host.
                     {{"type", "command"},
                      {"timeout", 10},
                      {"command",
-                        std::string("[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0")}},
+                        std::string("bash -c '[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0'")}},
                     {{"type", "command"},
                      {"timeout", 5},
                      {"command",
-                        std::string("[ -f .claude/hooks/icmg-bash-rewrite.sh ] && ") +
+                        std::string("bash -c '[ -f .claude/hooks/icmg-bash-rewrite.sh ] && ") +
                         (strict_read ? "ICMG_STRICT_BASH=1 " : "") +
-                        "bash .claude/hooks/icmg-bash-rewrite.sh || exit 0"}}
+                        "bash .claude/hooks/icmg-bash-rewrite.sh || exit 0'"}}
                 })}
             },
             {
@@ -1177,7 +1183,7 @@ private:
                     {{"type", "command"},
                      {"timeout", 10},
                      {"command",
-                        std::string("[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0")}}
+                        std::string("bash -c '[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0'")}}
                 })}
             },
             {
@@ -1186,7 +1192,7 @@ private:
                     {{"type", "command"},
                      {"timeout", 5},
                      {"command",
-                        "[ -f .claude/hooks/icmg-rule-enforce.sh ] && bash .claude/hooks/icmg-rule-enforce.sh || exit 0"}}
+                        "bash -c '[ -f .claude/hooks/icmg-rule-enforce.sh ] && bash .claude/hooks/icmg-rule-enforce.sh || exit 0'"}}
                 })}
             },
             {
@@ -1195,10 +1201,10 @@ private:
                     {{"type", "command"},
                      {"timeout", 5},
                      {"command",
-                        std::string("[ -f .claude/hooks/icmg-shrink-read.sh ] && ") +
+                        std::string("bash -c '[ -f .claude/hooks/icmg-shrink-read.sh ] && ") +
                         "ICMG_READ_LIMIT=30 ICMG_SHRINK_THRESHOLD=0 " +
                         (strict_read ? "ICMG_SHRINK_STRICT=1 " : "") +
-                        "bash .claude/hooks/icmg-shrink-read.sh || exit 0"}}
+                        "bash .claude/hooks/icmg-shrink-read.sh || exit 0'"}}
                 })}
             }
         });
@@ -1227,8 +1233,9 @@ private:
             {
                 {"matcher", "Bash|PowerShell"},
                 {"hooks", json::array({
+                    // v1.21.9: bash -c wrapper (see PreToolUse comment above).
                     {{"type", "command"},
-                     {"command", "[ -f .claude/hooks/icmg-cap-output.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-cap-output.sh) || bash .claude/hooks/icmg-cap-output.sh || exit 0"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-cap-output.sh ] && (command -v icmg >/dev/null 2>&1 && icmg shield -- bash .claude/hooks/icmg-cap-output.sh) || bash .claude/hooks/icmg-cap-output.sh || exit 0'"}}
                 })}
             },
             {

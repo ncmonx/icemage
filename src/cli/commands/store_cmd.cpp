@@ -19,7 +19,10 @@ public:
         std::cout <<
             "Usage: icmg store <topic> <content> [options]\n\n"
             "Options:\n"
-            "  --importance low|med|high|crit  Importance level (default: med)\n"
+            "  --importance low|medium|high|critical  Importance level (default: medium).\n"
+            "                                  Affects decay rate: critical never\n"
+            "                                  decays, high decays at half rate, low at\n"
+            "                                  double rate. (low|med|high|crit also accepted.)\n"
             "  --kw k1,k2,...                  Comma-separated keywords\n"
             "  --ttl <days>                    Expire after N days\n"
             "  --force                         Store even if duplicate detected\n"
@@ -64,12 +67,42 @@ public:
 
         try {
             int64_t id = store.store(node, force);
+
+            // v1.21.9 (M4): consolidation hint when zone count > 7.
+            // Surfaces a nudge towards `icmg consolidate --zone X` so memories
+            // don't pile up in a single zone forever. Counts ALL non-deleted
+            // nodes in the zone (incl. the one we just stored).
+            int zone_count = 0;
+            try {
+                std::string z = node.zone.empty() ? std::string("default") : node.zone;
+                db.query(
+                    "SELECT COUNT(*) FROM memory_nodes "
+                    "WHERE zone = ? AND deleted_at IS NULL",
+                    {z}, [&](const core::Row& r){
+                        if (!r.empty()) {
+                            try { zone_count = std::stoi(r[0]); } catch (...) {}
+                        }
+                    });
+            } catch (...) {}
+            bool show_hint = zone_count > 7;
+            std::string hint;
+            if (show_hint) {
+                std::string z = node.zone.empty() ? std::string("default") : node.zone;
+                hint = "zone '" + z + "' has " + std::to_string(zone_count)
+                     + " entries; consider 'icmg consolidate --zone " + z + "'";
+            }
+
             if (json_out) {
                 std::cout << "{\"id\":" << id
                           << ",\"topic\":\"" << topic << "\""
-                          << ",\"status\":\"stored\"}\n";
+                          << ",\"status\":\"stored\"";
+                if (show_hint) {
+                    std::cout << ",\"warnings\":[\"" << hint << "\"]";
+                }
+                std::cout << "}\n";
             } else {
                 std::cout << "Stored [#" << id << "] " << topic << "\n";
+                if (show_hint) std::cout << "[hint] " << hint << "\n";
             }
             return 0;
         } catch (const imem::DuplicateError& e) {

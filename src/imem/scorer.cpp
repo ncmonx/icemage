@@ -109,12 +109,18 @@ double Scorer::accessAwareDecay(int64_t last_used, int freq) const {
 // Complements recencyDecay (which resets on use): even frequently-used
 // memories get demoted if their underlying knowledge is months old, since
 // codebase reality drifts. Half-life ≈ 90 days at λ=0.0077.
-double Scorer::ageDecay(int64_t created_at) const {
+//
+// v1.21.9 (M2): tier-aware decay rate. Critical memories never decay
+// (λ=0); high decays at half the medium rate (~180d half-life); low at
+// double (~45d). See importanceDecayMultiplier in memory_node.hpp.
+double Scorer::ageDecay(int64_t created_at, int importance) const {
     if (created_at <= 0) return 1.0;  // unknown age → no penalty
+    double tier_mult = imem::importanceDecayMultiplier(importance);
+    if (tier_mult <= 0.0) return 1.0;  // critical — frozen
     int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     double days = static_cast<double>(now - created_at) / 86400.0;
-    return std::exp(-0.0077 * days);  // half-life ~90d
+    return std::exp(-0.0077 * tier_mult * days);
 }
 
 double Scorer::score(const std::string& query, const MemoryNode& node) const {
@@ -135,8 +141,9 @@ Scorer::ScoreDetail Scorer::scoreDetailed(const std::string& query,
     int imp = std::max(0, std::min(3, node.importance));
     d.importance_mult = mult[imp];
 
-    // Phase 67 T15: age envelope multiplied in. Half-life ~90d on created_at.
-    double age_mult = ageDecay(node.created_at);
+    // Phase 67 T15: age envelope multiplied in.
+    // v1.21.9 (M2): tier-aware — critical never decays, high half rate, low double.
+    double age_mult = ageDecay(node.created_at, node.importance);
 
     // Phase 75: pinned (decision-anchor) boost. Pinned memory always wins over
     // recency-only ranking — anti-cognition-drift defense.

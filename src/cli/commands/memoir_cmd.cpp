@@ -24,6 +24,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <cctype>
 #include <cstdio>
 #ifdef _WIN32
   #include <windows.h>
@@ -382,11 +383,16 @@ private:
     }
 
     // Phase 36 T2 + v1.21.0 (M6): bulk export memoirs.
-    // v1.21.0: `--format <md|ai|ascii>` controls output style.
+    // v1.21.0: `--format <md|ai|ascii|dot>` controls output style.
     //   md    — original per-file YAML+markdown (default)
     //   ai    — single stdout dump optimized for LLM context (no YAML noise,
     //           compact heading + bullet keywords + content body)
     //   ascii — single stdout dump with box-drawing memoir cards, links shown
+    //   dot   — v1.21.9 (M6 completion): Graphviz DOT graph. Node = memoir;
+    //           edge = memoir_edges entry (typed via rel:<type>:N keyword,
+    //           v1.20.8 typed-relations format). Pipe to `dot -Tsvg`.
+    //           Importance maps to node color: critical=red, high=orange,
+    //           medium=yellow, low=gray.
     int exportCmd(core::Db& db, const std::vector<std::string>& args) {
         std::string fmt     = flagValue(args, "--format", "md");
         std::string out_dir = flagValue(args, "--out", "memoirs");
@@ -438,6 +444,84 @@ private:
                 ++n;
             });
             std::cerr << "memoir export -f ascii: " << n << " memoir(s)\n";
+            return 0;
+        }
+
+        // v1.21.9 (M6 completion): Graphviz DOT format.
+        if (fmt == "dot") {
+            int n_nodes = 0, n_edges = 0;
+            std::cout << "digraph memoirs {\n"
+                         "  rankdir=LR;\n"
+                         "  node [shape=box, style=\"rounded,filled\", "
+                              "fontname=\"Helvetica\", fontsize=10];\n"
+                         "  edge [fontname=\"Helvetica\", fontsize=8, "
+                              "color=\"#666666\"];\n\n";
+            // Collect ids → emit nodes + parse `rel:<type>:N` from keywords for edges.
+            struct Item { std::string id; std::string title;
+                          std::string imp; std::string kw; };
+            std::vector<Item> items;
+            db.query(sql, params, [&](const core::Row& r){
+                if (r.size() < 7) return;
+                Item it;
+                it.id = r[0];
+                std::string topic = r[1];
+                it.title = topic.size() > 7 ? topic.substr(7) : topic;
+                it.imp = r[3];
+                it.kw  = r[4];
+                items.push_back(std::move(it));
+            });
+            auto color = [](const std::string& imp_s) -> const char* {
+                int imp = 1; try { imp = std::stoi(imp_s); } catch (...) {}
+                if (imp >= 3) return "#ff6b6b";  // critical — red
+                if (imp == 2) return "#ffa94d";  // high — orange
+                if (imp == 1) return "#ffe066";  // medium — yellow
+                return "#ced4da";                // low — gray
+            };
+            auto escape = [](std::string s) {
+                std::string out;
+                for (char c : s) {
+                    if (c == '"' || c == '\\') out += '\\';
+                    out += c;
+                }
+                if (out.size() > 60) out = out.substr(0, 57) + "...";
+                return out;
+            };
+            for (const auto& it : items) {
+                std::cout << "  m" << it.id << " [label=\"#" << it.id
+                          << " " << escape(it.title)
+                          << "\", fillcolor=\"" << color(it.imp) << "\"];\n";
+                ++n_nodes;
+            }
+            std::cout << "\n";
+            // Edges via keywords: tokens "rel:<type>:<dst-id>" or "linked:<dst-id>".
+            for (const auto& it : items) {
+                std::stringstream ss(it.kw);
+                std::string tok;
+                while (std::getline(ss, tok, ',')) {
+                    // trim
+                    while (!tok.empty() && std::isspace((unsigned char)tok.front()))
+                        tok.erase(tok.begin());
+                    while (!tok.empty() && std::isspace((unsigned char)tok.back()))
+                        tok.pop_back();
+                    std::string rel_type, dst_id;
+                    if (tok.rfind("rel:", 0) == 0) {
+                        auto p1 = tok.find(':', 4);
+                        if (p1 == std::string::npos) continue;
+                        rel_type = tok.substr(4, p1 - 4);
+                        dst_id   = tok.substr(p1 + 1);
+                    } else if (tok.rfind("linked:", 0) == 0) {
+                        rel_type = "related_to";
+                        dst_id   = tok.substr(7);
+                    } else { continue; }
+                    if (dst_id.empty()) continue;
+                    std::cout << "  m" << it.id << " -> m" << dst_id
+                              << " [label=\"" << rel_type << "\"];\n";
+                    ++n_edges;
+                }
+            }
+            std::cout << "}\n";
+            std::cerr << "memoir export -f dot: " << n_nodes << " node(s), "
+                      << n_edges << " edge(s) — pipe to `dot -Tsvg -o out.svg`\n";
             return 0;
         }
 

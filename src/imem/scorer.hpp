@@ -55,7 +55,9 @@ private:
     double recencyDecay(int64_t last_used) const;
     // v1.20.0 (M1): access-aware variant — hot memos (high freq) decay slower.
     double accessAwareDecay(int64_t last_used, int freq) const;
-    double ageDecay(int64_t created_at) const;
+    // v1.21.9 (M2): tier-aware decay — importance 3=critical (frozen),
+    // 2=high (half rate), 1=medium (baseline), 0=low (double rate).
+    double ageDecay(int64_t created_at, int importance = 1) const;
     double idf(const std::string& term) const;
 };
 

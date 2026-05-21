@@ -4,6 +4,7 @@
 #include "../core/config.hpp"
 #include "../core/global_db.hpp"
 #include "../core/project_context.hpp"
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -12,6 +13,9 @@
 #include <vector>
 #ifdef _WIN32
   #include <windows.h>
+#else
+  #include <unistd.h>
+  #include <signal.h>
 #endif
 
 // Pull in all registered commands (each file registers via ICMG_REGISTER_COMMAND)
@@ -117,6 +121,63 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
 
 Dispatcher::Dispatcher() {}
 
+// v1.21.9: sweep `.old-<PID>` files left behind by previous `update --apply`
+// runs. v1.21.x's rename-aside strategy puts old DLLs / icmg.exe.bak under
+// names like `libwinpthread-1.dll.old-9100` when the holding process can't
+// release the handle in time. Once that PID dies, the file is finally
+// deletable — sweep on every icmg startup so the bin dir doesn't accrete.
+// Silent on failures (permission, file still in use under a fresh PID).
+static void sweepStaleOldFiles() {
+    namespace fs = std::filesystem;
+    try {
+        char buf[1024];
+#ifdef _WIN32
+        GetModuleFileNameA(nullptr, buf, sizeof(buf));
+#else
+        ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (n <= 0) return;
+        buf[n] = '\0';
+#endif
+        fs::path self = buf;
+        fs::path dir = self.parent_path();
+        std::error_code ec;
+        if (!fs::exists(dir, ec) || !fs::is_directory(dir, ec)) return;
+        for (auto& entry : fs::directory_iterator(dir, ec)) {
+            if (ec) break;
+            std::string name = entry.path().filename().string();
+            // Pattern: `*.old-<digits>`
+            auto dot = name.rfind(".old-");
+            if (dot == std::string::npos) continue;
+            std::string pid_s = name.substr(dot + 5);
+            if (pid_s.empty()) continue;
+            bool all_digits = true;
+            for (char c : pid_s) if (!std::isdigit((unsigned char)c)) { all_digits = false; break; }
+            if (!all_digits) continue;
+            // Check PID alive.
+            long pid = 0;
+            try { pid = std::stol(pid_s); } catch (...) { continue; }
+            bool alive = false;
+#ifdef _WIN32
+            if (pid > 0) {
+                HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                       FALSE, (DWORD)pid);
+                if (h) {
+                    DWORD ex = 0;
+                    if (GetExitCodeProcess(h, &ex) && ex == STILL_ACTIVE) alive = true;
+                    CloseHandle(h);
+                }
+            }
+#else
+            if (pid > 0) alive = (kill((pid_t)pid, 0) == 0);
+#endif
+            if (alive) continue;  // owner still around — wait
+            std::error_code rm_ec;
+            fs::remove(entry.path(), rm_ec);
+            // Silent — best-effort.
+        }
+    } catch (...) {}
+}
+
 // Phase 46 T3: best-effort pending-upgrade swap on startup. Silent if nothing.
 static void applyPendingUpgrade() {
     namespace fs = std::filesystem;
@@ -164,6 +225,7 @@ static void applyPendingUpgrade() {
 
 int Dispatcher::run(const std::vector<std::string>& args) {
     applyPendingUpgrade();
+    sweepStaleOldFiles();  // v1.21.9: clean up `.old-<PID>` from prior updates
     if (args.empty() || args[0] == "--help" || args[0] == "-h") {
         printHelp();
         return 0;
