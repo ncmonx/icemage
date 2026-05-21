@@ -286,13 +286,33 @@ private:
 
     int linkCmd(core::Db& db, const std::vector<std::string>& args) {
         if (hasFlag(args, "--auto")) return autoLink(db, args);
-        if (args.empty()) { std::cerr << "icmg memoir link: <id> --to <other-id>  OR  --auto\n"; return 1; }
+        if (args.empty()) {
+            std::cerr << "icmg memoir link: <id> --to <other-id> [--relation <type>]  OR  --auto\n"
+                      << "  --relation: related_to (default) | depends_on | refines |\n"
+                      << "              contradicts | alternative_to | caused_by |\n"
+                      << "              instance_of | part_of | supersedes\n";
+            return 1;
+        }
         int64_t a, b;
         try { a = std::stoll(args[0]); b = std::stoll(flagValue(args, "--to")); } catch (...) {
             std::cerr << "Invalid IDs\n"; return 1;
         }
-        linkPair(db, a, b);
-        std::cout << "Linked memoir #" << a << " <-> #" << b << "\n";
+        // v1.20.8 (M5): typed relations. Default `related_to` preserves
+        // backward compat with existing `linked:N` tags.
+        std::string rel = flagValue(args, "--relation", "related_to");
+        static const std::vector<std::string> valid_rels = {
+            "related_to", "depends_on", "refines", "contradicts",
+            "alternative_to", "caused_by", "instance_of", "part_of", "supersedes"
+        };
+        bool rel_ok = false;
+        for (auto& r : valid_rels) if (r == rel) { rel_ok = true; break; }
+        if (!rel_ok) {
+            std::cerr << "icmg memoir link: invalid --relation '" << rel
+                      << "'. Use --help to see valid types.\n";
+            return 1;
+        }
+        linkPair(db, a, b, rel);
+        std::cout << "Linked memoir #" << a << " --" << rel << "--> #" << b << "\n";
         return 0;
     }
 
@@ -427,11 +447,18 @@ private:
         return compact;
     }
 
-    void linkPair(core::Db& db, int64_t a, int64_t b) {
+    // v1.20.8 (M5): typed memoir relations. Tag format:
+    //   - legacy:        `linked:N`        (still parsed for back-compat)
+    //   - new typed:     `rel:<type>:N`    (e.g. `rel:depends_on:42`)
+    // Stored in `keywords` column (comma-separated). Both sides get the
+    // matching tag so traversal works in either direction.
+    void linkPair(core::Db& db, int64_t a, int64_t b,
+                  const std::string& rel = "related_to") {
+        std::string tag_prefix = (rel == "related_to") ? "linked:" : ("rel:" + rel + ":");
         for (auto pair : std::vector<std::pair<int64_t, int64_t>>{{a, b}, {b, a}}) {
-            db.run("UPDATE memory_nodes SET keywords = COALESCE(keywords, '') || ',linked:' || ? "
+            db.run("UPDATE memory_nodes SET keywords = COALESCE(keywords, '') || ',' || ? || ? "
                    "WHERE id = ?",
-                   {std::to_string(pair.second), std::to_string(pair.first)});
+                   {tag_prefix, std::to_string(pair.second), std::to_string(pair.first)});
         }
     }
 };
