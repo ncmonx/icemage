@@ -27,6 +27,13 @@ int distillAuto(const std::string& text,
 int distillSession(const std::string& text,
                    const std::string& tag = "");
 
+// v1.21.4 (X1): PreCompact per-snippet preservation. Scans transcript for
+// individual Decision/Fix/Root cause/IMPORTANT/Conclusion/Workaround/TODO
+// statements, stores each as its own memory node (topic
+// `auto:precompact-<date>-<idx>`). Higher cap (30) than distillAuto's 8.
+// Returns count stored. Opt-out: ICMG_NO_X1_EXTRACT=1.
+int extractPreCompactSnippets(const std::string& text);
+
 // Count thinking-section words in assistant JSON; log violation if > max_words
 // AND caveman flag is on. Returns word count (regardless of violation).
 // Mirrors `icmg compliance check-thinking --max-words <max_words>`.

@@ -71,6 +71,62 @@ int distillAuto(const std::string& text, size_t min_len, const std::string& tag)
     }
 }
 
+// v1.21.4 (X1): PreCompact per-snippet preservation.
+//
+// distillAuto caps at 8 matches and is geared for per-response calls.
+// PreCompact fires once over an entire session transcript — capture more
+// (cap 30) and use a slightly broader pattern that also picks up "prefer",
+// "always", "never" preference statements. Each match becomes its own node
+// so future BM25/semantic recall can hit them individually.
+//
+// Opt-out: ICMG_NO_X1_EXTRACT=1.
+int extractPreCompactSnippets(const std::string& text) {
+    if (std::getenv("ICMG_NO_X1_EXTRACT")) return 0;
+    if (text.size() < 200) return 0;
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        imem::MemoryStore mem(db);
+
+        std::regex stmt_re(
+            R"((?:^|\n|\\n)\s*(?:[-*]\s*)?(?:\*\*)?(Decision|Fix|Root cause|Note|IMPORTANT|Conclusion|Workaround|TODO|Prefer|Always|Never|Known issue):\s*([^\n"]{20,400}))",
+            std::regex::ECMAScript | std::regex::icase);
+
+        std::time_t now = std::time(nullptr);
+        char date_buf[16];
+        std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", std::localtime(&now));
+
+        int n = 0;
+        std::set<std::string> seen;
+        for (auto it = std::sregex_iterator(text.begin(), text.end(), stmt_re);
+             it != std::sregex_iterator() && n < 30; ++it) {
+            std::string label = (*it)[1].str();
+            std::string body  = (*it)[2].str();
+            while (!body.empty() && (body.back() == ' ' || body.back() == '*' ||
+                                     body.back() == '\r' || body.back() == '\\'))
+                body.pop_back();
+            if (body.size() < 20) continue;
+            // De-duplicate within this transcript pass (the same statement
+            // often repeats in tool-call echoes).
+            std::string key = label + "|" + body.substr(0, 80);
+            if (!seen.insert(key).second) continue;
+
+            imem::MemoryNode mn;
+            mn.topic      = std::string("auto:precompact-") + date_buf
+                          + "-" + std::to_string(n);
+            mn.content    = label + ": " + body;
+            mn.keywords   = label + " precompact auto x1";
+            mn.importance = (label == "IMPORTANT" || label == "Decision"
+                          || label == "Root cause") ? 2 : 1;
+            mn.zone       = "default";
+            try { mem.store(mn, /*force=*/false); ++n; } catch (...) {}
+        }
+        return n;
+    } catch (...) {
+        return 0;
+    }
+}
+
 int distillSession(const std::string& text, const std::string& tag) {
     try {
         auto& cfg = Config::instance();
