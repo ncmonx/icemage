@@ -55,11 +55,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.21.9** — three more memory features (importance tiers control how fast a memory decays, zone-overflow hints suggest when to consolidate, `memoir export -f dot` for Graphviz visualisation) plus two hotfixes: leftover `*.old-<PID>` files from previous updates now auto-clean themselves, and hook commands no longer trigger `cannot execute binary file` errors on hosts that exec without a shell wrapper. **If you already had Icemage installed, run `icmg init --force` once after upgrade** to regenerate the hook entries.
 - **v1.21.8** — hook injections are now instant: the per-prompt context Icemage attaches to Claude is served from a fresh cache while the slow dispatch refreshes in the background. No more "skipping injection" timeouts under heavy DB load. Also caches hot graph-node lookups in RAM so the same path isn't re-queried on every call.
 - **v1.21.7** — new `icmg transcript search "<query>"`: full-text search across your past Claude Code sessions. Transcripts are captured automatically before compaction destroys them, so you can answer "what did we decide about X two weeks ago?" without scrolling.
 - **v1.21.6** — hotfix for older installs: if your Icemage was first installed in the v1.18 era (dual-file layout with a separate launcher), `update --apply` now auto-syncs both files so the launcher stops drifting out of version. Single-binary installs are unaffected.
 - **v1.21.5** — `icmg update --apply` is now hot-reload: the new binary takes effect on your very next `icmg <cmd>` without any manual taskkill or shell restart; plus 18 new internal tests tightening the gate on the v1.21.3/v1.21.4 features.
-- **v1.21.4** — when Claude Code is about to compact a session transcript, Icemage now grabs each individual decision/fix/root-cause statement and stores it permanently so it stays recallable; eight new MCP tools (bench-recall, feedback loop, memoir, metrics, known-issue) — total 36 MCP tools.
 
 ---
 
