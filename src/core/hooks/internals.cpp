@@ -127,6 +127,32 @@ int extractPreCompactSnippets(const std::string& text) {
     }
 }
 
+// v1.21.7 (FB2): persist raw transcript into FTS5-indexed table for later
+// full-text search. Called from PreCompact runner before snippet-extract.
+int recordTranscript(const std::string& session_id,
+                     const std::string& text,
+                     size_t max_chars) {
+    if (std::getenv("ICMG_NO_TRANSCRIPT_STORE")) return 0;
+    if (text.empty()) return 0;
+    try {
+        std::string content = text;
+        if (content.size() > max_chars) {
+            content.resize(max_chars);
+            content += "\n... (truncated at " + std::to_string(max_chars)
+                     + " chars by recordTranscript)\n";
+        }
+        std::string sid = session_id.empty() ? std::string("unknown") : session_id;
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        db.run("INSERT INTO transcripts(session_id, content, char_len) "
+               "VALUES(?,?,?)",
+               {sid, content, std::to_string((int)content.size())});
+        return 1;
+    } catch (...) {
+        return 0;
+    }
+}
+
 int distillSession(const std::string& text, const std::string& tag) {
     try {
         auto& cfg = Config::instance();

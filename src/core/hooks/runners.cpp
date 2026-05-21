@@ -113,15 +113,18 @@ std::string runPreCompactHook(const std::string& stdin_raw) {
     }
 
     // Step 2: distill session transcript (in-process now).
-    // v1.21.4 (X1): also extract per-snippet durable knowledge before the
-    // summary node is created — these survive as standalone nodes the BM25
-    // index can hit individually after compaction destroys the transcript.
+    // v1.21.4 (X1): per-snippet durable knowledge — standalone BM25-hittable
+    //   nodes that survive compaction.
+    // v1.21.7 (FB2): persist raw transcript into FTS5-indexed `transcripts`
+    //   so users can later `icmg transcript search` over historical chats.
     if (!stdin_raw.empty()) {
         try {
             json j = json::parse(stdin_raw);
             std::string transcript = j.value("transcript", std::string(""));
+            std::string session_id = j.value("session_id", std::string(""));
             if (!transcript.empty()) {
-                (void)extractPreCompactSnippets(transcript);  // X1
+                (void)recordTranscript(session_id, transcript);   // FB2
+                (void)extractPreCompactSnippets(transcript);      // X1
                 (void)distillSession(transcript);
             }
         } catch (...) {}

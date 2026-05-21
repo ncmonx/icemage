@@ -34,6 +34,13 @@ int distillSession(const std::string& text,
 // Returns count stored. Opt-out: ICMG_NO_X1_EXTRACT=1.
 int extractPreCompactSnippets(const std::string& text);
 
+// v1.21.7 (FB2): record raw transcript into FTS5-indexed `transcripts` table
+// before compaction destroys it. Caps content at `max_chars` (default 200 KB).
+// Returns 1 on store, 0 on skip/empty. Opt-out: ICMG_NO_TRANSCRIPT_STORE=1.
+int recordTranscript(const std::string& session_id,
+                     const std::string& text,
+                     size_t max_chars = 200000);
+
 // Count thinking-section words in assistant JSON; log violation if > max_words
 // AND caveman flag is on. Returns word count (regardless of violation).
 // Mirrors `icmg compliance check-thinking --max-words <max_words>`.

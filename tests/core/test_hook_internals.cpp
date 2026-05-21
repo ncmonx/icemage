@@ -158,4 +158,19 @@ TEST("hook_internals: X1 plain noise no statements → 0") {
     ASSERT_EQ(n, 0);
 }
 
+// ---- FB2: recordTranscript ------------------------------------------------
+
+TEST("hook_internals: FB2 recordTranscript honors opt-out env") {
+    setEnv("ICMG_NO_TRANSCRIPT_STORE", "1");
+    int n = icmg::core::hooks::recordTranscript("test-sid",
+        "decision: pin SQLite WAL mode for write throughput.");
+    setEnv("ICMG_NO_TRANSCRIPT_STORE", "");
+    ASSERT_EQ(n, 0);
+}
+
+TEST("hook_internals: FB2 recordTranscript skips empty input") {
+    int n = icmg::core::hooks::recordTranscript("sid", "");
+    ASSERT_EQ(n, 0);
+}
+
 int main() { return icmg::test::run_all(); }

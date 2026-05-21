@@ -618,6 +618,40 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 CREATE INDEX IF NOT EXISTS idx_feedbacks_topic   ON feedbacks(topic);
 CREATE INDEX IF NOT EXISTS idx_feedbacks_created ON feedbacks(created_at);
 )SQL"},
+        {34, R"SQL(
+-- 0034_transcripts_fts5 (v1.21.7 FB2)
+-- Transcript FTS5 store: captures session transcripts before PreCompact
+-- discards them so users can full-text search past chats.
+CREATE TABLE IF NOT EXISTS transcripts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    char_len    INTEGER NOT NULL DEFAULT 0,
+    recorded_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_transcripts_session  ON transcripts(session_id);
+CREATE INDEX IF NOT EXISTS idx_transcripts_recorded ON transcripts(recorded_at);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
+    content,
+    content='transcripts',
+    content_rowid='id',
+    tokenize='porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
+    INSERT INTO transcripts_fts(rowid, content) VALUES (new.id, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
+    INSERT INTO transcripts_fts(transcripts_fts, rowid, content)
+    VALUES('delete', old.id, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
+    INSERT INTO transcripts_fts(transcripts_fts, rowid, content)
+    VALUES('delete', old.id, old.content);
+    INSERT INTO transcripts_fts(rowid, content) VALUES (new.id, new.content);
+END;
+)SQL"},
     };
 }
 
