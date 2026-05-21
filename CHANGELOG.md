@@ -4,6 +4,14 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.20.8 — M5 typed memoir relations
+
+From the v1.20.0 plan (M5). `icmg memoir link --to <id>` now accepts an `--relation <type>` flag for explicit relationship semantics between memoir entries. Nine valid types: `related_to` (default), `depends_on`, `refines`, `contradicts`, `alternative_to`, `caused_by`, `instance_of`, `part_of`, `supersedes`.
+
+Storage uses the existing `keywords` column (no schema migration). Legacy `linked:N` tags continue to parse; new typed links are written as `rel:<type>:N` on both sides. Output: `Linked memoir #A --depends_on--> #B`.
+
+ctest 111/111. Drop-in upgrade. No schema migration. Backward compatible with existing memoir links.
+
 ## 1.20.7 — S3 `icmg metrics per-cmd`
 
 From the v1.20.0 plan (S3). New subcommand surfaces the top 10 commands by absolute lines saved, queried from the project's `commands` table. Output columns: command / frequency / raw lines / filtered lines / shrink %. Lets you see which filters are pulling the most weight on your workflow and which command types might benefit from a new dedicated filter.
