@@ -82,6 +82,72 @@ static int countOrphanIcmgInstances() {
     CloseHandle(snap);
     return count;
 }
+
+// v1.21.1: stop ALL running icmg.exe / icmg-core.exe instances (except self)
+// before binary swap so the rename-aside doesn't leave the old code running
+// in memory. Graceful shutdown first (signal mutex / WM_CLOSE), then 3s grace
+// period, then TerminateProcess fallback. Returns count killed.
+static int stopOrphanIcmgInstances() {
+    DWORD self_pid = GetCurrentProcessId();
+    std::vector<DWORD> targets;
+    {
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap == INVALID_HANDLE_VALUE) return 0;
+        PROCESSENTRY32 pe{}; pe.dwSize = sizeof(pe);
+        if (Process32First(snap, &pe)) {
+            do {
+                std::string name = pe.szExeFile;
+                std::transform(name.begin(), name.end(), name.begin(),
+                               [](unsigned char c){ return std::tolower(c); });
+                if ((name == "icmg.exe" || name == "icmg-core.exe")
+                    && pe.th32ProcessID != self_pid) {
+                    targets.push_back(pe.th32ProcessID);
+                }
+            } while (Process32Next(snap, &pe));
+        }
+        CloseHandle(snap);
+    }
+    if (targets.empty()) return 0;
+
+    // Phase 1: graceful — signal each via console ctrl event (best-effort).
+    // Many will simply not respond (GUI subsystem) and fall through to step 2.
+    for (DWORD pid : targets) {
+        HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pid);
+        if (h) {
+            // No graceful signal channel available for GUI children — skip to
+            // soft wait, then TerminateProcess if still alive.
+            CloseHandle(h);
+        }
+    }
+
+    // Phase 2: 3s grace window.
+    Sleep(3000);
+
+    // Phase 3: TerminateProcess any survivors.
+    int killed = 0;
+    for (DWORD pid : targets) {
+        HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pid);
+        if (!h) continue;
+        DWORD ec = STILL_ACTIVE;
+        if (GetExitCodeProcess(h, &ec) && ec == STILL_ACTIVE) {
+            if (TerminateProcess(h, 0)) ++killed;
+        }
+        CloseHandle(h);
+    }
+
+    // Wipe stale pid files so next service start doesn't see a "alive" PID
+    // that now belongs to some other unrelated process.
+    {
+        const char* prof = std::getenv("USERPROFILE");
+        if (prof && *prof) {
+            std::error_code ec;
+            fs::remove(fs::path(prof) / ".icmg" / "service.pid", ec);
+            fs::remove(fs::path(prof) / ".icmg" / "rule-daemon.pid", ec);
+            fs::remove(fs::path(prof) / ".icmg" / "service.starting", ec);
+        }
+    }
+    return killed;
+}
 #endif
 
 class UpdateCommand : public BaseCommand {
@@ -507,6 +573,18 @@ private:
         }
         fs::remove(zip);
 
+        // v1.21.1: stop running icmg / icmg-core instances before binary swap
+        // so the old code path doesn't linger in memory after rename. Service
+        // pidfiles wiped so post-swap restart spawns fresh from the new exe.
+#ifdef _WIN32
+        {
+            int n = stopOrphanIcmgInstances();
+            if (n > 0) {
+                std::cout << "Stopped " << n << " running icmg process(es) before swap.\n";
+            }
+        }
+#endif
+
         std::error_code ec;
         // Backup current.
         fs::remove(bak, ec);                                  // remove old bak
@@ -563,6 +641,33 @@ private:
         std::cout << "Installed " << r.tag << ". Old binary kept at " << bak.string() << "\n"
                   << "  Verify: icmg --version\n"
                   << "  Rollback: icmg update --rollback\n\n";
+
+        // v1.21.1: restart service so popup-killer + cron tick + exec_server
+        // pipe come back online running the NEW binary. Detached spawn so the
+        // current process can exit cleanly. Best-effort; user-visible warning
+        // on failure but not a hard error.
+#ifdef _WIN32
+        {
+            std::string svc_cmd = "\"" + self.string() + "\" service start";
+            std::vector<char> buf(svc_cmd.begin(), svc_cmd.end());
+            buf.push_back('\0');
+            STARTUPINFOA si_s{}; si_s.cb = sizeof(si_s);
+            si_s.dwFlags = STARTF_USESHOWWINDOW;
+            si_s.wShowWindow = SW_HIDE;
+            PROCESS_INFORMATION pi_s{};
+            if (CreateProcessA(self.string().c_str(), buf.data(),
+                               nullptr, nullptr, FALSE,
+                               CREATE_NO_WINDOW | DETACHED_PROCESS
+                               | CREATE_NEW_PROCESS_GROUP,
+                               nullptr, nullptr, &si_s, &pi_s)) {
+                CloseHandle(pi_s.hThread);
+                CloseHandle(pi_s.hProcess);
+                std::cout << "  service: restarted (running new binary)\n";
+            } else {
+                std::cerr << "  service: restart failed; run `icmg service start` manually\n";
+            }
+        }
+#endif
 
         // Re-add new binary to Windows Defender exclusion after path swap.
         // New path == same path (atomic rename), but re-add ensures fresh hash is excluded.

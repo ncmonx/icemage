@@ -627,6 +627,42 @@ private:
         if (!force && (orig_offset > 0 || orig_limit > 0)) return 0;  // user knows what they want
         if (!force && (int64_t)sz < default_threshold) return 0;
 
+        // v1.21.1 (F8): auto-spill for very large files (>50KB default).
+        // Write full content to .icmg/spill/<ts>_<basename>.txt and emit a
+        // pointer in additionalContext. LLM only pays tokens for the pointer
+        // line unless it explicitly reads the spill file. Threshold tunable
+        // via ICMG_AUTO_SPILL_THRESHOLD env (bytes). Disable: =0.
+        {
+            int64_t spill_threshold = 51200;
+            const char* st = std::getenv("ICMG_AUTO_SPILL_THRESHOLD");
+            if (st) { try { spill_threshold = std::stoll(st); } catch (...) {} }
+            if (spill_threshold > 0 && (int64_t)sz >= spill_threshold) {
+                std::error_code ec;
+                fs::path spill_dir = fs::path(".icmg") / "spill";
+                fs::create_directories(spill_dir, ec);
+                auto t = std::chrono::system_clock::now().time_since_epoch();
+                auto ts = std::chrono::duration_cast<std::chrono::seconds>(t).count();
+                fs::path src(file_path);
+                std::string base = src.filename().string();
+                fs::path spill = spill_dir / (std::to_string(ts) + "_" + base);
+                std::error_code ec2;
+                fs::copy_file(file_path, spill, fs::copy_options::overwrite_existing, ec2);
+                if (!ec2) {
+                    json out;
+                    out["hookSpecificOutput"]["hookEventName"] = "PreToolUse";
+                    out["hookSpecificOutput"]["permissionDecision"] = "allow";
+                    out["hookSpecificOutput"]["updatedInput"]["file_path"] = file_path;
+                    out["hookSpecificOutput"]["updatedInput"]["limit"] = 50;
+                    out["hookSpecificOutput"]["additionalContext"] =
+                        "[F8 auto-spill] file " + std::to_string((long long)sz)
+                        + "B > threshold; full copy saved to " + spill.string()
+                        + ". Default Read capped to first 50 lines; expand only if needed.";
+                    std::cout << out.dump() << "\n";
+                    return 0;
+                }
+            }
+        }
+
         int cap = 30;
         const char* cap_env = std::getenv("ICMG_READ_LIMIT");
         if (cap_env) {

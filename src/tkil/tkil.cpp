@@ -2,6 +2,7 @@
 #include "runner.hpp"
 #include "filters/filter_utils.hpp"
 #include "../core/registry.hpp"
+#include "../core/turn_cache.hpp"
 #include <chrono>
 #include <iostream>
 #include <iomanip>
@@ -123,6 +124,46 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             fr.output         = combined;
             fr.original_lines = (int)splitLines(combined).size();
             fr.filtered_lines = fr.original_lines;
+        }
+    }
+
+    // v1.21.1 (F2): apply user-supplied per-project filter rules from
+    // .icmg/filters.toml on top of the built-in filter. No-op when file
+    // is absent. Rules are first-match-wins; matching command runs all
+    // strip patterns against each line.
+    {
+        extern std::string applyUserFilters(const std::string&, const std::string&);
+        std::string after = applyUserFilters(fr.output, command);
+        if (after.size() != fr.output.size()) {
+            fr.output = after;
+            fr.filtered_lines = (int)splitLines(after).size();
+        }
+    }
+
+    // v1.21.1 (S2): turn_cache wiring for idempotent read-only commands.
+    // Wired only for `grep`, `rg`, `git status`, `git diff` (no fs side
+    // effects between calls). Returns short ref on repeat-within-TTL.
+    // Disabled when ICMG_NO_TURN_CACHE=1.
+    {
+        bool eligible = false;
+        if (command.find("grep ") == 0 || command.find("rg ") == 0 ||
+            command.find("git status") == 0 || command.find("git diff") == 0) {
+            eligible = true;
+        }
+        const char* off = std::getenv("ICMG_NO_TURN_CACHE");
+        if (eligible && !(off && *off && std::string(off) != "0")) {
+            namespace tc = icmg::core::turn_cache;
+            auto cached = tc::lookup("tkil-run", command, 0);
+            if (!cached.empty()) {
+                // Cache hit — replace output with ref pointer.
+                fr.output = "[turn_cache] " + cached + "\n"
+                          + "(identical to prior invocation; full output suppressed; "
+                          + "set ICMG_NO_TURN_CACHE=1 to bypass)\n";
+                fr.filtered_lines = 2;
+                fr.was_truncated = true;
+            } else {
+                tc::recordResult("tkil-run", command, 0, fr.output);
+            }
         }
     }
 
