@@ -4,6 +4,26 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.22.1 — Hotfix: pure-bash hooks + complete `bash -c` wrap
+
+Two user-reported bugs from the v1.21.9 install; both stem from minimal-host environments where python3 isn't pre-installed and where Claude Code hosts exec hooks without an implicit shell.
+
+### Bug 1: `python3: command not found` (PreToolUse)
+
+`~/.claude/settings.json` icmg-first hook on `Read|Glob|Grep` matcher was hard-coded to `icmg shield -- python3 -c "..."`. Hosts without python3 (Alpine, minimal Docker images, fresh Win without Python install) crashed the hook. The fix replaces it with a pure-bash `printf` that emits the same JSON. `cat >/dev/null` drains stdin so Claude Code doesn't see EBADF.
+
+### Bug 2: `/usr/bin/[: cannot execute binary file` (5 more entries)
+
+v1.21.9 wrapped 5 hook commands in `bash -c '...'` to fix this on hosts that exec hooks without an implicit `sh -c`, but missed 5 others starting with `[ -f`. All 10 entries are now wrapped uniformly:
+
+- PostToolUse:Edit  → `icmg-graph-update.sh`
+- SessionStart × 3 → `icmg-caveman-prompt.sh` / `icmg-context-session.sh` / `icmg-wakeup-session.sh`
+- UserPromptSubmit → `icmg-prompt-recall.sh`
+
+Existing users: run `icmg init --force` after upgrade to regenerate the hook entries.
+
+Verification: 113/113 ctest (Windows + Linux).
+
 ## 1.22.0 — `icmg style-clone` — UI propagation toolkit
 
 New subsystem for the "apply Menu A's UI to N other menus" use case. Reduces token cost from O(N × file-size) to O(1 reference + per-target diff) — typically 30–50× on real projects.
