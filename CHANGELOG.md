@@ -4,6 +4,21 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.21.3 — F3 6 per-language Tkil filters (rust/go/java/dotnet/swift/kotlin)
+
+Six new dedicated noise-strippers for language ecosystems whose output was previously routed through the generic Build/Test filters. Each filter knows what its toolchain spews and what to keep.
+
+- **Rust** (`cargo build/check/run/test/clippy`) — strips `Compiling X v1.2.3`, `Blocking waiting`, `Downloaded`, `Updating`; keeps `error[E0XXX]`, `warning`, `^^^` markers, `--> file:line` arrows, `test result:` summary, panic traces.
+- **Go** (`go build/test/run/vet`, `golangci-lint`) — strips `go: downloading/finding/extracting`; keeps `--- FAIL:` / `--- PASS:`, `FAIL`/`PASS` summary, panic + goroutine traces, vet warnings, `file.go:line:col:`.
+- **Java** (`mvn`, `mvnw`, `gradle`, `gradlew`) — strips `[INFO]`, `Downloading from`, `Progress (...)`, UP-TO-DATE/SKIPPED tasks; keeps `[ERROR]`, `[WARNING]`, `BUILD SUCCESS`/`FAILURE`, stack traces, `Tests run:` summary.
+- **.NET** (`dotnet build/publish/test/restore`, `msbuild`) — strips Restore/Determining noise, MSBuild version banner; keeps `error CS0123`/`warning MSB1234` codes, `Passed!`/`Failed!`, exception traces.
+- **Swift** (`swift build/test/run`, `xcodebuild`) — strips `CompileC`, `Ld`, `CompileSwift`, `CodeSign`, `MergeSwiftModule`; keeps `.swift:line:col:` errors, `** BUILD/TEST (FAILED|SUCCEEDED) **`, XCTAssert failures.
+- **Kotlin** (`kotlinc`, gradle :compileKotlin) — strips Gradle UP-TO-DATE tasks, `Welcome to Gradle`, `_JAVA_OPTIONS`; keeps `e:`/`w:`/`i:` kotlinc prefixes, `.kt:line:col:` errors, `BUILD FAILED`, `* What went wrong:`.
+
+Detector now routes lang-specific prefixes BEFORE the generic Build/Test/Lint patterns (first-match wins).
+
+Verification: 111/111 ctest (detector test count 15 → 23).
+
 ## 1.21.2 — X2 prompt-extract + F1 tee-on-failure spill + U2 bench-recall harness
 
 Three more v1.20.0-plan picks. No CLI break; one new command (`bench-recall`) registered.
