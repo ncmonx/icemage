@@ -652,6 +652,27 @@ CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
     INSERT INTO transcripts_fts(rowid, content) VALUES (new.id, new.content);
 END;
 )SQL"},
+        {35, R"SQL(
+-- 0035_style_patterns (v1.22.0 SC1)
+-- Style-clone pattern store: captures structural layout from a reference
+-- UI file so `style-clone apply` can propagate it to N targets without
+-- re-reading the reference per-target.
+CREATE TABLE IF NOT EXISTS style_patterns (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    name             TEXT NOT NULL UNIQUE,
+    source_path      TEXT NOT NULL,
+    lang             TEXT NOT NULL,
+    layout_tree      TEXT NOT NULL,
+    class_tokens     TEXT NOT NULL DEFAULT '',
+    structural_hash  TEXT NOT NULL,
+    node_count       INTEGER NOT NULL DEFAULT 0,
+    applied_count    INTEGER NOT NULL DEFAULT 0,
+    created_at       INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at       INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_style_patterns_name ON style_patterns(name);
+CREATE INDEX IF NOT EXISTS idx_style_patterns_hash ON style_patterns(structural_hash);
+)SQL"},
     };
 }
 
