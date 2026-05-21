@@ -4,6 +4,12 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.20.7 — S3 `icmg metrics per-cmd`
+
+From the v1.20.0 plan (S3). New subcommand surfaces the top 10 commands by absolute lines saved, queried from the project's `commands` table. Output columns: command / frequency / raw lines / filtered lines / shrink %. Lets you see which filters are pulling the most weight on your workflow and which command types might benefit from a new dedicated filter.
+
+ctest 111/111. Drop-in upgrade. No schema migration.
+
 ## 1.20.6 — F7 transparent wrapper peek in bash-rewrite hook
 
 From the v1.20.0 plan (F7). The PreToolUse:Bash rewrite hook matched its regex against the raw tool input, so wrapper shells silently bypassed the icmg-run redirect. The agent ended up running the noisy underlying command at full output:
