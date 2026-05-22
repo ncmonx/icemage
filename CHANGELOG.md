@@ -4,6 +4,86 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.24.0 — `icmg port` cross-project file bundle
+
+New subsystem for the "copy menu A, B, C, D, E, F from Project 1 to Project 2" use case. v1.22.0 `style-clone` handles **within-project** N-target propagation; `port` handles **cross-project** source-of-truth transport.
+
+### Workflow
+
+```bash
+# Project 1 — bundle 6 menus into a transportable artifact:
+icmg port export --files "menus/{A,B,C,D,E,F}.vue" \
+                 --name menu-batch --out menus.icmg-port
+
+# Transport menus.icmg-port to Project 2 (email, USB, S3, whatever).
+
+# Project 2 — preview (dry-run is default):
+icmg port apply menus.icmg-port --to src/views/
+
+# Apply for real (skips conflicts, writes new files):
+icmg port apply menus.icmg-port --to src/views/ --write
+
+# Apply + overwrite existing (backs up each to .bak-<ts>):
+icmg port apply menus.icmg-port --to src/views/ --write --overwrite
+
+# Rewrite source paths during apply:
+icmg port apply menus.icmg-port --to src/ --path-map "menus/=views/" --write
+
+# List + inspect:
+icmg port list
+icmg port show menu-batch
+icmg port delete menu-batch
+```
+
+### Token math
+
+For the 6-menu / 5 KB-each scenario:
+
+| Approach | Tokens |
+|---|---|
+| Naive (Read × 6 + emit × 6) | ~60 KB |
+| Existing combo (bundle + compress + manual import) | ~10–15 KB |
+| **`icmg port`** | **~5–8 KB** (8–12× saving) |
+
+### Artifact format
+
+A `.icmg-port` file is a text-magic header + JSON payload:
+
+```
+ICMG-PORT v1
+FILES: 6
+RAW: 30240
+HASH: <fnv-128 hex>
+---
+{"files":[{"path":"menus/A.vue","content":"..."}, ...]}
+```
+
+FNV-128 hash protects against corruption. zstd compression is deferred to a v1.25 optimization (no new lib dep yet).
+
+### MCP
+
+- `icmg_port_apply` (mutating) exposes the apply step. Export is **not** exposed via MCP — file selection is a deliberate dev gesture, not an AI auto-fire path.
+
+Total MCP tools: 38 → **39**.
+
+### Schema
+
+mig 0036 `port_bundles(name UNIQUE, source_project, file_count, total_bytes_raw, total_bytes_compressed, artifact_path, artifact_sha256, manifest, applied_count, created_at)`. `applied_count` bumped on each `port apply` whose artifact SHA matches a row on this machine (parallels v1.21.1 FB1 + v1.22.0 SC6 telemetry).
+
+### Tree-sitter dispatch scaffold (partial)
+
+`style-clone`'s layout extractor now has a `hasTreeSitterGrammar(lang)` probe and dispatch hook (T3). Compile guards `ICMG_USE_TREESITTER_VUE/HTML/SVELTE` are wired but no grammars are vendored in v1.24.0 — actual grammar source drops + CMake static-lib targets ship in a v1.24.1 follow-up. Current behaviour is unchanged (regex scanner).
+
+### Design choices (user-confirmed)
+
+- Single mega bundle (not phased).
+- Artifact format text-magic (debuggable) over zstd-binary.
+- Vue grammar pinned to v0.2.1 (when T1 ships).
+- `--dry-run` default; explicit `--write` required to mutate.
+
+Verification: 115/115 ctest (Windows + Linux). End-to-end smoke: export 2 files → artifact 234 bytes → apply --dry-run → apply --write → 2 files written verbatim.
+
+
 ## 1.23.0 — Leash escape + TDD catchup + python3 sanitizer carry-over
 
 Quality release. No new user-facing surface; tightens existing features and lifts dev-experience friction.
