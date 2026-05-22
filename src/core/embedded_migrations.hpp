@@ -694,6 +694,23 @@ CREATE TABLE IF NOT EXISTS port_bundles (
 CREATE INDEX IF NOT EXISTS idx_port_bundles_created ON port_bundles(created_at);
 CREATE INDEX IF NOT EXISTS idx_port_bundles_sha     ON port_bundles(artifact_sha256);
 )SQL"},
+        {37, R"SQL(
+-- 0037_write_compressions (v1.25.0 W4)
+-- Compressed-write telemetry: per-Write bytes_compressed vs bytes_expanded
+-- so `icmg savings --layer write` can quantify token-cost reduction.
+CREATE TABLE IF NOT EXISTS write_compressions (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    mode             TEXT NOT NULL,
+    base_path        TEXT NOT NULL,
+    bytes_compressed INTEGER NOT NULL DEFAULT 0,
+    bytes_expanded   INTEGER NOT NULL DEFAULT 0,
+    ok               INTEGER NOT NULL DEFAULT 1,
+    err              TEXT,
+    created_at       INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_write_compressions_created ON write_compressions(created_at);
+CREATE INDEX IF NOT EXISTS idx_write_compressions_mode    ON write_compressions(mode);
+)SQL"},
     };
 }
 

@@ -271,6 +271,36 @@ EXIT=$?
 exit 0
 )BASH";
 
+// v1.25.0 (W1+W3): compressed-write hook script.
+// Dual-purpose:
+//   (a) When tool_input.content has @@ICMG-* magic header -> delegate to
+//       `icmg hook pretooluse-write` which decompresses + emits updatedInput.
+//   (b) Otherwise emit additionalContext describing the protocol so AI
+//       knows to use it on NEXT Write call (cheap rule reminder).
+// Both branches gated on ~/.icmg/write-mode.flag existence. Default off →
+// hook is zero-cost (single existence check + exit).
+static const char* COMPRESSED_WRITE_RULE_SH = R"BASH(#!/usr/bin/env bash
+set -uo pipefail
+FLAG="${USERPROFILE:-${HOME:-/tmp}}/.icmg/write-mode.flag"
+[[ -f "$FLAG" ]] || exit 0
+MODE=$(head -n1 "$FLAG" 2>/dev/null || echo auto)
+[[ "$MODE" = "off" ]] && exit 0
+
+INPUT=$(cat)
+# Branch (a): magic header present -> delegate to icmg hook for expansion.
+if printf '%s' "$INPUT" | grep -q '"content":"@@ICMG-' 2>/dev/null; then
+    printf '%s' "$INPUT" | icmg hook pretooluse-write 2>/dev/null || true
+    exit 0
+fi
+# Branch (b): rule reminder for future turns.
+MSG="COMPRESSED-WRITE MODE ACTIVE (mode=${MODE}). When emitting a Write tool call:
+- EXISTING file edit: @@ICMG-DIFF base=<10-char-FNV-hex of file>@@<unified diff>
+- NEW file: @@ICMG-RAW@@<content>  OR  @@ICMG-GLOSS@@<map-line>\n<body using <%c1%> tokens>
+- icmg expands before disk write. Pass-through on parse failure (no corruption)."
+printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":%s}}' \
+    "$(printf '%s' "$MSG" | icmg hookio escape 2>/dev/null || printf '"%s"' "$MSG")"
+)BASH";
+
 // v1.19.2: git-leash — mechanical enforcement of icmg safety rules
 // (git destructive ops, rm -rf, curl|sh, force-kill, settings.local.json
 // writes, leash-self-overwrite). PreToolUse:Bash|PowerShell + Write.
@@ -1136,6 +1166,9 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-rule-enforce.sh", RULE_ENFORCE_SH, true);
         // v1.19.2: git-leash + graph-update shim. settings.local.json wires both.
         n += writeFile(root / ".claude" / "hooks" / "icmg-git-leash.sh",    GIT_LEASH_SH,    true);
+        // v1.25.0 (W1): compressed-write rule injector — zero-cost when flag absent.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-compressed-write.sh",
+                       COMPRESSED_WRITE_RULE_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-graph-update.sh", GRAPH_UPDATE_SH, true);
 
 #ifndef _WIN32
@@ -1190,7 +1223,13 @@ private:
                     {{"type", "command"},
                      {"timeout", 10},
                      {"command",
-                        std::string("bash -c '[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0'")}}
+                        std::string("bash -c '[ -f .claude/hooks/icmg-git-leash.sh ] && bash .claude/hooks/icmg-git-leash.sh || exit 0'")}},
+                    // v1.25.0 (W1): compressed-write rule injector. Zero-cost when
+                    // ~/.icmg/write-mode.flag absent (default).
+                    {{"type", "command"},
+                     {"timeout", 3},
+                     {"command",
+                        std::string("bash -c '[ -f .claude/hooks/icmg-compressed-write.sh ] && bash .claude/hooks/icmg-compressed-write.sh || exit 0'")}}
                 })}
             },
             {

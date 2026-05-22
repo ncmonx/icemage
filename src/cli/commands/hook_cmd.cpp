@@ -29,6 +29,7 @@
 #include "../../core/hooks/internals.hpp"
 #include "../../daemon/rule_daemon_client.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../compress/write_expander.hpp"   // v1.25.0 (W3)
 
 #ifdef _WIN32
 #  include <process.h>
@@ -256,6 +257,7 @@ public:
         if (event == "posttooluse-bash")    return cmdPostToolUseBash();
         if (event == "pretooluseedit")      return cmdPreToolUseEditDisambig();
         if (event == "posttooluse-edit")    return cmdPostToolUseEditAutoSync();
+        if (event == "pretooluse-write")    return cmdPreToolUseWrite();
         std::cerr << "icmg hook: unknown event '" << event << "'\n";
         return 0;
     }
@@ -859,6 +861,10 @@ private:
     int cmdPreToolUseEditDisambig();
     // v1.4.0 Task 3: PostToolUse:Edit/Write auto graph-update + memory draft.
     int cmdPostToolUseEditAutoSync();
+    // v1.25.0 (W1/W3): PreToolUse:Write expander — detects compressed-write
+    // magic header in tool_input.content and emits updatedInput with the
+    // expanded bytes. Pass-through if no header / flag absent / parse fail.
+    int cmdPreToolUseWrite();
 };
 
 // â”€â”€ v0.56.0: Stop / PreCompact / PostToolUse-Read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -974,6 +980,75 @@ int HookCommand::cmdPostToolUseEditAutoSync() {
     icmg::core::hooks::runPostToolUseEditAutoSync(raw);
     return 0;
 }
+
+// v1.25.0 (W1/W3): PreToolUse:Write expander.
+// Detects @@ICMG-RAW / @@ICMG-DIFF / @@ICMG-GLOSS / @@ICMG-TPL magic in
+// tool_input.content. When found AND write-mode flag exists, expand via
+// compress::expandCompressedWrite() and return updatedInput.content so
+// Claude executes Write with the final on-disk bytes.
+// Telemetry: every expand records to write_compressions table.
+// Pass-through (no transform) when: flag absent, no magic header, parse fail.
+int HookCommand::cmdPreToolUseWrite() {
+    // Cheap gate: skip entirely if flag absent.
+    fs::path flag = fs::path(std::getenv("USERPROFILE") ? std::getenv("USERPROFILE")
+                            : (std::getenv("HOME") ? std::getenv("HOME") : "."))
+                  / ".icmg" / "write-mode.flag";
+    if (!fs::exists(flag)) return 0;
+
+    std::string raw = readStdinAll();
+    if (raw.empty()) return 0;
+
+    std::string file_path;
+    std::string content;
+    try {
+        json j = json::parse(raw);
+        if (j.contains("tool_input")) {
+            auto& ti = j["tool_input"];
+            if (ti.contains("file_path") && ti["file_path"].is_string())
+                file_path = ti["file_path"].get<std::string>();
+            if (ti.contains("content") && ti["content"].is_string())
+                content = ti["content"].get<std::string>();
+        }
+    } catch (...) { return 0; }
+
+    if (content.empty()) return 0;
+
+    // Magic header probe — bail early when AI didn't emit compressed form.
+    if (content.rfind("@@ICMG-", 0) != 0) return 0;
+
+    auto result = icmg::compress::expandCompressedWrite(content, file_path);
+
+    // Telemetry — best-effort, swallow errors.
+    try {
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        db.run("INSERT INTO write_compressions(mode, base_path, bytes_compressed, "
+               "bytes_expanded, ok, err) VALUES(?,?,?,?,?,?)",
+               {result.mode, file_path,
+                std::to_string(result.bytes_in),
+                std::to_string(result.bytes_out),
+                std::to_string(result.ok ? 1 : 0),
+                result.error});
+    } catch (...) {}
+
+    if (!result.ok || result.mode == "raw") {
+        // Pass-through — no updatedInput needed for raw; mark ok for parse fail.
+        return 0;
+    }
+
+    json out;
+    out["hookSpecificOutput"]["hookEventName"] = "PreToolUse";
+    out["hookSpecificOutput"]["permissionDecision"] = "allow";
+    out["hookSpecificOutput"]["updatedInput"]["file_path"] = file_path;
+    out["hookSpecificOutput"]["updatedInput"]["content"] = result.content;
+    out["hookSpecificOutput"]["additionalContext"] =
+        "compressed-write: " + result.mode
+        + " expanded " + std::to_string(result.bytes_in)
+        + " -> " + std::to_string(result.bytes_out) + " bytes";
+    std::cout << out.dump();
+    return 0;
+}
+
 ICMG_REGISTER_COMMAND("hook", HookCommand);
 
 } // namespace icmg::cli
