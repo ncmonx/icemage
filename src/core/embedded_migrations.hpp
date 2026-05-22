@@ -673,6 +673,27 @@ CREATE TABLE IF NOT EXISTS style_patterns (
 CREATE INDEX IF NOT EXISTS idx_style_patterns_name ON style_patterns(name);
 CREATE INDEX IF NOT EXISTS idx_style_patterns_hash ON style_patterns(structural_hash);
 )SQL"},
+        {36, R"SQL(
+-- 0036_port_bundles (v1.24.0 P1)
+-- Cross-project file bundle metadata. Artifact lives on disk as
+-- `.icmg-port` (magic IPRT + version + sha256 + zstd payload); this row
+-- tracks bundles created locally for `port list` + telemetry.
+CREATE TABLE IF NOT EXISTS port_bundles (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                   TEXT NOT NULL UNIQUE,
+    source_project         TEXT NOT NULL,
+    file_count             INTEGER NOT NULL DEFAULT 0,
+    total_bytes_raw        INTEGER NOT NULL DEFAULT 0,
+    total_bytes_compressed INTEGER NOT NULL DEFAULT 0,
+    artifact_path          TEXT NOT NULL,
+    artifact_sha256        TEXT NOT NULL,
+    manifest               TEXT NOT NULL,
+    applied_count          INTEGER NOT NULL DEFAULT 0,
+    created_at             INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_port_bundles_created ON port_bundles(created_at);
+CREATE INDEX IF NOT EXISTS idx_port_bundles_sha     ON port_bundles(artifact_sha256);
+)SQL"},
     };
 }
 

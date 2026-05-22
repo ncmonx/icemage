@@ -53,4 +53,12 @@ LayoutTree layoutFromJson(const nlohmann::json& j);
 // + has_data_binding so the hash is stable across data-only edits).
 std::string structuralHash(const LayoutTree& tree);
 
+// v1.24.0 (T3): tree-sitter availability probe. Returns true when grammar
+// source for `lang` is present in third_party/tree-sitter-<lang>/src/ and
+// the build was compiled with ICMG_USE_TREESITTER_<LANG>=ON. Always false
+// in v1.24.0 ship — grammar source vendoring deferred to a follow-up patch
+// (vue v0.2.1 + html + svelte). The dispatch hook in extractLayout() will
+// auto-promote to tree-sitter once this probe returns true.
+bool hasTreeSitterGrammar(const std::string& lang);
+
 } // namespace icmg::style_clone

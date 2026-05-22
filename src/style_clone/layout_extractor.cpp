@@ -100,9 +100,37 @@ std::string detectLang(const std::string& path) {
     return "";  // unknown — caller falls back to generic mode
 }
 
+// v1.24.0 (T3): dispatch hook for tree-sitter promotion. Always returns
+// false in v1.24.0 — grammar vendoring (vue v0.2.1 + html + svelte source
+// drops + CMake static-lib targets) deferred to a follow-up patch within
+// the v1.24.x cycle. Public probe so users can detect capability.
+bool hasTreeSitterGrammar(const std::string& lang) {
+#if defined(ICMG_USE_TREESITTER_VUE) || defined(ICMG_USE_TREESITTER_HTML) \
+ || defined(ICMG_USE_TREESITTER_SVELTE)
+    // When grammar lib is compiled in, an extern `tree_sitter_<lang>()`
+    // symbol exists. v1.24.0 ships none of these; the macro guards keep
+    // the dispatch wired for the follow-up grammar drop.
+    (void)lang;
+    return false;
+#else
+    (void)lang;
+    return false;
+#endif
+}
+
 LayoutTree extractLayout(const std::string& source, const std::string& lang) {
     LayoutTree tree;
     tree.detected_lang = lang.empty() ? "html" : lang;
+
+    // v1.24.0 (T3): tree-sitter dispatch hook. When a grammar is vendored
+    // (future patch), this branch will call a tree-sitter walker and bypass
+    // the regex scanner below. T4 hash-compat shim must run on the AST
+    // node list to keep structural_hash stable across the regex → ts
+    // migration (existing v1.22.0 stored patterns remain valid).
+    if (hasTreeSitterGrammar(tree.detected_lang)) {
+        // Future: dispatch to extractLayoutTS(source, lang).
+        // Falls through to regex for now (probe always false in v1.24.0).
+    }
 
     std::string src = (lang == "vue") ? isolateVueTemplate(source) : source;
 
