@@ -1,0 +1,83 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": { "major": 3, "minor": 23, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "default",
+      "description": "Generic Release config",
+      "binaryDir": "${sourceDir}/build",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ICMG_USE_ONNX": "ON",
+        "ICMG_USE_TREESITTER": "ON"
+      }
+    },
+    {
+      "name": "windows",
+      "description": "Windows MSYS2/MinGW — PCH ON, full parallel. Cold ~5-10min.",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "ICMG_NO_PCH": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-native",
+      "description": "Linux native ext4. PCH ON, full parallel. Use when source is on native FS (not /mnt/d). Cold ~2-5min.",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-linux",
+      "cacheVariables": {
+        "ICMG_NO_PCH": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-wsl-mnt",
+      "description": "Linux WSL with source on /mnt/d (9P FS). PCH OFF (thrash), -j4. Cold ~30-40min. AVOID — use scripts/release-linux-fast.sh instead.",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-linux",
+      "cacheVariables": {
+        "ICMG_NO_PCH": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows",
+      "configurePreset": "windows",
+      "jobs": 0
+    },
+    {
+      "name": "linux-native",
+      "configurePreset": "linux-native",
+      "jobs": 0
+    },
+    {
+      "name": "linux-wsl-mnt",
+      "configurePreset": "linux-wsl-mnt",
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
