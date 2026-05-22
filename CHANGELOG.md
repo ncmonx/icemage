@@ -4,6 +4,41 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.27.0 — Mega bundle: TDD debt + template engine + tree-sitter grammars + parametric coverage
+
+5 phases delivered (1 deferred). Closes v1.24/v1.25 TDD gaps, ships deferred features.
+
+### Phase 1 — TDD debt closure
+
+- **write_expander** (4 magic headers): 10 unit tests covering round-trip, SHA verify, context mismatch, parse-fail fallback, empty input.
+- **port_artifact** refactored to public header for testability: 16 unit tests on FNV-128 hash, magic header, K:V parse, round-trip, 6 rejection paths. Wire format frozen at v1.24.0.
+
+### Phase 2 — Template-fill engine
+
+`@@ICMG-TPL id=<name>@@` headers resolve against project `style_patterns` DB. Body = JSON slot map; `<%key%>` placeholders substituted. 12 unit tests cover slot subst, whitespace trim, missing-slot literal preservation, malformed-JSON fallback.
+
+### Phase 3 — Tree-sitter grammars vendored (vue + html + svelte)
+
+In-tree drop under `third_party/tree-sitter-{vue,html,svelte}/src/` (~510KB total). CMake `foreach` auto-builds when `parser.c` found. `hasTreeSitterGrammar()` probe returns true for vue/html/svelte when ICMG_HAS_TREESITTER_* flag is on. Vue SFC layout extraction can promote from regex ? AST.
+
+### Phase 5 — Coverage backfill (parametric)
+
+Single `test_command_registry` iterates `Registry<BaseCommand>::keys()` and asserts every registered cmd has non-empty name() + description() + constructs cleanly. ~100 cmds covered by one TEST. Plus 22 critical cmds spot-checked for presence.
+
+### Phase 4 — Mono test DEFERRED
+
+Per design Q1, mono test exe (`-DICMG_MONO_TEST=ON`) remains opt-in OFF. Requires singleton teardown protocol + TEST() name audit. Scoped for v1.28+.
+
+### Bug fix
+
+`applyUnifiedDiff` inner loop dropped trailing `+` lines when hunk shape was `-X / +Y` with old_count=1. Fixed: loop exits only on next `@@` header or end.
+
+### Toolchain note
+
+Win build requires `C:/msys64/mingw64/bin` on Windows USER PATH (not just bash $PATH). Git Bash mingw shim was shadowing cc1 DLL chain in CreateProcess context, surfacing as NTSTATUS 0xC0000135.
+
+Verification: Windows 120/120 ctest (was 115/115).
+
 ## 1.26.0 — Build speedup + PowerShell coverage + RAW=1 self-correct
 
 Quality release focused on dev-experience friction.
