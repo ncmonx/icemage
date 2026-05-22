@@ -23,9 +23,16 @@ inline std::vector<TestCase>& registry() {
     return r;
 }
 
-inline int run_all() {
-    int passed = 0, failed = 0;
+// v1.26.0 (B1): filter-aware run_all. When `filter` non-empty, runs only
+// TEST() cases whose name CONTAINS the filter substring. Single mono test
+// binary (`icmg_test`) dispatches via ctest with --filter <suite-prefix>.
+inline int run_all(const std::string& filter = "") {
+    int passed = 0, failed = 0, skipped = 0;
     for (auto& tc : registry()) {
+        if (!filter.empty() && tc.name.find(filter) == std::string::npos) {
+            ++skipped;
+            continue;
+        }
         try {
             tc.fn();
             std::cout << "  [PASS] " << tc.name << "\n";
@@ -36,7 +43,16 @@ inline int run_all() {
             ++failed;
         }
     }
-    std::cout << "\n" << passed << " passed, " << failed << " failed\n";
+    std::cout << "\n" << passed << " passed, " << failed << " failed";
+    if (skipped > 0) std::cout << " (" << skipped << " skipped by filter)";
+    std::cout << "\n";
+    // v1.26.0: ctest entry with mis-matched filter returns 0-passed. Treat
+    // that as failure so the misalignment is visible (v1.27 audit will rename
+    // TEST() cases to align with filename stems).
+    if (!filter.empty() && passed == 0 && failed == 0) {
+        std::cerr << "ERROR: filter '" << filter << "' matched 0 tests\n";
+        return 2;
+    }
     return (failed > 0) ? 1 : 0;
 }
 

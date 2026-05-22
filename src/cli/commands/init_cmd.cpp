@@ -47,7 +47,42 @@ INPUT=$(cat)
 CMD=$(echo "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
 [[ -z "$CMD" ]] && exit 0
 # v1.20.3: bash =~ ERE (no external grep fork).
-[[ "$CMD" =~ ^RAW=1[[:space:]] ]] && exit 0
+# v1.26.0 (B6): RAW=1 bypass now logs + nags when overused. Default is still
+# non-blocking (exit 0), but each use is recorded to ~/.icmg/raw-usage.jsonl
+# and if the past-hour count crosses RAW_NAG_THRESHOLD (default 5), the hook
+# emits a PreToolUse additionalContext reminder of what `RAW=1` is legitimately
+# for (manual-filtered pipes; tmp files ≤1 KB). Silent for first N uses so
+# legitimate cases don't trigger noise.
+if [[ "$CMD" =~ ^RAW=1[[:space:]] ]]; then
+    USAGE_LOG="${USERPROFILE:-${HOME:-/tmp}}/.icmg/raw-usage.jsonl"
+    mkdir -p "$(dirname "$USAGE_LOG")" 2>/dev/null
+    TS=$(date +%s 2>/dev/null || echo 0)
+    NOW_MINUS_1H=$((TS - 3600))
+    # Append this use.
+    printf '{"ts":%s,"cmd":"%s"}\n' "$TS" \
+        "$(printf '%s' "${CMD:0:120}" | sed 's/\\/\\\\/g; s/"/\\"/g')" \
+        >> "$USAGE_LOG" 2>/dev/null || true
+    # Count past-1h uses (cheap: bash =~ over tail -200 entries).
+    RAW_COUNT=0
+    if [[ -f "$USAGE_LOG" ]]; then
+        while IFS= read -r line; do
+            [[ "$line" =~ \"ts\":([0-9]+) ]] || continue
+            entry_ts="${BASH_REMATCH[1]}"
+            (( entry_ts >= NOW_MINUS_1H )) && (( ++RAW_COUNT ))
+        done < <(tail -n 200 "$USAGE_LOG")
+    fi
+    THRESHOLD="${ICMG_RAW_NAG_THRESHOLD:-5}"
+    if (( RAW_COUNT > THRESHOLD )); then
+        NAG="RAW=1 used ${RAW_COUNT}× in past 1h (threshold=${THRESHOLD}). "
+        NAG+="Valid use ONLY for: (a) manual-filtered pipes (\`| head\`/\`| wc -l\`), "
+        NAG+="(b) tmp files ≤1 KB you generated this turn. "
+        NAG+="Else prefer: \`icmg run <cmd>\` (60-90% filter), \`icmg context <file>\` (80% trim), "
+        NAG+="\`icmg ls <dir>\`, \`icmg graph symbol <Name>\`, \`icmg recall <q>\`."
+        printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}' \
+            "$NAG" 2>/dev/null
+    fi
+    exit 0
+fi
 [[ "$CMD" =~ (^|[[:space:]\|\&\;])icmg[[:space:]]+ ]] && exit 0
 
 # v1.20.6 (F7): transparent prefix scan — peek through wrapper shells so the
@@ -99,7 +134,7 @@ if [[ "${ICMG_STRICT_BASH:-0}" = "1" ]]; then
     fi
 fi
 
-PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status)([[:space:]]|$)'
+PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status|Get-Content|Get-ChildItem|Select-String|Get-Item|Where-Object|ForEach-Object|Get-Process|Measure-Object|Out-String|Format-Table|Invoke-WebRequest|iwr|curl|wget)([[:space:]]|$)'
 if [[ "$CMD_MATCH" =~ $PATTERN ]]; then
     log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
     icmg hookio emit PreToolUse --deny "Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix."
@@ -1197,7 +1232,14 @@ private:
         // themselves invoke icmg lazily and exit fast on missing dependency.
         json pre_array = json::array({
             {
-                {"matcher", "Bash"},
+                // v1.26.0: matcher widened "Bash" → "Bash|PowerShell". AI was
+                // bypassing icmg-first + bash-rewrite + RAW=1 nag by routing
+                // commands through PowerShell tool, which previously matched
+                // ZERO PreToolUse entries. The leash script already inspects
+                // $TOOL var ("Bash"|"PowerShell") so no code change needed —
+                // only matcher widen here. bash-rewrite checks pattern after
+                // strip leading $env: prefix on PS6 commands.
+                {"matcher", "Bash|PowerShell"},
                 {"hooks",   json::array({
                     // v1.21.9: wrap every test+exec one-liner in `bash -c`. Some
                     // Claude Code hook runners exec the command directly (without
