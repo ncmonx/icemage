@@ -4,6 +4,33 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.26.0 — Build speedup + PowerShell coverage + RAW=1 self-correct
+
+Quality release focused on dev-experience friction.
+
+### Build speedup — cold build 20 min → 9-10 min (~50 % reduction)
+
+PCH (precompiled headers) on `icmg_lib`: `<nlohmann/json.hpp>` (~26 k LOC) + 10 STL headers (`<string>`, `<vector>`, `<filesystem>`, ...) compile ONCE instead of per-TU across ~250 sources. Opt-out via `-DICMG_NO_PCH=ON` (Linux WSL on `/mnt/d` filesystem uses opt-out — PCH on slow remote fs caused build thrash).
+
+### PowerShell hook coverage
+
+AI was bypassing `icmg`-first + bash-rewrite + RAW=1 nag by routing commands through the PowerShell tool. Fixed:
+
+- PreToolUse:Bash matcher widened to `Bash|PowerShell`. Existing leash + bash-rewrite scripts already inspect `$TOOL` var — only the matcher needed widening.
+- bash-rewrite PATTERN expanded to recognise PowerShell cmdlets: `Get-Content` (= `cat`), `Get-ChildItem` (= `ls`), `Select-String` (= `grep`), `Invoke-WebRequest`/`iwr` (= `curl`/`WebFetch`), `Format-Table`, `Out-String`, `Measure-Object`, etc.
+
+### `RAW=1` anti-overuse self-correct
+
+Each `RAW=1` bypass is logged to `~/.icmg/raw-usage.jsonl`. When past-1h count crosses threshold (default 5), the hook emits a non-blocking nag listing the valid use cases (manual-filtered pipes, tmp files ≤ 1 KB) and preferred alternatives (`icmg run` / `icmg context` / `icmg ls`). Tunable via `ICMG_RAW_NAG_THRESHOLD=N`.
+
+Visibility pressure only — never blocks the command. Keeps the bypass available when legitimately needed but prevents lazy habit drift.
+
+### Mono test consolidation attempt REVERTED
+
+Initial v1.26.0 plan called for 115 separate test exe → 1 mono `icmg_test` (target ~60 % link saving). The mono attempt caused: state-leak hangs (DB singleton, service mutex persisting across tests in one process), bash.exe spawn bloat from filter-dispatch ctest entries, and filter-stem mismatch breaking 62/115 ctest entries. Per-exe model retained for stability. Build saving comes from PCH alone. A future mono attempt requires TEST() name audit + DB/service singleton teardown between cases — scoped for a later release.
+
+Verification: Windows 115/115 ctest. Linux build green (PCH disabled there).
+
 ## 1.25.0 — Compressed-Write protocol (AI emits diff, icmg expands)
 
 New token-saving layer for the **AI-emits-Write-tool-call** path. When enabled, the AI is instructed to emit a compact form (unified diff, glossary, or raw marker) and icmg expands it before disk write. Typical incremental edits: **70–95 % fewer Write tokens**.

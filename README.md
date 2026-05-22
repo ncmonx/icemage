@@ -53,6 +53,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | Past-chat full-text search | **< 10 ms** across months | — | v1.21.7 |
 | Graph symbol lookup | **256-slot in-RAM cache** | — | v1.21.8 |
 | First-prompt warmup | < 1 s | — | v1.18 |
+| **Cold build time** (icmg itself) | **~50 % faster** (20 min → 9-10 min) | — | v1.26.0 |
 | Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
 Measured on real-world sessions. Your mileage will vary with project size and habits — anyone running a busy AI agent for a day already sees meaningful savings.
@@ -62,11 +63,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.26.0** — cold build ~50% faster (20 min → 9-10 min) via PCH for `icmg_lib`. PowerShell tool now caught by icmg-first + bash-rewrite hooks (was bypassed before). New `RAW=1` overuse self-correct: each bypass logged, >5/hour → non-blocking nag with preferred icmg alternatives.
 - **v1.25.0** — new **compressed-write protocol**: when enabled (`icmg write-mode on`), the AI emits Write calls as unified diff / glossary / template, and icmg expands them before disk write. Typical incremental edits 70-95% fewer Write tokens, ~4x faster edit cycle. Default off (opt-in). Total 40 MCP tools.
 - **v1.24.0** — new `icmg port` cross-project bundle workflow. "Copy menus A–F from Project 1 to Project 2" now ~8–12× cheaper in tokens than naive read+write: package once, transport one artifact, preview with `--dry-run`, apply with `--path-map` for relocation. 1 new MCP tool (apply only) — total 39. Run `icmg init --force` after upgrade.
 - **v1.23.0** — quality release: 17 new unit tests close coverage gaps for v1.21.x features; **leash escape** lifts release-pipeline friction (no more manual hook-disable); and a final `python3: command not found` source — buried in older project-level `.claude/settings.json` — is now auto-sanitized at `icmg init --force`. Run `icmg init --force` once after upgrade to apply.
 - **v1.22.1** — hotfix follow-up to v1.21.9: hooks are now **pure-bash** (no Python or jq required), and the remaining 5 hook entries that v1.21.9 missed are now wrapped — no more `cannot execute binary file` errors on any host. **Run `icmg init --force` after upgrade** to regenerate the hook entries.
-- **v1.22.0** — new `icmg style-clone` workflow for the "apply Menu A's UI to 100+ other menus" case. Read the reference file once, cache its layout, then apply (with dry-run preview) to a glob of targets. Typical token saving: 30–50× over re-reading the reference per target. Also exposed as 2 MCP tools (`icmg_style_clone_apply` + `_verify`) — total 38.
 
 ---
 
