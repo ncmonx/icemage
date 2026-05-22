@@ -4,6 +4,43 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.23.0 — Leash escape + TDD catchup + python3 sanitizer carry-over
+
+Quality release. No new user-facing surface; tightens existing features and lifts dev-experience friction.
+
+### Leash escape rule (Phase A)
+
+The internal git-checkout leash now pre-approves `release/v*` and `docs/v*` branches plus path-mode `git checkout -- <file>` (file restore). The release pipeline no longer needs the manual `mv .claude/hooks/icmg-git-leash.sh .off` workaround that previous patches required.
+
+### TDD catchup (Phase B)
+
+Two new test files covering v1.21.x features that shipped without unit coverage:
+
+- `tests/imem/test_importance_decay.cpp` — 11 cases for v1.21.9 M2 tier-aware `ageDecay`. Critical-tier memories don't decay (λ=0); high decays at half the medium rate (~180d half-life); low at double (~45d). Long-form `--importance critical|medium` also covered.
+- `tests/graph/test_graph_cache.cpp` — 6 cases for v1.21.8 S1 in-RAM `GraphStore::getNode` cache. Hit/upsert-invalidate/remove-invalidate/`clearCache()`/`ICMG_NO_GRAPH_CACHE` env/miss-not-cached.
+
+ctest: 113 → **115**.
+
+### `python3` sanitizer carry-over from v1.22.1
+
+v1.22.1 fixed the **global** `~/.claude/settings.json` python3 SessionStart hook by replacing it with pure-bash printf. Older installs also had a project-level `.claude/settings.json` python3 SessionStart entry (from a pre-v1.20 icmg init flow) that v1.22.1 didn't touch. v1.23.0 `icmg init --force` now sanitizes that one too — narrow match (both `python3 -c` and `icmg','wake-up` markers required) rewritten to:
+
+```
+bash -c 'command -v icmg >/dev/null 2>&1 || exit 0; icmg wake-up 2>/dev/null | icmg hookio emit SessionStart --ctx-stdin'
+```
+
+Eliminates the residual `python3: command not found` stderr noise on minimal hosts (Alpine / minimal Docker / fresh Windows without Python).
+
+### Bug found during test red phase
+
+`GraphStore::removeNode` was calling `clearCache()` BEFORE `getNode()`, which then re-populated the cache from DB. After the subsequent DELETE the row was gone from DB but still in the in-RAM cache. Reordered to `clearCache()` AFTER the DB DELETE. Test_graph_cache `removeNode invalidates cache` case caught it.
+
+### Deferred to v1.24
+
+Tree-sitter migration for `style-clone` layout extractor (vendor vue + html + svelte grammars; replace the regex scanner). ~6-12h scope, dedicated plan, separate ship.
+
+Verification: 115/115 ctest (Windows + Linux).
+
 ## 1.22.1 — Hotfix: pure-bash hooks + complete `bash -c` wrap
 
 Two user-reported bugs from the v1.21.9 install; both stem from minimal-host environments where python3 isn't pre-installed and where Claude Code hosts exec hooks without an implicit shell.
