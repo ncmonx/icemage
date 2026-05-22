@@ -303,7 +303,14 @@ NCMD_LC="${NCMD,,}"
 # v1.20.3: bash =~ ERE (no external grep). `\s` → [[:space:]], `\b` → \> (POSIX
 # word boundary on most ERE engines; bash =~ accepts it on Linux/MSYS).
 if [[ "$TOOL" == "Bash" || "$TOOL" == "PowerShell" ]]; then
-    [[ "$NCMD" =~ git[[:space:]]+(checkout|switch)([[:space:]]|$) ]]      && block "ID=12" "git checkout/switch requires explicit user instruction."
+    # v1.23.0: leash escape — `release/v*` and `docs/v*` branches are
+    # pre-approved (release pipeline runs them every patch ship). Also
+    # `--` for path-mode checkout (file restore, not branch switch).
+    if [[ "$NCMD" =~ git[[:space:]]+(checkout|switch)([[:space:]]|$) ]]; then
+        [[ "$NCMD" =~ git[[:space:]]+(checkout|switch)[[:space:]]+-b?[[:space:]]+(release|docs)/v[0-9] ]] \
+            || [[ "$NCMD" =~ git[[:space:]]+checkout[[:space:]]+-- ]] \
+            || block "ID=12" "git checkout/switch requires explicit user instruction. (release/v* + docs/v* + path checkout pre-approved.)"
+    fi
     if [[ "$NCMD" =~ git[[:space:]]+push[[:space:]]+origin ]]; then
         [[ "$NCMD" =~ git[[:space:]]+push[[:space:]]+origin[[:space:]]+docs/ ]] || block "ID=13" "git push origin blocked for non-docs branches. Use private remote."
     fi
@@ -1412,6 +1419,59 @@ private:
         // Install icmg-first enforcement into global ~/.claude/settings.json
         // so the rule applies across ALL projects, not just this one.
         n += installGlobalReadHook(force);
+
+        // v1.23.0: sanitize project-level `.claude/settings.json` if present.
+        // Older icmg builds (pre-v1.20) wrote a SessionStart hook that shelled
+        // out to `python3 -c "...icmg wake-up..."`. On hosts without python3
+        // the hook prints `python3: command not found` to Claude's stderr
+        // every time Write is invoked (Claude triggers SessionStart fan-out
+        // on tool events too). Replace with pure-bash equivalent via
+        // `icmg hookio emit SessionStart --ctx-stdin`.
+        {
+            fs::path proj_settings = root / ".claude" / "settings.json";
+            if (fs::exists(proj_settings)) {
+                try {
+                    std::ifstream f(proj_settings);
+                    std::string body((std::istreambuf_iterator<char>(f)),
+                                      std::istreambuf_iterator<char>());
+                    f.close();
+                    const std::string py_marker = "python3 -c";
+                    const std::string icmg_marker = "icmg','wake-up";
+                    // Only rewrite when BOTH markers present — narrowest target.
+                    if (body.find(py_marker) != std::string::npos
+                        && body.find(icmg_marker) != std::string::npos) {
+                        json proj_cfg;
+                        try { proj_cfg = json::parse(body); }
+                        catch (...) { proj_cfg = json::object(); }
+                        if (proj_cfg.contains("hooks")
+                            && proj_cfg["hooks"].is_object()
+                            && proj_cfg["hooks"].contains("SessionStart")
+                            && proj_cfg["hooks"]["SessionStart"].is_array()) {
+                            for (auto& entry : proj_cfg["hooks"]["SessionStart"]) {
+                                if (!entry.contains("hooks") || !entry["hooks"].is_array())
+                                    continue;
+                                for (auto& h : entry["hooks"]) {
+                                    if (!h.contains("command") || !h["command"].is_string())
+                                        continue;
+                                    std::string cmd = h["command"].get<std::string>();
+                                    if (cmd.find(py_marker) != std::string::npos
+                                        && cmd.find("wake-up") != std::string::npos) {
+                                        h["command"] =
+                                            "bash -c 'command -v icmg >/dev/null 2>&1 || exit 0; "
+                                            "icmg wake-up 2>/dev/null | icmg hookio emit SessionStart "
+                                            "--ctx-stdin'";
+                                    }
+                                }
+                            }
+                            std::ofstream out(proj_settings);
+                            out << proj_cfg.dump(2) << "\n";
+                            std::cout << "  + .claude/settings.json (sanitized python3 -> bash)\n";
+                            ++n;
+                        }
+                    }
+                } catch (...) { /* best-effort */ }
+            }
+        }
 
         // v1.1.1: register resident service (Windows logon-trigger) + clean any
         // legacy per-project autopilot schtasks left over from pre-v1.1.0.

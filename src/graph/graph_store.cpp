@@ -543,13 +543,16 @@ std::vector<GraphNode> GraphStore::impactAll(
 }
 
 void GraphStore::removeNode(const std::string& path) {
-    clearCache();  // v1.21.8 (S1)
-    // Manual cascade (SQLite foreign keys may be off)
+    // v1.23.0 fix: getNode below re-populates cache. clearCache MUST run AFTER
+    // the DB delete, not before, otherwise the just-cached row survives the
+    // delete and getNode() callers see stale data.
     auto node = getNode(path);
     if (!node) return;
+    // Manual cascade (SQLite foreign keys may be off)
     db_.run("DELETE FROM graph_edges WHERE src=? OR dst=?",
             {std::to_string(node->id), std::to_string(node->id)});
     db_.run("DELETE FROM graph_nodes WHERE id=?", {std::to_string(node->id)});
+    clearCache();  // v1.21.8 (S1) — final invalidate so callers see fresh state
 }
 
 std::vector<GraphNode> GraphStore::all() const {

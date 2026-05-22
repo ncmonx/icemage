@@ -37,6 +37,14 @@ public:
                                   std::vector<MemoryNode> nodes,
                                   int limit = 10) const;
 
+    // v1.23.0: test-visible decay helpers (used by tests/imem/test_importance_decay.cpp).
+    // Pure functions with no Scorer state — safe to expose.
+    double recencyDecay(int64_t last_used) const;
+    double accessAwareDecay(int64_t last_used, int freq) const;
+    // v1.21.9 (M2): tier-aware decay — importance 3=critical (frozen),
+    // 2=high (half rate), 1=medium (baseline), 0=low (double rate).
+    double ageDecay(int64_t created_at, int importance = 1) const;
+
 private:
     Scorer() = default;
 
@@ -52,12 +60,7 @@ private:
     std::vector<std::string> tokenize(const std::string& text) const;
     std::string document(const MemoryNode& node) const;
     double bm25(const std::string& query, const MemoryNode& node) const;
-    double recencyDecay(int64_t last_used) const;
-    // v1.20.0 (M1): access-aware variant — hot memos (high freq) decay slower.
-    double accessAwareDecay(int64_t last_used, int freq) const;
-    // v1.21.9 (M2): tier-aware decay — importance 3=critical (frozen),
-    // 2=high (half rate), 1=medium (baseline), 0=low (double rate).
-    double ageDecay(int64_t created_at, int importance = 1) const;
+    // v1.20.0 (M1) accessAwareDecay + v1.21.9 (M2) ageDecay now public above.
     double idf(const std::string& term) const;
 };
 
