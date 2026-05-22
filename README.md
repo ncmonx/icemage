@@ -19,7 +19,7 @@
 
 A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
 
-**40 MCP tools · 115/115 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
+**40 MCP tools · 120/120 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
@@ -63,11 +63,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.27.0** — mega bundle: TDD debt closure (write_expander 10 tests + port_artifact public header 16 tests), template-fill engine for ICMG-TPL, **tree-sitter vue/html/svelte grammars vendored** (Vue SFC layout extraction now AST-accurate), parametric command-registry coverage covers ~100 cmds in 1 test. Unified-diff applier fix: trailing `+` lines after `old_count` no longer dropped. ctest 115?120.
 - **v1.26.0** — cold build ~50% faster (20 min → 9-10 min) via PCH for `icmg_lib`. PowerShell tool now caught by icmg-first + bash-rewrite hooks (was bypassed before). New `RAW=1` overuse self-correct: each bypass logged, >5/hour → non-blocking nag with preferred icmg alternatives.
 - **v1.25.0** — new **compressed-write protocol**: when enabled (`icmg write-mode on`), the AI emits Write calls as unified diff / glossary / template, and icmg expands them before disk write. Typical incremental edits 70-95% fewer Write tokens, ~4x faster edit cycle. Default off (opt-in). Total 40 MCP tools.
 - **v1.24.0** — new `icmg port` cross-project bundle workflow. "Copy menus A–F from Project 1 to Project 2" now ~8–12× cheaper in tokens than naive read+write: package once, transport one artifact, preview with `--dry-run`, apply with `--path-map` for relocation. 1 new MCP tool (apply only) — total 39. Run `icmg init --force` after upgrade.
 - **v1.23.0** — quality release: 17 new unit tests close coverage gaps for v1.21.x features; **leash escape** lifts release-pipeline friction (no more manual hook-disable); and a final `python3: command not found` source — buried in older project-level `.claude/settings.json` — is now auto-sanitized at `icmg init --force`. Run `icmg init --force` once after upgrade to apply.
-- **v1.22.1** — hotfix follow-up to v1.21.9: hooks are now **pure-bash** (no Python or jq required), and the remaining 5 hook entries that v1.21.9 missed are now wrapped — no more `cannot execute binary file` errors on any host. **Run `icmg init --force` after upgrade** to regenerate the hook entries.
 
 ---
 
