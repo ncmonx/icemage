@@ -8,7 +8,7 @@
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
 [![ctest](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/ncmonx/7d6a2efa9d6191e28ff3f6a26e6ba7c7/raw/ctest.json)](#)
-[![mcp tools](https://img.shields.io/badge/MCP%20tools-38-blueviolet)](#)
+[![mcp tools](https://img.shields.io/badge/MCP%20tools-39-blueviolet)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ncmonx/icm-graph/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ncmonx/icm-graph)
 [![OpenSSF Best Practices](https://img.shields.io/cii/level/12818?label=OpenSSF%20Best%20Practices)](https://www.bestpractices.dev/projects/12818)
@@ -19,7 +19,7 @@
 
 A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
 
-**38 MCP tools · 115/115 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
+**39 MCP tools · 115/115 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
@@ -46,6 +46,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | File-read savings | 70 – 85 % fewer tokens | up to 92 % | v0.5 |
 | Test / build output | 60 – 80 % shorter | up to 90 % | v0.5 |
 | **Multi-file UI propagation** (style-clone) | **30 – 50× cheaper** | up to 98 % | v1.22.0 |
+| **Cross-project bundle** (port) | **8 – 12× cheaper** | up to 95 % | v1.24.0 |
 | Web-fetch reduction | 70 – 90 % smaller | up to 95 % | v0.4 |
 | Repeat-context recall | near-zero, **< 5 ms cached** | — | v1.21.8 |
 | Past-chat full-text search | **< 10 ms** across months | — | v1.21.7 |
@@ -60,11 +61,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.24.0** — new `icmg port` cross-project bundle workflow. "Copy menus A–F from Project 1 to Project 2" now ~8–12× cheaper in tokens than naive read+write: package once, transport one artifact, preview with `--dry-run`, apply with `--path-map` for relocation. 1 new MCP tool (apply only) — total 39. Run `icmg init --force` after upgrade.
 - **v1.23.0** — quality release: 17 new unit tests close coverage gaps for v1.21.x features; **leash escape** lifts release-pipeline friction (no more manual hook-disable); and a final `python3: command not found` source — buried in older project-level `.claude/settings.json` — is now auto-sanitized at `icmg init --force`. Run `icmg init --force` once after upgrade to apply.
 - **v1.22.1** — hotfix follow-up to v1.21.9: hooks are now **pure-bash** (no Python or jq required), and the remaining 5 hook entries that v1.21.9 missed are now wrapped — no more `cannot execute binary file` errors on any host. **Run `icmg init --force` after upgrade** to regenerate the hook entries.
 - **v1.22.0** — new `icmg style-clone` workflow for the "apply Menu A's UI to 100+ other menus" case. Read the reference file once, cache its layout, then apply (with dry-run preview) to a glob of targets. Typical token saving: 30–50× over re-reading the reference per target. Also exposed as 2 MCP tools (`icmg_style_clone_apply` + `_verify`) — total 38.
 - **v1.21.9** — three more memory features (importance tiers control how fast a memory decays, zone-overflow hints suggest when to consolidate, `memoir export -f dot` for Graphviz visualisation) plus two hotfixes: leftover `*.old-<PID>` files from previous updates now auto-clean themselves, and hook commands no longer trigger `cannot execute binary file` errors on hosts that exec without a shell wrapper. **If you already had Icemage installed, run `icmg init --force` once after upgrade** to regenerate the hook entries.
-- **v1.21.8** — hook injections are now instant: the per-prompt context Icemage attaches to Claude is served from a fresh cache while the slow dispatch refreshes in the background. No more "skipping injection" timeouts under heavy DB load. Also caches hot graph-node lookups in RAM so the same path isn't re-queried on every call.
 
 ---
 
