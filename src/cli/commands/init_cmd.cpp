@@ -254,6 +254,43 @@ set -uo pipefail
 [[ "${ICMG_NO_PROMPT_HOOK:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
 
+# v1.30.0: ensure icmg-service is running before processing prompt. Detect
+# via pidfile + kill -0 / tasklist. If absent or dead, spawn detached VBS
+# launcher (Win) or background fork (POSIX). Non-blocking; fire-and-forget
+# so prompt processing continues in parallel with service warm-up.
+# Opt-out: ICMG_NO_SERVICE_AUTOSTART=1
+if [[ "${ICMG_NO_SERVICE_AUTOSTART:-0}" != "1" ]]; then
+    PIDDIR="${USERPROFILE:-${HOME:-/tmp}}"
+    # icmgGlobalDir on Win = $APPDATA/icmg; on POSIX = $HOME/.icmg
+    if [[ -n "${APPDATA:-}" ]] && [[ -d "$APPDATA/icmg" ]]; then
+        SVC_PID="$APPDATA/icmg/service.pid"
+        SVC_VBS="$APPDATA/icmg/service-launcher.vbs"
+    else
+        SVC_PID="$PIDDIR/.icmg/service.pid"
+        SVC_VBS=""
+    fi
+    alive=0
+    if [[ -f "$SVC_PID" ]]; then
+        pid=$(head -c 12 "$SVC_PID" 2>/dev/null | tr -d '[:space:]')
+        if [[ -n "$pid" ]] && [[ "$pid" =~ ^[0-9]+$ ]]; then
+            if [[ -n "${WINDIR:-}" ]]; then
+                tasklist //FI "PID eq $pid" 2>/dev/null | grep -q "icmg" && alive=1
+            else
+                kill -0 "$pid" 2>/dev/null && alive=1
+            fi
+        fi
+    fi
+    if [[ "$alive" = "0" ]]; then
+        # Spawn detached; budget <50ms.
+        if [[ -n "${WINDIR:-}" ]] && [[ -n "$SVC_VBS" ]] && [[ -f "$SVC_VBS" ]]; then
+            wscript //B //Nologo "$SVC_VBS" >/dev/null 2>&1 &
+        else
+            (icmg service run >/dev/null 2>&1 &) 2>/dev/null
+        fi
+        # Don't wait; service will be ready by next turn.
+    fi
+fi
+
 # Read hook input JSON from stdin.
 INPUT=$(cat)
 PROMPT=$(printf '%s' "$INPUT" | icmg hookio get prompt 2>/dev/null)
@@ -283,6 +320,25 @@ if [[ -n "${PROMPT:-}" ]]; then
     if [[ -n "$RESULT" ]]; then
         printf '%s' "$RESULT"
         exit 0
+    fi
+fi
+
+# v1.30.0: auto-think suppression for trivial prompts (saves ~1500 tok
+# per call). Match short questions / explainers; inject no_think directive
+# via additionalContext. Opt-out: ICMG_NO_AUTO_THINK=1
+if [[ "${ICMG_NO_AUTO_THINK:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
+    plen=${#PROMPT}
+    if [[ $plen -lt 80 ]] || [[ "$PROMPT" =~ ^(what|why|how|where|when|kapan|apa|kenapa|siapa)[[:space:]] ]]; then
+        printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] trivial prompt detected -> thinking budget suppressed for this turn (set ICMG_NO_AUTO_THINK=1 to disable)"}}' 2>/dev/null
+    fi
+fi
+
+# v1.30.0: caveman-auto for long-prose prompts (>800 chars typical
+# explainer/spec). Inject caveman ultra hint so reply is compressed.
+# Opt-out: ICMG_NO_CAVEMAN_AUTO=1
+if [[ "${ICMG_NO_CAVEMAN_AUTO:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
+    if [[ ${#PROMPT} -gt 800 ]]; then
+        printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] long prompt -> caveman ultra mode for response (set ICMG_NO_CAVEMAN_AUTO=1 to disable)"}}' 2>/dev/null
     fi
 fi
 
@@ -509,6 +565,54 @@ fi
 [[ -z "$COMBINED" ]] && exit 0
 printf '%s' "$COMBINED" | icmg hookio emit UserPromptSubmit --ctx-stdin
 )BASH";
+
+// v1.30.0: PostToolUse:MCP__ filter. Many MCP plugins return verbose JSON
+// (>5KB common). Apply Tkil-style noise strip + cap at 4KB so AI doesn't
+// burn tokens on plugin scaffolding. Opt-out: ICMG_NO_MCP_FILTER=1
+static const char* MCP_FILTER_SH = R"BASH(#!/usr/bin/env bash
+set -uo pipefail
+[[ "${ICMG_NO_MCP_FILTER:-0}" = "1" ]] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+INPUT=$(cat)
+# Extract tool_response.content (or top-level content). Pipe through
+# icmg compress with JSON-aware mode + 4KB cap.
+RESP=$(printf '%s' "$INPUT" | icmg hookio get tool_response 2>/dev/null)
+if [[ -z "$RESP" ]] || [[ ${#RESP} -lt 4096 ]]; then
+    exit 0  # small payload, leave alone
+fi
+COMPRESSED=$(printf '%s' "$RESP" | icmg compress --threshold 4096 --mode json 2>/dev/null)
+if [[ -n "$COMPRESSED" ]] && [[ ${#COMPRESSED} -lt ${#RESP} ]]; then
+    printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}' \
+        "$(printf '%s' "$COMPRESSED" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n')"
+fi
+exit 0
+)BASH";
+
+// v1.30.0: PreToolUse:Edit expander scaffold for compressed old_string.
+// Real expansion (icmg hook edit-expand) deferred to v1.31 — this is
+// scaffolding only. Logs detection of `@@ICMG-DIFF` magic header so
+// telemetry shows opportunity rate; no rewrite yet.
+static const char* EDIT_DIFF_EXPAND_SH = R"BASH(#!/usr/bin/env bash
+set -uo pipefail
+[[ "${ICMG_NO_EDIT_EXPAND:-0}" = "1" ]] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+INPUT=$(cat)
+OLD=$(printf '%s' "$INPUT" | icmg hookio get tool_input.old_string 2>/dev/null)
+case "$OLD" in
+    @@ICMG-DIFF*|@@ICMG-ANCHOR*)
+        # Magic header detected. Real expansion comes in v1.31 once
+        # `icmg hook edit-expand` lands. For now: log to telemetry so
+        # we know how often this fires in real usage.
+        LOG="${USERPROFILE:-${HOME:-/tmp}}/.icmg/edit-expand-detected.jsonl"
+        mkdir -p "$(dirname "$LOG")" 2>/dev/null
+        printf '{"ts":%s,"bytes":%s}\n' \
+            "$(date +%s 2>/dev/null || echo 0)" "${#OLD}" \
+            >> "$LOG" 2>/dev/null || true
+        ;;
+esac
+exit 0
+)BASH";
+
 
 // Phase 40 T2: PreCompact hook â€” auto-snapshots session before /compact
 // or auto-compaction wipes context. Runs `icmg session save auto-precompact-<ts>`.
@@ -1213,6 +1317,8 @@ private:
         // v0.42.0: context graph injection hooks.
         n += writeFile(root / ".claude" / "hooks" / "icmg-context-session.sh", CONTEXT_SESSION_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-context-prompt.sh",  CONTEXT_PROMPT_SH,  true);
+        n += writeFile(root / ".claude" / "hooks" / "icmg-mcp-filter.sh", MCP_FILTER_SH, true);
+        n += writeFile(root / ".claude" / "hooks" / "icmg-edit-expand.sh", EDIT_DIFF_EXPAND_SH, true);
         // #1084: wake-up briefing on SessionStart.
         n += writeFile(root / ".claude" / "hooks" / "icmg-wakeup-session.sh", WAKEUP_SESSION_SH, true);
         // v0.42.0: rule enforcement hook.
@@ -1311,6 +1417,16 @@ private:
                         "ICMG_READ_LIMIT=30 ICMG_SHRINK_THRESHOLD=0 " +
                         (strict_read ? "ICMG_SHRINK_STRICT=1 " : "") +
                         "bash .claude/hooks/icmg-shrink-read.sh || exit 0'"}}
+                })}
+            },
+            // v1.30.0: PostToolUse MCP response filter.
+            {
+                {"matcher", "mcp__.*"},
+                {"hooks",   json::array({
+                    {{"type", "command"},
+                     {"timeout", 4},
+                     {"command",
+                        "bash -c '[ -f .claude/hooks/icmg-mcp-filter.sh ] && bash .claude/hooks/icmg-mcp-filter.sh || exit 0'"}}
                 })}
             }
         });
