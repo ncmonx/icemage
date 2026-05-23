@@ -511,9 +511,12 @@ private:
             const char* e = std::getenv("ICMG_BIN");
             bin = e ? e : "icmg";
         }
-        // v1.9.0: opt-in multi-user aggregate via env var.
+        // v1.27.3 (Bug 1 fix): default ON for multi-user aggregate. Shared-
+        // server installs (typical icmg deployment) had Active Users panel
+        // showing only the env-var-setter's name. Set ICMG_SAVINGS_ALL_USERS=0
+        // to opt-out (single-user view).
         const char* au = std::getenv("ICMG_SAVINGS_ALL_USERS");
-        bool all_users = au && *au && std::string(au) != "0";
+        bool all_users = !au || !*au || std::string(au) != "0";
         std::string cmd = "\"" + bin + "\" context-budget --all-sessions"
                          + (all_users ? " --all-users" : "") + " --json 2>/dev/null";
         auto res = core::safeExecShell(cmd, false, 15000);
@@ -674,7 +677,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                        << "</td><td class=\"num\">" << humanTok(t) << "</td></tr>";
                 }
                 os << R"HTML(</tbody></table>
-<div style="color:#6e7681;font-size:11px;margin-top:8px">Multi-user aggregate: set <code>ICMG_SAVINGS_ALL_USERS=1</code> before <code>icmg savings --html</code>.</div>
+<div style="color:#6e7681;font-size:11px;margin-top:8px">Multi-user aggregate default ON (v1.27.3). Set <code>ICMG_SAVINGS_ALL_USERS=0</code> for single-user view.</div>
 </div>)HTML";
             }
 
@@ -850,6 +853,79 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                          }
                      });
         } catch (...) {}
+
+        // v1.27.3 (Bug 3 fix): include pack_recpt + strict_denials + bfs in
+        // daily chart so its sum matches the Total row. Previously omitted
+        // → user saw Total=942K but daily chart only ~120K. Each strict
+        // denial = 1500 tok (same heuristic as line 188); each BFS = 2000
+        // (same as line 245). Pack receipts from token_receipts table.
+        try {
+            db.query("SELECT date(ts,'unixepoch'), "
+                     "       COALESCE(SUM(CASE WHEN raw_tokens>0 "
+                     "                          THEN raw_tokens - est_tokens "
+                     "                          ELSE 0 END),0) "
+                     "FROM token_receipts WHERE ts > ? "
+                     "GROUP BY date(ts,'unixepoch')",
+                     {std::to_string(cutoff)},
+                     [&](const core::Row& r){
+                         if (r.size() >= 2 && !r[0].empty()) {
+                             try { by_day[r[0]] += std::stoll(r[1]); } catch (...) {}
+                         }
+                     });
+        } catch (...) {}
+        // Strict denials JSONL bucketed by day.
+        {
+            const char* home = std::getenv("USERPROFILE");
+            if (!home) home = std::getenv("HOME");
+            if (home) {
+                std::filesystem::path log = std::filesystem::path(home)
+                    / ".icmg" / "strict-denials.jsonl";
+                if (std::filesystem::exists(log)) {
+                    std::ifstream lf(log);
+                    std::string line;
+                    while (std::getline(lf, line)) {
+                        auto p = line.find("\"ts\":");
+                        if (p == std::string::npos) continue;
+                        int64_t ts = 0;
+                        try { ts = std::stoll(line.substr(p + 5)); } catch (...) { continue; }
+                        if (ts < cutoff) continue;
+                        time_t t = (time_t)ts;
+                        std::tm tmb{};
+#ifdef _WIN32
+                        localtime_s(&tmb, &t);
+#else
+                        localtime_r(&t, &tmb);
+#endif
+                        char d[16];
+                        std::strftime(d, sizeof(d), "%Y-%m-%d", &tmb);
+                        by_day[d] += 1500;
+                    }
+                }
+                std::filesystem::path bfslog = std::filesystem::path(home)
+                    / ".icmg" / "bfs-queries.jsonl";
+                if (std::filesystem::exists(bfslog)) {
+                    std::ifstream lf(bfslog);
+                    std::string line;
+                    while (std::getline(lf, line)) {
+                        auto p = line.find("\"ts\":");
+                        if (p == std::string::npos) continue;
+                        int64_t ts = 0;
+                        try { ts = std::stoll(line.substr(p + 5)); } catch (...) { continue; }
+                        if (ts < cutoff) continue;
+                        time_t t = (time_t)ts;
+                        std::tm tmb{};
+#ifdef _WIN32
+                        localtime_s(&tmb, &t);
+#else
+                        localtime_r(&t, &tmb);
+#endif
+                        char d[16];
+                        std::strftime(d, sizeof(d), "%Y-%m-%d", &tmb);
+                        by_day[d] += 2000;
+                    }
+                }
+            }
+        }
 
         if (by_day.empty()) {
             os << "<div class='card' style='text-align:center;color:#8b949e;padding:40px'>"

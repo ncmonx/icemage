@@ -78,6 +78,39 @@ private:
     }
 
     int doStart() {
+        // v1.27.3: stop existing service first so post-upgrade the OLD
+        // binary's service (still holding `Global\icmg-service-<USER>`
+        // mutex from CreateMutexA in service_loop.cpp) gets terminated
+        // before we spawn the new binary's service. Without this step,
+        // `update --apply` left the OLD pid still running — popup-killer
+        // thread + cron tick + exec_server pipe all stayed on the stale
+        // binary until next user logon.
+        fs::path pidf = core::servicePidPath();
+        if (fs::exists(pidf)) {
+            std::ifstream f(pidf);
+            long long pid = 0;
+            f >> pid;
+            f.close();
+            if (pid > 0) {
+#ifdef _WIN32
+                std::string kc = "taskkill /PID " + std::to_string(pid) + " /F > nul 2>&1";
+#else
+                std::string kc = "kill -TERM " + std::to_string(pid) + " 2>/dev/null";
+#endif
+                (void)core::safeExecShell(kc, false, 5000);
+                std::cout << "icmg service: stopped old PID " << pid << "\n";
+                // Pause so mutex + pidfile release before replacement
+                // tries to acquire them.
+#ifdef _WIN32
+                Sleep(500);
+#else
+                usleep(500000);
+#endif
+                std::error_code rc;
+                fs::remove(pidf, rc);
+            }
+        }
+
         // Spawn `icmg service run` as detached background process.
 #ifdef _WIN32
         std::string cmd = "MSYS_NO_PATHCONV=1 cmd /c start \"\" /B icmg service run";
