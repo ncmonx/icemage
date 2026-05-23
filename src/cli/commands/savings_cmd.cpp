@@ -496,6 +496,12 @@ private:
 
     static RealSessionData fetchRealSessionData() {
         RealSessionData out;
+        // v1.27.1: env-var short-circuit for tests + CI. Bypasses the
+        // `icmg context-budget --all-sessions` subprocess which on Win
+        // dev machines with N×MB transcript JSONLs takes ~5min (NTFS
+        // small-file I/O + CreateProcess overhead). Set to skip.
+        const char* sk = std::getenv("ICMG_SAVINGS_NO_REAL_SESSIONS");
+        if (sk && *sk && std::string(sk) != "0") return out;
         std::string bin;
 #ifdef _WIN32
         char buf[1024]; DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
