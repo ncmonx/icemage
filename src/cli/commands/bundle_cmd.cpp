@@ -92,6 +92,30 @@ public:
         for (auto& a : args) if (!a.empty() && a[0] != '-') { file = a; break; }
         if (file.empty()) { std::cerr << "icmg context: requires <file>\n"; return 1; }
 
+        // v1.28.0 #D fix: tolerate Windows drive-letter paths whose backslash
+        // was stripped by shell escape ("D:\\path" -> "D:path" in bash).
+        if (file.size() >= 2 && file[1] == ':'
+            && ((file[0] >= 'A' && file[0] <= 'Z') || (file[0] >= 'a' && file[0] <= 'z'))
+            && (file.size() == 2 || (file[2] != '/' && file[2] != '\\'))) {
+            file = file.substr(0, 2) + "/" + file.substr(2);
+        }
+        for (auto& c : file) if (c == '\\') c = '/';
+
+        // v1.28.0 #B: --exact-path forces absolute resolution, skips fuzzy.
+        bool exact_path = hasFlag(args, "--exact-path");
+        if (exact_path) {
+            std::error_code _ec_ex;
+            std::filesystem::path _fp_ex(file);
+            if (!_fp_ex.is_absolute()) _fp_ex = std::filesystem::absolute(_fp_ex, _ec_ex);
+            _fp_ex = std::filesystem::weakly_canonical(_fp_ex, _ec_ex);
+            if (!std::filesystem::exists(_fp_ex, _ec_ex)) {
+                std::cerr << "icmg context: --exact-path requires existing file: "
+                          << _fp_ex.string() << "\n";
+                return 1;
+            }
+            file = _fp_ex.string();
+        }
+
         bool no_symbols = hasFlag(args, "--no-symbols");
         bool no_memory  = hasFlag(args, "--no-memory");
         size_t cap = 4096;
@@ -489,6 +513,7 @@ public:
             "  --cache-prefix        Wrap output in prompt-cache markers\n"
             "  --auto-cache          Auto-wrap when output >= 4KB (Phase 67)\n"
             "  --no-compress         Skip auto-compress (Phase 71 — default ON >=1KB)\n"
+            "  --raw                 Alias for --no-compress (v1.28.0)\n"
             "  --compress-aggressive Stronger lossy compress (filler-strip)\n"
             "  --cache-ttl N         Cache TTL seconds (default 3600)\n"
             "  --no-think            Force directive: skip model analysis pass\n"
@@ -841,7 +866,9 @@ public:
         // via --no-compress. Lossless mode; emits compressed body + glossary
         // header so model can interpret aliases. Threshold 6KB (1.5K tok)
         // lower than compressor's internal 8K to trigger more often on pack.
-        bool no_compress = hasFlag(args, "--no-compress");
+        // v1.28.0 #A: `--raw` alias for `--no-compress` (uniform semantic
+        // across icmg cmds: run/ingest/fetch/context all opt out via `--raw`).
+        bool no_compress = hasFlag(args, "--no-compress") || hasFlag(args, "--raw");
         size_t comp_threshold = 1024;
         try { comp_threshold = (size_t)std::stoul(flagValue(args, "--compress-min", "1024")); } catch (...) {}
         if (!no_compress && capped.size() >= comp_threshold) {

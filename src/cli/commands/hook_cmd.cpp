@@ -317,18 +317,36 @@ private:
         return std::string(core::icmgGlobalDir()) + "/session-reads.txt";
     }
 
+    // v1.28.0 #E: dedup with 5-min TTL. Previously session-reads.txt
+    // grew unbounded and any prior-read file was suppressed forever in
+    // the session — even when content had changed. Now each line is
+    // `<unix_ts>\t<path>`; entries older than the TTL window are ignored
+    // on read; legacy untimestamped lines still match once for compat.
+    static constexpr int64_t kReadDedupTTL = 300;  // 5 min
+
     static bool isFileRead(const std::string& p) {
         std::ifstream f(sessionReadsPath());
         if (!f) return false;
+        int64_t now = (int64_t)std::time(nullptr);
         std::string line;
-        while (std::getline(f, line))
-            if (line == p) return true;
+        while (std::getline(f, line)) {
+            auto tab = line.find('\t');
+            if (tab == std::string::npos) {
+                // Legacy untimestamped entry — match path, treat as fresh once.
+                if (line == p) return true;
+                continue;
+            }
+            int64_t ts = 0;
+            try { ts = std::stoll(line.substr(0, tab)); } catch (...) { continue; }
+            if (now - ts > kReadDedupTTL) continue;
+            if (line.substr(tab + 1) == p) return true;
+        }
         return false;
     }
 
     static void markFileRead(const std::string& p) {
         std::ofstream f(sessionReadsPath(), std::ios::app);
-        if (f) f << p << "\n";
+        if (f) f << (int64_t)std::time(nullptr) << "\t" << p << "\n";
     }
 
     // T1: Session-dedup for injected memory/context node IDs.

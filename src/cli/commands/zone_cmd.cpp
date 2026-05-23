@@ -69,6 +69,30 @@ public:
     std::string name()        const override { return "zone-add"; }
     std::string description() const override { return "Add path glob → zone mapping"; }
 
+    // v1.28.0 #H: brace expansion `menus/{a,b,c}.vue` → 3 separate rules.
+    // ZoneResolver glob matcher does not parse braces, so pre-expand here.
+    static std::vector<std::string> braceExpand(const std::string& p) {
+        std::vector<std::string> out;
+        auto lb = p.find('{');
+        if (lb == std::string::npos) { out.push_back(p); return out; }
+        auto rb = p.find('}', lb);
+        if (rb == std::string::npos) { out.push_back(p); return out; }
+        std::string prefix = p.substr(0, lb);
+        std::string suffix = p.substr(rb + 1);
+        std::string body   = p.substr(lb + 1, rb - lb - 1);
+        size_t start = 0;
+        while (start <= body.size()) {
+            auto comma = body.find(',', start);
+            std::string alt = (comma == std::string::npos)
+                                ? body.substr(start)
+                                : body.substr(start, comma - start);
+            for (auto& inner : braceExpand(prefix + alt + suffix)) out.push_back(inner);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        return out;
+    }
+
     int run(const std::vector<std::string>& args) override {
         if (args.size() < 2) {
             std::cerr << "icmg zone add: requires <name> <glob>\n";
@@ -77,8 +101,14 @@ public:
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
         core::ZoneResolver z(db);
-        z.addRule(args[0], args[1]);
-        std::cout << "Zone '" << args[0] << "' → '" << args[1] << "' added.\n";
+        auto expanded = braceExpand(args[1]);
+        for (auto& g : expanded) {
+            z.addRule(args[0], g);
+            std::cout << "Zone '" << args[0] << "' → '" << g << "' added.\n";
+        }
+        if (expanded.size() > 1)
+            std::cout << "  (" << expanded.size()
+                      << " rules from brace expansion)\n";
         return 0;
     }
 };
