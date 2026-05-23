@@ -4,6 +4,26 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.27.3 — Patch release: B:/ popup root cause + savings 2 bugs + service restart + Win ctest 9x + Linux build 6x
+
+### Bug fixes
+
+- **B:/ popup persisting 8 versions** — `src/core/service_install.cpp` VBS launcher invoked gone `icmg-core service run` after v1.19.1 single-binary collapse. wscript //B swallowed the missing-binary error silently ? icmg-service never started ? popup-killer thread (embedded in service_loop) never ran ? recurring "system cannot find drive specified" popup blocked AI prompt processing. Fix: VBS now invokes `icmg service run`.
+- **Savings Active Users opt-in default** — `ICMG_SAVINGS_ALL_USERS` flipped OFF ? ON. Shared-server installs (typical) now aggregate all users by default; set =0 to opt-out.
+- **Savings daily-chart sum mismatch Total** — `emitDailyChart` previously queried only 3 telemetry tables. Total row sums 6 sources (tool_invocations + compression_telemetry + thinking_telemetry + token_receipts + strict-denials.jsonl + bfs-queries.jsonl). Daily chart now matches.
+- **Service restart on `update --apply`** — `service start` previously spawned new without killing old. Mutex `Global\icmg-service-<USER>` kept old service alive on stale binary. Fix: `doStart` taskkills existing PID + 500ms wait + spawn ? atomic restart.
+
+### Perf
+
+- **Win ctest 276s ? 32s (~9×)** — `test_savings_user_panel` was scanning live `~/.claude/projects/*.jsonl` (56 sessions × MB) via cmd-\>run subprocess. NTFS small-file I/O + CreateProcess overhead made it 302s of total. New `ICMG_SAVINGS_NO_REAL_SESSIONS` env-var short-circuits the heavy fetch. `EmptyHomeEnv` RAII in test.
+- **Linux WSL build 40min ? 7min (~6×)** — `scripts/release-linux-fast.sh` rsyncs source to `/tmp` ext4 before build (vs direct on /mnt/d 9P FS @ 63MB/s sequential, ~50× small-ops penalty). PCH safely ENABLED on ext4 (no /mnt/d thrash). Full `--parallel nproc`. `CMakePresets.json` separates windows / linux-native / linux-wsl-mnt configurations.
+
+### Verification
+
+Windows 120/120 ctest (42s); Linux 120/120 ctest (~2s on ext4 native).
+
+Toolchain prereq (v1.27.0 carry-over): `C:/msys64/mingw64/bin` on Windows USER PATH (not just bash $PATH). Git Bash mingw shim at `C:/Program Files/Git/mingw64/bin` was shadowing cc1 DLL chain via CreateProcess, surfacing as NTSTATUS 0xC0000135.
+
 ## 1.27.0 — Mega bundle: TDD debt + template engine + tree-sitter grammars + parametric coverage
 
 5 phases delivered (1 deferred). Closes v1.24/v1.25 TDD gaps, ships deferred features.
