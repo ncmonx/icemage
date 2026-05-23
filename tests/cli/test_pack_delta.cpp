@@ -48,7 +48,5 @@ TEST("delta: empty cur → empty result") {
     ASSERT_TRUE(d.empty());
 }
 
-int main() {
-    std::cout << "=== pack delta tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

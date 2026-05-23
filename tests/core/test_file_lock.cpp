@@ -44,7 +44,5 @@ TEST("file_lock: release on destructor") {
     ASSERT_FALSE(fs::exists(lockf));
 }
 
-int main() {
-    std::cout << "=== file_lock tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

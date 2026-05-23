@@ -73,7 +73,5 @@ TEST("applyHardLimit: over limit — truncates") {
     ASSERT_CONTAINS(result.output, "truncated at");
 }
 
-int main() {
-    std::cout << "=== filter_utils tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

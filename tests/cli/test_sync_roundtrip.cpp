@@ -181,7 +181,5 @@ TEST("sync: empty table produces empty JSONL") {
     ASSERT_TRUE(trimmed.empty());
 }
 
-int main() {
-    std::cout << "=== sync roundtrip tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

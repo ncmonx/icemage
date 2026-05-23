@@ -55,7 +55,5 @@ TEST("review: file stem extraction (template lookup key)") {
     ASSERT_EQ(stem("README"), std::string("README"));
 }
 
-int main() {
-    std::cout << "=== review tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

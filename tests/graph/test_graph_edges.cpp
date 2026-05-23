@@ -374,7 +374,5 @@ TEST("designer grouping: standalone cs with no companions gets no group_id") {
 
 // ---------------------------------------------------------------------------
 
-int main() {
-    std::cout << "=== Graph edge resolution tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

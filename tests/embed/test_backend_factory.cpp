@@ -69,7 +69,5 @@ TEST("factory: auto falls to python when onnx model missing") {
     ASSERT_TRUE(decide(a) == Choice::Python);
 }
 
-int main() {
-    std::cout << "=== embedder factory tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

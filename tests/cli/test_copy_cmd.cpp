@@ -124,7 +124,5 @@ TEST("copy: TTL expires_at is set correctly for given days") {
     ASSERT_TRUE(expires_at < now + (int64_t)8 * 86400);
 }
 
-int main() {
-    std::cout << "=== copy_cmd + TTL tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

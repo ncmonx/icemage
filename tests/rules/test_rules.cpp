@@ -185,7 +185,5 @@ TEST("resolver: no conflicts when unique names") {
     ASSERT_TRUE(confs.empty());
 }
 
-int main() {
-    std::cout << "=== Rules tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

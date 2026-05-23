@@ -39,4 +39,5 @@ TEST("hook_cmd: empty args returns help-shaped exit (no crash)") {
     ASSERT_TRUE(true);
 }
 
+
 int main() { return icmg::test::run_all(); }

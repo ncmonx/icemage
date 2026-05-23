@@ -340,7 +340,5 @@ TEST("import: transaction rollback on bad JSON") {
     fs::remove(path);
 }
 
-int main() {
-    std::cout << "=== Import/Export tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

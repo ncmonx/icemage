@@ -130,7 +130,5 @@ TEST("embed_store: getMany returns matching ids only") {
     ASSERT_EQ(es.count("graph"), 0);
 }
 
-int main() {
-    std::cout << "=== embed::Embedder + EmbedStore tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

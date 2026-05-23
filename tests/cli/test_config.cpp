@@ -84,7 +84,5 @@ TEST("config: atomic-write pattern (temp + rename)") {
     fs::remove(target);
 }
 
-int main() {
-    std::cout << "=== config tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

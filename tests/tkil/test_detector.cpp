@@ -121,7 +121,5 @@ TEST("detector: empty → Default") {
     ASSERT_EQ(d.detect(""), CmdType::Default);
 }
 
-int main() {
-    std::cout << "=== Detector tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

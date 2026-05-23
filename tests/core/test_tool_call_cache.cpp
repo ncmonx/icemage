@@ -90,7 +90,5 @@ TEST("cache: hit increments hit_count") {
     ASSERT_TRUE(s.hits >= 2);
 }
 
-int main() {
-    std::cout << "=== tool_call_cache tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

@@ -170,4 +170,5 @@ TEST("skill_chunks.embedding: multiple chunks can have mixed NULL and blob") {
 // blob-length tests above already exercise both the ONNX-on path (through
 // upsertChunks calling the real backend) and the NULL path (empty content).
 
+
 int main() { return icmg::test::run_all(); }

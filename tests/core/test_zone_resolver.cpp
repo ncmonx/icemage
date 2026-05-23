@@ -113,7 +113,5 @@ TEST("zone resolver: assign bulk re-tags matching paths only") {
     ASSERT_EQ(legacy_count, 2);
 }
 
-int main() {
-    std::cout << "=== zone resolver tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

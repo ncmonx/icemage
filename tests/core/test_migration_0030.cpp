@@ -75,4 +75,5 @@ TEST("migration_0030: idx_rules_bank_active index exists") {
     ASSERT_TRUE(indexExists(db, "idx_rules_bank_active"));
 }
 
+
 int main() { return icmg::test::run_all(); }

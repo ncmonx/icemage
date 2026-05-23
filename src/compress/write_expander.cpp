@@ -13,6 +13,9 @@
 
 #include "write_expander.hpp"
 #include "compressor.hpp"
+#include "template_engine.hpp"
+#include "../core/config.hpp"
+#include "../core/db.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -123,10 +126,13 @@ std::string applyUnifiedDiff(const std::string& base,
         while (base_i < target && base_i < base_lines.size()) {
             out.push_back(base_lines[base_i++]);
         }
-        // Apply hunk body.
+        // Apply hunk body. v1.27.0 fix: loop until next `@@` header or end —
+        // previous `old_seen < old_count` exited before trailing `+` lines
+        // were appended when the hunk was `-X` followed by `+Y` with old_count=1.
         ++i;
         int old_seen = 0;
-        while (i < diff_lines.size() && old_seen < old_count) {
+        (void)old_seen;
+        while (i < diff_lines.size()) {
             const std::string& hl = diff_lines[i];
             if (hl.size() >= 2 && hl[0] == '@' && hl[1] == '@') break;
             char tag = hl.empty() ? ' ' : hl[0];
@@ -298,14 +304,63 @@ ExpandResult expandCompressedWrite(const std::string& ai_content,
 
     // ---- @@ICMG-TPL id=<name>@@ -----------------------------------------
     if (startsWith(first, "@@ICMG-TPL")) {
-        // Template-fill not yet implemented (requires style_patterns DB lookup
-        // + slot-fill engine). For v1.25.0 we pass-through and log so the
-        // feature surface exists; full expander ships in a follow-up.
-        res.ok = false;
+        // v1.27.0 (Phase 2): style_patterns DB lookup + slot-fill via
+        // template_engine::applyTemplate. Body lines after the header are
+        // the JSON slot map.
         res.mode = "template";
-        res.error = "ICMG-TPL expansion not yet implemented in v1.25.0 (W3 partial)";
-        res.content = ai_content;
-        res.bytes_out = res.bytes_in;
+        // Extract id=<name> from header.
+        std::string tpl_id;
+        auto eq = first.find("id=");
+        if (eq != std::string::npos) {
+            size_t end = first.find_first_of(" @", eq + 3);
+            tpl_id = first.substr(eq + 3,
+                end == std::string::npos ? std::string::npos : end - eq - 3);
+        }
+        if (tpl_id.empty()) {
+            res.ok = false;
+            res.error = "ICMG-TPL requires id=<name> in header";
+            res.content = ai_content;
+            res.bytes_out = res.bytes_in;
+            return res;
+        }
+        // Body = JSON slot map (lines 1..end joined).
+        std::string slots_json;
+        for (size_t i = 1; i < lines.size(); ++i) {
+            slots_json += lines[i];
+            if (i + 1 < lines.size()) slots_json += '\n';
+        }
+        // DB lookup: project DB for layout_tree.
+        std::string layout_tree;
+        try {
+            core::Db db(core::Config::instance().projectDbPath("."));
+            db.query("SELECT layout_tree FROM style_patterns WHERE name = ?",
+                     {tpl_id},
+                     [&](const core::Row& r) {
+                         if (!r.empty()) layout_tree = r[0];
+                     });
+        } catch (...) {
+            res.ok = false;
+            res.error = "ICMG-TPL DB lookup failed for id=" + tpl_id;
+            res.content = ai_content;
+            res.bytes_out = res.bytes_in;
+            return res;
+        }
+        if (layout_tree.empty()) {
+            res.ok = false;
+            res.error = "ICMG-TPL pattern not found: " + tpl_id;
+            res.content = ai_content;
+            res.bytes_out = res.bytes_in;
+            return res;
+        }
+        std::string err;
+        res.content = applyTemplate(layout_tree, slots_json, &err);
+        if (!err.empty()) {
+            // Subst attempted; slots-json parse failed, layout_tree returned
+            // unchanged. Mark ok=false so caller knows to fall back.
+            res.ok = false;
+            res.error = err;
+        }
+        res.bytes_out = (int)res.content.size();
         return res;
     }
 

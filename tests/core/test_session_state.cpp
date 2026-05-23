@@ -32,7 +32,5 @@ TEST("session_state: clear resets all keys") {
     ASSERT_EQ(SessionState::instance().size(), 0u);
 }
 
-int main() {
-    std::cout << "=== session_state tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

@@ -108,4 +108,5 @@ TEST("migration_0029: status CHECK constraint rejects invalid value") {
     ASSERT_TRUE(threw);
 }
 
+
 int main() { return icmg::test::run_all(); }

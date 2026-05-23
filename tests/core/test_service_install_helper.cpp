@@ -49,4 +49,5 @@ TEST("installResidentService — writes VBS launcher on Windows") {
 }
 #endif
 
+
 int main() { return icmg::test::run_all(); }

@@ -102,7 +102,5 @@ TEST("csharp symbol: body_hash differs when body changes") {
     ASSERT_TRUE(h1 != h2);
 }
 
-int main() {
-    std::cout << "=== C# symbol extractor tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

@@ -63,7 +63,5 @@ TEST("treesitter-py: build skipped") { ASSERT_TRUE(true); }
 
 #endif
 
-int main() {
-    std::cout << "=== tree-sitter Python tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

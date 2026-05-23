@@ -62,7 +62,5 @@ TEST("index: since window passed to graph update") {
     ASSERT_TRUE(s[0].cmd.find("--since 7d") != std::string::npos);
 }
 
-int main() {
-    std::cout << "=== index tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

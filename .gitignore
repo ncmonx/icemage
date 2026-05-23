@@ -37,10 +37,22 @@ context-snapshot.json
 
 # Release artifacts (generated, upload to GitHub manually)
 icmg-*.zip
+icmg-*.tar.gz
 icmg-*.sha256
 icmg-*.zip.sha256
+icmg-*.tar.gz.sha256
 dist/
 savings.html
+savings-*.html
+# Alt build dirs (CI / benchmark / Linux WSL)
+build-linux/
+build_linux/
+build_bench/
+# Build logs
+*.log
+bld*.log
+ctest*.log
+build_errors.log
 
 # Claude project + internal planning (not public)
 .claude/

@@ -142,7 +142,5 @@ TEST("parity: kind filter (verify on raw set)") {
     ASSERT_EQ(missing, 0);
 }
 
-int main() {
-    std::cout << "=== parity tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

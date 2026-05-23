@@ -37,4 +37,5 @@ TEST("bench_cmd: unknown action returns non-zero (no crash)") {
     ASSERT_TRUE(rc != INT_MIN); // any value OK; just verify no throw
 }
 
+
 int main() { return icmg::test::run_all(); }

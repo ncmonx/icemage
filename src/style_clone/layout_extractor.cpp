@@ -104,18 +104,32 @@ std::string detectLang(const std::string& path) {
 // false in v1.24.0 — grammar vendoring (vue v0.2.1 + html + svelte source
 // drops + CMake static-lib targets) deferred to a follow-up patch within
 // the v1.24.x cycle. Public probe so users can detect capability.
-bool hasTreeSitterGrammar(const std::string& lang) {
-#if defined(ICMG_USE_TREESITTER_VUE) || defined(ICMG_USE_TREESITTER_HTML) \
- || defined(ICMG_USE_TREESITTER_SVELTE)
-    // When grammar lib is compiled in, an extern `tree_sitter_<lang>()`
-    // symbol exists. v1.24.0 ships none of these; the macro guards keep
-    // the dispatch wired for the follow-up grammar drop.
-    (void)lang;
-    return false;
-#else
-    (void)lang;
-    return false;
+// v1.27.0 Phase 3: grammars vendored in-tree under third_party/.
+// CMake sets ICMG_HAS_TREESITTER_VUE/HTML/SVELTE when parser.c is found.
+extern "C" {
+#ifdef ICMG_HAS_TREESITTER_VUE
+const void* tree_sitter_vue(void);
 #endif
+#ifdef ICMG_HAS_TREESITTER_HTML
+const void* tree_sitter_html(void);
+#endif
+#ifdef ICMG_HAS_TREESITTER_SVELTE
+const void* tree_sitter_svelte(void);
+#endif
+}
+
+bool hasTreeSitterGrammar(const std::string& lang) {
+#ifdef ICMG_HAS_TREESITTER_VUE
+    if (lang == "vue") return tree_sitter_vue() != nullptr;
+#endif
+#ifdef ICMG_HAS_TREESITTER_HTML
+    if (lang == "html") return tree_sitter_html() != nullptr;
+#endif
+#ifdef ICMG_HAS_TREESITTER_SVELTE
+    if (lang == "svelte") return tree_sitter_svelte() != nullptr;
+#endif
+    (void)lang;
+    return false;
 }
 
 LayoutTree extractLayout(const std::string& source, const std::string& lang) {

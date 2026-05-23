@@ -77,7 +77,5 @@ TEST("ingest_history_cmd: absent or broken gh exits 0 with warning to stderr") {
     ASSERT_TRUE(!err.empty());
 }
 
-int main() {
-    std::cout << "=== ingest_history_cmd tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

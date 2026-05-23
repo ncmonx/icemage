@@ -249,7 +249,5 @@ TEST("sp_store: list filtered by db_type") {
     ASSERT_EQ(mssql_only.size(), 1u);
 }
 
-int main() {
-    std::cout << "=== Stored Procedure Engine tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

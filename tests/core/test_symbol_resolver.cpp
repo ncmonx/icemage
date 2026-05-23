@@ -157,4 +157,5 @@ TEST("returns UNKNOWN for ambiguous file match (multiple files with same stem)")
     ASSERT_TRUE(r.kind != SymbolKind::FILE);
 }
 
+
 int main() { return icmg::test::run_all(); }

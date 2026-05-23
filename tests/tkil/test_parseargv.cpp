@@ -86,7 +86,5 @@ TEST("parseArgv: backslash Windows path with spaces stays one token") {
     ASSERT_EQ(argv[2], std::string("D:\\Data Kerja\\my file.cs"));
 }
 
-int main() {
-    std::cout << "=== parseArgv tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

@@ -127,7 +127,5 @@ TEST("parallel: fail_fast=false runs all tasks despite failures") {
     ASSERT_FALSE(r[1].skipped);
 }
 
-int main() {
-    std::cout << "=== parallel tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

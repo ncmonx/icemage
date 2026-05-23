@@ -70,7 +70,5 @@ TEST("RefRegistry: state persists across instances same day") {
     }
 }
 
-int main() {
-    std::cout << "=== ref_registry tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

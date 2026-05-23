@@ -54,4 +54,5 @@ TEST("compressAst on python def elides body") {
     ASSERT_NOT_CONTAINS(out, "a = 1");
 }
 
+
 int main() { return icmg::test::run_all(); }

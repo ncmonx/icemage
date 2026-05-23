@@ -56,4 +56,5 @@ TEST("rules_store: re-upsert same path updates content and updated_at") {
     ASSERT_EQ(after[0].tag,     std::string("v2"));
 }
 
+
 int main() { return icmg::test::run_all(); }

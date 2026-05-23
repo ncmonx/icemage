@@ -56,7 +56,5 @@ TEST("zone config: dotted key with zone prefix detection") {
     ASSERT_TRUE(zones.count("ui") == 1);
 }
 
-int main() {
-    std::cout << "=== zone config tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

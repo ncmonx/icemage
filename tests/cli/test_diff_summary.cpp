@@ -197,7 +197,5 @@ TEST("diff-summary: full diff snippet parses 2 files + correct hunk ranges") {
     ASSERT_EQ(ranges[1].end, 10);   // no comma → len=1
 }
 
-int main() {
-    std::cout << "=== diff-summary tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

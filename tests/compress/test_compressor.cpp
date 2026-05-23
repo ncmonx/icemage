@@ -112,7 +112,5 @@ TEST("compressor: estimateTokens monotonic") {
     ASSERT_TRUE(b > a);
 }
 
-int main() {
-    std::cout << "=== compressor tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

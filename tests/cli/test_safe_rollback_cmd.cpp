@@ -48,7 +48,5 @@ TEST("safe-rollback: --help returns 0") {
     ASSERT_EQ(rc, 0);
 }
 
-int main() {
-    std::cout << "=== safe_rollback_cmd tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

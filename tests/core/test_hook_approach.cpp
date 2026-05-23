@@ -92,7 +92,5 @@ TEST("runPostToolUseTestOutcome ctest success signature no-throw") {
     ASSERT_EQ(out, std::string(""));
 }
 
-int main() {
-    std::cout << "=== hook_approach tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

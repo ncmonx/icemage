@@ -107,7 +107,5 @@ TEST("mcp resources: session lookup") {
     ASSERT_CONTAINS(j["snapshot"].get<std::string>(), "step");
 }
 
-int main() {
-    std::cout << "=== mcp::resources tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

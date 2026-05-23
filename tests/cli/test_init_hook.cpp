@@ -122,7 +122,5 @@ TEST("init_hook: file round-trip preserves other keys") {
     std::error_code ec; fs::remove(tmp, ec);
 }
 
-int main() {
-    std::cout << "=== init_hook tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

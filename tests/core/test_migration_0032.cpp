@@ -53,4 +53,5 @@ TEST("migration_0032: CHECK constraint rejects invalid outcome") {
     ASSERT_TRUE(threw);
 }
 
+
 int main() { return icmg::test::run_all(); }

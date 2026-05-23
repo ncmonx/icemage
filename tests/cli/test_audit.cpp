@@ -78,7 +78,5 @@ TEST("audit: verifications pass/fail in window") {
     ASSERT_EQ(f, 2);
 }
 
-int main() {
-    std::cout << "=== audit tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

@@ -99,7 +99,5 @@ TEST("ageDecay: created_at=0 (unknown) returns 1.0 regardless of tier") {
     ASSERT_TRUE(std::fabs(s.ageDecay(0, 3) - 1.0) < 1e-9);
 }
 
-int main() {
-    std::cout << "=== Tier-aware ageDecay (M2) tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

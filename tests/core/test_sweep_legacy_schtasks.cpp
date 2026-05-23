@@ -34,4 +34,5 @@ TEST("icmgTaskHash: distinct projects → distinct hashes") {
     ASSERT_TRUE(h1 != h2);
 }
 
+
 int main() { return icmg::test::run_all(); }

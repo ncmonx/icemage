@@ -76,7 +76,5 @@ TEST("lint-style: ref-mode using-set diff") {
     ASSERT_EQ(missing, 1);
 }
 
-int main() {
-    std::cout << "=== lint-style tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

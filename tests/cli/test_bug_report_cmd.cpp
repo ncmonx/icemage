@@ -33,4 +33,5 @@ TEST("bug-report --list-pending no-pending returns 0") {
     ASSERT_EQ(rc, 0);
 }
 
+
 int main() { return icmg::test::run_all(); }

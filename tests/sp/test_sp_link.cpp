@@ -70,7 +70,5 @@ TEST("sp_link: real-world snippet with WITH/AS clause") {
     ASSERT_TRUE(h.count("sp_Inner2") == 1);
 }
 
-int main() {
-    std::cout << "=== sp link regex tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

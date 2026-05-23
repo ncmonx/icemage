@@ -277,4 +277,5 @@ TEST("framing: parseFramed handles malformed header (missing \\r\\n\\r\\n)") {
     ASSERT_EQ(out, wire); // unchanged (treated as legacy)
 }
 
+
 int main() { return icmg::test::run_all(); }

@@ -118,4 +118,5 @@ TEST("skill_index: count returns correct skill count") {
     ASSERT_EQ(store.count("cold"),  0);
 }
 
+
 int main() { return icmg::test::run_all(); }

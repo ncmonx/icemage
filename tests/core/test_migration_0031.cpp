@@ -55,4 +55,5 @@ TEST("migration_0031: PRIMARY KEY rejects duplicate path") {
     ASSERT_TRUE(threw);
 }
 
+
 int main() { return icmg::test::run_all(); }

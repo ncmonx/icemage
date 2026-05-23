@@ -137,7 +137,5 @@ TEST("template: manifest schema build basic shape") {
     ASSERT_CONTAINS(s, "structural_markers");
 }
 
-int main() {
-    std::cout << "=== template tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

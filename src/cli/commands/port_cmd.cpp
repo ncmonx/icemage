@@ -22,6 +22,7 @@
 // endianness pitfalls. Compression can be a v1.25 optimization.
 
 #include "../base_command.hpp"
+#include "port_artifact.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -47,29 +48,8 @@ namespace icmg::cli {
 
 namespace {
 
-// FNV-1a 128-bit (two parallel 64-bit streams). NOT crypto — corruption-
-// detection only. Matches core/audit_log.cpp approach for consistency.
-std::string fnv128hex(const std::string& msg) {
-    auto fnv = [](const std::string& s, uint64_t init) {
-        uint64_t h = init;
-        for (unsigned char c : s) { h ^= c; h *= 1099511628211ULL; }
-        return h;
-    };
-    uint64_t h1 = fnv(msg, 14695981039346656037ULL);
-    uint64_t h2 = fnv(msg + std::string(msg.rbegin(), msg.rend()),
-                       1099511628211ULL);
-    char raw[16];
-    std::memcpy(raw, &h1, 8);
-    std::memcpy(raw + 8, &h2, 8);
-    static const char* hex = "0123456789abcdef";
-    std::string out;
-    out.reserve(32);
-    for (unsigned char c : std::string(raw, 16)) {
-        out.push_back(hex[c >> 4]);
-        out.push_back(hex[c & 0x0f]);
-    }
-    return out;
-}
+// v1.27.0: fnv128hex / parseArtifact / serializeArtifact moved to
+// port_artifact.hpp for unit-test surface. Use port_artifact::* below.
 
 // Glob expansion. Supports `*` and `?` within filename, `**` for recursive,
 // `{a,b,c}` brace expansion. Returns absolute paths under cwd.
@@ -156,68 +136,6 @@ void writeFileAll(const fs::path& p, const std::string& content) {
     fs::create_directories(p.parent_path(), ec);
     std::ofstream f(p, std::ios::binary);
     f << content;
-}
-
-// Build artifact bytes from JSON payload.
-std::string buildArtifact(const std::string& payload_json,
-                          int file_count,
-                          int64_t raw_bytes) {
-    std::string hash = fnv128hex(payload_json);
-    std::ostringstream out;
-    out << "ICMG-PORT v1\n"
-        << "FILES: " << file_count << "\n"
-        << "RAW: " << raw_bytes << "\n"
-        << "HASH: " << hash << "\n"
-        << "---\n"
-        << payload_json;
-    return out.str();
-}
-
-struct ArtifactParse {
-    bool ok = false;
-    std::string error;
-    int files = 0;
-    int64_t raw_bytes = 0;
-    std::string hash;
-    std::string payload;
-};
-
-ArtifactParse parseArtifact(const std::string& blob) {
-    ArtifactParse out;
-    auto first_nl = blob.find('\n');
-    if (first_nl == std::string::npos
-        || blob.substr(0, first_nl) != "ICMG-PORT v1") {
-        out.error = "bad magic / wrong version";
-        return out;
-    }
-    auto body_start = blob.find("\n---\n");
-    if (body_start == std::string::npos) {
-        out.error = "missing payload separator";
-        return out;
-    }
-    std::string header = blob.substr(0, body_start);
-    out.payload = blob.substr(body_start + 5);
-    // Parse header K: V lines.
-    std::stringstream hss(header);
-    std::string line;
-    while (std::getline(hss, line)) {
-        auto colon = line.find(": ");
-        if (colon == std::string::npos) continue;
-        std::string k = line.substr(0, colon);
-        std::string v = line.substr(colon + 2);
-        if (k == "FILES") { try { out.files = std::stoi(v); } catch (...) {} }
-        else if (k == "RAW") { try { out.raw_bytes = std::stoll(v); } catch (...) {} }
-        else if (k == "HASH") out.hash = v;
-    }
-    // Verify hash.
-    std::string actual = fnv128hex(out.payload);
-    if (actual != out.hash) {
-        out.error = "hash mismatch — artifact corrupted (expected "
-                  + out.hash + ", got " + actual + ")";
-        return out;
-    }
-    out.ok = true;
-    return out;
 }
 
 }  // namespace
@@ -321,9 +239,9 @@ private:
         }
 
         std::string payload_str = payload.dump();
-        std::string artifact = buildArtifact(payload_str, (int)payload["files"].size(),
-                                              raw_bytes);
-        std::string sha = fnv128hex(payload_str);
+        std::string artifact = port_artifact::serializeArtifact(
+            name, (int)payload["files"].size(), raw_bytes, payload_str);
+        std::string sha = port_artifact::fnv128hex(payload_str);
 
         writeFileAll(fs::path(out_path), artifact);
 
@@ -390,7 +308,7 @@ private:
             std::cerr << "port apply: artifact empty or unreadable: " << art_path << "\n";
             return 1;
         }
-        auto parsed = parseArtifact(blob);
+        auto parsed = port_artifact::parseArtifact(blob);
         if (!parsed.ok) {
             std::cerr << "port apply: " << parsed.error << "\n";
             return 1;
@@ -463,7 +381,7 @@ private:
         }
 
         // Bump applied_count IF artifact matches a row on this machine.
-        std::string sha = fnv128hex(parsed.payload);
+        std::string sha = port_artifact::fnv128hex(parsed.payload);
         db.run("UPDATE port_bundles SET applied_count = applied_count + 1 "
                "WHERE artifact_sha256 = ?", {sha});
 

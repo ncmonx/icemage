@@ -70,7 +70,5 @@ TEST("treesitter-c: build skipped (ICMG_HAS_TREESITTER not defined)") {
 
 #endif
 
-int main() {
-    std::cout << "=== tree-sitter C extractor tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

@@ -61,7 +61,5 @@ TEST("db: multiple rows returned in order") {
     ASSERT_EQ(vals[2], 30);
 }
 
-int main() {
-    std::cout << "=== core::Db tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

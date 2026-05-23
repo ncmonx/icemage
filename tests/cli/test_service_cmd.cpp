@@ -41,4 +41,5 @@ TEST("service requestStop / shouldStop roundtrip") {
     ASSERT_TRUE(after);
 }
 
+
 int main() { return icmg::test::run_all(); }

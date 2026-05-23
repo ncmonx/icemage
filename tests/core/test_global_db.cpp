@@ -85,7 +85,5 @@ TEST("config: projectDbPath uses override when set") {
     ASSERT_TRUE(cfg.projectDbPath(".").find("data.db") != std::string::npos);
 }
 
-int main() {
-    std::cout << "=== GlobalDb / ProjectContext tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

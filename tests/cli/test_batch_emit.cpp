@@ -131,7 +131,5 @@ TEST("batch: caveman directive prefixes task content (not replaces)") {
     ASSERT_TRUE(cav_pos < task_pos);
 }
 
-int main() {
-    std::cout << "=== batch emit tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

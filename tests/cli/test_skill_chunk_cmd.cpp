@@ -271,7 +271,5 @@ TEST("skill chunk --get returns content for path after reindex") {
     ASSERT_TRUE(!cap_out.str().empty());
 }
 
-int main() {
-    std::cout << "=== skill_chunk_cmd tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

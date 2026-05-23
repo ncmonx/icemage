@@ -117,7 +117,5 @@ TEST("sql: deduped table refs (mentioned twice)") {
     ASSERT_EQ(n, 1);
 }
 
-int main() {
-    std::cout << "=== sql symbol tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

@@ -22,4 +22,5 @@ TEST("skill index nested still registered") {
     ASSERT_TRUE(static_cast<bool>(cmd));
 }
 
+
 int main() { return icmg::test::run_all(); }

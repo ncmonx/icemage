@@ -183,7 +183,5 @@ TEST("abbr: priority — more specific domain wins over 'general'") {
     ASSERT_EQ(got->full_form, std::string("posting order"));
 }
 
-int main() {
-    std::cout << "=== Abbreviation Engine tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

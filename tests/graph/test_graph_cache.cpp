@@ -141,7 +141,5 @@ TEST("graph cache: getNode returns nullopt for unknown path (no caching of misse
     ASSERT_TRUE(found.has_value());
 }
 
-int main() {
-    std::cout << "=== S1 graph cache tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

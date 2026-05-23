@@ -57,7 +57,5 @@ TEST("directive: caveman ultra-terse fragment style") {
     ASSERT_TRUE(c.find("Drop articles") != std::string::npos);
 }
 
-int main() {
-    std::cout << "=== think directive tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

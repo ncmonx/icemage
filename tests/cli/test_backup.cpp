@@ -269,7 +269,5 @@ TEST("backup: listSnaps sorts chronologically by filename") {
     fs::remove_all(tmp);
 }
 
-int main() {
-    std::cout << "=== backup tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

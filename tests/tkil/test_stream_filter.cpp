@@ -80,7 +80,5 @@ TEST("stream: splitLines handles empty string") {
     ASSERT_EQ((int)lines.size(), 0);
 }
 
-int main() {
-    std::cout << "=== stream filter tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

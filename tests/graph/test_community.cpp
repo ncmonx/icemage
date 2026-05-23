@@ -59,7 +59,5 @@ TEST("community: modularity non-negative on connected graph") {
     ASSERT_TRUE(res.modularity >= -1.0 && res.modularity <= 1.0);
 }
 
-int main() {
-    std::cout << "=== community/Louvain tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

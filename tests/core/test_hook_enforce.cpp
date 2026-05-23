@@ -99,4 +99,5 @@ TEST("caveman_inject: ICMG_CAVEMAN_QUIET=1 → empty block") {
     setEnv("ICMG_CAVEMAN_QUIET", "");
 }
 
+
 int main() { return icmg::test::run_all(); }

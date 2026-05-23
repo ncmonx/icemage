@@ -64,4 +64,5 @@ TEST("bundle_secret_scan: pack cmd is registered") {
     ASSERT_TRUE(cmd != nullptr);
 }
 
+
 int main() { return icmg::test::run_all(); }

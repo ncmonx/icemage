@@ -32,4 +32,5 @@ TEST("skill unknown subcommand returns 1") {
     ASSERT_EQ(rc, 1);
 }
 
+
 int main() { return icmg::test::run_all(); }

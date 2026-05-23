@@ -201,7 +201,5 @@ TEST("db filter: dump command falls through unchanged") {
     ASSERT_CONTAINS(r.output, "INSERT INTO foo");
 }
 
-int main() {
-    std::cout << "=== Tkil filters tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

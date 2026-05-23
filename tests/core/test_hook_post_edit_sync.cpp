@@ -71,7 +71,5 @@ TEST("runPostToolUseEditAutoSync valid Write stdin parses without crash") {
     ASSERT_EQ(out, std::string(""));
 }
 
-int main() {
-    std::cout << "=== hook_post_edit_sync tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

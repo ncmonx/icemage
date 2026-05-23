@@ -180,7 +180,5 @@ TEST("kotlin filter: keeps e:/w: prefixes + .kt errors") {
     ASSERT_NOT_CONTAINS(r.output, "UP-TO-DATE");
 }
 
-int main() {
-    std::cout << "=== F3 lang-filter tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

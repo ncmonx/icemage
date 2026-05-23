@@ -36,7 +36,5 @@ TEST("cache: hasCacheWrap detects partial markers correctly") {
     ASSERT_TRUE(hasCacheWrap("<<CACHED>>X<</CACHED>>"));
 }
 
-int main() {
-    std::cout << "=== cache emitter tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

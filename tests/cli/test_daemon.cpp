@@ -213,7 +213,5 @@ TEST("daemon: params k=v parse: key=value split on first '='") {
     ASSERT_EQ(v3, std::string(""));
 }
 
-int main() {
-    std::cout << "=== daemon IPC tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

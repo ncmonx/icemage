@@ -131,7 +131,5 @@ TEST("wordpiece: missing vocab returns false") {
     ASSERT_FALSE(t.ready());
 }
 
-int main() {
-    std::cout << "=== WordPiece tokenizer tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

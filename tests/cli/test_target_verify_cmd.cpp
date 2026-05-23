@@ -53,4 +53,5 @@ TEST("target_verify_cmd: fail-soft on empty DB returns rc=0") {
     ASSERT_EQ(rc, 0);
 }
 
+
 int main() { return icmg::test::run_all(); }

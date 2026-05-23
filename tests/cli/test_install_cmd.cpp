@@ -105,7 +105,5 @@ TEST("install: sentinel absent means no system install") {
     fs::remove_all(dir);
 }
 
-int main() {
-    std::cout << "=== install_cmd tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

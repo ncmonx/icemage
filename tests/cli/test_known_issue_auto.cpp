@@ -64,7 +64,5 @@ TEST("known-issue auto: cluster grouping by fingerprint") {
     ASSERT_EQ(type_count, 1);
 }
 
-int main() {
-    std::cout << "=== known-issue auto tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

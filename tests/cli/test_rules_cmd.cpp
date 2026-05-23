@@ -100,4 +100,5 @@ TEST("rules_cmd: inject emits ## Project rules header when rules present") {
     ASSERT_TRUE(out.find("Always write tests.") != std::string::npos);
 }
 
+
 int main() { return icmg::test::run_all(); }

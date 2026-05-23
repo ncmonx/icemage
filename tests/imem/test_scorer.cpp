@@ -108,7 +108,5 @@ TEST("scorer: soft-deleted node excluded") {
     ASSERT_TRUE(results.empty());
 }
 
-int main() {
-    std::cout << "=== BM25 Scorer tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

@@ -85,4 +85,5 @@ TEST("focus_chain: removeBySession clears session rows") {
     ASSERT_EQ(f_items.size(), static_cast<std::size_t>(1));
 }
 
+
 int main() { return icmg::test::run_all(); }

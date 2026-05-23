@@ -91,7 +91,5 @@ TEST("layout_extractor: self-closing tags don't push onto stack") {
     ASSERT_TRUE(t.root.children[0].children.size() == 2);  // img + p siblings
 }
 
-int main() {
-    std::cout << "=== Layout extractor tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

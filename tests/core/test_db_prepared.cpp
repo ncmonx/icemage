@@ -90,7 +90,5 @@ TEST("no leak on destructor after cached stmts") {
     ASSERT_TRUE(true);
 }
 
-int main() {
-    std::cout << "=== Db prepared-statement LRU tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

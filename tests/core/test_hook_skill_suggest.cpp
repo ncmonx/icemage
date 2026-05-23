@@ -178,7 +178,5 @@ TEST("runUserPromptSkillSuggest below-threshold → empty") {
     ASSERT_EQ(out, std::string(""));
 }
 
-int main() {
-    std::cout << "=== hook_skill_suggest tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

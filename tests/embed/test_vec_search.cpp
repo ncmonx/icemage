@@ -100,7 +100,5 @@ TEST("vec_search: limit respected after rerank") {
     ASSERT_TRUE(r.size() <= 3);
 }
 
-int main() {
-    std::cout << "=== embed::recallSemantic tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

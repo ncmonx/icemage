@@ -68,7 +68,5 @@ TEST("fetch reduce: collapses whitespace") {
     ASSERT_TRUE(out.find("a b c") != std::string::npos);
 }
 
-int main() {
-    std::cout << "=== fetch HTML reduce tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

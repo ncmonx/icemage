@@ -27,6 +27,5 @@ TEST("tokens registered") {
     ASSERT_TRUE(cmd != nullptr);
 }
 
-int main() {
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

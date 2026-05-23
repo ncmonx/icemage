@@ -260,7 +260,5 @@ TEST("html_template: title with special chars escaped") {
     ASSERT_TRUE(html.find("\\\"") != std::string::npos);
 }
 
-int main() {
-    std::cout << "=== Visual Graph tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

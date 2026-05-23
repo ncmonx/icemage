@@ -197,7 +197,5 @@ TEST("data_store: bumpVersion increments minor") {
     ASSERT_EQ(d->version, std::string("1.3"));
 }
 
-int main() {
-    std::cout << "=== DataStore tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

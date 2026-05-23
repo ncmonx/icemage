@@ -62,7 +62,5 @@ TEST("splitLines: ANSI stripped + lines split") {
     ASSERT_EQ(r[1], std::string("two"));
 }
 
-int main() {
-    std::cout << "=== filter pass tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

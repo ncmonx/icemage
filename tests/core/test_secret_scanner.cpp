@@ -121,4 +121,5 @@ TEST("secret_scanner: redact removes all detected secrets") {
     ASSERT_NOT_CONTAINS(redacted, antk);
 }
 
+
 int main() { return icmg::test::run_all(); }

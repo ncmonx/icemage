@@ -376,7 +376,5 @@ TEST("claudemd: restore copies latest backup content to target") {
     fs::remove_all(tmp);
 }
 
-int main() {
-    std::cout << "=== claudemd tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

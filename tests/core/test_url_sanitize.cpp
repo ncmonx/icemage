@@ -69,7 +69,5 @@ TEST("url: rejects newline") {
     ASSERT_FALSE(validateUrl("https://x.com/\nbad", r));
 }
 
-int main() {
-    std::cout << "=== url sanitize tests ===\n";
-    return icmg::test::run_all();
-}
+
+int main() { return icmg::test::run_all(); }

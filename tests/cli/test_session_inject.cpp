@@ -63,4 +63,5 @@ TEST("session-inject: --skip-all runs without crash") {
     }
 }
 
+
 int main() { return icmg::test::run_all(); }
