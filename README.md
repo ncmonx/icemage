@@ -19,7 +19,7 @@
 
 A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
 
-**40 MCP tools · 120/120 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
+**40 MCP tools · 121/121 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
@@ -63,11 +63,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.28.0** — mega bundle of 8 dashboard fixes from user backlog: per-cmd `--raw` alias, `--exact-path` on `icmg context`, **auto-rescan on mtime stale** (no more outdated context snapshots), Windows backslash-strip recovery, dedup TTL 5min, **NEW `icmg read <file> --around <regex>`** (±100 lines around anchor — solves STRICT Read 30-line cap for Edit ops), `grep` per-file count breakdown, zone glob brace `{a,b,c}` expansion. Plus Bug 2 architectural: savings dashboard splits "Outside coverage" into Conversation (inherent) vs Tool-outside-icmg (fixable). MemoryStore lazy ONNX (`cachedEmbedder` singleton) cuts vec_search 5-6s redundant cold-loads. ctest 120→121.
 - **v1.27.3** — patch release: **B:/ popup root cause fixed** (8-version regression — VBS launcher targeted gone `icmg-core` post v1.19.1 single-binary collapse ? popup-killer thread never ran). Savings dashboard fixes: Active Users default ON (multi-user view), daily-chart now sums all 6 telemetry sources matching Total row. Service restart on `update --apply` is now atomic. **Win ctest 276s ? 32s (~9×)** via savings-test isolation. **Linux WSL build 40min ? 7min (~6×)** via ext4 staging script + CMakePresets.
 - **v1.27.0** — mega bundle: TDD debt closure (write_expander 10 tests + port_artifact public header 16 tests), template-fill engine for ICMG-TPL, **tree-sitter vue/html/svelte grammars vendored** (Vue SFC layout extraction now AST-accurate), parametric command-registry coverage covers ~100 cmds in 1 test. Unified-diff applier fix: trailing `+` lines after `old_count` no longer dropped. ctest 115?120.
 - **v1.26.0** — cold build ~50% faster (20 min → 9-10 min) via PCH for `icmg_lib`. PowerShell tool now caught by icmg-first + bash-rewrite hooks (was bypassed before). New `RAW=1` overuse self-correct: each bypass logged, >5/hour → non-blocking nag with preferred icmg alternatives.
 - **v1.25.0** — new **compressed-write protocol**: when enabled (`icmg write-mode on`), the AI emits Write calls as unified diff / glossary / template, and icmg expands them before disk write. Typical incremental edits 70-95% fewer Write tokens, ~4x faster edit cycle. Default off (opt-in). Total 40 MCP tools.
-- **v1.24.0** — new `icmg port` cross-project bundle workflow. "Copy menus A–F from Project 1 to Project 2" now ~8–12× cheaper in tokens than naive read+write: package once, transport one artifact, preview with `--dry-run`, apply with `--path-map` for relocation. 1 new MCP tool (apply only) — total 39. Run `icmg init --force` after upgrade.
 
 ---
 

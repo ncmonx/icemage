@@ -4,6 +4,40 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.28.0 — Mega bundle: 8 dashboard fixes + Bug 2 redesign + lazy ONNX
+
+### Bug fixes + features (8 issues closed from user backlog)
+
+- **#A `--raw` per-cmd alias** — `icmg context --raw` (alias for `--no-compress`). Uniform with existing run/ingest/fetch flag.
+- **#B `--exact-path` on `icmg context`** — skip fuzzy basename match; force absolute resolution; bail loud if missing.
+- **#C Graph auto-rescan on mtime stale** — `fs::last_write_time(file)` vs `node.updated_at + 5s` skew → Scanner reindex inline. No more stale snapshots.
+- **#D Windows path normalize** — `D:\\path` arrives as `D:path` (bash escape strip `\D` etc.). Insert `/` after dangling drive letter + normalize backslash → forward.
+- **#E Dedup TTL 5min** — `session-reads.txt` previously unbounded; any prior-read file suppressed forever in session. Now `<ts>\\t<path>` lines, entries past 300s ignored.
+- **#F NEW `icmg read <file>` with `--around <regex>`** — regex-anchored window cmd. Default ±100 lines around first match, `--all` up to 5, `--lines A-B` legacy slice, `--raw` strips markers. Solves STRICT Read 30-line cap pain for Edit anchors.
+- **#G `icmg run grep` per-file count** — old `N more matches in remaining files` was opaque blob. Now lists per-file counts + total suppressed + partial-file `+N more in <file>` when mid-file truncation occurs.
+- **#H Zone glob brace** — `icmg zone add app \'menus/{a,b,c}.vue\'` creates 3 separate rules (recursive brace pre-expand at zone-add time).
+
+### Bug 2 architectural redesign (v1.27.3 follow-up)
+
+Savings dashboard "Outside coverage" was opaque lump 2.0M. Now 4-card grid:
+- Real session tokens / icmg-covered (%) / **Conversation** (inherent, uncoverable) / **Tool calls outside icmg** (fixable — amber action signal).
+
+### Perf
+
+- **MemoryStore lazy ONNX** (`cachedEmbedder()` singleton) — first call pays 5-6s cold-load, subsequent reuse. test_vec_search 31s → 21s solo. Bigger win arrives with future mono test (#2 deferred).
+
+### TDD
+
+- New `tests/core/test_service_install_vbs.cpp` regression catch for v1.27.2 popup-killer fix (asserts VBS invokes `icmg service run` NOT `icmg-core`).
+
+### Deferred to v1.29.0
+
+- #2 Mono test consolidation — architectural (Scorer::reset + Db lifecycle + 116-file `main()` guard rewrite).
+
+### Verification
+
+Windows 121/121 ctest (38s); Linux 121/121 ctest (~2s on ext4 native).
+
 ## 1.27.3 — Patch release: B:/ popup root cause + savings 2 bugs + service restart + Win ctest 9x + Linux build 6x
 
 ### Bug fixes
