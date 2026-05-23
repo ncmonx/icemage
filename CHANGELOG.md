@@ -4,6 +4,52 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.29.0 - server-2 backlog mega: 7 fixes + 2 new cmds + mono icmg_test working
+
+### Fixes (7/10 from server-2 backlog)
+
+- **#1 exact-first default** on `icmg context` - relative input existing at cwd canonicalizes BEFORE basename fuzzy match.
+- **#5 leash exempt small-scope grep** - `grep PATTERN file` without -r/-R/--recursive AND no `*` glob allows native.
+- **#9 RAW=1 exempt** - `RAW=1 node -e ...` (also python/ruby/perl/deno/bun) AND `<<` heredocs skip telemetry.
+- **#10 ambiguity warning** - bare basename matching >1 graph_node prints top-5 candidates + count.
+- **#11 grep flag mirror** - handled by new `icmg grep` cmd (#4).
+
+### New commands
+
+- **`icmg grep <pattern> [options]`** - thin rg wrapper. Brace `{a,b,c}` in `--glob`, mirror Grep tool flags.
+- **`icmg files [<root>] [--glob] [--type] [--max]`** - recursive enum mirroring Glob tool. Brace, `**`, noise-dir skip.
+
+### Mono test ACTUALLY WORKS (#2)
+
+v1.26.0 mono attempt hung at ~22/115 (Scorer BM25 leak). Fixed:
+- `Scorer::reset()` clears df_, N_, avgdl_, dirty_
+- `betweenTests()` hook in test_main.hpp invokes reset between TESTs
+- 124 per-test `int main()` guarded with `#ifndef ICMG_MONO_TEST`
+- `tests/mono_main.cpp` single main()
+- CMake `option(ICMG_MONO_TEST OFF)` opt-in
+
+Result: **871 TEST() pass in single binary** (5m23s serial). Per-exe still default (122/122 parallel ctest 37s). Mono saves ~5-10min LINK for CI cold builds.
+
+### Carry-overs
+
+- **service.pid diagnostic** - explicit error logging replacing silent try/catch(...). Future failures surface concrete cause.
+- **`ICMG_SERVICE_NO_SCHTASKS=1`** - skip `schtasks /Create` attempt; go straight to Startup folder. No admin-denied stderr noise.
+
+### TDD
+
+- `tests/graph/test_find_basename.cpp` - 6 cases for #10 ambiguity helper.
+
+### Deferred to v1.30+
+
+- #2 Edit-after-context harness bridge (Claude Code harness Read-state private)
+- #6 split graph-search symbol/literal (marginal benefit)
+- #7 context single-file output (visual perception only)
+
+### Verification
+
+Windows 122/122 ctest parallel (37s) + 871/871 mono single binary (5m23s). Linux 122/122 on ext4.
+
+
 ## 1.28.0 — Mega bundle: 8 dashboard fixes + Bug 2 redesign + lazy ONNX
 
 ### Bug fixes + features (8 issues closed from user backlog)
