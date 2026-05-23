@@ -23,6 +23,20 @@ inline std::vector<TestCase>& registry() {
     return r;
 }
 
+// v1.29.0 mono-test groundwork: between-tests hook. In per-exe mode this
+// is a no-op. In mono mode (ICMG_MONO_TEST_RESET defined at compile time
+// for icmg_test target only), it resets shared singletons so each TEST()
+// starts from a clean state. Currently resets Scorer; add more singletons
+// here as mono mode discovers cross-test pollution.
+#ifdef ICMG_MONO_TEST_RESET
+}  // namespace icmg::test (close briefly for forward-decl)
+namespace icmg::imem { class Scorer; }
+namespace icmg::test {
+inline void betweenTests();  // declared, defined in mono_main.cpp
+#else
+inline void betweenTests() { /* no-op in per-exe mode */ }
+#endif
+
 // v1.26.0 (B1): filter-aware run_all. When `filter` non-empty, runs only
 // TEST() cases whose name CONTAINS the filter substring. Single mono test
 // binary (`icmg_test`) dispatches via ctest with --filter <suite-prefix>.
@@ -42,6 +56,10 @@ inline int run_all(const std::string& filter = "") {
                       << "         " << e.what() << "\n";
             ++failed;
         }
+        // v1.29.0 mono-test groundwork: reset singletons between TESTs so
+        // mono icmg_test (when enabled) doesn't leak state. No-op in
+        // per-exe mode (default).
+        betweenTests();
     }
     std::cout << "\n" << passed << " passed, " << failed << " failed";
     if (skipped > 0) std::cout << " (" << skipped << " skipped by filter)";

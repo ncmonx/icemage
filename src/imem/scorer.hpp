@@ -18,6 +18,16 @@ public:
     void invalidate() { dirty_ = true; }
     bool isDirty()    const { return dirty_; }
 
+    // v1.29.0 mono-test groundwork: full state reset for tests sharing one
+    // process. Clears corpus stats so each TEST() starts from a clean
+    // Scorer instance without leaking BM25 weights from prior fit() calls.
+    void reset() {
+        df_.clear();
+        N_ = 0;
+        avgdl_ = 0.0;
+        dirty_ = true;
+    }
+
     // Full composite score for one node.
     double score(const std::string& query, const MemoryNode& node) const;
 
