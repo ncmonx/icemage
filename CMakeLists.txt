@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 1.26.0 LANGUAGES CXX C)
+project(icmg VERSION 1.27.3 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -348,6 +348,29 @@ if(ICMG_USE_TREESITTER)
             message(STATUS "icmg: tree-sitter-python ENABLED")
         endif()
 
+        # v1.27.0 Phase 3: tree-sitter-vue/html/svelte grammars (vendored in-tree).
+        # tag.h scanner needs `tree_sitter/array.h` from runtime lib/src dir.
+        set(_TS_RUNTIME_SRC ${TS_RUNTIME_DIR}/lib/src)
+        foreach(_TS_LANG vue html svelte)
+            set(_TS_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-${_TS_LANG}/src)
+            if(EXISTS ${_TS_DIR}/parser.c)
+                set(_TS_SRC ${_TS_DIR}/parser.c)
+                if(EXISTS ${_TS_DIR}/scanner.c)
+                    list(APPEND _TS_SRC ${_TS_DIR}/scanner.c)
+                endif()
+                add_library(tree_sitter_${_TS_LANG} STATIC ${_TS_SRC})
+                target_include_directories(tree_sitter_${_TS_LANG} PRIVATE
+                    ${_TS_DIR} ${TS_INCLUDE} ${_TS_RUNTIME_SRC})
+                if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+                    target_compile_options(tree_sitter_${_TS_LANG} PRIVATE -w)
+                endif()
+                string(TOUPPER ${_TS_LANG} _TS_UPPER)
+                target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_TREESITTER_${_TS_UPPER}=1)
+                target_link_libraries(icmg_lib PUBLIC tree_sitter_${_TS_LANG})
+                message(STATUS "icmg: tree-sitter-${_TS_LANG} ENABLED")
+            endif()
+        endforeach()
+
         # v0.59.0: vendored libtree-sitter is static � no more libtree-sitter*.dll
         # / wasmtime.dll / libzstd.dll runtime dependency. libwinpthread is still
         # needed (std::thread on MinGW posix-thread model) UNLESS the binary is
@@ -514,6 +537,11 @@ add_icmg_test(test_backend_factory tests/embed/test_backend_factory.cpp)
 add_icmg_test(test_wordpiece tests/embed/test_wordpiece.cpp)
 add_icmg_test(test_treesitter_c tests/graph/test_treesitter_c.cpp)
 add_icmg_test(test_compressor tests/compress/test_compressor.cpp)
+add_icmg_test(test_write_expander tests/compress/test_write_expander.cpp)  # v1.27.0 Phase 1.1
+add_icmg_test(test_port_artifact tests/cli/test_port_artifact.cpp)         # v1.27.0 Phase 1.2
+add_icmg_test(test_template_engine tests/compress/test_template_engine.cpp) # v1.27.0 Phase 2
+add_icmg_test(test_treesitter_grammars tests/style_clone/test_treesitter_grammars.cpp) # v1.27.0 Phase 3
+add_icmg_test(test_command_registry tests/cli/test_command_registry.cpp)   # v1.27.0 Phase 5
 add_icmg_test(test_cache_emitter tests/cli/test_cache_emitter.cpp)
 add_icmg_test(test_treesitter_typescript tests/graph/test_treesitter_typescript.cpp)
 add_icmg_test(test_treesitter_python tests/graph/test_treesitter_python.cpp)
