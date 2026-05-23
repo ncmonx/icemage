@@ -82,4 +82,6 @@ TEST("focus_cmd: unknown subcmd returns rc=1") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

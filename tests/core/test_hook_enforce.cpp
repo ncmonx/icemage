@@ -100,4 +100,6 @@ TEST("caveman_inject: ICMG_CAVEMAN_QUIET=1 → empty block") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

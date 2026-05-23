@@ -33,4 +33,6 @@ TEST("skill unknown subcommand returns 1") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -101,4 +101,6 @@ TEST("rules_cmd: inject emits ## Project rules header when rules present") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

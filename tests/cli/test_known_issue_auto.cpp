@@ -65,4 +65,6 @@ TEST("known-issue auto: cluster grouping by fingerprint") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

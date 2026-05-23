@@ -270,4 +270,6 @@ TEST("backup: listSnaps sorts chronologically by filename") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

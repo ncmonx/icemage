@@ -45,4 +45,6 @@ TEST("file_lock: release on destructor") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

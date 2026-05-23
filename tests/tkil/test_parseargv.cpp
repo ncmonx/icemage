@@ -87,4 +87,6 @@ TEST("parseArgv: backslash Windows path with spaces stays one token") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

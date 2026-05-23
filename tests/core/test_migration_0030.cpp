@@ -76,4 +76,6 @@ TEST("migration_0030: idx_rules_bank_active index exists") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

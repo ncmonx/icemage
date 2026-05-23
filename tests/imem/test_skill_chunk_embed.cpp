@@ -171,4 +171,6 @@ TEST("skill_chunks.embedding: multiple chunks can have mixed NULL and blob") {
 // upsertChunks calling the real backend) and the NULL path (empty content).
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

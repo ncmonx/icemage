@@ -375,4 +375,6 @@ TEST("designer grouping: standalone cs with no companions gets no group_id") {
 // ---------------------------------------------------------------------------
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

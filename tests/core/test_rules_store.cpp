@@ -57,4 +57,6 @@ TEST("rules_store: re-upsert same path updates content and updated_at") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

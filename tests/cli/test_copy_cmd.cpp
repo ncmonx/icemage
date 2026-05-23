@@ -125,4 +125,6 @@ TEST("copy: TTL expires_at is set correctly for given days") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

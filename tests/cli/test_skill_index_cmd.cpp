@@ -23,4 +23,6 @@ TEST("skill index nested still registered") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

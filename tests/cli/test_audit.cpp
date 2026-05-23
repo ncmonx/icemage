@@ -79,4 +79,6 @@ TEST("audit: verifications pass/fail in window") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

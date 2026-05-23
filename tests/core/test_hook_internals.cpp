@@ -174,4 +174,6 @@ TEST("hook_internals: FB2 recordTranscript skips empty input") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -168,4 +168,6 @@ TEST("hookio: empty args prints usage, returns 0") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

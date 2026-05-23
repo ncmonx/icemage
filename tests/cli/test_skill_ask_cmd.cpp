@@ -263,4 +263,6 @@ TEST("skill ask: --top caps output to specified count") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

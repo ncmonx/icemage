@@ -92,4 +92,6 @@ TEST("layout_extractor: self-closing tags don't push onto stack") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

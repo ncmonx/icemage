@@ -38,4 +38,6 @@ TEST("bench_cmd: unknown action returns non-zero (no crash)") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

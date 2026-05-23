@@ -214,4 +214,6 @@ TEST("daemon: params k=v parse: key=value split on first '='") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

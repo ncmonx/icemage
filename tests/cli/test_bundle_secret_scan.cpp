@@ -65,4 +65,6 @@ TEST("bundle_secret_scan: pack cmd is registered") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

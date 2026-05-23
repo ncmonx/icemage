@@ -53,4 +53,6 @@ TEST("treesitter-ts: build skipped") { ASSERT_TRUE(true); }
 #endif
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

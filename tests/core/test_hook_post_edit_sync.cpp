@@ -72,4 +72,6 @@ TEST("runPostToolUseEditAutoSync valid Write stdin parses without crash") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

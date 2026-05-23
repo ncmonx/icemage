@@ -71,4 +71,6 @@ TEST("sp_link: real-world snippet with WITH/AS clause") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

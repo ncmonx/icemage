@@ -122,4 +122,6 @@ TEST("secret_scanner: redact removes all detected secrets") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

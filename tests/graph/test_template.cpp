@@ -138,4 +138,6 @@ TEST("template: manifest schema build basic shape") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

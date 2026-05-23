@@ -131,4 +131,6 @@ TEST("embed_store: getMany returns matching ids only") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

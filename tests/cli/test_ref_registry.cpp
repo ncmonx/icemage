@@ -71,4 +71,6 @@ TEST("RefRegistry: state persists across instances same day") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

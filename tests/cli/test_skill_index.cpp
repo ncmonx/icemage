@@ -119,4 +119,6 @@ TEST("skill_index: count returns correct skill count") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

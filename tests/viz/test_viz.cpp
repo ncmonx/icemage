@@ -261,4 +261,6 @@ TEST("html_template: title with special chars escaped") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

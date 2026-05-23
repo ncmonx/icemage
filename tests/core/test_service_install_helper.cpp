@@ -50,4 +50,6 @@ TEST("installResidentService — writes VBS launcher on Windows") {
 #endif
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

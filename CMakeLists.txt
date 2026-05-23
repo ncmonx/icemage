@@ -489,6 +489,9 @@ macro(add_icmg_test name source_file)
     endif()
     target_include_directories(${name} PRIVATE tests src third_party)
     add_test(NAME ${name} COMMAND ${name})
+    # v1.29.0 #2: collect every per-exe source into ALL_TEST_SOURCES so the
+    # opt-in mono icmg_test target can compile the same set in one binary.
+    set_property(GLOBAL APPEND PROPERTY ICMG_ALL_TEST_SOURCES ${source_file})
 endmacro()
 
 add_icmg_test(test_parseargv    tests/tkil/test_parseargv.cpp)
@@ -622,3 +625,45 @@ add_icmg_test(test_sweep_legacy_schtasks tests/core/test_sweep_legacy_schtasks.c
 add_icmg_test(test_turn_cache           tests/core/test_turn_cache.cpp)
 add_icmg_test(test_inject_dedup         tests/core/test_inject_dedup.cpp)
 add_icmg_test(test_session_inject       tests/cli/test_session_inject.cpp)
+
+# ---------------------------------------------------------------------------
+# v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
+# Build saving target: ~40-50% of test-link phase (each per-exe is ~17MB
+# whole-archive link from libicmg_lib.a — mono only links once).
+#
+# Each tests/**/test_*.cpp has its `int main()` guarded by ICMG_MONO_TEST.
+# When this option is ON, the guards collapse, mono_main.cpp provides the
+# single `main()` + betweenTests() impl that resets Scorer singleton
+# between TESTs (prevents BM25 corpus stat leak that caused the v1.26.0
+# attempt to hang).
+#
+# Per-exe model REMAINS the default (this option is OFF unless flipped).
+# When ON, per-exe targets still build alongside — both work.
+# ---------------------------------------------------------------------------
+option(ICMG_MONO_TEST "Build single icmg_test binary collecting all tests (opt-in)" OFF)
+if(ICMG_MONO_TEST)
+    get_property(_ICMG_TEST_SRCS GLOBAL PROPERTY ICMG_ALL_TEST_SOURCES)
+    message(STATUS "icmg: ICMG_MONO_TEST=ON — building mono icmg_test (${_ICMG_TEST_SRCS} sources collected)")
+    add_executable(icmg_test ${_ICMG_TEST_SRCS} tests/mono_main.cpp)
+    target_compile_definitions(icmg_test PRIVATE
+        ICMG_MONO_TEST=1
+        ICMG_MONO_TEST_RESET=1)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        if(APPLE)
+            target_link_libraries(icmg_test PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:icmg_lib> icmg_lib)
+        else()
+            target_link_libraries(icmg_test PRIVATE
+                -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+        endif()
+        if(WIN32)
+            target_link_libraries(icmg_test PRIVATE
+                -static-libgcc -static-libstdc++
+                -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
+        endif()
+    else()
+        target_link_libraries(icmg_test PRIVATE icmg_lib)
+    endif()
+    target_include_directories(icmg_test PRIVATE tests src third_party)
+    add_test(NAME icmg_test COMMAND icmg_test)
+endif()

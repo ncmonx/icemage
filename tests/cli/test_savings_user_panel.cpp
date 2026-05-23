@@ -83,4 +83,6 @@ TEST("savings: empty args completes (catch DB-init throws on clean CI)") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

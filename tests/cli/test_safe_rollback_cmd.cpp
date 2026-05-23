@@ -49,4 +49,6 @@ TEST("safe-rollback: --help returns 0") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

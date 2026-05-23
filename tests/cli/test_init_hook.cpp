@@ -123,4 +123,6 @@ TEST("init_hook: file round-trip preserves other keys") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

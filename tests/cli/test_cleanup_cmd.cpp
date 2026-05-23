@@ -116,4 +116,6 @@ TEST("cleanup_cmd: POSIX no-op returns 0") {
 #endif
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

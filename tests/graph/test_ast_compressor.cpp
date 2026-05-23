@@ -55,4 +55,6 @@ TEST("compressAst on python def elides body") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

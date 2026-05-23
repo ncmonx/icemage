@@ -182,4 +182,6 @@ TEST("sync: empty table produces empty JSONL") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

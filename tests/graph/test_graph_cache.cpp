@@ -142,4 +142,6 @@ TEST("graph cache: getNode returns nullopt for unknown path (no caching of misse
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

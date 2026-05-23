@@ -158,4 +158,6 @@ TEST("write_expander: bytes_in tracked") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

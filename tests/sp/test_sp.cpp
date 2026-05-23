@@ -250,4 +250,6 @@ TEST("sp_store: list filtered by db_type") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

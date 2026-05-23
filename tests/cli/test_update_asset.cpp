@@ -65,4 +65,6 @@ TEST("update_asset: asset has zip/tar extension") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

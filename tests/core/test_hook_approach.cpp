@@ -93,4 +93,6 @@ TEST("runPostToolUseTestOutcome ctest success signature no-throw") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

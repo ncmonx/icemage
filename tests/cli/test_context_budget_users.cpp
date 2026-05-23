@@ -80,4 +80,6 @@ TEST("context-budget --all-sessions --json emits user_count field") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

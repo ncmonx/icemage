@@ -385,4 +385,6 @@ TEST("mcp: server constructs without error") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

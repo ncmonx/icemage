@@ -62,4 +62,6 @@ TEST("command_registry: critical core cmds present") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -78,4 +78,6 @@ TEST("ingest_history_cmd: absent or broken gh exits 0 with warning to stderr") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

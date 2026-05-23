@@ -116,4 +116,6 @@ TEST("service_install: POSIX no-op (unit test placeholder)") {
 #endif
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

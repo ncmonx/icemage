@@ -132,4 +132,6 @@ TEST("batch: caveman directive prefixes task content (not replaces)") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

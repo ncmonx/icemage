@@ -92,4 +92,6 @@ TEST("runPostToolUseTestFailContext ICMG_DEBUG_CONTEXT_QUIET=1 suppresses") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

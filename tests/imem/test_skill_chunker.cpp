@@ -101,4 +101,6 @@ TEST("max 500 chunks cap applied") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -341,4 +341,6 @@ TEST("import: transaction rollback on bad JSON") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

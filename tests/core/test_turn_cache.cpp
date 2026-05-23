@@ -63,4 +63,6 @@ TEST("turn_cache: empty content not recorded") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

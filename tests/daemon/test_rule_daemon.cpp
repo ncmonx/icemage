@@ -278,4 +278,6 @@ TEST("framing: parseFramed handles malformed header (missing \\r\\n\\r\\n)") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -132,4 +132,6 @@ TEST("wordpiece: missing vocab returns false") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

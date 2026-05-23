@@ -86,4 +86,6 @@ TEST("focus_chain: removeBySession clears session rows") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

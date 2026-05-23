@@ -128,4 +128,6 @@ TEST("parallel: fail_fast=false runs all tasks despite failures") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -3,4 +3,6 @@
 #include "../test_main.hpp"
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -147,4 +147,6 @@ TEST("port_artifact: parse handles payload containing --- delimiter chars") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

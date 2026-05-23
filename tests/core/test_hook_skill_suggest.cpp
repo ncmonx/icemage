@@ -179,4 +179,6 @@ TEST("runUserPromptSkillSuggest below-threshold → empty") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

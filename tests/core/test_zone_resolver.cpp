@@ -114,4 +114,6 @@ TEST("zone resolver: assign bulk re-tags matching paths only") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

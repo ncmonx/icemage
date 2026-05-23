@@ -186,4 +186,6 @@ TEST("resolver: no conflicts when unique names") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

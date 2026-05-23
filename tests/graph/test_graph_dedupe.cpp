@@ -114,4 +114,6 @@ TEST("dedupe: self-loop pruned after reparent") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

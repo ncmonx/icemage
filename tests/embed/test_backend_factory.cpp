@@ -70,4 +70,6 @@ TEST("factory: auto falls to python when onnx model missing") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

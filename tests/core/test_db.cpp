@@ -62,4 +62,6 @@ TEST("db: multiple rows returned in order") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

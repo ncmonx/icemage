@@ -158,4 +158,6 @@ TEST("returns UNKNOWN for ambiguous file match (multiple files with same stem)")
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -35,4 +35,6 @@ TEST("icmgTaskHash: distinct projects → distinct hashes") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

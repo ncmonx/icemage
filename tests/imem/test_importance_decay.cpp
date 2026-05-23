@@ -100,4 +100,6 @@ TEST("ageDecay: created_at=0 (unknown) returns 1.0 regardless of tier") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

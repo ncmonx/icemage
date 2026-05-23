@@ -198,4 +198,6 @@ TEST("data_store: bumpVersion increments minor") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

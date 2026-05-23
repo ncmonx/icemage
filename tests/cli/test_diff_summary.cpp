@@ -198,4 +198,6 @@ TEST("diff-summary: full diff snippet parses 2 files + correct hunk ranges") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

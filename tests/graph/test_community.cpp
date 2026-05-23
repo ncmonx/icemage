@@ -60,4 +60,6 @@ TEST("community: modularity non-negative on connected graph") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

@@ -181,4 +181,6 @@ TEST("kotlin filter: keeps e:/w: prefixes + .kt errors") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

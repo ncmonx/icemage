@@ -63,4 +63,6 @@ TEST("splitLines: ANSI stripped + lines split") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

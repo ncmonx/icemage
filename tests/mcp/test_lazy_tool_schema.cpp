@@ -187,4 +187,6 @@ TEST("lazy descriptions truncated to <=160 chars") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif

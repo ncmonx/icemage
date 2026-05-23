@@ -54,4 +54,6 @@ TEST("target_verify_cmd: fail-soft on empty DB returns rc=0") {
 }
 
 
+#ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
+#endif
