@@ -542,6 +542,7 @@ add_icmg_test(test_port_artifact tests/cli/test_port_artifact.cpp)         # v1.
 add_icmg_test(test_template_engine tests/compress/test_template_engine.cpp) # v1.27.0 Phase 2
 add_icmg_test(test_treesitter_grammars tests/style_clone/test_treesitter_grammars.cpp) # v1.27.0 Phase 3
 add_icmg_test(test_command_registry tests/cli/test_command_registry.cpp)   # v1.27.0 Phase 5
+add_icmg_test(test_service_install_vbs tests/core/test_service_install_vbs.cpp)  # v1.28.0 TDD backfill
 add_icmg_test(test_cache_emitter tests/cli/test_cache_emitter.cpp)
 add_icmg_test(test_treesitter_typescript tests/graph/test_treesitter_typescript.cpp)
 add_icmg_test(test_treesitter_python tests/graph/test_treesitter_python.cpp)

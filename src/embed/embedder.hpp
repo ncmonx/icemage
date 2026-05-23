@@ -22,6 +22,16 @@ public:
 // Factory: tries Python sidecar; returns nullptr when unavailable.
 std::unique_ptr<Embedder> makeEmbedder();
 
+// v1.28.0: cached singleton accessor. Returns raw pointer to a process-
+// local Embedder instance — lazy-init on first call, then reused. Use
+// for hot paths (MemoryStore::recallSemantic) that previously paid 5-6s
+// of ONNX cold-load per call. Returns nullptr if no backend is available;
+// callers must null-check exactly like makeEmbedder().
+// Thread-safety: init is guarded by std::call_once; embed() inherits the
+// backend's thread-safety (ONNX session is single-thread safe per icmg
+// usage). Not for callers that need fresh state between calls.
+Embedder* cachedEmbedder();
+
 // Pack/unpack helpers for SQLite BLOB storage.
 std::vector<uint8_t> packVec(const std::vector<float>& v);
 std::vector<float>   unpackVec(const std::vector<uint8_t>& blob, int dim);

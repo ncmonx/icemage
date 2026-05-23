@@ -307,4 +307,13 @@ std::unique_ptr<Embedder> makeEmbedder() {
     return nullptr;
 }
 
+// v1.28.0: cached singleton. ONNX cold-load is 5-6s on Win NTFS; callers
+// hitting semantic recall repeatedly (e.g. MemoryStore::recallSemantic in
+// 5 sub-tests of test_vec_search) previously rebuilt the session per call.
+// First call constructs once; subsequent return the cached pointer.
+Embedder* cachedEmbedder() {
+    static std::unique_ptr<Embedder> g_cache = makeEmbedder();
+    return g_cache.get();
+}
+
 } // namespace icmg::embed

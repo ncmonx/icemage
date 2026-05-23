@@ -434,7 +434,11 @@ std::vector<MemoryNode> MemoryStore::recallSemantic(const std::string& query,
     }
 
     // Step 2: try to embed query.
-    auto embedder = embed::makeEmbedder();
+    // v1.28.0: cached singleton — first call inside this process pays the
+    // ONNX cold-load (~5-6s on Win NTFS); subsequent calls reuse the
+    // session. Cuts test_vec_search ctest from 31s to <1s by removing
+    // 5x redundant cold-loads across 5 sub-tests.
+    auto* embedder = embed::cachedEmbedder();
     if (!embedder) {
         // Graceful fallback: return BM25 results unchanged.
         if ((int)cand.size() > limit) cand.resize(limit);
