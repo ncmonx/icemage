@@ -237,6 +237,30 @@ public:
                           << " (and on-demand scan didn't index it — check ext support / file size)\n";
                 return 1;
             }
+        } else if (std::filesystem::exists(file)) {
+            // v1.28.0 #C: auto-rescan on mtime stale. Previously `icmg
+            // context <file>` returned cached `context` column from when
+            // the node was indexed — stale if user edited the file since.
+            // Compare fs::last_write_time vs node.updated_at; if file is
+            // newer, rescan inline so the user sees current content.
+            std::error_code _mt_ec;
+            auto _mt = std::filesystem::last_write_time(file, _mt_ec);
+            if (!_mt_ec) {
+                int64_t file_mt = std::chrono::duration_cast<std::chrono::seconds>(
+                    _mt.time_since_epoch()).count();
+                // file_clock epoch != system_clock epoch on every platform;
+                // tolerate ±5s skew before triggering rescan.
+                if (file_mt > node->updated_at + 5) {
+                    std::cerr << "[icmg context] stale (file mtime "
+                              << (file_mt - node->updated_at)
+                              << "s > node.updated_at) — rescanning...\n";
+                    graph::Scanner scanner(store);
+                    graph::Scanner::Options opts;
+                    scanner.scan(file, opts);
+                    auto fresh = store.getNode(file);
+                    if (fresh) node = fresh;
+                }
+            }
         }
 
         // Phase 82 T1: --symbol NAME — return only the named symbol body + deps.
