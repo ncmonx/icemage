@@ -65,9 +65,12 @@ bool installResidentService(std::string* err_out) {
     {
         std::ofstream f(vbs, std::ios::binary);
         if (!f) { setErr("cannot write VBS launcher"); return false; }
-        // v1.12.0: invoke icmg-core.exe directly (skip launcher wrapper)
-        // → 1 long-running proc instead of 2 (launcher + core).
-        f << "CreateObject(\"Wscript.Shell\").Run \"icmg-core service run\", 0, False\r\n";
+        // v1.27.2: revert to `icmg service run` — v1.19.1 collapsed dual-binary
+        // (icmg-core dropped). VBS targeted non-existent icmg-core.exe → silent
+        // fail → service never started → popup-killer thread never ran →
+        // recurring B:/ popup persisted. Single binary `icmg.exe` IS the long-
+        // running proc; no wrapper needed.
+        f << "CreateObject(\"Wscript.Shell\").Run \"icmg service run\", 0, False\r\n";
     }
 
     // 2) Register logon-trigger task (overwrite with /F). v1.6.1: use cmd.exe
