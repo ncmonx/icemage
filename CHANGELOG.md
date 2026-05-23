@@ -4,6 +4,30 @@
 > Hooks inject relevant sections per-session (hot) and per-prompt (cold, BM25).
 > Browse: `icmg plan list` | `icmg knowledge --html` | restore: `icmg plan restore`
 
+## 1.30.0 - 4 token-prune features active + auto-start service + edit-expand scaffold
+
+All changes hook-side; src/cli/commands/init_cmd.cpp only.
+
+### Active
+
+- **Service auto-start on UserPromptSubmit** - PROMPT_RECALL_SH checks service.pid + tasklist/kill -0. Missing/dead -> spawn detached VBS (Win) or `(icmg service run &)` (POSIX). Fire-and-forget. Opt-out `ICMG_NO_SERVICE_AUTOSTART=1`.
+- **MCP response filter** (PostToolUse:mcp__.*) - new icmg-mcp-filter.sh. Replies >4KB pipe through `icmg compress --mode json` -> additionalContext. Target 50-80% on verbose plugins. Opt-out `ICMG_NO_MCP_FILTER=1`.
+- **Auto-thinking suppress** - trivial prompt (<80 chars OR what/why/how/where/when/kapan/apa/kenapa/siapa) injects "thinking budget suppressed" hint. ~1500 tok/call. Opt-out `ICMG_NO_AUTO_THINK=1`.
+- **Caveman-auto** - prompt >800 chars injects "caveman ultra mode for response" hint. 60-75% on prose replies. Opt-out `ICMG_NO_CAVEMAN_AUTO=1`.
+
+### Scaffold (deferred v1.31)
+
+- **Edit-expand** - icmg-edit-expand.sh detects `@@ICMG-DIFF`/`@@ICMG-ANCHOR` magic in tool_input.old_string + logs to `~/.icmg/edit-expand-detected.jsonl`. Real expansion needs new `icmg hook edit-expand` cmd. Script written but NOT wired into settings.json.
+
+### Verification
+
+Windows 122/122 ctest (24s parallel). Linux 122/122 ctest on ext4 native.
+
+### Upgrade
+
+`icmg update --apply` then `icmg init --force` per project. Restart AI agent.
+
+
 ## 1.29.0 - server-2 backlog mega: 7 fixes + 2 new cmds + mono icmg_test working
 
 ### Fixes (7/10 from server-2 backlog)
