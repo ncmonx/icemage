@@ -54,6 +54,12 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | Graph symbol lookup | **256-slot in-RAM cache** | — | v1.21.8 |
 | First-prompt warmup | < 1 s | — | v1.18 |
 | **Cold build time** (icmg itself) | **~50 % faster** (20 min → 9-10 min) | — | v1.26.0 |
+| **MCP response filter** (verbose plugins) | **50 – 80 % smaller** | up to 90 % | v1.30.0 |
+| **Auto-thinking suppress** (trivial prompts) | **~1500 tok / call saved** | — | v1.30.0 |
+| **Caveman-auto** (long-prose replies) | **60 – 75 % compress** | up to 85 % | v1.30.0 |
+| **Service auto-start** (UserPromptSubmit) | **0-touch warm-up** | — | v1.30.0 |
+| **Path ambiguity warning** (icmg context) | wrong-file lookups → loud | — | v1.29.0 |
+| **rg-wrapper + brace glob** (icmg grep/files) | flag-mirror, **{a,b}** expand | — | v1.29.0 |
 | Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
 Measured on real-world sessions. Your mileage will vary with project size and habits — anyone running a busy AI agent for a day already sees meaningful savings.
