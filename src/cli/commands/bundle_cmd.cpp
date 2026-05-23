@@ -114,6 +114,22 @@ public:
                 return 1;
             }
             file = _fp_ex.string();
+        } else {
+            // v1.29.0 #1: exact-first default. Before falling through to
+            // basename fuzzy match inside GraphStore::getNode, try to
+            // resolve the input as an absolute existing file. Eliminates
+            // the "header.tsx → wrong file silently" failure mode for
+            // callers that pass a relative path that happens to exist
+            // in cwd.
+            std::error_code _ec_ef;
+            std::filesystem::path _fp_ef(file);
+            if (!_fp_ef.is_absolute()) {
+                auto _abs = std::filesystem::absolute(_fp_ef, _ec_ef);
+                if (!_ec_ef && std::filesystem::exists(_abs, _ec_ef)) {
+                    _fp_ef = std::filesystem::weakly_canonical(_abs, _ec_ef);
+                    file = _fp_ef.string();
+                }
+            }
         }
 
         bool no_symbols = hasFlag(args, "--no-symbols");
@@ -219,6 +235,28 @@ public:
         graph::GraphStore store(db);
         imem::MemoryStore mem(db);
 
+        // v1.29.0 #10: ambiguity warning. If caller passed a bare basename
+        // (no '/' or '\\'), enumerate all matching nodes and warn if >1.
+        // Reduces silent wrong-file lookups when project has many files
+        // sharing a basename (e.g. 19x `header.tsx`).
+        if (file.find('/') == std::string::npos && file.find('\\') == std::string::npos
+            && !file.empty() && file != "." && file != "..") {
+            auto _amb = store.findByBasename(file);
+            if (_amb.size() > 1) {
+                std::cerr << "[icmg context] WARNING: basename '" << file
+                          << "' matches " << _amb.size() << " files. Showing first.\n"
+                          << "  Disambiguate with --exact-path or full path. Candidates:\n";
+                int _shown = 0;
+                for (auto& c : _amb) {
+                    std::cerr << "    " << c.path << "\n";
+                    if (++_shown >= 5) {
+                        if ((int)_amb.size() > 5) std::cerr << "    ... +"
+                            << ((int)_amb.size() - 5) << " more\n";
+                        break;
+                    }
+                }
+            }
+        }
         auto node = store.getNode(file);
         if (!node) {
             // Phase 68: auto-scan-on-miss. Project graph may be stale (file

@@ -18,6 +18,13 @@ public:
     // Node CRUD
     int64_t upsertNode(const GraphNode& node);
     std::optional<GraphNode> getNode(const std::string& path);
+
+    // v1.29.0 #10: enumerate ALL graph_nodes whose path basename matches.
+    // Used by `icmg context` to warn on ambiguous lookups ("header.tsx"
+    // matches 19 files; current getNode silently picks first). Empty
+    // vector when no match; size 1 when unique; size >1 when ambiguous.
+    std::vector<GraphNode> findByBasename(const std::string& basename);
+
     void removeNode(const std::string& path);  // cascades edges
     std::vector<GraphNode> all() const;
     bool isStale(const std::string& path, const std::string& hash) const;

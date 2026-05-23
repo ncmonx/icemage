@@ -182,6 +182,25 @@ std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
     return result;
 }
 
+// v1.29.0 #10: enumerate all file-level graph_nodes whose path basename
+// matches the input. Used by `icmg context` to detect ambiguous lookups
+// (e.g. "header.tsx" matching 19 candidates across the project).
+std::vector<GraphNode> GraphStore::findByBasename(const std::string& basename) {
+    std::vector<GraphNode> out;
+    if (basename.empty()) return out;
+    std::string fwd = "%/" + basename;
+    std::string bwd = "%\\" + basename;
+    db_.query(
+        "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,"
+        "access_count,zone,parent_id,kind,symbol_name,signature,line_start,"
+        "line_end,body_hash"
+        " FROM graph_nodes WHERE (path LIKE ? OR path LIKE ? OR path = ?) "
+        " AND (kind IS NULL OR kind='file' OR kind='')",
+        {fwd, bwd, basename},
+        [&](const core::Row& r) { out.push_back(rowToNode(r)); });
+    return out;
+}
+
 std::vector<GraphNode> GraphStore::childrenOf(int64_t parent_id) {
     std::vector<GraphNode> out;
     db_.query(

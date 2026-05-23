@@ -54,6 +54,14 @@ CMD=$(echo "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
 # for (manual-filtered pipes; tmp files ≤1 KB). Silent for first N uses so
 # legitimate cases don't trigger noise.
 if [[ "$CMD" =~ ^RAW=1[[:space:]] ]]; then
+    # v1.29.0 #9: exempt legitimate inline uses from the nag threshold.
+    # `RAW=1 node -e '...'` (tmp eval) and `RAW=1 <cmd> <<EOF ... EOF`
+    # (heredoc small script) are valid; counting them poisons the
+    # threshold against the user. Skip logging entirely for these.
+    if [[ "$CMD" =~ ^RAW=1[[:space:]]+(node|python|python3|deno|bun|ruby|perl|sh|bash)[[:space:]]+-e[[:space:]] ]] \
+       || [[ "$CMD" =~ '<<' ]]; then
+        exit 0
+    fi
     USAGE_LOG="${USERPROFILE:-${HOME:-/tmp}}/.icmg/raw-usage.jsonl"
     mkdir -p "$(dirname "$USAGE_LOG")" 2>/dev/null
     TS=$(date +%s 2>/dev/null || echo 0)
@@ -136,6 +144,16 @@ fi
 
 PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status|Get-Content|Get-ChildItem|Select-String|Get-Item|Where-Object|ForEach-Object|Get-Process|Measure-Object|Out-String|Format-Table|Invoke-WebRequest|iwr|curl|wget)([[:space:]]|$)'
 if [[ "$CMD_MATCH" =~ $PATTERN ]]; then
+    # v1.29.0 #5: exempt small-scope native grep/rg. Heuristic:
+    # `grep PATTERN file` with NO -r/-R/--recursive flag AND no '*' glob
+    # is a single-file lookup; native Grep is fine. Saves token-bridge
+    # overhead for trivial verifications (e.g. post-edit assert).
+    if [[ "$CMD_MATCH" =~ ^[[:space:]]*(grep|rg)[[:space:]] ]]; then
+        if [[ ! "$CMD_MATCH" =~ [[:space:]](-[rR]|--recursive)([[:space:]]|$) ]] \
+           && [[ ! "$CMD_MATCH" =~ \* ]]; then
+            exit 0
+        fi
+    fi
     log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
     icmg hookio emit PreToolUse --deny "Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix."
     exit 2
