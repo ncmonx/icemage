@@ -259,16 +259,38 @@ int ServiceLoop::run() {
 #endif
 
     // Write PID file so `icmg service status` can identify us.
+    // v1.28.1 fix: previous version silently swallowed all write failures
+    // (catch(...) → status reported "running: no" even with live service).
+    // Now logs concrete cause + uses explicit flush+close.
     try {
         std::error_code ec;
-        fs::create_directories(fs::path(servicePidPath()).parent_path(), ec);
-        std::ofstream f(servicePidPath());
+        std::string pidp = servicePidPath();
+        fs::create_directories(fs::path(pidp).parent_path(), ec);
+        if (ec) {
+            std::cerr << "icmg service: pidfile dir create failed: "
+                      << ec.message() << " (path: " << pidp << ")\n";
+        }
+        std::ofstream f(pidp, std::ios::out | std::ios::trunc);
+        if (!f) {
+            std::cerr << "icmg service: pidfile open failed: " << pidp << "\n";
+        } else {
 #ifdef _WIN32
-        f << (long long)_getpid();
+            f << (long long)_getpid();
 #else
-        f << (long long)getpid();
+            f << (long long)getpid();
 #endif
-    } catch (...) {}
+            f.flush();
+            f.close();
+            if (!fs::exists(pidp)) {
+                std::cerr << "icmg service: pidfile written but missing on disk: "
+                          << pidp << "\n";
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "icmg service: pidfile write threw: " << e.what() << "\n";
+    } catch (...) {
+        std::cerr << "icmg service: pidfile write threw unknown\n";
+    }
 
     // v1.12.0: spawn rule-daemon IPC server on dedicated thread.
     // Merges what was previously a separate `icmg-rule-daemon` process.

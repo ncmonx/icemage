@@ -77,11 +77,23 @@ bool installResidentService(std::string* err_out) {
     // direct prefix instead of `MSYS_NO_PATHCONV=1` — when invoked from
     // PowerShell, the bash VAR=value form was emitting truncated/garbled
     // errors (PS interpreted leading token as a cmdlet).
-    std::string cmd =
-        "MSYS_NO_PATHCONV=1 schtasks /Create /SC ONLOGON /TN \"icmg-service\""
-        " /TR \"wscript.exe //B //Nologo \\\"" + vbs.string() + "\\\"\""
-        " /F";
-    auto r = safeExecShell(cmd, true, 15000);
+    // v1.28.1: ICMG_SERVICE_NO_SCHTASKS=1 env opt-out skips the schtasks
+    // attempt entirely and goes straight to user Startup folder fallback.
+    // For shared-server admins or standard users who already know schtasks
+    // /Create will fail without elevation. Avoids the "Access is denied"
+    // stderr noise on every `icmg init --force`.
+    const char* no_schtasks = std::getenv("ICMG_SERVICE_NO_SCHTASKS");
+    bool skip_schtasks = no_schtasks && *no_schtasks && std::string(no_schtasks) != "0";
+    ExecResult r;
+    if (skip_schtasks) {
+        r.exit_code = 1;
+        r.err = "skipped via ICMG_SERVICE_NO_SCHTASKS";
+    } else {
+        r = safeExecShell(
+            "MSYS_NO_PATHCONV=1 schtasks /Create /SC ONLOGON /TN \"icmg-service\""
+            " /TR \"wscript.exe //B //Nologo \\\"" + vbs.string() + "\\\"\""
+            " /F", true, 15000);
+    }
     if (r.exit_code != 0) {
         // v1.6.1: fall back to user Startup folder shortcut — no admin needed.
         // Service still auto-starts at next user logon (via Explorer shell
