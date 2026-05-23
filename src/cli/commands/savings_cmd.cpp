@@ -643,11 +643,20 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
         RealSessionData rsd = fetchRealSessionData();
         if (rsd.total_tokens > 0) {
             int64_t instrumented = tot.raw_tokens;
-            int64_t uncovered = rsd.total_tokens > instrumented ? rsd.total_tokens - instrumented : 0;
             int coverage_pct = rsd.total_tokens > 0
                                 ? (int)(100 * instrumented / rsd.total_tokens) : 0;
             if (coverage_pct > 100) coverage_pct = 100;
-            os << R"HTML(<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin-bottom:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">
+            // v1.28.0 (Bug 2 fix): break "Outside coverage" into 2 honest
+            // categories so user can act:
+            //   - Conversation = user + assistant + plain text + other.
+            //     Inherent to chat. Cannot be filtered by icmg by design.
+            //   - Tool calls outside icmg = tool-input + tool-output not
+            //     yet routed through icmg run / context / pack / fetch.
+            //     FIXABLE — use icmg-first more strictly.
+            int64_t conversation = rsd.text;
+            int64_t tool_total   = rsd.tool_input + rsd.tool_output;
+            int64_t tool_outside = tool_total > instrumented ? tool_total - instrumented : 0;
+            os << R"HTML(<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin-bottom:24px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:24px">
 <div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Real session tokens</div><div style="font-size:28px;font-weight:700;color:#58a6ff">)HTML"
                << humanTok(rsd.total_tokens)
                << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Sum across )HTML"
@@ -656,9 +665,12 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 <div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Icmg-covered</div><div style="font-size:28px;font-weight:700;color:#3fb950">)HTML"
                << humanTok(instrumented) << " (" << coverage_pct
                << R"HTML(%)</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Tracked in dashboard</div></div>
-<div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Outside coverage</div><div style="font-size:28px;font-weight:700;color:#d29922">)HTML"
-               << humanTok(uncovered)
-               << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Raw Read/Bash/MCP/conversation</div></div>
+<div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Conversation</div><div style="font-size:28px;font-weight:700;color:#8b949e">)HTML"
+               << humanTok(conversation)
+               << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">User + assistant chat (inherent, uncoverable)</div></div>
+<div><div style="color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Tool calls outside icmg</div><div style="font-size:28px;font-weight:700;color:#d29922">)HTML"
+               << humanTok(tool_outside)
+               << R"HTML(</div><div style="color:#6e7681;font-size:11px;margin-top:4px">Raw Read/Bash/MCP — fixable: route via icmg</div></div>
 </div>)HTML";
             // v1.9.0: active-users panel (set ICMG_SAVINGS_ALL_USERS=1 for multi-user agg).
             if (rsd.user_count >= 1) {
