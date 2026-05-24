@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 1.36.0 LANGUAGES CXX C)
+project(icmg VERSION 1.37.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -474,7 +474,7 @@ enable_testing()
 # Future mono attempt requires TEST() name audit + DB/service singleton
 # teardown between cases — out of scope for v1.26.0.
 macro(add_icmg_test name source_file)
-    # v1.36.0: always collect into ICMG_ALL_TEST_SOURCES (mono needs it).
+    # v1.37.0: always collect into ICMG_ALL_TEST_SOURCES (mono needs it).
     # When ICMG_MONO_TEST=ON (default), skip per-exe target — only mono builds.
     set_property(GLOBAL APPEND PROPERTY ICMG_ALL_TEST_SOURCES ${source_file})
     if(NOT ICMG_MONO_TEST)
@@ -648,7 +648,7 @@ add_icmg_test(test_session_inject       tests/cli/test_session_inject.cpp)
 # When ON, per-exe targets still build alongside — both work.
 # ---------------------------------------------------------------------------
 option(ICMG_PER_EXE_TEST "Build per-exe tests (one binary per file, ~74 exes) — only for isolation debugging" OFF)
-option(ICMG_MONO_TEST "Build single icmg_test binary (DEFAULT ON v1.36.0; saves ~2.5 min link + 1.5 GB disk)" ON)
+option(ICMG_MONO_TEST "Build single icmg_test binary (DEFAULT ON v1.37.0; saves ~2.5 min link + 1.5 GB disk)" ON)
 if(ICMG_PER_EXE_TEST)
     set(ICMG_MONO_TEST OFF CACHE BOOL "" FORCE)
     message(STATUS "icmg: ICMG_PER_EXE_TEST=ON — disabling mono, building per-exe tests (slow path)")
@@ -704,7 +704,7 @@ option(ICMG_USE_LLAMA "Build with local LLM via vendored llama.cpp (opt-in)" OFF
 option(ICMG_LLAMA_VULKAN "Enable Vulkan backend for llama.cpp (requires ICMG_USE_LLAMA=ON)" OFF)
 if(ICMG_USE_LLAMA)
     message(STATUS "icmg: ICMG_USE_LLAMA=ON — vendoring llama.cpp from third_party/llama.cpp/")
-    # v1.36.0 B1-toolchain-fix: force-disable GGML_NATIVE (-march=native AVX
+    # v1.37.0 B1-toolchain-fix: force-disable GGML_NATIVE (-march=native AVX
     # intrinsics) + GGML_CCACHE wrapper. Both trigger c++.exe crash
     # (0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND) on MSYS2 GCC 15.2 when
     # compiling ggml-cpu/amx/mmq.cpp + binary-ops.cpp. With these OFF,

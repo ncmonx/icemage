@@ -337,7 +337,7 @@ fi
 # explainer/spec). Inject caveman ultra hint so reply is compressed.
 # Opt-out: ICMG_NO_CAVEMAN_AUTO=1
 if [[ "${ICMG_NO_CAVEMAN_AUTO:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
-    if [[ ${#PROMPT} -gt 800 ]]; then
+    if [[ ${#PROMPT} -gt 500 ]]; then  # v1.37.0: 800 -> 500 chars per user goal "save tokens"
         printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] long prompt -> caveman ultra mode for response (set ICMG_NO_CAVEMAN_AUTO=1 to disable)"}}' 2>/dev/null
     fi
 fi
@@ -509,6 +509,15 @@ if [[ "$TOOL" == "Bash" || "$TOOL" == "PowerShell" ]]; then
         if [[ "$NCMD" =~ (^|[[:space:]])python3?[[:space:]]+-c([[:space:]]|$) ]]; then
             block "ID=24" "python -c blocked. Use icmg run sed/perl, native Edit tool, or write helper to tools/ first."
         fi
+    fi
+
+
+    # v1.37.0 Bash Phase 2: ICMG_NO_BASH=1 opt-in mode. Forces AI to use
+    # icmg <subcmd> exclusively. Bash blocked unless cmd starts with `icmg `.
+    # Override env: ICMG_NO_BASH=0 / unset.
+    if [[ -n "$ICMG_NO_BASH" && "$ICMG_NO_BASH" == "1" ]]; then
+        [[ "$NCMD" =~ ^[[:space:]]*icmg[[:space:]] ]] \
+            || block "ID=25" "ICMG_NO_BASH=1 active. Use icmg <equivalent>. Coverage: icmg build/sed/awk/jq/zip/sha256/env/gh/mkdir/rmdir/mv/rm/slice/date/wc/git/grep/files/context/recall/pack/etc."
     fi
 
 

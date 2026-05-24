@@ -761,6 +761,47 @@ CREATE INDEX IF NOT EXISTS idx_rule_viol_rule    ON rule_violations(rule_id);
 CREATE INDEX IF NOT EXISTS idx_rule_viol_session ON rule_violations(rule_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_rule_viol_when    ON rule_violations(occurred_at);
 )SQL"},
+        {28, R"SQL(
+-- 0028_intent_cache (v1.37.0)
+CREATE TABLE IF NOT EXISTS intent_cache (
+    prompt_hash TEXT PRIMARY KEY,
+    intent      TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE TABLE IF NOT EXISTS intent_backfill_queue (
+    prompt_hash TEXT PRIMARY KEY,
+    prompt_text TEXT NOT NULL,
+    queued_at   INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_intent_updated ON intent_cache(updated_at);
+)SQL"},
+        {29, R"SQL(
+-- 0029_amnesia_events (v1.37.0)
+CREATE TABLE IF NOT EXISTS amnesia_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL DEFAULT '',
+    topic       TEXT NOT NULL,
+    prior_node  INTEGER,
+    matched_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_amnesia_topic   ON amnesia_events(topic);
+CREATE INDEX IF NOT EXISTS idx_amnesia_session ON amnesia_events(session_id);
+)SQL"},
+        {30, R"SQL(
+-- 0030_drift_corrections (v1.37.0)
+CREATE TABLE IF NOT EXISTS drift_corrections (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id    TEXT NOT NULL DEFAULT '',
+    decision_id   INTEGER NOT NULL,
+    stance        TEXT NOT NULL,
+    contradicted_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    emitted       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_drift_session ON drift_corrections(session_id);
+CREATE INDEX IF NOT EXISTS idx_drift_emitted ON drift_corrections(emitted);
+)SQL"},
     };
 }
 

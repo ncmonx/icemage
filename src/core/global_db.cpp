@@ -71,6 +71,79 @@ void GlobalDb::runGlobalMigrations() {
         db_->run("CREATE INDEX IF NOT EXISTS idx_projects_path ON projects(path)");
         db_->run("INSERT INTO global_migrations(version) VALUES(1)");
     }
+
+    // v1.35.0 R4: rule_violations table.
+    int v2 = 0;
+    db_->query("SELECT COUNT(*) FROM global_migrations WHERE version=2", {},
+               [&](const core::Row& r){ if (!r.empty()) try { v2 = std::stoi(r[0]); } catch (...) {} });
+    if (v2 == 0) {
+        db_->run("CREATE TABLE IF NOT EXISTS rule_violations("
+                 " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                 " rule_id TEXT NOT NULL,"
+                 " session_id TEXT NOT NULL DEFAULT '',"
+                 " ctx TEXT NOT NULL DEFAULT '',"
+                 " occurred_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+                 ")");
+        db_->run("CREATE INDEX IF NOT EXISTS idx_rule_viol_rule    ON rule_violations(rule_id)");
+        db_->run("CREATE INDEX IF NOT EXISTS idx_rule_viol_session ON rule_violations(rule_id, session_id)");
+        db_->run("INSERT INTO global_migrations(version) VALUES(2)");
+    }
+
+    // v1.37.0 C2: intent_cache + backfill queue.
+    int v3 = 0;
+    db_->query("SELECT COUNT(*) FROM global_migrations WHERE version=3", {},
+               [&](const core::Row& r){ if (!r.empty()) try { v3 = std::stoi(r[0]); } catch (...) {} });
+    if (v3 == 0) {
+        db_->run("CREATE TABLE IF NOT EXISTS intent_cache("
+                 " prompt_hash TEXT PRIMARY KEY,"
+                 " intent TEXT NOT NULL,"
+                 " source TEXT NOT NULL,"
+                 " created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+                 " updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+                 ")");
+        db_->run("CREATE TABLE IF NOT EXISTS intent_backfill_queue("
+                 " prompt_hash TEXT PRIMARY KEY,"
+                 " prompt_text TEXT NOT NULL,"
+                 " queued_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+                 ")");
+        db_->run("CREATE INDEX IF NOT EXISTS idx_intent_updated ON intent_cache(updated_at)");
+        db_->run("INSERT INTO global_migrations(version) VALUES(3)");
+    }
+
+    // v1.37.0 A7 scaffold: amnesia_events. Consumer code v1.37.1.
+    int v4 = 0;
+    db_->query("SELECT COUNT(*) FROM global_migrations WHERE version=4", {},
+               [&](const core::Row& r){ if (!r.empty()) try { v4 = std::stoi(r[0]); } catch (...) {} });
+    if (v4 == 0) {
+        db_->run("CREATE TABLE IF NOT EXISTS amnesia_events("
+                 " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                 " session_id TEXT NOT NULL DEFAULT '',"
+                 " topic TEXT NOT NULL,"
+                 " prior_node INTEGER,"
+                 " matched_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+                 ")");
+        db_->run("CREATE INDEX IF NOT EXISTS idx_amnesia_topic   ON amnesia_events(topic)");
+        db_->run("CREATE INDEX IF NOT EXISTS idx_amnesia_session ON amnesia_events(session_id)");
+        db_->run("INSERT INTO global_migrations(version) VALUES(4)");
+    }
+
+    // v1.37.0 drift_corrections scaffold. Consumer code v1.37.1.
+    int v5 = 0;
+    db_->query("SELECT COUNT(*) FROM global_migrations WHERE version=5", {},
+               [&](const core::Row& r){ if (!r.empty()) try { v5 = std::stoi(r[0]); } catch (...) {} });
+    if (v5 == 0) {
+        db_->run("CREATE TABLE IF NOT EXISTS drift_corrections("
+                 " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                 " session_id TEXT NOT NULL DEFAULT '',"
+                 " decision_id INTEGER NOT NULL,"
+                 " stance TEXT NOT NULL,"
+                 " contradicted_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+                 " emitted INTEGER NOT NULL DEFAULT 0"
+                 ")");
+        db_->run("CREATE INDEX IF NOT EXISTS idx_drift_session ON drift_corrections(session_id)");
+        db_->run("CREATE INDEX IF NOT EXISTS idx_drift_emitted ON drift_corrections(emitted)");
+        db_->run("INSERT INTO global_migrations(version) VALUES(5)");
+    }
 }
 
 // ---- row helper ------------------------------------------------------------
