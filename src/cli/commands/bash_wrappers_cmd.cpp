@@ -356,6 +356,117 @@ public:
 };
 
 // Registrations
+
+// ---- icmg tar ----
+class TarCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "tar"; }
+    std::string description() const override { return "Cross-platform tar (create/extract via system tar)"; }
+    void usage() const override {
+        std::cout << "Usage: icmg tar <args...>\n"
+                     "  Common: icmg tar -czf out.tar.gz dir/\n"
+                     "          icmg tar -xzf in.tar.gz\n";
+    }
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty() || args[0] == "--help") { usage(); return args.empty() ? 1 : 0; }
+        return passthroughExec("tar " + joinArgs(args), 600000);
+    }
+};
+
+// ---- icmg ps ----
+class PsCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "ps"; }
+    std::string description() const override { return "Process list (cross-platform tasklist/ps)"; }
+    void usage() const override { std::cout << "Usage: icmg ps [--name <substr>]\n"; }
+    int run(const std::vector<std::string>& args) override {
+        if (!args.empty() && args[0] == "--help") { usage(); return 0; }
+        std::string name_filter = flagValue(args, "--name", "");
+#ifdef _WIN32
+        std::string cmd = name_filter.empty()
+            ? std::string("tasklist /FO TABLE")
+            : "tasklist /FI \"IMAGENAME eq " + name_filter + "*\" /FO TABLE";
+#else
+        std::string cmd = name_filter.empty()
+            ? std::string("ps -ef")
+            : "ps -ef | grep -i '" + name_filter + "' | grep -v grep";
+#endif
+        return passthroughExec(cmd, 30000);
+    }
+};
+
+// ---- icmg kill ----
+class KillCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "kill"; }
+    std::string description() const override { return "Kill process by PID (refuses PID 0/1/4 by default)"; }
+    void usage() const override {
+        std::cout << "Usage: icmg kill <pid> [--force] [--unsafe]\n"
+                     "  Refuses PID < 100 unless --unsafe given (Win SYSTEM/Linux init).\n";
+    }
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty() || args[0] == "--help") { usage(); return args.empty() ? 1 : 0; }
+        bool unsafe = hasFlag(args, "--unsafe");
+        bool force  = hasFlag(args, "--force");
+        int pid = 0;
+        try { pid = std::stoi(args[0]); } catch (...) {
+            std::cerr << "icmg kill: invalid PID '" << args[0] << "'\n"; return 1;
+        }
+        if (pid < 100 && !unsafe) {
+            std::cerr << "icmg kill: PID " << pid << " < 100 (system process). Use --unsafe to override.\n";
+            return 2;
+        }
+#ifdef _WIN32
+        std::string cmd = std::string("taskkill ") + (force ? "/F " : "") + "/PID " + std::to_string(pid);
+#else
+        std::string cmd = std::string("kill ") + (force ? "-9 " : "") + std::to_string(pid);
+#endif
+        return passthroughExec(cmd, 15000);
+    }
+};
+
+// ---- icmg df ----
+class DfCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "df"; }
+    std::string description() const override { return "Disk free (cross-platform)"; }
+    void usage() const override { std::cout << "Usage: icmg df [path]\n"; }
+    int run(const std::vector<std::string>& args) override {
+        if (!args.empty() && args[0] == "--help") { usage(); return 0; }
+        std::string path = args.empty() ? "." : args[0];
+#ifdef _WIN32
+        std::string cmd = "wmic logicaldisk get DeviceID,FreeSpace,Size /format:list";
+#else
+        std::string cmd = "df -h " + path;
+#endif
+        return passthroughExec(cmd, 30000);
+    }
+};
+
+// ---- icmg du ----
+class DuCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "du"; }
+    std::string description() const override { return "Directory size (cross-platform)"; }
+    void usage() const override { std::cout << "Usage: icmg du <path> [--summary]\n"; }
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty() || args[0] == "--help") { usage(); return args.empty() ? 1 : 0; }
+        std::string path = args[0];
+        bool summary = hasFlag(args, "--summary");
+#ifdef _WIN32
+        std::string cmd = "powershell -NoProfile -Command \""
+                          "$p='" + path + "'; "
+                          "$bytes=(Get-ChildItem -Recurse -File -ErrorAction SilentlyContinue \\\"$p\\\" "
+                          "| Measure-Object -Property Length -Sum).Sum; "
+                          "$mb=[math]::Round($bytes/1MB,1); Write-Host \\\"$mb MB  $p\\\"\"";
+#else
+        std::string cmd = summary ? ("du -sh " + path) : ("du -h " + path);
+#endif
+        return passthroughExec(cmd, 120000);
+    }
+};
+
+// Registrations appended at end of file via separate sed insert.
 ICMG_REGISTER_COMMAND("build", BuildCommand);
 ICMG_REGISTER_COMMAND("sed",   SedCommand);
 ICMG_REGISTER_COMMAND("awk",   AwkCommand);
@@ -371,5 +482,10 @@ ICMG_REGISTER_COMMAND("rm",    RmCommand);
 ICMG_REGISTER_COMMAND("slice", SliceCommand);
 ICMG_REGISTER_COMMAND("date",  DateCommand);
 ICMG_REGISTER_COMMAND("wc",    WcCommand);
+ICMG_REGISTER_COMMAND("tar",   TarCommand);
+ICMG_REGISTER_COMMAND("ps",    PsCommand);
+ICMG_REGISTER_COMMAND("kill",  KillCommand);
+ICMG_REGISTER_COMMAND("df",    DfCommand);
+ICMG_REGISTER_COMMAND("du",    DuCommand);
 
 } // namespace icmg::cli
