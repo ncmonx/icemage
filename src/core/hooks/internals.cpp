@@ -1211,4 +1211,69 @@ std::string runPostToolUseTestOutcome(const std::string& tool_input_command,
     return "";
 }
 
+
+// v1.33.0 R6: pinned rules auto-inject. Read top-N active rules from
+// project rule store, format compact for additionalContext header.
+std::string runUserPromptPinnedRulesInject(int max_rules) {
+    if (std::getenv("ICMG_RULE_INJECT_QUIET")) return "";
+    if (max_rules <= 0) max_rules = 5;
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        std::ostringstream out;
+        int n = 0;
+        const std::string sql =
+            "SELECT name, content FROM rules "
+            "WHERE active = 1 AND rule_type IN ('workflow','coding','arch') "
+            "ORDER BY priority DESC, id ASC LIMIT " + std::to_string(max_rules);
+        db.query(sql, {}, [&](const Row& r){
+            if (r.size() < 2) return;
+            if (n == 0) out << "ACTIVE RULES (icmg rule list):\n";
+            std::string c = r[1];
+            if (c.size() > 100) c = c.substr(0, 97) + "...";
+            out << "  - " << r[0] << ": " << c << "\n";
+            ++n;
+        });
+        if (n > 0) out << "---\n";
+        return out.str();
+    } catch (...) { return ""; }
+}
+
+// v1.33.0 R7: sibling projects auto-inject. Show top-3 by recent activity
+// from global registry — prevents AI from forgetting user has multiple
+// active codebases.
+std::string runUserPromptProjectsInject() {
+    if (std::getenv("ICMG_PROJECTS_INJECT_QUIET")) return "";
+    try {
+        const char* home =
+#ifdef _WIN32
+            std::getenv("USERPROFILE");
+#else
+            std::getenv("HOME");
+#endif
+        if (!home || !*home) return "";
+        fs::path gpath = fs::path(home) / ".icmg" / "global.db";
+        if (!fs::exists(gpath)) return "";
+        Db gdb(gpath.string());
+        // Identify current project by cwd to exclude it.
+        std::string cwd = fs::current_path().string();
+        for (char& c : cwd) if (c == '\\') c = '/';
+        std::ostringstream out;
+        int n = 0;
+        gdb.query(
+            "SELECT name, path, updated_at FROM projects "
+            "ORDER BY updated_at DESC LIMIT 6",
+            {}, [&](const Row& r){
+                if (n >= 3 || r.size() < 2) return;
+                std::string p = r[1];
+                for (char& c : p) if (c == '\\') c = '/';
+                if (p == cwd) return; // skip current
+                if (n == 0) out << "OTHER ACTIVE PROJECTS (icmg project list):\n";
+                out << "  - " << r[0] << " (" << p << ")\n";
+                ++n;
+            });
+        if (n > 0) out << "---\n";
+        return out.str();
+    } catch (...) { return ""; }
+}
 } // namespace icmg::core::hooks

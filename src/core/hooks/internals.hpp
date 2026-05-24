@@ -149,4 +149,19 @@ std::string runPostToolUseTestOutcome(const std::string& tool_input_command,
                                       const std::string& tool_output,
                                       int exit_code);
 
+
+// v1.33.0 R6: pinned-rules auto-inject.
+// Returns top-N (default 5) active workflow/coding/arch rules from current
+// project's rule store, formatted as compact markdown ≤350 chars. Empty
+// when no rules or DB unavailable. Opt-out env ICMG_RULE_INJECT_QUIET=1.
+// Prevents AI forgetting rules buried in long CLAUDE.md.
+std::string runUserPromptPinnedRulesInject(int max_rules = 5);
+
+// v1.33.0 R7: sibling projects auto-inject.
+// Returns top-3 sibling projects from `~/.icmg/global.db` projects table,
+// ordered by last-touched. Formatted ≤180 chars. Prevents AI losing track
+// of user's other active codebases. Opt-out env ICMG_PROJECTS_INJECT_QUIET=1.
+std::string runUserPromptProjectsInject();
+
+
 } // namespace icmg::core::hooks

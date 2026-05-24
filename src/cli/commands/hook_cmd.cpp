@@ -366,6 +366,30 @@ private:
         if (f) f << id << "\n";
     }
 
+    // v1.33.0 R5: ship-checklist injection helper.
+    static std::string shipChecklistIfRelevant(const std::string& prompt) {
+        if (prompt.empty()) return "";
+        std::string lc = prompt;
+        for (char& c : lc) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        bool match = false;
+        static const char* kw[] = {
+            " ship ", " release ", "bump version", "bump v", "publish v",
+            "tag v", "release v", "build linux", "build win", "gh release"
+        };
+        for (const char* k : kw) if (lc.find(k) != std::string::npos) { match = true; break; }
+        if (!match) for (const char* k : { "ship ", "release ", "publish " })
+            if (lc.rfind(k, 0) == 0) { match = true; break; }
+        if (!match) return "";
+        return
+            "MANDATORY SHIP WORKFLOW (phases gated):\n"
+            "  1. icmg ship start v<X.Y.Z>\n"
+            "  2. icmg ship build / test\n"
+            "  3. icmg ship pack-win + pack-linux (BOTH required)\n"
+            "  4. icmg ship push-private + docs-pr\n"
+            "  5. icmg ship publish (refuses if any prior phase missing/stale)\n"
+            "Cross-platform rule: never ship win-only.\n---\n";
+    }
+
     // Build the additionalContext payload + emit JSON to stdout.
     // v1.1.0 Task 6.6: prepend caveman re-inject block when caveman.flag is
     // ON and violations >0. Empty block on healthy sessions â†’ no overhead.
@@ -381,7 +405,10 @@ private:
         std::string approach_hint = prompt.empty()
             ? ""
             : icmg::core::hooks::runUserPromptApproachInject(prompt);
-        out["hookSpecificOutput"]["additionalContext"] = approach_hint + skill_hint + caveman + msg;
+        std::string ship_hint = shipChecklistIfRelevant(prompt);
+        std::string rules_hint    = icmg::core::hooks::runUserPromptPinnedRulesInject();
+        std::string projects_hint = icmg::core::hooks::runUserPromptProjectsInject();
+        out["hookSpecificOutput"]["additionalContext"] = rules_hint + projects_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
         std::cout << out.dump() << "\n";
     }
 
