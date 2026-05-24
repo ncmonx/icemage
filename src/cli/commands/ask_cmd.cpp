@@ -13,7 +13,10 @@
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../embed/embedder.hpp"
+#include "../../llm/llama_runner.hpp"
 #include "help_corpus.hpp"
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -58,6 +61,60 @@ public:
         if (question.empty()) {
             std::cerr << "icmg ask: <question> required\n";
             return 1;
+        }
+
+        // v1.31.0 A6: --backend=local routes to LlamaRunner for natural-
+        // language answer (vs default meta-router which matches command corpus).
+        // Falls back to meta-router on any LLM failure -- never blocks.
+        std::string backend = flagValue(args, "--backend", "router");
+        if (backend == "local") {
+            if (!llm::LlamaRunner::available()) {
+                std::cerr << "icmg ask --backend=local: build lacks ICMG_USE_LLAMA. "
+                             "Falling back to router.\n";
+            } else {
+                namespace fs = std::filesystem;
+                const char* home =
+#ifdef _WIN32
+                    std::getenv("USERPROFILE");
+#else
+                    std::getenv("HOME");
+#endif
+                fs::path lldir = (home && *home ? fs::path(home) : fs::current_path()) / ".icmg" / "llm";
+                std::error_code _ec;
+                if (fs::exists(lldir / "disabled", _ec)) {
+                    std::cerr << "icmg ask --backend=local: opt-out active. Run `icmg llm enable`.\n";
+                    return 4;
+                }
+                std::string active;
+                { std::ifstream af(lldir / "active"); std::getline(af, active); }
+                if (active.empty()) {
+                    std::cerr << "icmg ask --backend=local: no active model. Run `icmg llm use <id>`.\n";
+                    return 5;
+                }
+                fs::path gguf = lldir / active / "model.gguf";
+                if (!fs::exists(gguf, _ec)) {
+                    std::cerr << "icmg ask --backend=local: model not installed: " << gguf.string() << "\n";
+                    return 6;
+                }
+                llm::LlamaRunner r;
+                if (!r.load(gguf.string())) {
+                    std::cerr << "icmg ask --backend=local: load failed: " << r.lastError()
+                              << " -- falling back to router.\n";
+                } else {
+                    llm::InferParams ip;
+                    ip.max_tokens = 256;
+                    ip.temperature = 0.4f;
+                    std::string prompt = "You are icmg, a CLI assistant. Answer concisely.\n\nQuestion: "
+                                         + question + "\n\nAnswer:";
+                    auto res = r.infer(prompt, ip);
+                    if (res.ok) {
+                        std::cout << res.text << "\n";
+                        return 0;
+                    }
+                    std::cerr << "icmg ask --backend=local: infer failed: " << res.error
+                              << " -- falling back to router.\n";
+                }
+            }
         }
 
         auto corpus = helpCorpus();

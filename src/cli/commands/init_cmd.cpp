@@ -750,6 +750,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Delegate to LLM | `icmg agent "<task>"` (packâ†’promptâ†’user-CLI) |
 | Run noisy command | `icmg run <cmd>` (Tkil filter â€” 60-90% smaller) |
 | Big git diff | `icmg diff-summary --ref HEAD~5` |
+| Any git command | `icmg git <subcmd>` (read-ops Tkil-filtered, destructive ops gated) |
 | Errored before? | `icmg explain "<error>"` |
 | Fetch URL with cache | `icmg fetch <url>` (cached + token-reduced) |
 | Compress large output | `icmg compress` (pipe or `< file` â€” glossary output) |
