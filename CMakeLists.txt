@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 1.35.0 LANGUAGES CXX C)
+project(icmg VERSION 1.36.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -474,29 +474,31 @@ enable_testing()
 # Future mono attempt requires TEST() name audit + DB/service singleton
 # teardown between cases — out of scope for v1.26.0.
 macro(add_icmg_test name source_file)
-    add_executable(${name} ${source_file})
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        if(APPLE)
-            target_link_libraries(${name} PRIVATE
-                -Wl,-force_load,$<TARGET_FILE:icmg_lib>
-                icmg_lib)
-        else()
-            target_link_libraries(${name} PRIVATE
-                -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
-        endif()
-        if(WIN32)
-            target_link_options(${name} PRIVATE
-                -static-libgcc -static-libstdc++
-                -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
-        endif()
-    else()
-        target_link_libraries(${name} PRIVATE icmg_lib)
-    endif()
-    target_include_directories(${name} PRIVATE tests src third_party)
-    add_test(NAME ${name} COMMAND ${name})
-    # v1.29.0 #2: collect every per-exe source into ALL_TEST_SOURCES so the
-    # opt-in mono icmg_test target can compile the same set in one binary.
+    # v1.36.0: always collect into ICMG_ALL_TEST_SOURCES (mono needs it).
+    # When ICMG_MONO_TEST=ON (default), skip per-exe target — only mono builds.
     set_property(GLOBAL APPEND PROPERTY ICMG_ALL_TEST_SOURCES ${source_file})
+    if(NOT ICMG_MONO_TEST)
+        add_executable(${name} ${source_file})
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            if(APPLE)
+                target_link_libraries(${name} PRIVATE
+                    -Wl,-force_load,$<TARGET_FILE:icmg_lib>
+                    icmg_lib)
+            else()
+                target_link_libraries(${name} PRIVATE
+                    -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
+            endif()
+            if(WIN32)
+                target_link_options(${name} PRIVATE
+                    -static-libgcc -static-libstdc++
+                    -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
+            endif()
+        else()
+            target_link_libraries(${name} PRIVATE icmg_lib)
+        endif()
+        target_include_directories(${name} PRIVATE tests src third_party)
+        add_test(NAME ${name} COMMAND ${name})
+    endif()
 endmacro()
 
 add_icmg_test(test_parseargv    tests/tkil/test_parseargv.cpp)
@@ -645,7 +647,12 @@ add_icmg_test(test_session_inject       tests/cli/test_session_inject.cpp)
 # Per-exe model REMAINS the default (this option is OFF unless flipped).
 # When ON, per-exe targets still build alongside — both work.
 # ---------------------------------------------------------------------------
-option(ICMG_MONO_TEST "Build single icmg_test binary collecting all tests (opt-in)" OFF)
+option(ICMG_PER_EXE_TEST "Build per-exe tests (one binary per file, ~74 exes) — only for isolation debugging" OFF)
+option(ICMG_MONO_TEST "Build single icmg_test binary (DEFAULT ON v1.36.0; saves ~2.5 min link + 1.5 GB disk)" ON)
+if(ICMG_PER_EXE_TEST)
+    set(ICMG_MONO_TEST OFF CACHE BOOL "" FORCE)
+    message(STATUS "icmg: ICMG_PER_EXE_TEST=ON — disabling mono, building per-exe tests (slow path)")
+endif()
 if(ICMG_MONO_TEST)
     get_property(_ICMG_TEST_SRCS GLOBAL PROPERTY ICMG_ALL_TEST_SOURCES)
     message(STATUS "icmg: ICMG_MONO_TEST=ON — building mono icmg_test (${_ICMG_TEST_SRCS} sources collected)")
@@ -697,7 +704,7 @@ option(ICMG_USE_LLAMA "Build with local LLM via vendored llama.cpp (opt-in)" OFF
 option(ICMG_LLAMA_VULKAN "Enable Vulkan backend for llama.cpp (requires ICMG_USE_LLAMA=ON)" OFF)
 if(ICMG_USE_LLAMA)
     message(STATUS "icmg: ICMG_USE_LLAMA=ON — vendoring llama.cpp from third_party/llama.cpp/")
-    # v1.35.0 B1-toolchain-fix: force-disable GGML_NATIVE (-march=native AVX
+    # v1.36.0 B1-toolchain-fix: force-disable GGML_NATIVE (-march=native AVX
     # intrinsics) + GGML_CCACHE wrapper. Both trigger c++.exe crash
     # (0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND) on MSYS2 GCC 15.2 when
     # compiling ggml-cpu/amx/mmq.cpp + binary-ops.cpp. With these OFF,
