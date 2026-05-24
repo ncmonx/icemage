@@ -1450,3 +1450,19 @@ Decisions:
 - Auto-compact (A9) deferred: UserPromptSubmit at 75% ctx -> detached `icmg compact-bg` -> LLM-or-regex distill into memory_node, zero hot-path block. Gated on A2 LlamaRunner.
 Rejected: widening BASH_REWRITE PATTERN to commit/push/add — Tkil would mangle commit messages; existing run_cmd.cpp:40-45 destructive gate already covers force-push/hard-reset/clean-f.
 Open: build approval pending; A8 runtime verify after build; A2-A7 + A9 implementation queue.
+
+
+## 2026-05-24 14:21 [saved]
+Goal: v1.31.0 SHIPPED — Phase A local LLM foundation (llama.cpp + privacy-first).
+Decisions:
+- Scope-cut: B1/B3b/B4/C1/C2/C3/A9 deferred to v1.32+ — foundation ships in v1.31.0, LLM-consuming features layer later.
+- Smart router B1.5: 3-layer (hard rules / adaptive telemetry / heuristics), sub-ms p99, hot-path forced REGEX, CI-lint guard noted in smart_router.hpp.
+- Warm-pool B3a in-process singleton; B3b cross-process service IPC deferred (substantial subsystem).
+- A5b uses system curl (no libcurl dep) + certutil/sha256sum verify; mismatched files auto-deleted.
+- Consent sentinel ~/.icmg/llm/consent; --yes + ICMG_LLM_CONSENT=1 bypass CI/non-interactive.
+- CMake PCH extended with iostream/algorithm/cstdint/cstddef/map/set/array/functional.
+Rejected:
+- B1 default-ON flip in v1.31.0 — requires published SHA256s + binary-size delta verify first.
+- Embedding full pack --rerank LLM integration this batch — pack_cmd refactor too deep for safe single-session ship.
+- Buffer-in-memory HTTP download — unfit for 400 MB-2 GB models; stream-to-file via curl.
+Open: v1.32 plan needed — B1 flip + B3b service IPC + B4 pack rerank + C1/C2/C3 LLM hooks + A9 auto-compact. Registry SHA256s pending HuggingFace CDN hash extraction.
