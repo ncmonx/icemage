@@ -712,6 +712,15 @@ if(ICMG_USE_LLAMA)
     # with -DGGML_NATIVE=ON -DGGML_CCACHE=ON at configure time.
     set(GGML_NATIVE           OFF CACHE BOOL "" FORCE)
     set(GGML_CCACHE           OFF CACHE BOOL "" FORCE)
+    # v1.37.0: GGML_NATIVE=OFF for MSYS2 toolchain safety, but explicitly enable
+    # Haswell+ ISA features (AVX2/FMA/F16C/BMI2) to recover ~10x perf vs baseline.
+    # Skip AVX512+AMX (those trigger the original AMX-intrinsic compiler crash).
+    set(GGML_SSE42            ON  CACHE BOOL "" FORCE)
+    set(GGML_AVX              ON  CACHE BOOL "" FORCE)
+    set(GGML_AVX2             ON  CACHE BOOL "" FORCE)
+    set(GGML_FMA              ON  CACHE BOOL "" FORCE)
+    set(GGML_F16C             ON  CACHE BOOL "" FORCE)
+    set(GGML_BMI2             ON  CACHE BOOL "" FORCE)
     # Force-disable upstream build options we don't ship.
     set(LLAMA_STANDALONE      OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_HTML      OFF CACHE BOOL "" FORCE)
