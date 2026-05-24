@@ -60,6 +60,11 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | **Service auto-start** (UserPromptSubmit) | **0-touch warm-up** | — | v1.30.0 |
 | **Path ambiguity warning** (icmg context) | wrong-file lookups → loud | — | v1.29.0 |
 | **rg-wrapper + brace glob** (icmg grep/files) | flag-mirror, **{a,b}** expand | — | v1.29.0 |
+| **Local LLM scaffold** (llama.cpp vendored, opt-in) | **0 cloud calls** | privacy-first | v1.31.0 |
+| **Smart router** (REGEX vs LLM_LOCAL vs CACHE) | **<100 us p99** | hot-path forced regex | v1.31.0 |
+| **HTTP streaming download** (model fetch + SHA256) | **400 MB - 2 GB** safe-verify | tamper-detect | v1.31.0 |
+| **icmg git** wrapper (single ergonomic entry) | **Tkil-filtered** + safety-gated | enforces icmg-FIRST | v1.31.0 |
+| **Python-free core** (PRECOMPACT_PY dropped) | **-200-500 ms** boot saved | single-binary | v1.31.0 |
 | Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
 Measured on real-world sessions. Your mileage will vary with project size and habits — anyone running a busy AI agent for a day already sees meaningful savings.
@@ -69,6 +74,7 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.31.0** - **Phase A local LLM foundation**: vendored llama.cpp (b9297, opt-in `-DICMG_USE_LLAMA=ON`), Qwen2.5 0.5B/1.5B Q4 curated registry. NEW `icmg llm` (install/use/bench/status/disable/enable) with first-launch consent, HTTP streaming download + SHA256 verify, cross-platform RAM guard (1.5 GB floor), in-process warm-pool. NEW `icmg ask --backend=local` (router fallback). NEW `icmg git <subcmd>` thin wrapper. Smart router B1.5 (REGEX/LLM_LOCAL/CACHE, sub-ms p99). Telemetry ring-buffer. **Python-free core**. Build default OFF. Phase B+C deferred to v1.32+.
 - **v1.30.0** - 4 token-prune features + auto-start service: **MCP response filter** (50-80% on verbose plugins), **auto-thinking suppress** for trivial prompts (~1500 tok/call), **caveman-auto** for long prose (60-75% reply compress), **service auto-start** on UserPromptSubmit. Edit-expand scaffold logs opportunity rate; real expansion v1.31. All hook-side; opt-out via env vars. Restart AI agent after `icmg init --force`.
 - **v1.29.0** - server-2 backlog mega: 7 fixes (#1 exact-first context default, #5 leash exempt small native grep, #9 RAW=1 heredoc/-e exempt, #10 ambiguity warning with candidate list) plus **2 new cmds** (`icmg grep` rg-wrapper with brace+flag mirror; `icmg files` glob enumeration mirroring Claude Glob tool). **Mono `icmg_test` ACTUALLY WORKS** - opt-in (`-DICMG_MONO_TEST=ON`) collects 871 TEST() cases in single binary (v1.26.0 hang root cause: Scorer BM25 corpus leak, fixed via `reset()` + `betweenTests()` hook). Per-exe still default. Plus carry-overs: service.pid diagnostic + `ICMG_SERVICE_NO_SCHTASKS=1` opt-out. ctest 121->122.
 - **v1.28.0** — mega bundle of 8 dashboard fixes from user backlog: per-cmd `--raw` alias, `--exact-path` on `icmg context`, **auto-rescan on mtime stale** (no more outdated context snapshots), Windows backslash-strip recovery, dedup TTL 5min, **NEW `icmg read <file> --around <regex>`** (±100 lines around anchor — solves STRICT Read 30-line cap for Edit ops), `grep` per-file count breakdown, zone glob brace `{a,b,c}` expansion. Plus Bug 2 architectural: savings dashboard splits "Outside coverage" into Conversation (inherent) vs Tool-outside-icmg (fixable). MemoryStore lazy ONNX (`cachedEmbedder` singleton) cuts vec_search 5-6s redundant cold-loads. ctest 120→121.
