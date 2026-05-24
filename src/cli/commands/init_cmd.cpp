@@ -616,30 +616,9 @@ exit 0
 
 // Phase 40 T2: PreCompact hook â€” auto-snapshots session before /compact
 // or auto-compaction wipes context. Runs `icmg session save auto-precompact-<ts>`.
-static const char* PRECOMPACT_PY = R"PY(#!/usr/bin/env python3
-"""icmg PreCompact hook (auto-installed by `icmg init`).
-
-Snapshots active session via `icmg session save auto-precompact-<ts>` so
-decisions and recall context survive Claude Code context compression.
-"""
-import json, shutil, subprocess, sys, time
-def main():
-    try: sys.stdin.read()
-    except: pass
-    icmg = shutil.which("icmg") or shutil.which("icmg.exe")
-    if not icmg:
-        print(json.dumps({"continue": True})); return 0
-    tag = "auto-precompact-" + time.strftime("%Y%m%d-%H%M%S")
-    try:
-        subprocess.run([icmg, "session", "save", tag],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
-        print(json.dumps({"continue": True,
-                          "systemMessage": f"icmg snapshot: {tag}"}))
-    except Exception:
-        print(json.dumps({"continue": True}))
-    return 0
-if __name__ == "__main__": sys.exit(main())
-)PY";
+// v1.31.0 A0: PRECOMPACT_PY removed. settings.json wires PreCompact
+// directly to `icmg hook precompact` (C++ handler since v0.54.0). The
+// .py script was dead-code 12+ versions. Core icmg now Python-free.
 
 // Embedded sidecar â€” kept in sync with embed/icmg_embedder.py.
 // `icmg init` drops this to ~/.icmg/embed/icmg_embedder.py so binary-only
@@ -1055,7 +1034,7 @@ public:
 
         if (!no_scan) {
             std::cout << "  graph scan: run `icmg graph scan` to populate symbol index\n";
-            std::cout << "  embed:      run `icmg embed memory` (requires Python sentence-transformers)\n";
+            std::cout << "  embed:      run `icmg embed memory` (uses bundled ONNX runtime; Python sidecar fallback only if ONNX missing)\n";
         }
 
         // v0.42.0 T-18: auto-start rule-daemon if not already running.
@@ -1292,8 +1271,16 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-shrink-read.sh", SHRINK_READ_SH, true);
         // Phase 45 T3: cap-output PostToolUse hook (auto-shrink Bash >50KB).
         n += writeFile(root / ".claude" / "hooks" / "icmg-cap-output.sh", CAP_OUTPUT_SH, true);
-        // Phase 40 T2: PreCompact auto-snapshot.
-        n += writeFile(root / ".claude" / "hooks" / "icmg-precompact-snapshot.py", PRECOMPACT_PY, true);
+        // v1.31.0 A0: PreCompact .py no longer written. settings.json
+        // calls `icmg hook precompact` C++ handler directly (v0.54.0+).
+        {
+            fs::path stale_py = root / ".claude" / "hooks" / "icmg-precompact-snapshot.py";
+            std::error_code _rmec;
+            if (fs::exists(stale_py, _rmec)) {
+                fs::remove(stale_py, _rmec);
+                std::cout << "  cleanup: removed stale icmg-precompact-snapshot.py\n";
+            }
+        }
         // Phase 51 T2: caveman SessionStart hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-caveman-prompt.sh", CAVEMAN_PROMPT_SH, true);
         // Auto-enable caveman ultra on init if flag absent (never overwrite existing level).
