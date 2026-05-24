@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 1.34.0 LANGUAGES CXX C)
+project(icmg VERSION 1.35.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -697,7 +697,7 @@ option(ICMG_USE_LLAMA "Build with local LLM via vendored llama.cpp (opt-in)" OFF
 option(ICMG_LLAMA_VULKAN "Enable Vulkan backend for llama.cpp (requires ICMG_USE_LLAMA=ON)" OFF)
 if(ICMG_USE_LLAMA)
     message(STATUS "icmg: ICMG_USE_LLAMA=ON — vendoring llama.cpp from third_party/llama.cpp/")
-    # v1.34.0 B1-toolchain-fix: force-disable GGML_NATIVE (-march=native AVX
+    # v1.35.0 B1-toolchain-fix: force-disable GGML_NATIVE (-march=native AVX
     # intrinsics) + GGML_CCACHE wrapper. Both trigger c++.exe crash
     # (0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND) on MSYS2 GCC 15.2 when
     # compiling ggml-cpu/amx/mmq.cpp + binary-ops.cpp. With these OFF,

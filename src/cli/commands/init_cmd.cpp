@@ -433,6 +433,8 @@ log_block() {
 block() {
     local rule="$1" msg="$2"
     log_block "$rule" "$msg"
+    icmg rule-viol record "$rule" "$msg" 2>/dev/null &
+    wait 2>/dev/null && true
     icmg hookio emit PreToolUse --deny "LEASH [$rule]: $msg  (bypass: ICMG_LEASH_OFF=1 — logged)"
     exit 2
 }
@@ -498,6 +500,17 @@ if [[ "$TOOL" == "Bash" || "$TOOL" == "PowerShell" ]]; then
             block "ID=23" "ship-phase: .icmg/ship-state.json active. Run \`icmg ship publish\` first to validate phases."
         fi
     fi
+
+    # v1.35.0 R3: python one-liner block. AI assistants tend to fall back
+    # on `python -c "..."` for inline file edits — user's project rule is
+    # Python-free. Refuse python -c entirely; file invocations still pass.
+    # Override: ICMG_PYTHON_OFF=0.
+    if [[ -z "$ICMG_PYTHON_OFF" || "$ICMG_PYTHON_OFF" != "0" ]]; then
+        if [[ "$NCMD" =~ (^|[[:space:]])python3?[[:space:]]+-c([[:space:]]|$) ]]; then
+            block "ID=24" "python -c blocked. Use icmg run sed/perl, native Edit tool, or write helper to tools/ first."
+        fi
+    fi
+
 
     if [[ "$NCMD" =~ (^|[|\;\&[:space:]])[[:space:]]*rm[[:space:]]+-[a-zA-Z]*(r[a-zA-Z]*f|f[a-zA-Z]*r) ]]; then
         [[ "$NCMD" =~ rm.*[[:space:]]+(build|dist|out|__pycache__|\.cache|tmp|temp|node_modules) ]] || block "ID=20" "rm -rf blocked on non-build paths."

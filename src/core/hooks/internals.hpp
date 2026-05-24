@@ -185,4 +185,9 @@ std::string runUserPromptRecentDecisionsInject();
 // has superseded_at >= now-24h. Empty otherwise.
 // Opt-out: ICMG_DRIFT_INJECT_QUIET=1.
 std::string runUserPromptDriftInject();
+
+// v1.35.0 R8: auto-pin escalated rules. Top-3 most-violated rule_ids
+// (count_total >= 2) with last ctx, prepended to UserPromptSubmit header.
+// Opt-out: ICMG_R8_AUTOPIN_QUIET=1.
+std::string runUserPromptEscalatedRulesInject();
 } // namespace icmg::core::hooks

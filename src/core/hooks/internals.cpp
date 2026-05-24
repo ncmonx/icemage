@@ -5,6 +5,7 @@
 #include "../path_utils.hpp"
 #include "../context_node_store.hpp"
 #include "../target_disambiguator.hpp"
+#include "../rule_telemetry.hpp"  // v1.35.0 R8
 #include "../../compress/compressor.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../cli/commands/skill_recall.hpp"
@@ -1431,6 +1432,32 @@ std::string runUserPromptDriftInject() {
         std::ostringstream out;
         out << "DRIFT WARNING: " << count
             << " decision(s) superseded in last 24h. Run `icmg drift status` to review.\n---\n";
+        return out.str();
+    } catch (...) { return ""; }
+}
+
+// v1.35.0 R8: auto-pin escalated rules. Reads RuleTelemetry::topByCount,
+// prepends top-3 most-violated rule IDs + last ctx to UserPromptSubmit
+// header. Forces rules the AI keeps breaking up to top of context.
+// Opt-out: ICMG_R8_AUTOPIN_QUIET=1.
+std::string runUserPromptEscalatedRulesInject() {
+    if (std::getenv("ICMG_R8_AUTOPIN_QUIET")) return "";
+    try {
+        auto top = RuleTelemetry::topByCount(3);
+        if (top.empty()) return "";
+        std::ostringstream out;
+        bool any = false;
+        for (const auto& s : top) {
+            if (s.count_total < 2) continue;  // ignore one-offs
+            if (!any) {
+                out << "ESCALATED RULES (you violated these recently — DO NOT REPEAT):\n";
+                any = true;
+            }
+            std::string ctx = s.last_ctx;
+            if (ctx.size() > 90) ctx = ctx.substr(0, 87) + "...";
+            out << "  - " << s.rule_id << " (" << s.count_total << "x): " << ctx << "\n";
+        }
+        if (any) out << "---\n";
         return out.str();
     } catch (...) { return ""; }
 }

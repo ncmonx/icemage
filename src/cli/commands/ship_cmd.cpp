@@ -156,6 +156,41 @@ private:
     int doBuild() {
         json s = loadState();
         if (s.empty()) { std::cerr << "no ship state — run `icmg ship start <version>` first\n"; return 2; }
+        // v1.35.0 skip-fresh: if build/icmg.exe is newer than every
+        // tracked src .cpp/.hpp/.h, skip rebuild. Pure C++ filesystem —
+        // no shell dependency. Override: ICMG_SHIP_FORCE_BUILD=1.
+        if (!std::getenv("ICMG_SHIP_FORCE_BUILD")) {
+            std::error_code ec;
+            fs::path bin = fs::path("build") / "icmg.exe";
+            if (!fs::exists(bin, ec)) {
+                bin = fs::path("build") / "icmg";
+            }
+            if (fs::exists(bin, ec)) {
+                auto bin_mt = fs::last_write_time(bin, ec);
+                fs::file_time_type newest_src = fs::file_time_type::min();
+                std::vector<fs::path> roots = { "src" };
+                if (fs::exists("third_party/llama.cpp/src", ec)) roots.emplace_back("third_party/llama.cpp/src");
+                if (fs::exists("third_party/llama.cpp/include", ec)) roots.emplace_back("third_party/llama.cpp/include");
+                for (const auto& root : roots) {
+                    for (auto it = fs::recursive_directory_iterator(root, ec);
+                         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+                        if (ec) { ec.clear(); continue; }
+                        const auto& p = it->path();
+                        auto ext = p.extension().string();
+                        if (ext != ".cpp" && ext != ".hpp" && ext != ".h" && ext != ".cc") continue;
+                        auto mt = fs::last_write_time(p, ec);
+                        if (ec) { ec.clear(); continue; }
+                        if (mt > newest_src) newest_src = mt;
+                    }
+                }
+                if (bin_mt > newest_src) {
+                    markPhase(s, "build", "icmg.exe fresh (no src changes since last build)");
+                    saveState(s);
+                    std::cout << "{\"ok\":true,\"phase\":\"build\",\"skipped\":\"artifact fresh\"}\n";
+                    return 0;
+                }
+            }
+        }
         auto r = core::safeExecShell("cmake --build build --target icmg --parallel", true, 600000);
         if (r.exit_code != 0) {
             std::cerr << "build failed (exit " << r.exit_code << ")\n";
@@ -173,6 +208,31 @@ private:
         if (!isPhaseFreshOk(s, "build")) {
             std::cerr << "build phase missing or stale — run `icmg ship build`\n";
             return 4;
+        }
+        // v1.35.0 Strategi 1: skip ctest when git diff since the ship
+        // start touches only non-code paths (docs, README, .github/,
+        // scripts/*.sh, *.md). Saves ~15-30 s per docs-only patch.
+        // Override via ICMG_SHIP_FORCE_TEST=1.
+        if (!std::getenv("ICMG_SHIP_FORCE_TEST")) {
+            std::string started = s["phases"].value("build", json::object()).value("ts", std::string{});
+            if (started.empty()) started = s.value("started_at", std::string{});
+            std::string cmd =
+                "since_iso=\"" + started + "\"; "
+                "since_ts=$(date -d \"$since_iso\" +%s 2>/dev/null || echo 0); "
+                "( git log --since=\"$since_iso\" --pretty=format: --name-only 2>/dev/null ; git status --porcelain 2>/dev/null | awk \"{print \$2}\" ) "
+                "  | sort -u | grep -v '^$' "
+                "  | grep -vE '^(README\.md|CHANGELOG\.md|docs/|\.github/|scripts/.*\.sh|.*\.md)$' "
+                "  | head -3";
+            auto chk = core::safeExecShell(cmd, true, 15000);
+            std::string trimmed = chk.out;
+            while (!trimmed.empty() && (trimmed.back() == '\n' || trimmed.back() == '\r' || trimmed.back() == ' '))
+                trimmed.pop_back();
+            if (trimmed.empty() && chk.exit_code == 0) {
+                markPhase(s, "test", "ctest skipped — docs-only since build phase");
+                saveState(s);
+                std::cout << "{\"ok\":true,\"phase\":\"test\",\"skipped\":\"docs-only\"}\n";
+                return 0;
+            }
         }
         // Quick build of test exes first (no-op if cached).
         (void)core::safeExecShell("cmake --build build --parallel", true, 900000);
