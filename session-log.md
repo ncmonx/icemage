@@ -1466,3 +1466,18 @@ Rejected:
 - Embedding full pack --rerank LLM integration this batch — pack_cmd refactor too deep for safe single-session ship.
 - Buffer-in-memory HTTP download — unfit for 400 MB-2 GB models; stream-to-file via curl.
 Open: v1.32 plan needed — B1 flip + B3b service IPC + B4 pack rerank + C1/C2/C3 LLM hooks + A9 auto-compact. Registry SHA256s pending HuggingFace CDN hash extraction.
+
+
+## 2026-05-24 15:05 [saved]
+Goal: v1.32.0 SHIPPED — Phase B+C layered LLM features on v1.31 foundation.
+Decisions:
+- v1.32.0 = B4 pack --rerank + A9a compact-bg + C1 PreCompact LLM + C3 KV-cache mgmt. All router-gated, regex fallback always.
+- B1 default-ON flip REVERTED — MSYS2/MinGW compiler crash (0xc0000139) on ggml-cpu/amx/mmq.cpp under -march=native. Opt-in still works; default stays OFF.
+- LlamaRunner default reuse_kv=false — clears KV before each prompt to prevent multi-call ctx overflow. Caller opts in to reuse for conversation-style threads.
+- C1 PreCompact transcript capped at 8 KB tail; ICMG_NO_LLM_PRECOMPACT opt-out.
+- A9a manual only; A9b auto-trigger heuristic deferred — Claude token count not exposed.
+Rejected:
+- B1 default ON for v1.32.0 — toolchain instability, not user-shippable.
+- C2 cached intent in v1.32.0 — needs hot-path cache-coherency design more careful than single-batch coding.
+- B3b service IPC warm-pool in v1.32.0 — substantial IPC subsystem.
+Open: B1 toolchain workaround (disable -march=native for ggml-cpu only? bisect AMX backend?). C2/B3b/A9b design specs needed for v1.33 plan. Registry SHA256s still PENDING_FILL_ON_PUBLISH.
