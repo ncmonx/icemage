@@ -414,7 +414,8 @@ private:
         std::string drift_hint    = icmg::core::hooks::runUserPromptDriftInject();
         std::string escalated_hint= icmg::core::hooks::runUserPromptEscalatedRulesInject();
         std::string amnesia_hint  = icmg::core::hooks::runUserPromptAmnesiaInject();
-        out["hookSpecificOutput"]["additionalContext"] = amnesia_hint + escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
+        std::string budget_hint   = (icmg::core::hooks::runPreToolUseTokenBudget(prompt) > 0) ? std::string("TOKEN BUDGET WARN. ICMG_TOKEN_BUDGET_OFF=1 to disable. ") : std::string("");
+        out["hookSpecificOutput"]["additionalContext"] = budget_hint + amnesia_hint + escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
         std::cout << out.dump() << "\n";
     }
 
@@ -1005,6 +1006,8 @@ int HookCommand::cmdPostToolUseBash() {
 
     // v1.4.0 T5: record test outcome into approaches table (side-effect only).
     icmg::core::hooks::runPostToolUseTestOutcome(tool_command, tool_output, 0);
+    std::string force = icmg::core::hooks::runPostToolForceCompress(tool_output);
+    if (!force.empty()) { if (!ctx.empty()) ctx += force; else ctx = force; }
 
     if (ctx.empty()) return 0;
 
