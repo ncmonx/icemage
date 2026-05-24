@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(icmg VERSION 1.31.0 LANGUAGES CXX C)
+project(icmg VERSION 1.32.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -688,6 +688,12 @@ endif()
 # When OFF: zero llama.cpp code in icmg_lib; baseline performance.
 # ---------------------------------------------------------------------------
 option(ICMG_USE_LLAMA "Build with local LLM via vendored llama.cpp (opt-in)" OFF)
+# v1.32.0 B1 reverted: default ON attempt hit MSYS2/MinGW compiler crash
+# (0xc0000139) on llama.cpp ggml-cpu/amx/mmq.cpp + binary-ops.cpp under
+# -march=native. Likely AMX intrinsic header incompat. Opt-in build is
+# verified working (link succeeds); default OFF preserves baseline shippable
+# Windows binary. Revisit when MSYS2 toolchain or llama.cpp GGML AMX path
+# stabilizes (b9298+ may fix).
 option(ICMG_LLAMA_VULKAN "Enable Vulkan backend for llama.cpp (requires ICMG_USE_LLAMA=ON)" OFF)
 if(ICMG_USE_LLAMA)
     message(STATUS "icmg: ICMG_USE_LLAMA=ON — vendoring llama.cpp from third_party/llama.cpp/")

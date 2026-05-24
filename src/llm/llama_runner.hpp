@@ -39,6 +39,14 @@ struct InferParams {
     int   seed      = -1;       // -1 = random
     // Optional stop strings (text-level). Match-after-detokenize.
     std::string stop;
+    // v1.32.0 C3: KV-cache reuse policy.
+    // false (default): clear KV cache before decoding the prompt — safe,
+    //                  every call is independent. Wastes compute when the
+    //                  prompt shares a prefix with the previous call.
+    // true: keep KV from previous infer() on the same runner. Caller is
+    //       responsible for ensuring prompts continue from where the last
+    //       one left off (e.g., follow-up turn in a conversation).
+    bool  reuse_kv  = false;
 };
 
 struct InferResult {
@@ -85,6 +93,10 @@ public:
                       const std::function<bool(const std::string&)>& on_token = {});
 
     const std::string& lastError() const;
+
+    // v1.32.0 C3: force-clear the KV cache. Safe to call when not loaded
+    // (no-op). Useful between unrelated conversations on the same runner.
+    void clearKvCache();
 
 private:
     struct Impl;

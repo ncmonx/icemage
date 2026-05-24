@@ -131,6 +131,12 @@ bool LlamaRunner::load(const std::string& gguf_path,
 
 void LlamaRunner::unload() { if (impl_) impl_->reset(); }
 
+void LlamaRunner::clearKvCache() {
+    if (impl_ && impl_->ctx) {
+        llama_memory_clear(llama_get_memory(impl_->ctx), /*data=*/true);
+    }
+}
+
 InferResult LlamaRunner::infer(const std::string& prompt,
                                const InferParams& ip,
                                const std::function<bool(const std::string&)>& on_token) {
@@ -140,6 +146,13 @@ InferResult LlamaRunner::infer(const std::string& prompt,
         return r;
     }
     auto t0 = std::chrono::steady_clock::now();
+
+    // v1.32.0 C3: reset KV cache between unrelated calls unless caller
+    // opts in to reuse. Without this, positions accumulate and the
+    // context window overflows after ~3-5 prompts.
+    if (!ip.reuse_kv) {
+        llama_memory_clear(llama_get_memory(impl_->ctx), /*data=*/true);
+    }
 
     // Tokenize the prompt. Probe size first.
     int n_prompt = -llama_tokenize(impl_->vocab, prompt.c_str(), (int)prompt.size(),
@@ -239,6 +252,7 @@ bool LlamaRunner::load(const std::string&, const LlamaParams&, std::uint64_t) {
     return false;
 }
 void LlamaRunner::unload() {}
+void LlamaRunner::clearKvCache() {}
 
 InferResult LlamaRunner::infer(const std::string&,
                                const InferParams&,

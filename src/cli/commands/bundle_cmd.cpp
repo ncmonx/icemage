@@ -20,6 +20,10 @@
 #include "../ref_registry.hpp"
 #include "../pack_delta.hpp"
 #include "../../core/secret_scanner.hpp"
+// v1.32.0 B4: pack --rerank via warm-pool LLM.
+#include "../../llm/warm_pool.hpp"
+#include "../../llm/smart_router.hpp"
+#include "../../llm/llama_runner.hpp"
 #include <map>
 #include <chrono>
 #include <ctime>
@@ -590,6 +594,7 @@ public:
             "  --preset NAME         Task-type preset: fix-bug|add-command|release\n"
             "  --ref-ids             Emit [ICMG-MEM-N] anchors; subsequent calls reuse\n"
             "  --prune-audit         Drop memory hits below --prune-min-score (default 1.5)\n"
+            "  --rerank              LLM-rerank memory hits by relevance to task (v1.32.0)\n"
             "  --prune-min-score N   Threshold for prune-audit (default 1.5)\n"
             "  --budget N            Knapsack-keep highest-score hits within N tokens\n"
             "  --compress-ast        Elide function/class bodies in emitted source (70-90% byte cut)\n"
@@ -744,6 +749,80 @@ public:
                 recalled.resize(kept);
             }
         }
+        // v1.32.0 B4: --rerank — ask local LLM to score each remaining hit
+        // for relevance to the task, reorder by LLM score. Router-gated;
+        // silently no-ops if router routes REGEX (e.g., build off, opt-out,
+        // cold-load fail, p95 spike). Latency budget: warm path (<2s SLA).
+        if (hasFlag(args, "--rerank") && !recalled.empty()) {
+            llm::CallContext rctx;
+            rctx.tier             = llm::PathTier::WARM;
+            rctx.kind             = "rerank";
+            rctx.input_tokens_est = recalled.size() * 30 + task.size() / 4;
+            rctx.build_has_llama  = llm::LlamaRunner::available();
+            rctx.llm_loaded       = llm::WarmPool::instance().isLoaded();
+            const char* dis = std::getenv("ICMG_LLM_USER_DISABLED");
+            rctx.user_disabled = (dis && *dis == '1');
+            auto rd = llm::routeFor(rctx);
+            if (rd.route == llm::Route::LLM_LOCAL) {
+                std::string err;
+                llm::LlamaRunner* run = llm::WarmPool::instance().acquire(err);
+                if (run) {
+                    std::ostringstream pp;
+                    pp << "You are a relevance ranker for AI coding context.\n"
+                       << "Task: " << task << "\n\nHits:\n";
+                    for (size_t i = 0; i < recalled.size(); ++i) {
+                        pp << (i + 1) << ". " << recalled[i].topic << " | "
+                           << recalled[i].content.substr(0, 80) << "\n";
+                    }
+                    pp << "\nReply with one line: \"RANK: i1,i2,i3,...\" "
+                          "ordering hit numbers most-relevant first. No prose.\n";
+                    llm::InferParams ip;
+                    ip.max_tokens = 96;
+                    ip.temperature = 0.0f;
+                    ip.stop = "\n\n";
+                    auto res = run->infer(pp.str(), ip);
+                    if (res.ok) {
+                        auto pos = res.text.find("RANK:");
+                        if (pos != std::string::npos) {
+                            std::string list = res.text.substr(pos + 5);
+                            std::vector<size_t> order;
+                            std::string num;
+                            auto flush = [&]() {
+                                if (num.empty()) return;
+                                try {
+                                    size_t idx = std::stoul(num) - 1;
+                                    if (idx < recalled.size()) order.push_back(idx);
+                                } catch (...) {}
+                                num.clear();
+                            };
+                            for (char c : list) {
+                                if (std::isdigit(static_cast<unsigned char>(c))) num.push_back(c);
+                                else flush();
+                            }
+                            flush();
+                            if (!order.empty()) {
+                                std::vector<bool> seen(recalled.size(), false);
+                                decltype(recalled) reordered;
+                                reordered.reserve(recalled.size());
+                                for (size_t idx : order) {
+                                    if (!seen[idx]) { reordered.push_back(recalled[idx]); seen[idx] = true; }
+                                }
+                                for (size_t i = 0; i < recalled.size(); ++i)
+                                    if (!seen[i]) reordered.push_back(recalled[i]);
+                                recalled = std::move(reordered);
+                                std::cerr << "[icmg pack] --rerank applied via LLM "
+                                          << "(wall=" << static_cast<int>(res.wall_ms) << "ms)\n";
+                            }
+                        }
+                    }
+                } else {
+                    std::cerr << "[icmg pack] --rerank skipped: " << err << "\n";
+                }
+            } else {
+                std::cerr << "[icmg pack] --rerank routed " << rd.reason << " — skip\n";
+            }
+        }
+
         if (!recalled.empty()) {
             size_t mem_start = out.tellp();
             out << "## Memory (top " << recalled.size() << ")\n";

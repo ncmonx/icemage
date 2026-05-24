@@ -4,6 +4,10 @@
 #include "../db.hpp"
 #include "../exec_utils.hpp"
 #include "../path_utils.hpp"
+// v1.32.0 C1: optional LLM PreCompact summarize.
+#include "../../llm/warm_pool.hpp"
+#include "../../llm/smart_router.hpp"
+#include "../../llm/llama_runner.hpp"
 
 #include <nlohmann/json.hpp>
 #include <cstdlib>
@@ -130,10 +134,57 @@ std::string runPreCompactHook(const std::string& stdin_raw) {
         } catch (...) {}
     }
 
-    // Step 3: ABSOLUTE RULE + top-5 pinned anchors.
+    // v1.32.0 C1: LLM PreCompact summarize (cold path, <15 s SLA).
+    // Router-gated. If LLM_LOCAL, summarize the transcript via warm-pool
+    // Qwen 0.5B and append the summary to additionalContext. Falls back
+    // silently to existing regex distill (step 2 above already ran).
+    std::string llm_summary;
+    if (!stdin_raw.empty() && !std::getenv("ICMG_NO_LLM_PRECOMPACT")) {
+        try {
+            json j = json::parse(stdin_raw);
+            std::string transcript = j.value("transcript", std::string(""));
+            if (!transcript.empty()) {
+                constexpr std::size_t kMax = 8 * 1024;
+                if (transcript.size() > kMax)
+                    transcript = transcript.substr(transcript.size() - kMax);
+                icmg::llm::CallContext rctx;
+                rctx.tier             = icmg::llm::PathTier::COLD;
+                rctx.kind             = "precompact";
+                rctx.input_tokens_est = transcript.size() / 4;
+                rctx.build_has_llama  = icmg::llm::LlamaRunner::available();
+                rctx.llm_loaded       = icmg::llm::WarmPool::instance().isLoaded();
+                const char* dis = std::getenv("ICMG_LLM_USER_DISABLED");
+                rctx.user_disabled = (dis && *dis == '1');
+                auto rd = icmg::llm::routeFor(rctx);
+                if (rd.route == icmg::llm::Route::LLM_LOCAL) {
+                    std::string err;
+                    auto* run = icmg::llm::WarmPool::instance().acquire(err);
+                    if (run) {
+                        std::string prompt =
+                            "You compress AI coding session transcripts before context "
+                            "compaction. Extract <=6 durable facts as bullets "
+                            "`- <fact>` covering: open tasks, decisions made, anti-"
+                            "patterns avoided, blockers. Drop chit-chat. No prose.\n\n"
+                            "Transcript:\n" + transcript + "\n\nFacts:\n";
+                        icmg::llm::InferParams ip;
+                        ip.max_tokens = 256;
+                        ip.temperature = 0.2f;
+                        auto res = run->infer(prompt, ip);
+                        if (res.ok && !res.text.empty()) llm_summary = res.text;
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+
+    // Step 3: ABSOLUTE RULE + top-5 pinned anchors (+ optional LLM summary).
     std::ostringstream rule;
     rule << "ABSOLUTE RULE - icmg FIRST. Before any native Read/Bash/Grep/Glob/"
             "WebFetch, check icmg equivalent.\n";
+    if (!llm_summary.empty()) {
+        rule << "LLM-distilled session facts (Qwen 0.5B, pre-compact):\n"
+             << llm_summary << "\n";
+    }
     try {
         auto& cfg = Config::instance();
         Db db(cfg.projectDbPath("."));
