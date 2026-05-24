@@ -118,6 +118,11 @@ if(NOT ICMG_NO_PCH)
         <string> <vector> <unordered_map> <unordered_set>
         <memory> <filesystem> <fstream> <sstream>
         <chrono> <optional>
+        # v1.31.0: extend hot-header set. iostream in ~80%% of TUs;
+        # algorithm + cstdint in ~50%%. Adds ~5-10 MB PCH but cuts
+        # parse phase another ~10%%.
+        <iostream> <algorithm> <cstdint> <cstddef>
+        <map> <set> <array> <functional>
     )
     message(STATUS "icmg: PCH enabled for icmg_lib (~10-20% cold-compile saving)")
 endif()
