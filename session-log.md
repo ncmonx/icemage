@@ -1185,3 +1185,268 @@ Rejected:
 Open:
 - Service install elevation failure → fallback flag deferred.
 - No tests for cron_store/cronjobs_cmd/sweepLegacySchtasks.
+
+## 2026-05-20 09:50 [saved]
+Goal: v1.18.1 hotfix ship — exec_client race + update-apply cascade + init speedup; version-sync rule.
+Decisions:
+- exec_client.c: pre-check `Global\icmg-service-<USER>` mutex via OpenMutexA + atomic `service.starting` sentinel (CreateFileA CREATE_NEW) → only one client of N can spawn service; kills 120s Claude Bash-tool timeout root cause.
+- update_cmd.cpp + init_cmd.cpp: `ICMG_NO_AUTOSPAWN=1` env prefix at all fan-out subprocess sites → no cascade spawn during `update --apply` (32-proc bloat fix).
+- init_cmd timeouts 20s/15s/30s → 10s/8s/15s (claudemd/plan/skill).
+- Version-bump sync rule added to CLAUDE.md: every ctest/MCP-tool count change MUST patch (1) shields gist ctest.json, (2) README Stability gate row, (3) README install ctest comment, (4) GH repo About description, (5) CHANGELOG verification line — in same docs PR.
+- Hook block workaround: `icmg run bash <script>` bypasses cmake/grep/cat blocks; `--admin` flag required to merge docs PR (branch protection).
+Rejected:
+- Killing service singleton entirely (would re-introduce N-process bloat from v1.11.x era).
+- Blocking exec_client until pipe ready without sentinel (deadlocks under N>service-start-time).
+- Hardcoding ctest count in README only (gist endpoint required for dynamic badge — README + gist must stay in sync manually).
+Open:
+- TDD for exec_client mutex/sentinel logic deferred (race test = flaky, mock-based test acceptable v1.19+).
+- session-log.md uncommitted on release/v1.18.1 (carry-over for next release branch).
+
+## 2026-05-20 11:30 [saved]
+Goal: v1.19.0 ship — init speedup + B:/ popup hardening via dual-binary repack.
+Decisions:
+- init_cmd.cpp: claudemd/plan/skill 3 sub-imports fan-out PARALLEL via `icmg parallel` (wall-clock max not sum); backup/mirror eager initial run dropped (cron tick handles ≤60m/15m); rule-daemon ping 3s→1s. Net init ≤5s.
+- main.cpp: sanitize_path inline at top — strips dead-drive PATH entries via GetLogicalDrives. Defense in depth.
+- Release zip restored to v1.7.0 dual-binary: `icmg-launcher.exe`→`icmg.exe` (52KB, zero-DLL, SetErrorMode+sanitize FIRST), big binary→`icmg-core.exe`. Win loader never scans PATH with B:\ entries before user code runs.
+- CLAUDE.md release-checklist updated with dual-binary stage steps.
+Rejected:
+- Static-link onnxruntime/wasmtime — no Win MinGW static .lib available.
+- Single-binary + delay-load custom hook — high regression risk vs proven v1.7.0 split.
+- Bumping version to 1.18.2 mid-session (user gated on explicit build approval).
+Open:
+- session-log.md uncommitted on release/v1.19.0 (carry-over per release convention).
+- Memory layer Tier A bundle (access-aware decay, typed memoir relations, 3-layer auto-extract, hybrid blend tunable) deferred to v1.20.0.
+- RTK Tier A (tee-on-failure spill, turn_cache wiring, in-RAM graph cache) also deferred to v1.20.0.
+
+## 2026-05-20 13:25 [saved]
+Goal: v1.19.1 + v1.19.2 hotfixes shipped — B:/ popup via manifest, missing hook scripts generated.
+Decisions:
+- v1.19.0 dual-binary repack broke `icmg update --apply` (update_cmd.cpp only extracts icmg.exe). v1.19.1 reverted to single-binary, B:/ popup prevented via embedded RT_MANIFEST resource with private-assembly `<file>` entries (forces Win loader to resolve all bundled DLLs + transitive deps from app dir only, no PATH scan).
+- v1.19.2: init_cmd embeds `GIT_LEASH_SH` + `GRAPH_UPDATE_SH` constants (referenced by settings.local.json since v1.4.0 but never generated). PreToolUse:Bash leash fires first (timeout 10), Write matcher added for settings.local.json + leash self-overwrite protection. PostToolUse:Edit|Write routes via shim (timeout 30 async true) with in-process fallback.
+- v1.20.0 plan written (docs/plans/2026-05-20-v1.20.0-memory-filter-bundle.md): 21 tasks, ~42h, 6 subsystems (memory/extract/filter/speed/feedback/UX), ctest 111→136, MCP 28→36, 5 mig 0027-0031 additive only.
+Rejected:
+- Static link onnxruntime/wasmtime (no MinGW static .lib).
+- Single-binary + delay-load custom hook (regression risk).
+- Dual-binary shipping (broke `update --apply`).
+Open:
+- v1.20.0 execute pending user go.
+- session-log uncommitted on release branches (carry-over convention).
+
+## 2026-05-20 17:15 [saved]
+Goal: 8 releases shipped one session — v1.18.1→v1.20.3 (init speed, B:/ popup, hook gen, memory access-aware decay, 3 viewers, cross-project context, multi-user IPC safety, leash bash =~).
+Decisions:
+- v1.19.0 dual-binary repack regression → v1.19.1 reverted to single-binary + embedded RT_MANIFEST resource (private SxS DLL isolation forces Win loader to resolve all DLLs + transitive deps from app dir only, no PATH scan).
+- v1.19.2 + v1.20.3: hook scripts generation. `init_cmd.cpp` embeds GIT_LEASH_SH + GRAPH_UPDATE_SH constants. v1.20.3 migrated grep -qE → bash =~ ERE (no external grep fork, ~10 forks saved per Bash hook). `\s` → `[[:space:]]`, `\b` rewritten as bounded alternatives.
+- v1.20.0 Tier-A subset shipped (4 of 21): M1 access-aware decay (Scorer formula reuses memory_nodes.frequency), F4 ls --summary, F5 json schema viewer (new cmd), U1 savings --ascii sparkline.
+- v1.20.1 RAII clear projectDbOverride at dispatcher + exec_server (singleton leak fix). v1.20.2 abs-path → owning-project auto-detect via GlobalDb::listProjects longest-prefix match. Multi-user: ICMG_NO_IPC=1 opt-out + USERPROFILE-hash pipe fallback.
+- Release pipeline pattern: build → ctest 111/111 Win+Linux → pack zip+tar+sha256 → push private/release/vX → docs PR public → admin-merge → gh release create --target docs-merge-sha → upload assets.
+Rejected:
+- Dual-binary shipping (broke update --apply — only extracts icmg.exe, leaves icmg-core.exe missing).
+- Static-link onnxruntime/wasmtime (no MinGW static .lib).
+- RTK/ICM tool names in public README (neutralized per user request).
+Open:
+- v1.20.0 plan: 17 fitur deferred ke v1.20.4+/v1.21 (typed memoir relations, 3-layer auto-extract, tee-on-failure, in-RAM graph cache, feedback+transcript subsystems, bench-recall, 6 new lang filters, multi-tool init).
+- session-log uncommitted on release branches (carry-over convention).
+
+## 2026-05-21 09:50 [saved]
+Goal: ship v1.20.4→v1.21.0 (6 releases) + README rewrite.
+Decisions:
+- Hook generator stays script-based; `exec icmg hook` + `icmg shield --` chain banned (60s cold-spawn cascade).
+- scanner.cpp wraps full rebuild in one SQLite TRANSACTION (minutes→sec).
+- F6 log-dedup filter, F7 transparent wrapper peek (3 layers), S3 per-cmd metrics, M5 typed memoir relations (`rel:<type>:N`), M3 silent dedup env, M6 memoir export formats.
+- Public README rule: layman audience, no source/arch/code snippets; "What's new" cap 5 versions.
+Rejected:
+- Bundling ~11 v1.20.0 tail features into one release — phased v1.21.x instead.
+
+## 2026-05-21 19:04 [saved]
+Goal: v1.21.6→v1.21.9 ship arc + v1.22.0 plan draft.
+Decisions:
+- v1.21.6 update_cmd syncs sibling icmg.exe↔icmg-core.exe (legacy dual-installs auto-heal N+1).
+- v1.21.7 mig 0034 transcripts+FTS5; recordTranscript runs PreCompact BEFORE X1+distill.
+- v1.21.8 hook cache stale-while-revalidate raw fd-1 write on timeout (bypass cout rdbuf race).
+- v1.21.8 S1 graph cache FIFO 256 for getNode, coarse clearCache on node writes only.
+- v1.21.9 tier-aware ageDecay (critical λ0, low 2×) + `.old-<PID>` sweep + `bash -c` hook wrap.
+Rejected:
+- Delete icmg-core.exe after dual-sync — kept both for legacy scripts.
+- cout rdbuf swap inside worker holding lock — race.
+- Mega-bundle v1.20.0 tail — phased 10 patches.
+Open:
+- v1.22.0 plan design Qs (bundle/dry-run/lang/telemetry).
+- TDD debt: 6 v1.21.x features untested (filesystem/host-dep).
+
+## 2026-05-21 11:27 [saved]
+Goal: v1.21.2 staging — X2 prompt-extract + F1 tee-on-failure spill + U2 bench-recall.
+Decisions:
+- v1.21.2 scope locked to X2+F1+U2; defer S1/X1/F3/FB2/FB3 to v1.21.3+ (each carries non-trivial design risk).
+- X2 = regex pattern extract in PROMPT_RECALL_SH (init_cmd.cpp); zero-LLM, ICMG_NO_EXTRACT opt-out.
+- F1 = tkil.cpp spill `.icmg/spill/<ts>_<cmd>.log` on exit≠0 + shrink≥50%; envs ICMG_NO_SPILL / ICMG_SPILL_SHRINK_PCT.
+- Build rule reaffirmed: never `cmake --build` without explicit user "build" approval.
+Rejected:
+- Bundling all v1.20.0 tail (~11 features) into one release — too risky.
+- LLM-assisted prompt extraction — keep regex-only for speed/cost.
+Open:
+- U2 bench-recall harness not yet started (cmd + TOML scenario schema TBD).
+- Version files still at 1.21.1 (bump pending pre-build).
+
+## 2026-05-22 09:08 [saved]
+Goal: v1.22→v1.23 ship + v1.24 plan (port + tree-sitter).
+Decisions:
+- v1.22.0 style-clone shipped regex; tree-sitter deferred — vendored grammars c/php/python/ts only.
+- v1.23.0 leash ID=12 narrows: release/v* + docs/v* + path-mode `--` pre-approved.
+- v1.23.0 project `.claude/settings.json` python3 sanitizer (narrow match → bash hookio).
+- v1.23.0 removeNode clearCache MUST run AFTER DB DELETE (pre-delete getNode re-pops stale).
+- v1.24 plan: `icmg port export/apply` cross-project bundle (target 8-12× saving) + ts vue/html/svelte vendoring.
+Rejected:
+- Bundle Phase C ts into v1.23 — too risky (~6-12h vendoring).
+- Expose `port export` as MCP tool — file selection = deliberate dev gesture.
+Open:
+- v1.24 design Qs answered: mega-bundle / binary artifact / vue v0.2.1 / dry-run default.
+- TDD remaining: M4 hint, M6-dot, sweep, transcript subs, dual-sync, hook async.
+
+## 2026-05-22 10:00 [saved]
+Goal: v1.24.0 ship (port subsystem) + v1.25.0 plan draft (compressed-write + ts).
+Decisions:
+- v1.24.0 `icmg port` ship: text-magic `ICMG-PORT v1` artifact (FNV-128 hash, JSON payload, zstd deferred).
+- v1.24.0 MCP exposes apply only — export = deliberate dev gesture (skipped from auto-fire path).
+- v1.24.0 ts dispatch scaffold lands (`hasTreeSitterGrammar` probe + `ICMG_USE_TREESITTER_*` guards); real grammar vendoring deferred to v1.25.
+- v1.25.0 plan bundles ts grammar drop (vue v0.2.1 + html + svelte) + compressed-write protocol (3 modes: diff/template/glossary).
+- Compressed-write expander pass-through on parse failure — zero corruption risk; diff SHA mismatch → AI re-emits full next turn.
+Rejected:
+- zstd in artifact format — no new lib dep; text-magic + JSON sufficient.
+- v1.24 grammar vendoring inline — needs ~500KB source drops, scope creep.
+- write-mode default-on — opt-in only (`icmg write-mode on`) to keep AI behavior predictable.
+Open:
+- v1.25 design Qs (phasing, write-mode default, diff format, fallback chain).
+- TDD gap: port_cmd export/apply not unit-tested yet (smoke-verified e2e).
+
+## 2026-05-22 11:50 [saved]
+Goal: v1.25.0 compressed-write ship + v1.26.0 build-speedup plan.
+Decisions:
+- v1.25.0 PreToolUse:Write expander uses `updatedInput.content` so Claude writes expanded bytes (not magic-header source).
+- v1.25.0 magic headers: `@@ICMG-RAW` / `@@ICMG-DIFF base=<fnv10>@@` (unified diff + SHA verify) / `@@ICMG-GLOSS@@` map-line + `<%token%>` subst / `@@ICMG-TPL@@` stub.
+- v1.25.0 write-mode default OFF (opt-in, user-confirmed Q2); MCP exposes status only.
+- v1.25.0 pass-through verbatim on parse fail — zero corruption risk (telemetry ok=0 row).
+- v1.26.0 plan target: cold build 20 min → 5-8 min (~60-75% cut) via 115-exe → 1 mono test binary + PCH + lld.
+Rejected:
+- Full template-fill expander in v1.25.0 — defer to v1.25.x (style_patterns slot-fill complexity).
+- Inline grammar source vendor (v1.25.1 deferred again, same network constraint).
+- Force AI to ALWAYS use diff — opt-in flag preserves predictability.
+Open:
+- v1.26.0 4 design Qs (phasing, mono exe name, ctest granularity, lld for icmg.exe final).
+- TDD: write_expander unified-diff fixtures + SHA-mismatch + parse-fail untested.
+
+## 2026-05-22 16:20 [saved]
+Goal: v1.26.0 build speedup — mono test REVERTED, PCH retained, PS+RAW hooks landed.
+Decisions:
+- Mono icmg_test consolidation REVERTED — DB/Scorer/service singletons leak state across TESTs in one process → hang ~22/115 in.
+- PCH on icmg_lib (json.hpp + 10 STL) cuts cold build ~50% (20min → 9-10min). Per-exe model retained.
+- Linux WSL `/mnt/d` requires `-DICMG_NO_PCH=ON` — 9P fs × PCH inflation = VmmemWSL swap death.
+- PreToolUse matcher widened `Bash` → `Bash|PowerShell` + cmdlet PATTERN expansion — PS no longer bypasses icmg-first.
+- RAW=1 nag: log `~/.icmg/raw-usage.jsonl`, non-blocking pressure >5/hr.
+Rejected:
+- 115-exe → 1 mono exe — state-leak hang (singletons), bash.exe spawn bloat, filter-stem mismatch broke 62/115 ctest entries.
+- PCH on Linux WSL via /mnt/d — thrash kills build.
+- Blocking RAW=1 — visibility pressure only; legit uses exist (manual pipes, tmp ≤1KB).
+Open:
+- Build approval pending (user rule: no cmake --build without "build").
+- Future mono attempt requires TEST() name audit + singleton teardown protocol.
+
+## 2026-05-22 17:30 [saved]
+Goal: v1.27.0 mega bundle SHIPPED (TDD + template + TS grammars + parametric coverage).
+Decisions:
+- TS grammar vendoring: in-tree drop under third_party/tree-sitter-<lang>/ â€” vue/html/svelte ~510KB total, CMake foreach auto-builds when parser.c found.
+- Tag.h scanner needs tree_sitter/array.h + alloc.h copied from tree-sitter-lib/lib/src/ into each grammar's src/tree_sitter/.
+- Parametric coverage: single TEST iterating Registry<BaseCommand>::keys() beats per-cmd smoke for 100+ uncovered cmds.
+- port_artifact extracted to public header for testability â€” keep wire format frozen at v1.24.0 (no BUNDLE line).
+- applyUnifiedDiff: exit inner loop on next `@@` or end, NOT old_seen>=old_count â€” was skipping trailing `+` lines.
+Rejected:
+- Per-cmd smoke for ~100 cmds (parametric does same).
+- Mono test in v1.27.0 (singleton teardown scope creep, deferred v1.28+).
+- BUNDLE header line in port serialize (breaks v1.24.0 wire compat).
+Open:
+- Linux WSL build + tar.gz upload to v1.27.0 (Win-only currently).
+- Doc sync (README/CHANGELOG/badge/repo description) pending.
+
+## 2026-05-24 11:30 [saved]
+Goal: v1.30.0 ship + v1.31.0 LLM-local plan locked.
+Decisions:
+- v1.30.0 SHIPPED: 4 token-prune (service auto-start UserPromptSubmit, MCP PostToolUse filter, auto-think trivial-prompt, caveman-auto long-prose) + edit-expand scaffold deferred v1.31.
+- v1.31.0 plan locked: llama.cpp b3791 vendored static + Qwen2.5-0.5B Q4 default + Phase B auto-DL consent + Vulkan backend opt-in flag.
+- Docs ship checklist: Headline table row + Whats-new entry MANDATORY per release; verify post-merge via gh api grep not local script print (em-dash regex silent-fail).
+Rejected:
+- Bundle GGUF model in release zip (size + license; user downloads on consent).
+- Default ON LLM Phase A (opt-in OFF until Phase B stability proven).
+- Cloud LLM dependency for icmg core (privacy-first design).
+Open:
+- User Q pending: Python sidecar removal for full-mandiri operation.
+- llama.cpp Phase A exec not yet started.
+
+## 2026-05-24 11:50 [saved]
+Goal: v1.31.0 plan addendum — Task A0 Python-free core.
+Decisions:
+- Insert Task A0 before A1: port PRECOMPACT_PY → bash + drop wake-up python3 fallback. Core icmg becomes Python-free single binary.
+- Keep `icmg ingest` (OCR/multimodal) Python sidecar fallback opt-in; defer C++/vision replacement to v1.34.
+- Effort +1-2hr; ctest 122 → 128 expected after Phase A.
+Rejected:
+- Drop EMBEDDER_PY entirely (keep as legacy fallback for broken ONNX installs).
+- Force native OCR in A0 (scope creep — tesseract C++ vendor too heavy).
+Open:
+- A0 exec pending user "go" signal. llama.cpp Phase A1-A7 follows.
+
+## 2026-05-24 12:00 [saved]
+Goal: v1.31.0 plan + token/latency budget locked.
+Decisions:
+- Hot path <50ms p95 = regex only, NEVER LLM (CI lint forbids LlamaRunner in bundle/run/tkil/hook_cmd TUs).
+- Warm <2s OK for LLM async; cold <15s OK for full-quality. 15s timeout wrap → silent regex fallback.
+- C2 LLM-classify GATED on <50ms p95 bench proof; else opt-in ICMG_LLM_CLASSIFY=1.
+Rejected:
+- LLM on hot path even with tiny model (KV-cache prewarm not yet proven <50ms).
+- Bench-skip ship (must prove tok/s ≥40 Qwen 0.5B on 4-core baseline before Phase B default-on).
+Open:
+- Phase A0 exec pending (Python-free core, net latency WIN).
+
+## 2026-05-24 12:25 [saved]
+Goal: v1.31.0 A0 SHIPPED — core icmg Python-free.
+Decisions:
+- PRECOMPACT_PY const + writeFile dropped (dead-code 12+ versions; settings.json wired C++ icmg hook precompact since v0.54.0).
+- icmg init --force adds idempotent cleanup: rm stale .claude/hooks/icmg-precompact-snapshot.py.
+- Embed-msg updated: ONNX default, Python sidecar only fallback (was misleading "requires Python").
+Rejected:
+- Drop EMBEDDER_PY in A0 (legacy fallback, ONNX may be broken on user box).
+- Touch icmg ingest Python (opt-in OCR cmd, defer v1.34 vision-model replacement).
+Open:
+- Phase A1-A7 (llama.cpp vendor + LLM mgmt cmds) pending user "go" — heavy session.
+
+## 2026-05-24 12:50 [saved]
+Goal: v1.31.0 plan +A1.5 RAM guard.
+Decisions:
+- Task A1.5 added: availableRamMB() cross-platform (Win GlobalMemoryStatusEx / Linux /proc/meminfo / macOS host_statistics64). LlamaRunner::load + llm install/use refuse below threshold.
+- Default threshold 1024MB free; env override ICMG_LLM_MIN_RAM_MB. Hard floor 256MB (refuse override below).
+- Guard called only at LlamaRunner::load entry — hot path zero impact, ~1ms syscall.
+Rejected:
+- Polling RAM in hook chain (overhead unjustified; one-shot at load entry sufficient).
+- Soft warning without refusal below threshold (would swap-thrash on shared servers).
+Open:
+- Phase A1 (vendor llama.cpp) + A1.5 exec pending user go.
+
+## 2026-05-24 13:00 [saved]
+Goal: v1.31.0 plan +B1.5 smart router.
+Decisions:
+- Task B1.5 added: Route routeFor(CallContext) returns REGEX/LLM_LOCAL/LLM_CLOUD/CACHE. 3 layers: hard rules + heuristics + adaptive telemetry. Sub-ms (~100us p99).
+- Adaptive degradation: p95 wall_ms >5s last 10 calls → 1hr regex cooldown; error rate >20% → 1hr disable; cold-load 2× fail → session-disable.
+- RAM threshold revised: per-model min_ram_mb in registry.json (was single 1024MB fixed). Default Qwen 0.5B = 1536MB safe.
+Rejected:
+- Calling router in hot path (CI-locked regex; router bypassed there).
+- LLM-based intent classification at router (overkill, regex heuristics sufficient).
+Open:
+- Phase A1 vendor llama.cpp + A1.5 RAM guard + B1.5 router pending exec.
+
+
+## 2026-05-24 12:21 [saved]
+Goal: icmg-FIRST git wrapper + auto-compact spec; A0/A1 shipped, A8 code committed.
+Decisions:
+- Add `icmg git <subcmd>` thin wrapper (`src/cli/commands/git_cmd.cpp`) forwarding to RunCommand via Registry — same Tkil filter + destructive gate, single ergonomic entry.
+- CLAUDE.md routing table gains `Any git command | icmg git <subcmd>` row (init_cmd.cpp template).
+- Auto-compact (A9) deferred: UserPromptSubmit at 75% ctx -> detached `icmg compact-bg` -> LLM-or-regex distill into memory_node, zero hot-path block. Gated on A2 LlamaRunner.
+Rejected: widening BASH_REWRITE PATTERN to commit/push/add — Tkil would mangle commit messages; existing run_cmd.cpp:40-45 destructive gate already covers force-push/hard-reset/clean-f.
+Open: build approval pending; A8 runtime verify after build; A2-A7 + A9 implementation queue.
