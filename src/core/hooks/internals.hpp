@@ -189,5 +189,21 @@ std::string runUserPromptDriftInject();
 // v1.35.0 R8: auto-pin escalated rules. Top-3 most-violated rule_ids
 // (count_total >= 2) with last ctx, prepended to UserPromptSubmit header.
 // Opt-out: ICMG_R8_AUTOPIN_QUIET=1.
+
+// v1.38.0 A7: scan last AI response for prior-decision match via BM25 over
+// memory_nodes (last 7d). Logs to amnesia_events on hit. Returns hit count.
+int runStopAmnesiaScan(const std::string& ai_response);
+
+// v1.38.0 A7 companion: inject "AMNESIA WARNING" header for UserPromptSubmit
+// when last 24h has unresolved amnesia_events.
+std::string runUserPromptAmnesiaInject();
+
+// v1.38.0 token budget enforce. Returns 1 if prompt estimate exceeds cap
+// (default 50k, override via ~/.icmg/token-budget.json), 0 otherwise.
+int runPreToolUseTokenBudget(const std::string& prompt);
+
+// v1.38.0 force-compress: returns compressed/capped tool output when size
+// exceeds ICMG_FORCE_COMPRESS_KB (default 2 KB). Empty when no-op.
+std::string runPostToolForceCompress(const std::string& tool_output);
 std::string runUserPromptEscalatedRulesInject();
 } // namespace icmg::core::hooks

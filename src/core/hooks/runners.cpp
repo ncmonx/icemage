@@ -89,6 +89,9 @@ std::string runStopHook(const std::string& stdin_raw) {
                 (void)distillAuto(raw, /*min_len=*/100);
                 (void)failSyncDenials();
                 (void)complianceCheckThinking(raw, /*max_words=*/80);
+                // v1.38.0 A7: amnesia counter — scan AI response for prior
+                // decision match. Logs to amnesia_events for next prompt.
+                (void)runStopAmnesiaScan(raw);
             } catch (...) {}
         }).detach();
         return "";
@@ -98,6 +101,7 @@ std::string runStopHook(const std::string& stdin_raw) {
     (void)distillAuto(stdin_raw, /*min_len=*/100);
     (void)failSyncDenials();
     (void)complianceCheckThinking(stdin_raw, /*max_words=*/80);
+    (void)runStopAmnesiaScan(stdin_raw); // v1.38.0 A7
     return "";
 }
 

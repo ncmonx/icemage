@@ -413,7 +413,8 @@ private:
         std::string decisions_hint= icmg::core::hooks::runUserPromptRecentDecisionsInject();
         std::string drift_hint    = icmg::core::hooks::runUserPromptDriftInject();
         std::string escalated_hint= icmg::core::hooks::runUserPromptEscalatedRulesInject();
-        out["hookSpecificOutput"]["additionalContext"] = escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
+        std::string amnesia_hint  = icmg::core::hooks::runUserPromptAmnesiaInject();
+        out["hookSpecificOutput"]["additionalContext"] = amnesia_hint + escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
         std::cout << out.dump() << "\n";
     }
 

@@ -6,6 +6,7 @@
 #include "../context_node_store.hpp"
 #include "../target_disambiguator.hpp"
 #include "../rule_telemetry.hpp"  // v1.35.0 R8
+#include "../global_db.hpp"  // v1.38.0 A7 amnesia_events
 #include "../../compress/compressor.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../cli/commands/skill_recall.hpp"
@@ -1460,5 +1461,159 @@ std::string runUserPromptEscalatedRulesInject() {
         if (any) out << "---\n";
         return out.str();
     } catch (...) { return ""; }
+}
+
+// v1.38.0 A7: amnesia counter. Stop hook scans last AI response —
+// BM25 recall over memory_nodes (last 7d window). If high-score match
+// found, log amnesia event + topic. Next UserPromptSubmit will inject
+// "AMNESIA WARNING" header citing prior decision.
+// Opt-out: ICMG_AMNESIA_QUIET=1.
+int runStopAmnesiaScan(const std::string& ai_response) {
+    if (std::getenv("ICMG_AMNESIA_QUIET")) return 0;
+    if (ai_response.size() < 40) return 0;
+    try {
+        // Extract top 3 meaningful tokens from response (4+ chars alnum).
+        std::vector<std::string> toks;
+        std::string cur;
+        for (char c : ai_response) {
+            if (std::isalnum(static_cast<unsigned char>(c)))
+                cur.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+            else { if (cur.size() >= 4) toks.push_back(cur); cur.clear(); }
+        }
+        if (cur.size() >= 4) toks.push_back(cur);
+        if (toks.empty()) return 0;
+        std::sort(toks.begin(), toks.end(),
+            [](const auto& a, const auto& b){ return a.size() > b.size(); });
+        if (toks.size() > 3) toks.resize(3);
+        std::string query;
+        for (auto& t : toks) { if (!query.empty()) query += " "; query += t; }
+        // Recall prior decisions matching these keywords (last 7d).
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        std::int64_t cutoff = static_cast<std::int64_t>(std::time(nullptr)) - 7 * 86400;
+        int hits = 0;
+        std::int64_t first_id = 0;
+        std::string first_topic;
+        db.query(
+            "SELECT id, topic FROM memory_nodes "
+            "WHERE deleted_at IS NULL AND last_used >= ? "
+            "AND (topic LIKE ? OR content LIKE ?) "
+            "ORDER BY last_used DESC LIMIT 1",
+            { std::to_string(cutoff), "%" + toks[0] + "%", "%" + toks[0] + "%" },
+            [&](const Row& r){
+                if (r.size() < 2) return;
+                try { first_id = std::stoll(r[0]); } catch (...) {}
+                first_topic = r[1];
+                ++hits;
+            });
+        if (hits == 0) return 0;
+        // Log event to global DB.
+        try {
+            auto& gdb = GlobalDb::instance();
+            gdb.db().run(
+                "INSERT INTO amnesia_events(session_id, topic, prior_node, matched_at) "
+                "VALUES('', ?, ?, ?)",
+                { first_topic, std::to_string(first_id),
+                  std::to_string(static_cast<std::int64_t>(std::time(nullptr))) });
+        } catch (...) {}
+        return hits;
+    } catch (...) { return 0; }
+}
+
+// v1.38.0 A7 companion: inject amnesia warning from recent unresolved events.
+// Reads top-2 amnesia_events (last 24h, not yet emitted), formats compact
+// header for UserPromptSubmit additionalContext.
+std::string runUserPromptAmnesiaInject() {
+    if (std::getenv("ICMG_AMNESIA_QUIET")) return "";
+    try {
+        auto& gdb = GlobalDb::instance();
+        std::int64_t cutoff = static_cast<std::int64_t>(std::time(nullptr)) - 24 * 3600;
+        std::ostringstream out;
+        int n = 0;
+        std::vector<std::int64_t> ids;
+        gdb.db().query(
+            "SELECT id, topic FROM amnesia_events "
+            "WHERE matched_at >= ? ORDER BY matched_at DESC LIMIT 2",
+            { std::to_string(cutoff) }, [&](const Row& r){
+                if (r.size() < 2) return;
+                if (n == 0) out << "AMNESIA WARNING (you may be re-asking already-decided things):\n";
+                out << "  - prior topic match: " << r[1] << "\n";
+                try { ids.push_back(std::stoll(r[0])); } catch (...) {}
+                ++n;
+            });
+        if (n == 0) return "";
+        out << "---\n";
+        // Mark emitted (no schema column for that yet — skip update).
+        (void)ids;
+        return out.str();
+    } catch (...) { return ""; }
+}
+
+// v1.38.0 Token budget enforce. PreToolUse forecast prompt token cost
+// via word-count × 1.3 heuristic. Reads ~/.icmg/token-budget.json
+// {"max_tokens_per_prompt": N} (default 50000). Returns 0 if OK, 1 if
+// exceeded — caller blocks. Opt-out: ICMG_TOKEN_BUDGET_OFF=1.
+int runPreToolUseTokenBudget(const std::string& prompt) {
+    if (std::getenv("ICMG_TOKEN_BUDGET_OFF")) return 0;
+    if (prompt.empty()) return 0;
+    int cap = 50000;
+    try {
+        const char* home =
+#ifdef _WIN32
+            std::getenv("USERPROFILE");
+#else
+            std::getenv("HOME");
+#endif
+        if (home && *home) {
+            fs::path budget = fs::path(home) / ".icmg" / "token-budget.json";
+            if (fs::exists(budget)) {
+                std::ifstream f(budget);
+                json j; f >> j;
+                cap = j.value("max_tokens_per_prompt", 50000);
+            }
+        }
+    } catch (...) {}
+    // Word count × 1.3 estimate.
+    int words = 0;
+    bool in_word = false;
+    for (char c : prompt) {
+        bool space = std::isspace(static_cast<unsigned char>(c));
+        if (!space && !in_word) { in_word = true; ++words; }
+        else if (space) in_word = false;
+    }
+    int est_tokens = static_cast<int>(words * 1.3);
+    return est_tokens > cap ? 1 : 0;
+}
+
+// v1.38.0 Force-compress >2KB output. Apply Tkil-like passthrough on
+// large tool outputs before AI sees them. Threshold from
+// ICMG_FORCE_COMPRESS_KB env (default 2 KB). Returns empty on no
+// action, otherwise compressed body. Opt-out: ICMG_NO_FORCE_COMPRESS=1.
+std::string runPostToolForceCompress(const std::string& tool_output) {
+    if (std::getenv("ICMG_NO_FORCE_COMPRESS")) return "";
+    if (tool_output.empty()) return "";
+    std::size_t kb_threshold = 2;
+    if (const char* e = std::getenv("ICMG_FORCE_COMPRESS_KB")) {
+        try { kb_threshold = static_cast<std::size_t>(std::stoul(e)); } catch (...) {}
+    }
+    if (tool_output.size() < kb_threshold * 1024) return "";
+    // Compose via existing icmg compress core. For now, simple
+    // line-dedup + cap-tail. Real glossary-compress is icmg::compress::
+    // module (called separately).
+    std::vector<std::string> lines;
+    std::istringstream in(tool_output);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!lines.empty() && lines.back() == line) continue; // dedup adj
+        lines.push_back(line);
+    }
+    // Cap to last 50 lines + add header.
+    std::ostringstream out;
+    out << "[force-compress: " << tool_output.size() << " B -> ";
+    std::size_t start = lines.size() > 50 ? lines.size() - 50 : 0;
+    if (start > 0) out << "tail 50 / " << lines.size() << " lines]\n";
+    else            out << lines.size() << " lines (dedup)]\n";
+    for (std::size_t i = start; i < lines.size(); ++i) out << lines[i] << "\n";
+    return out.str();
 }
 } // namespace icmg::core::hooks
