@@ -459,6 +459,46 @@ if [[ "$TOOL" == "Bash" || "$TOOL" == "PowerShell" ]]; then
     [[ "$NCMD" =~ git[[:space:]]+branch[[:space:]]+-D([[:space:]]|$) ]]    && block "ID=17" "git branch -D blocked. Confirm with user."
     [[ "$NCMD" =~ git[[:space:]]+push[[:space:]]+[^[:space:]]+[[:space:]]+(main|master)([[:space:]]|$) ]] && block "ID=18" "Direct push to main/master blocked. Use PR workflow."
     [[ "$NCMD" =~ git[[:space:]]+(filter-branch|filter-repo) ]]            && block "ID=19" "git history-rewrite blocked."
+
+    # v1.34.0 A5: rebuild-when-fresh block. Refuse `cmake --build` when
+    # build/icmg.exe is newer than every tracked .cpp/.hpp source file.
+    # Saves ~3-10 min per false rebuild on AI assistants who lose track.
+    # Opt-out: ICMG_REBUILD_FRESH_OFF=1.
+    if [[ -z "$ICMG_REBUILD_FRESH_OFF" && "$NCMD" =~ ^cmake[[:space:]]+--build ]]; then
+        if [[ -f build/icmg.exe || -f build/icmg ]]; then
+            bin="build/icmg.exe"; [[ -f build/icmg ]] && bin="build/icmg"
+            newest_src=$(find src third_party/llama.cpp/src third_party/llama.cpp/include 2>/dev/null -name '*.cpp' -o -name '*.hpp' -o -name '*.h' 2>/dev/null | xargs -I{} stat -c '%Y' {} 2>/dev/null | sort -n | tail -1)
+            bin_mtime=$(stat -c '%Y' "$bin" 2>/dev/null)
+            if [[ -n "$bin_mtime" && -n "$newest_src" && "$bin_mtime" -gt "$newest_src" ]]; then
+                block "ID=20" "rebuild-when-fresh: $bin newer than all src. No source changed since last build. (override: ICMG_REBUILD_FRESH_OFF=1)"
+            fi
+        fi
+    fi
+
+    # v1.34.0 R2: version-drift block. Refuse `cmake --build` when version
+    # files disagree (version.hpp ≠ CMakeLists VERSION ≠ icmg.rc).
+    if [[ "$NCMD" =~ ^cmake[[:space:]]+--build ]]; then
+        v_hpp=$(grep -E 'ICMG_VERSION = "' src/core/version.hpp 2>/dev/null | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
+        v_cml=$(grep -E '^project\(icmg VERSION' CMakeLists.txt 2>/dev/null | sed -E 's/.*VERSION ([0-9.]+).*/\1/' | head -1)
+        v_rc=$(grep -E 'FileVersion' src/icmg.rc 2>/dev/null | sed -E 's/.*"([0-9.]+)".*/\1/' | head -1)
+        if [[ -n "$v_hpp" && -n "$v_cml" && "$v_hpp" != "$v_cml" ]]; then
+            block "ID=21" "version-drift: version.hpp=$v_hpp ≠ CMakeLists=$v_cml"
+        fi
+        if [[ -n "$v_rc" && -n "$v_cml" && "$v_rc" != "$v_cml" ]]; then
+            block "ID=22" "version-drift: icmg.rc=$v_rc ≠ CMakeLists=$v_cml"
+        fi
+    fi
+
+    # v1.34.0 A6: ship-phase block. Refuse bare `gh release create v*` when
+    # .icmg/ship-state.json exists and publish phase not yet completed.
+    # Forces use of `icmg ship publish` first which validates all phases.
+    if [[ "$NCMD" =~ ^gh[[:space:]]+release[[:space:]]+create[[:space:]]+v[0-9] && -f .icmg/ship-state.json ]]; then
+        published=$(grep -E '"published"[[:space:]]*:[[:space:]]*true' .icmg/ship-state.json 2>/dev/null)
+        if [[ -z "$published" ]]; then
+            block "ID=23" "ship-phase: .icmg/ship-state.json active. Run \`icmg ship publish\` first to validate phases."
+        fi
+    fi
+
     if [[ "$NCMD" =~ (^|[|\;\&[:space:]])[[:space:]]*rm[[:space:]]+-[a-zA-Z]*(r[a-zA-Z]*f|f[a-zA-Z]*r) ]]; then
         [[ "$NCMD" =~ rm.*[[:space:]]+(build|dist|out|__pycache__|\.cache|tmp|temp|node_modules) ]] || block "ID=20" "rm -rf blocked on non-build paths."
     fi

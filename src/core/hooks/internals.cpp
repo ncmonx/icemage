@@ -1276,4 +1276,162 @@ std::string runUserPromptProjectsInject() {
         return out.str();
     } catch (...) { return ""; }
 }
+
+// v1.34.0 A1: known-issue auto-recall. Top-2 errors-resolved% nodes
+// matching prompt keyword. ≤180 chars total.
+std::string runUserPromptKnownIssueInject(const std::string& user_prompt) {
+    if (std::getenv("ICMG_KNOWN_ISSUE_QUIET")) return "";
+    if (user_prompt.size() < 4) return "";
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        // Extract 3 longest alpha tokens from prompt as keyword pool.
+        std::vector<std::string> toks;
+        {
+            std::string cur;
+            for (char c : user_prompt) {
+                if (std::isalnum(static_cast<unsigned char>(c))) cur.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+                else { if (cur.size() >= 4) toks.push_back(cur); cur.clear(); }
+            }
+            if (cur.size() >= 4) toks.push_back(cur);
+        }
+        if (toks.empty()) return "";
+        std::sort(toks.begin(), toks.end(), [](const auto& a, const auto& b){ return a.size() > b.size(); });
+        if (toks.size() > 3) toks.resize(3);
+        std::string like_or;
+        std::vector<std::string> binds;
+        for (auto& t : toks) {
+            if (!like_or.empty()) like_or += " OR ";
+            like_or += "(topic LIKE ? OR content LIKE ?)";
+            binds.push_back("%" + t + "%");
+            binds.push_back("%" + t + "%");
+        }
+        std::ostringstream out;
+        int n = 0;
+        db.query(
+            "SELECT topic, content FROM memory_nodes "
+            "WHERE deleted_at IS NULL AND topic LIKE 'errors-resolved%' "
+            "AND (" + like_or + ") "
+            "ORDER BY last_used DESC LIMIT 2",
+            binds, [&](const Row& r){
+                if (r.size() < 2) return;
+                if (n == 0) out << "KNOWN ISSUES (matching this task):\n";
+                std::string c = r[1];
+                if (c.size() > 90) c = c.substr(0, 87) + "...";
+                out << "  - " << r[0] << ": " << c << "\n";
+                ++n;
+            });
+        if (n > 0) out << "---\n";
+        return out.str();
+    } catch (...) { return ""; }
+}
+
+// v1.34.0 A2: fail auto-recall. Top-2 fail:* anti-pattern nodes matching
+// prompt keywords. Helps AI avoid repeating known-bad approaches.
+std::string runUserPromptFailInject(const std::string& user_prompt) {
+    if (std::getenv("ICMG_FAIL_INJECT_QUIET")) return "";
+    if (user_prompt.size() < 4) return "";
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        std::vector<std::string> toks;
+        {
+            std::string cur;
+            for (char c : user_prompt) {
+                if (std::isalnum(static_cast<unsigned char>(c))) cur.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+                else { if (cur.size() >= 4) toks.push_back(cur); cur.clear(); }
+            }
+            if (cur.size() >= 4) toks.push_back(cur);
+        }
+        if (toks.empty()) return "";
+        std::sort(toks.begin(), toks.end(), [](const auto& a, const auto& b){ return a.size() > b.size(); });
+        if (toks.size() > 3) toks.resize(3);
+        std::string like_or;
+        std::vector<std::string> binds;
+        for (auto& t : toks) {
+            if (!like_or.empty()) like_or += " OR ";
+            like_or += "(topic LIKE ? OR content LIKE ?)";
+            binds.push_back("%" + t + "%");
+            binds.push_back("%" + t + "%");
+        }
+        std::ostringstream out;
+        int n = 0;
+        db.query(
+            "SELECT topic, content FROM memory_nodes "
+            "WHERE deleted_at IS NULL AND topic LIKE 'fail:%' "
+            "AND (" + like_or + ") "
+            "ORDER BY last_used DESC LIMIT 2",
+            binds, [&](const Row& r){
+                if (r.size() < 2) return;
+                if (n == 0) out << "AVOID — PAST FAILURES:\n";
+                std::string c = r[1];
+                if (c.size() > 90) c = c.substr(0, 87) + "...";
+                out << "  - " << r[0] << ": " << c << "\n";
+                ++n;
+            });
+        if (n > 0) out << "---\n";
+        return out.str();
+    } catch (...) { return ""; }
+}
+
+// v1.34.0 A3: recent decisions inject. Last 3 [saved] entries from
+// session-log.md tail. ≤300 chars compact form.
+std::string runUserPromptRecentDecisionsInject() {
+    if (std::getenv("ICMG_DECISIONS_INJECT_QUIET")) return "";
+    try {
+        fs::path log = fs::current_path() / "session-log.md";
+        if (!fs::exists(log)) return "";
+        std::ifstream f(log);
+        if (!f) return "";
+        // Read last ~30 KB tail for speed.
+        f.seekg(0, std::ios::end);
+        std::streamoff sz = f.tellg();
+        std::streamoff start = sz > 30000 ? sz - 30000 : 0;
+        f.seekg(start);
+        std::string buf;
+        buf.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+        // Find last 3 "## YYYY-MM-DD HH:MM [saved]" headers.
+        std::regex header(R"(## (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) \[saved\][^\n]*\n([^\n]*Goal: [^\n]*))");
+        auto begin = std::sregex_iterator(buf.begin(), buf.end(), header);
+        auto end   = std::sregex_iterator();
+        std::vector<std::pair<std::string,std::string>> hits;
+        for (auto it = begin; it != end; ++it) {
+            hits.emplace_back((*it)[1].str(), (*it)[2].str());
+        }
+        if (hits.empty()) return "";
+        // Take last 3.
+        std::size_t take = std::min<std::size_t>(3, hits.size());
+        std::ostringstream out;
+        out << "RECENT DECISIONS (session-log.md):\n";
+        for (std::size_t i = hits.size() - take; i < hits.size(); ++i) {
+            std::string g = hits[i].second;
+            if (g.size() > 110) g = g.substr(0, 107) + "...";
+            out << "  - " << hits[i].first << "  " << g << "\n";
+        }
+        out << "---\n";
+        return out.str();
+    } catch (...) { return ""; }
+}
+
+// v1.34.0 A4: drift banner. Check decisions superseded in last 24 h.
+// Empty when no recent supersessions.
+std::string runUserPromptDriftInject() {
+    if (std::getenv("ICMG_DRIFT_INJECT_QUIET")) return "";
+    try {
+        auto& cfg = Config::instance();
+        Db db(cfg.projectDbPath("."));
+        int count = 0;
+        std::int64_t cutoff = static_cast<std::int64_t>(std::time(nullptr)) - 24 * 3600;
+        db.query(
+            "SELECT COUNT(*) FROM decisions WHERE superseded_at >= ?",
+            { std::to_string(cutoff) }, [&](const Row& r){
+                if (!r.empty()) { try { count = std::stoi(r[0]); } catch (...) {} }
+            });
+        if (count <= 0) return "";
+        std::ostringstream out;
+        out << "DRIFT WARNING: " << count
+            << " decision(s) superseded in last 24h. Run `icmg drift status` to review.\n---\n";
+        return out.str();
+    } catch (...) { return ""; }
+}
 } // namespace icmg::core::hooks

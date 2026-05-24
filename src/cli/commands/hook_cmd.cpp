@@ -408,7 +408,11 @@ private:
         std::string ship_hint = shipChecklistIfRelevant(prompt);
         std::string rules_hint    = icmg::core::hooks::runUserPromptPinnedRulesInject();
         std::string projects_hint = icmg::core::hooks::runUserPromptProjectsInject();
-        out["hookSpecificOutput"]["additionalContext"] = rules_hint + projects_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
+        std::string known_hint    = icmg::core::hooks::runUserPromptKnownIssueInject(prompt);
+        std::string fail_hint     = icmg::core::hooks::runUserPromptFailInject(prompt);
+        std::string decisions_hint= icmg::core::hooks::runUserPromptRecentDecisionsInject();
+        std::string drift_hint    = icmg::core::hooks::runUserPromptDriftInject();
+        out["hookSpecificOutput"]["additionalContext"] = drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
         std::cout << out.dump() << "\n";
     }
 

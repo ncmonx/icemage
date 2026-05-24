@@ -164,4 +164,25 @@ std::string runUserPromptPinnedRulesInject(int max_rules = 5);
 std::string runUserPromptProjectsInject();
 
 
+
+// v1.34.0 A1: known-issue auto-recall on UserPromptSubmit. Top-2
+// errors-resolved% memory_nodes match prompt keywords. ≤180 chars output.
+// Opt-out: ICMG_KNOWN_ISSUE_QUIET=1.
+std::string runUserPromptKnownIssueInject(const std::string& user_prompt);
+
+// v1.34.0 A2: fail auto-recall. Top-2 fail:* anti-pattern nodes match
+// prompt keywords. Helps AI avoid repeating known-bad approaches.
+// Opt-out: ICMG_FAIL_INJECT_QUIET=1.
+std::string runUserPromptFailInject(const std::string& user_prompt);
+
+// v1.34.0 A3: recent decisions inject. Last 3 [saved] entries from
+// session-log.md tail. ≤300 chars compact. Prevents AI forgetting
+// what was just decided in prior sessions.
+// Opt-out: ICMG_DECISIONS_INJECT_QUIET=1.
+std::string runUserPromptRecentDecisionsInject();
+
+// v1.34.0 A4: drift banner. Returns ⚠️ header if any decisions row
+// has superseded_at >= now-24h. Empty otherwise.
+// Opt-out: ICMG_DRIFT_INJECT_QUIET=1.
+std::string runUserPromptDriftInject();
 } // namespace icmg::core::hooks
