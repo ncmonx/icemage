@@ -6,6 +6,7 @@
 // must check `available()` before relying on inference.
 #include "llama_runner.hpp"
 #include "../core/sys_resources.hpp"
+#include "telemetry.hpp"
 
 #include <chrono>
 #include <cstring>
@@ -72,6 +73,20 @@ bool LlamaRunner::load(const std::string& gguf_path,
     impl_->reset();
     impl_->last_err.clear();
 
+    auto t0 = std::chrono::steady_clock::now();
+    auto record_load = [&](bool ok, const std::string& err) {
+        CallSample s;
+        s.unix_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
+        s.kind      = "load";
+        s.wall_ms   = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - t0).count();
+        s.ok        = ok;
+        s.cold_load = true;
+        s.error     = err;
+        Telemetry::instance().push(s);
+    };
+
     // RAM guard — refuse below threshold (avail probe failure = refuse).
     if (!core::llmHasEnoughRam(model_min_mb)) {
         std::uint64_t avail = core::availableRamMB();
@@ -79,6 +94,7 @@ bool LlamaRunner::load(const std::string& gguf_path,
         impl_->last_err = "RAM guard refuse: available=" + std::to_string(avail) +
                           " MB < threshold=" + std::to_string(need) +
                           " MB (override via ICMG_LLM_MIN_RAM_MB)";
+        record_load(false, impl_->last_err);
         return false;
     }
 
@@ -90,6 +106,7 @@ bool LlamaRunner::load(const std::string& gguf_path,
     impl_->model = llama_model_load_from_file(gguf_path.c_str(), mp);
     if (!impl_->model) {
         impl_->last_err = "llama_model_load_from_file failed: " + gguf_path;
+        record_load(false, impl_->last_err);
         return false;
     }
 
@@ -104,9 +121,11 @@ bool LlamaRunner::load(const std::string& gguf_path,
     if (!impl_->ctx) {
         impl_->last_err = "llama_init_from_model failed";
         impl_->reset();
+        record_load(false, impl_->last_err);
         return false;
     }
     impl_->vocab = llama_model_get_vocab(impl_->model);
+    record_load(true, "");
     return true;
 }
 
@@ -187,6 +206,21 @@ InferResult LlamaRunner::infer(const std::string& prompt,
     r.wall_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     r.text    = std::move(out);
     r.ok      = r.error.empty() || aborted;
+
+    // B5 telemetry: record this infer call.
+    {
+        CallSample s;
+        s.unix_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
+        s.kind       = "infer";
+        s.wall_ms    = r.wall_ms;
+        s.tokens_in  = static_cast<std::uint32_t>(r.tokens_in);
+        s.tokens_out = static_cast<std::uint32_t>(r.tokens_out);
+        s.ok         = r.ok;
+        s.cold_load  = false;
+        s.error      = r.error;
+        Telemetry::instance().push(s);
+    }
     return r;
 }
 

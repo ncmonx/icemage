@@ -22,8 +22,12 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/sys_resources.hpp"
+#include "../../core/http_stream.hpp"
 #include "../../llm/llama_runner.hpp"
+#include "../../llm/telemetry.hpp"
+#include "../../llm/warm_pool.hpp"
 
+#include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -110,6 +114,54 @@ bool llmDisabled(const fs::path& dir) {
     return fs::exists(dir / "disabled", ec);
 }
 
+// v1.31.0 B2: first-launch consent. Returns true if user has consented
+// (sentinel exists or just granted). False if user declines or input
+// stream unavailable (non-interactive).
+//   --yes flag bypasses prompt (CI / scripted installs).
+//   ICMG_LLM_CONSENT=1 env also bypasses (non-interactive shells).
+bool ensureConsent(const fs::path& dir, bool yes_flag) {
+    std::error_code ec;
+    if (fs::exists(dir / "consent", ec)) return true;
+    if (yes_flag) {
+        std::ofstream(dir / "consent") << "granted via --yes flag\n";
+        return true;
+    }
+    if (const char* e = std::getenv("ICMG_LLM_CONSENT"); e && *e == '1') {
+        std::ofstream(dir / "consent") << "granted via ICMG_LLM_CONSENT=1\n";
+        return true;
+    }
+    std::cout <<
+        "\nicmg llm — first-launch consent\n"
+        "================================\n"
+        "About to download a local LLM model (400 MB - 2 GB) to:\n"
+        "  " << dir.string() << "\n"
+        "\n"
+        "What happens after install:\n"
+        "  - Model runs LOCALLY on your CPU/Vulkan. No data leaves your machine.\n"
+        "  - Used opt-in for: ask --backend=local, pack --rerank, PreCompact summarize.\n"
+        "  - Disable any time:  `icmg llm disable`\n"
+        "  - Remove model:      `icmg llm remove <id>`\n"
+        "\n"
+        "Resources used while active:\n"
+        "  - RAM ~1.5 GB (Qwen 0.5B) or ~2.5 GB (Qwen 1.5B)\n"
+        "  - Disk ~400 MB - 2 GB per model\n"
+        "  - CPU during inference (warm/cold paths only; never hot-path)\n"
+        "\n"
+        "Proceed? [y/N]: " << std::flush;
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+        std::cerr << "icmg llm: stdin closed; aborting. Use `--yes` for non-interactive.\n";
+        return false;
+    }
+    if (!line.empty() && (line[0] == 'y' || line[0] == 'Y')) {
+        std::ofstream(dir / "consent") << "granted interactively\n";
+        std::cout << "Consent recorded. To revoke: `icmg llm revoke-consent`.\n";
+        return true;
+    }
+    std::cout << "Aborted. No model downloaded. Re-run when ready.\n";
+    return false;
+}
+
 int cmdStatus() {
     fs::path dir = llmDir();
     ensureRegistry(dir);
@@ -124,6 +176,15 @@ int cmdStatus() {
     std::string active = readActive(dir);
     std::cout << "  active model: " << (active.empty() ? "(none)" : active) << "\n";
     std::cout << "  registry:     " << (dir / "registry.json").string() << "\n";
+    // B5 telemetry summary.
+    auto st = llm::Telemetry::instance().stats(10);
+    std::cout << "  telemetry (last " << st.n << "):\n";
+    std::cout << "    p50 wall:        " << static_cast<int>(st.p50_wall_ms) << " ms\n";
+    std::cout << "    p95 wall:        " << static_cast<int>(st.p95_wall_ms) << " ms\n";
+    std::cout << "    avg tok/s:       " << static_cast<int>(st.avg_tok_per_s) << "\n";
+    std::cout << "    error rate:      " << static_cast<int>(st.error_rate * 100) << "%\n";
+    std::cout << "    cold-load fails: " << st.cold_load_fail_count << "\n";
+    std::cout << "  warm-pool:    " << (llm::WarmPool::instance().isLoaded() ? "loaded" : "cold") << "\n";
     return 0;
 }
 
@@ -153,6 +214,16 @@ int cmdEnable() {
     return 0;
 }
 
+int cmdRevokeConsent() {
+    fs::path dir = llmDir();
+    std::error_code ec;
+    bool had = fs::remove(dir / "consent", ec);
+    std::cout << "icmg llm revoke-consent: "
+              << (had ? "removed consent sentinel. Next install re-prompts.\n"
+                     : "no consent sentinel to remove.\n");
+    return 0;
+}
+
 int cmdUse(const std::vector<std::string>& args) {
     if (args.size() < 2) { std::cerr << "usage: icmg llm use <model-id>\n"; return 1; }
     fs::path dir = llmDir();
@@ -169,13 +240,16 @@ int cmdInstall(const std::vector<std::string>& args) {
     const std::string& id = args[1];
     std::string local_path;
     bool offline = false;
+    bool yes = false;
     for (std::size_t i = 2; i < args.size(); ++i) {
         if (args[i] == "--path" && i + 1 < args.size()) { local_path = args[++i]; }
         else if (args[i] == "--offline") { offline = true; }
+        else if (args[i] == "--yes" || args[i] == "-y") { yes = true; }
     }
 
     fs::path dir = llmDir();
     ensureRegistry(dir);
+    if (!ensureConsent(dir, yes)) return 10;
     fs::path model_dir = dir / id;
     std::error_code ec; fs::create_directories(model_dir, ec);
     fs::path dest = model_dir / "model.gguf";
@@ -194,14 +268,81 @@ int cmdInstall(const std::vector<std::string>& args) {
         return 1;
     }
 
-    // A5 (HTTP download + SHA256 verify): not yet wired. Stream-to-file
-    // download primitive missing — existing `download()` in fetch_cmd.cpp
-    // reads body into memory, unfit for 400 MB. Add streaming variant in
-    // next iteration.
-    std::cerr << "icmg llm install: HTTP download not yet wired (A5 pending).\n"
-              << "  Sideload instead:\n"
-              << "    icmg llm install " << id << " --path C:/path/to/model.gguf --offline\n";
-    return 3;
+    // v1.31.0 A5b: HTTP streaming download via core::downloadToFile (system curl)
+    // + SHA256 verify. Lookup model entry in registry.json.
+    std::ifstream reg_in(dir / "registry.json");
+    if (!reg_in) {
+        std::cerr << "icmg llm install: registry.json missing — run `icmg llm list` once first.\n";
+        return 4;
+    }
+    nlohmann::json reg;
+    try { reg_in >> reg; }
+    catch (const std::exception& e) {
+        std::cerr << "icmg llm install: registry.json parse: " << e.what() << "\n";
+        return 4;
+    }
+    const auto& models = reg.value("models", nlohmann::json::array());
+    std::string url, expected_sha;
+    std::uint64_t min_ram_mb = 0;
+    for (const auto& m : models) {
+        if (m.value("id", std::string{}) == id) {
+            url          = m.value("url", std::string{});
+            expected_sha = m.value("sha256", std::string{});
+            min_ram_mb   = m.value("min_ram_mb", static_cast<std::uint64_t>(0));
+            break;
+        }
+    }
+    if (url.empty()) {
+        std::cerr << "icmg llm install: model '" << id << "' not in registry. `icmg llm list` to see ids.\n";
+        return 4;
+    }
+
+    // RAM pre-check — refuse before downloading 400 MB if host can't run it.
+    if (!core::llmHasEnoughRam(min_ram_mb)) {
+        std::cerr << "icmg llm install: RAM guard refuse (avail="
+                  << core::availableRamMB() << " MB < need="
+                  << core::llmMinRamThresholdMB(min_ram_mb) << " MB)\n";
+        return 7;
+    }
+
+    std::cout << "icmg llm install " << id << ": downloading " << url << "\n";
+    std::cout << "  size hint: " << reg["models"][0].value("size_mb", 0) << " MB (approx)\n";
+
+    int last_pct = -1;
+    auto on_progress = [&](std::uint64_t got, std::uint64_t /*total*/) -> bool {
+        // We don't know total reliably without HEAD pre-request; print MB.
+        int mb = static_cast<int>(got / (1024 * 1024));
+        if (mb != last_pct) {
+            std::cout << "  ... " << mb << " MB\r" << std::flush;
+            last_pct = mb;
+        }
+        return true;
+    };
+    auto dl = core::downloadToFile(url, dest.string(), /*timeout_s=*/1200, on_progress);
+    std::cout << "\n";
+    if (!dl.ok) {
+        std::cerr << "icmg llm install: download failed: " << dl.error << "\n";
+        return 8;
+    }
+    std::cout << "  downloaded " << (dl.bytes / (1024 * 1024)) << " MB in "
+              << static_cast<int>(dl.wall_ms / 1000) << " s\n";
+
+    if (expected_sha.empty() || expected_sha == "PENDING_FILL_ON_PUBLISH") {
+        std::cout << "  SHA256: skipped (registry entry has no published hash).\n";
+        std::cout << "  WARN: integrity unverified — re-run after publish to validate.\n";
+    } else {
+        std::cout << "  verifying SHA256...\n";
+        if (!core::verifySha256(dest.string(), expected_sha)) {
+            std::cerr << "icmg llm install: SHA256 MISMATCH. Deleting tampered/corrupted file.\n";
+            std::error_code _e; fs::remove(dest, _e);
+            return 9;
+        }
+        std::cout << "  SHA256 OK.\n";
+    }
+
+    writeActive(dir, id);
+    std::cout << "  active model -> " << id << "\n";
+    return 0;
 }
 
 int cmdRemove(const std::vector<std::string>& args) {
@@ -260,14 +401,15 @@ public:
         std::cout <<
             "Usage: icmg llm <subcommand> [args]\n\n"
             "Subcommands:\n"
-            "  install <id> [--path P] [--offline]   Download (A5 pending) or sideload .gguf\n"
-            "  list                                  Show registry + active selection\n"
-            "  use <id>                              Set active model\n"
-            "  remove <id>                           Delete model from disk\n"
-            "  bench [id]                            64-tok benchmark with tok/s\n"
-            "  status                                Build flag + RAM + opt-out + active\n"
-            "  disable                               Persist privacy opt-out\n"
-            "  enable                                Clear opt-out\n";
+            "  install <id> [--path P] [--offline] [--yes]   Download + SHA256 verify (or sideload)\n"
+            "  list                                          Show registry + active selection\n"
+            "  use <id>                                      Set active model\n"
+            "  remove <id>                                   Delete model from disk\n"
+            "  bench [id]                                    64-tok benchmark with tok/s\n"
+            "  status                                        Build flag + RAM + opt-out + active\n"
+            "  disable                                       Persist privacy opt-out\n"
+            "  enable                                        Clear opt-out\n"
+            "  revoke-consent                                Remove first-launch consent sentinel\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -281,6 +423,7 @@ public:
         if (sub == "bench")   return cmdBench(args);
         if (sub == "disable") return cmdDisable();
         if (sub == "enable")  return cmdEnable();
+        if (sub == "revoke-consent") return cmdRevokeConsent();
         std::cerr << "icmg llm: unknown subcommand '" << sub << "'. Try `icmg llm --help`.\n";
         return 1;
     }
