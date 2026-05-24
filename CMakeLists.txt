@@ -667,3 +667,55 @@ if(ICMG_MONO_TEST)
     target_include_directories(icmg_test PRIVATE tests src third_party)
     add_test(NAME icmg_test COMMAND icmg_test)
 endif()
+
+# ---------------------------------------------------------------------------
+# v1.31.0 A1: llama.cpp vendored under third_party/llama.cpp/ (tag b9297).
+# Opt-in via -DICMG_USE_LLAMA=ON. Default OFF — preserves baseline icmg.exe
+# size (~25MB) and zero impact when feature off.
+#
+# Backends:
+#   - CPU (GGML_CPU=ON, always when llama enabled)
+#   - Vulkan opt-in: -DICMG_LLAMA_VULKAN=ON (forwards to GGML_VULKAN)
+#   - Other GPU backends (CUDA/SYCL/OpenCL/Metal/etc.) NOT vendored —
+#     gitignored to keep repo size sane. Custom builds may sideload.
+#
+# When ON: ICMG_HAS_LLAMA=1 compile def propagates to icmg_lib.
+# When OFF: zero llama.cpp code in icmg_lib; baseline performance.
+# ---------------------------------------------------------------------------
+option(ICMG_USE_LLAMA "Build with local LLM via vendored llama.cpp (opt-in)" OFF)
+option(ICMG_LLAMA_VULKAN "Enable Vulkan backend for llama.cpp (requires ICMG_USE_LLAMA=ON)" OFF)
+if(ICMG_USE_LLAMA)
+    message(STATUS "icmg: ICMG_USE_LLAMA=ON — vendoring llama.cpp from third_party/llama.cpp/")
+    # Force-disable upstream build options we don't ship.
+    set(LLAMA_STANDALONE      OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_HTML      OFF CACHE BOOL "" FORCE)
+    # LLAMA_BUILD_COMMON triggers vendor/cpp-httplib subdir which we didn't
+    # vendor (server REST infra unneeded — icmg uses libllama directly).
+    # OFF for now; LlamaRunner replicates the few helpers we need.
+    set(LLAMA_BUILD_COMMON    OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_TESTS     OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_TOOLS     OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_EXAMPLES  OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_SERVER    OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_UI        OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_APP       OFF CACHE BOOL "" FORCE)
+    set(LLAMA_CURL            OFF CACHE BOOL "" FORCE)
+    # GGML backend selection — CPU always; Vulkan per ICMG_LLAMA_VULKAN.
+    set(GGML_CPU              ON  CACHE BOOL "" FORCE)
+    set(GGML_VULKAN           ${ICMG_LLAMA_VULKAN} CACHE BOOL "" FORCE)
+    # Explicitly disable GPU backends we did NOT vendor.
+    set(GGML_CUDA             OFF CACHE BOOL "" FORCE)
+    set(GGML_HIP              OFF CACHE BOOL "" FORCE)
+    set(GGML_METAL            OFF CACHE BOOL "" FORCE)
+    set(GGML_SYCL             OFF CACHE BOOL "" FORCE)
+    set(GGML_OPENCL           OFF CACHE BOOL "" FORCE)
+    set(GGML_BLAS             OFF CACHE BOOL "" FORCE)
+    set(GGML_RPC              OFF CACHE BOOL "" FORCE)
+    add_subdirectory(third_party/llama.cpp EXCLUDE_FROM_ALL)
+    target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_LLAMA=1)
+    target_include_directories(icmg_lib PUBLIC
+        third_party/llama.cpp/include
+        third_party/llama.cpp/common)
+    target_link_libraries(icmg_lib PUBLIC llama)
+    message(STATUS "icmg: llama.cpp ENABLED (CPU${_vulkan_state})")
+endif()
