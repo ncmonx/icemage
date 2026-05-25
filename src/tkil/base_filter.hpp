@@ -8,6 +8,7 @@ struct FilterResult {
     int         original_lines = 0;
     int         filtered_lines = 0;
     bool        was_truncated  = false;
+    std::string notes;  // v1.44.0 B1: tee-fallback / parse-fail diagnostic
 };
 
 constexpr int MAX_OUTPUT_LINES = 500;  // A9: hard limit

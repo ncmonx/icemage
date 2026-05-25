@@ -30,6 +30,7 @@ STAGE="/tmp/icmg-build-$VERSION"
 # changing generator/compiler — do manually:  rm -rf /tmp/icmg-build-*
 mkdir -p "$STAGE"
 echo "==> Staging source → $STAGE (ext4 native; delta sync)..."
+rsync_rc=0
 time rsync -a --delete-excluded \
     --exclude='build/' \
     --exclude='build-linux/' \
@@ -42,7 +43,8 @@ time rsync -a --delete-excluded \
     --exclude='.icmg/' \
     --exclude='node_modules/' \
     --exclude='*.bak' \
-    "$REPO_ROOT/" "$STAGE/"
+    "$REPO_ROOT/" "$STAGE/" || rsync_rc=$?
+[[ $rsync_rc -le 24 ]] || exit $rsync_rc
 
 # 3. Configure + build in ext4. PCH ON. Full parallel.
 cd "$STAGE"

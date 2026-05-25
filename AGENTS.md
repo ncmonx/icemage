@@ -55,36 +55,36 @@
 
 This project uses **icmg** for token-efficient code navigation.
 
-### ABSOLUTE RULE â€” icmg FIRST, ALWAYS
+### ABSOLUTE RULE — icmg FIRST, ALWAYS
 
 **Before any native tool call (Read / Bash / Grep / Glob / WebFetch), STOP and check the decision tree below.** If an `icmg` command serves the same need, you MUST use icmg. No exceptions, no "small file" excuses, no "just this once."
 
 Order of resolution for every action:
 
-1. **Is there an icmg command for this?** â†’ run it
-2. **No icmg command?** â†’ run native tool
-3. **icmg command failed?** â†’ diagnose with `icmg doctor` first; only fall back to native when icmg explicitly errors
+1. **Is there an icmg command for this?** → run it
+2. **No icmg command?** → run native tool
+3. **icmg command failed?** → diagnose with `icmg doctor` first; only fall back to native when icmg explicitly errors
 
-This is enforced at hook level (strict mode auto-on). Native calls that have an icmg equivalent are blocked with a redirect message. Do not waste tokens trying native first â€” the hook will block, you'll re-issue via icmg, you've burned a turn.
+This is enforced at hook level (strict mode auto-on). Native calls that have an icmg equivalent are blocked with a redirect message. Do not waste tokens trying native first — the hook will block, you'll re-issue via icmg, you've burned a turn.
 
 **Common slip-ups that cost tokens:**
-- Reading a big file with native Read instead of `icmg context <file>` â†’ 80%+ saved
-- `grep -r` instead of `icmg run grep ...` â†’ unfiltered noise
-- WebFetch instead of `icmg fetch <url>` â†’ no cache, no reduce
-- `cat large.log` instead of `icmg compress < large.log` â†’ no glossary
-- Running 3 reads sequentially instead of `icmg parallel` â†’ 3-6Ã— wall-clock loss
+- Reading a big file with native Read instead of `icmg context <file>` → 80%+ saved
+- `grep -r` instead of `icmg run grep ...` → unfiltered noise
+- WebFetch instead of `icmg fetch <url>` → no cache, no reduce
+- `cat large.log` instead of `icmg compress < large.log` → no glossary
+- Running 3 reads sequentially instead of `icmg parallel` → 3-6× wall-clock loss
 
 ### CRITICAL: parallel-first rule
 
-**If you have 2+ independent tasks (independent files, independent checks, independent recalls), ALWAYS run them via `icmg parallel`.** Do NOT run sequentially. This is non-negotiable â€” sequential runs waste wall-clock and miss the I/O parallelism win (3-6Ã— speedup on typical paths).
+**If you have 2+ independent tasks (independent files, independent checks, independent recalls), ALWAYS run them via `icmg parallel`.** Do NOT run sequentially. This is non-negotiable — sequential runs waste wall-clock and miss the I/O parallelism win (3-6× speedup on typical paths).
 
 ```bash
-# Wrong: sequential â€” waits each
+# Wrong: sequential — waits each
 icmg verify --command "ctest"
 icmg verify --command "cmake --build build"
 icmg run npm test
 
-# Right: parallel â€” all run concurrently
+# Right: parallel — all run concurrently
 icmg parallel \
     --task "icmg verify --command 'ctest'" \
     --task "icmg verify --command 'cmake --build build'" \
@@ -97,7 +97,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 
 | Want to | Use |
 |---|---|
-| **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default â€” see rule above) |
+| **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default — see rule above) |
 | Read a large file | `icmg context <file>` (graph + symbols + memory) |
 | Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
@@ -113,13 +113,13 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
 | Recall across projects | `icmg cross-recall "<query>"` |
 | Start new task | `icmg pack "<task>"` (4KB context bundle) |
-| Delegate to LLM | `icmg agent "<task>"` (packâ†’promptâ†’user-CLI) |
-| Run noisy command | `icmg run <cmd>` (Tkil filter â€” 60-90% smaller) |
+| Delegate to LLM | `icmg agent "<task>"` (pack→prompt→user-CLI) |
+| Run noisy command | `icmg run <cmd>` (Tkil filter — 60-90% smaller) |
 | Big git diff | `icmg diff-summary --ref HEAD~5` |
 | Any git command | `icmg git <subcmd>` (read-ops Tkil-filtered, destructive ops gated) |
 | Errored before? | `icmg explain "<error>"` |
 | Fetch URL with cache | `icmg fetch <url>` (cached + token-reduced) |
-| Compress large output | `icmg compress` (pipe or `< file` â€” glossary output) |
+| Compress large output | `icmg compress` (pipe or `< file` — glossary output) |
 | Shrink to token budget | `icmg shrink` |
 | Expand compressed text | `icmg expand` |
 | View token savings | `icmg savings` |
@@ -166,6 +166,8 @@ Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM
 
 Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
 <!-- icmg:end -->
+
+
 
 
 
@@ -268,9 +270,9 @@ git push private restore/private-main:main --force
 |---|---|
 | `icmg context <file>` | Graph + symbols + memory (80%+ smaller than raw read) |
 | `icmg pack "<task>"` | 4KB context bundle for new tasks |
-| `icmg parallel --task "..." --task "..."` | Run 2+ tasks concurrently (3-6Ã— speedup) |
+| `icmg parallel --task "..." --task "..."` | Run 2+ tasks concurrently (3-6× speedup) |
 | `icmg run <cmd>` | Run noisy command through Tkil filter |
-| `icmg compress` | Pipe or `< file` â€” glossary-compressed output |
+| `icmg compress` | Pipe or `< file` — glossary-compressed output |
 | `icmg shrink` | Shrink output to token budget |
 | `icmg expand` | Expand compressed text |
 | `icmg fetch <url>` | Cached + token-reduced URL fetch |
@@ -283,7 +285,7 @@ git push private restore/private-main:main --force
 | `icmg wake-up` | Session-start briefing (decisions + phases + fixes) |
 | `icmg session claim/clear/list` | Cross-session awareness |
 | `icmg verify --command "<cmd>"` | Run command + record audit trail |
-| `icmg agent "<task>"` | Delegate to LLM via packâ†’prompt |
+| `icmg agent "<task>"` | Delegate to LLM via pack→prompt |
 | `icmg explain "<error>"` | Lookup known error patterns |
 | `icmg known-issue add "<pattern>" --fix "<res>"` | Record a fix |
 | `icmg batch` | Batch cache writes (cut round-trips) |
@@ -314,6 +316,8 @@ git push private restore/private-main:main --force
 | `icmg caveman [on/off/status]` | Toggle caveman mode |
 | `icmg chat` | Interactive REPL |
 <!-- icmg:commands:end -->
+
+
 
 
 

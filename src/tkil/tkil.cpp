@@ -143,7 +143,26 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
     } else {
         auto* f = getFilter(type);
         if (f) {
-            fr = f->filter(combined, command);
+            // v1.44.0 B1: RTK-style tee fallback. If filter throws OR
+            // collapses output to <5% of input (parse fail suspect), retain
+            // raw to prevent data loss. Opt-out: ICMG_NO_TEE_FALLBACK=1.
+            try {
+                fr = f->filter(combined, command);
+                bool opt_out = std::getenv("ICMG_NO_TEE_FALLBACK") != nullptr;
+                if (!opt_out && combined.size() > 256
+                    && fr.output.size() * 20 < combined.size()) {
+                    // suspect filter mis-detection: keep raw
+                    fr.output         = combined;
+                    fr.original_lines = (int)splitLines(combined).size();
+                    fr.filtered_lines = fr.original_lines;
+                    fr.notes         += " [tee-fallback]";
+                }
+            } catch (const std::exception& e) {
+                fr.output         = combined;
+                fr.original_lines = (int)splitLines(combined).size();
+                fr.filtered_lines = fr.original_lines;
+                fr.notes          = std::string("filter-threw: ") + e.what();
+            }
         } else {
             fr.output         = combined;
             fr.original_lines = (int)splitLines(combined).size();

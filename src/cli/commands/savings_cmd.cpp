@@ -86,7 +86,21 @@ public:
 
         bool html = hasFlag(args, "--html");
         bool json_out = hasFlag(args, "--json");
-        std::string out_path = flagValue(args, "-o");
+        if (hasFlag(args, "--per-cmd")) {
+            auto& cfg2 = core::Config::instance();
+            core::Db db2(cfg2.projectDbPath("."));
+            int64_t cutoff2 = (int64_t)std::time(nullptr) - (int64_t)window_days * 86400;
+            std::cout << "=== Per-command savings (last " << window_days << "d) ===" << "\n";
+            std::cout << "  TOOL          | CALLS | SAVED_TOK | RAW_TOK" << "\n";
+            db2.query("SELECT tool_name, COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(SUM(raw_bytes),0)/4 FROM tool_invocations WHERE timestamp > ? GROUP BY tool_name ORDER BY SUM(saved_tokens) DESC LIMIT 30",
+                {std::to_string(cutoff2)},
+                [&](const core::Row& r){
+                    if (r.size() < 4) return;
+                    std::cout << "  " << r[0] << " | " << r[1] << " | saved=" << r[2] << " | raw=" << r[3] << "\n";
+                });
+            return 0;
+        }
+                std::string out_path = flagValue(args, "-o");
         double rate_in = 3.0, rate_out = 15.0;
         try { auto v = flagValue(args, "--rate-input");  if (!v.empty()) rate_in  = std::stod(v); } catch (...) {}
         try { auto v = flagValue(args, "--rate-output"); if (!v.empty()) rate_out = std::stod(v); } catch (...) {}

@@ -1191,12 +1191,12 @@ public:
         // Phase 64: cap file count on huge working trees (default 200).
         int limit = 200;
         try { limit = std::stoi(flagValue(args, "--limit", "200")); } catch (...) {}
+        // v1.44.0 B2: compact mode strips whitespace+blank-line churn.
+        bool compact = hasFlag(args, "--compact");
 
-        // Phase 64: single git-diff with --unified=0 (no context lines, smallest
-        // payload) parsed inline by `diff --git a/X b/X` boundaries. Replaces
-        // O(N) subprocess spawns (1 git diff --name-only + N per-file diffs)
-        // with a single subprocess. Speeds up 10-100x on large working trees.
+        // Phase 64: single git-diff with --unified=0.
         std::string raw_cmd = "git diff --unified=0";
+        if (compact) raw_cmd += " --ignore-all-space --ignore-blank-lines";
         if (!ref.empty()) raw_cmd += " " + ref;
         auto result = core::safeExec({"sh", "-c", raw_cmd}, true, 60000);
         if (result.exit_code != 0) {
