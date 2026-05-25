@@ -5,6 +5,7 @@
 #include "../core/turn_cache.hpp"
 #include <cctype>
 #include <filesystem>
+#include <flat_map>   // v1.40.2 C++23 std::flat_map pilot (P0429)
 #include <fstream>
 #include <chrono>
 #include <iostream>
@@ -23,7 +24,10 @@ static int64_t nowEpoch() {
 Tkil::Tkil(core::Db& db) : db_(db) {}
 
 BaseFilter* Tkil::getFilter(CmdType type) const {
-    static const std::unordered_map<CmdType, std::string> type2key = {
+    // v1.40.2 C++23 std::flat_map adoption (P0429). Sorted-vector backing
+    // → cache-friendly lookup for small static enum-keyed tables. O(log N)
+    // instead of O(1), but cache wins beat hash for N<32.
+    static const std::flat_map<CmdType, std::string> type2key = {
         {CmdType::GitLog,         "git"},
         {CmdType::Build,          "build"},
         {CmdType::Test,           "test"},

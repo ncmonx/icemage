@@ -262,9 +262,12 @@ int main(int argc, char* argv[]) {
     // Auto-bootstrap project hooks on first entry (silent, non-blocking).
     autoBootstrapProject(args);
 
-    // Version staleness check (cached — no network hit when cache is fresh).
-    // Skip for MCP mode, version queries, and update commands.
-    if (!args.empty() && args[0] != "update" && args[0] != "upgrade") {
+    // v1.40.2: stale-version check DISABLED — fast iteration cycle means
+    // releases land every few hours; nag/soft-block was misfiring on
+    // perfectly current installs. Re-enable when v1.41.x release cadence
+    // slows. Opt-in via ICMG_VERSION_CHECK=1 to restore old behavior.
+    if (std::getenv("ICMG_VERSION_CHECK")
+        && !args.empty() && args[0] != "update" && args[0] != "upgrade") {
         auto vstatus = icmg::core::checkVersionStaleness(icmg::core::ICMG_VERSION);
         icmg::core::printVersionWarning(vstatus);
         if (!args.empty() && icmg::core::isCommandSoftBlocked(args[0], vstatus)) {

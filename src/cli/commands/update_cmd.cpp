@@ -604,11 +604,11 @@ private:
         std::cout << "Downloading " << r.asset_url << " ...\n";
         std::string sh_zip = zip.string();
         for (auto& c : sh_zip) if (c == '\\') c = '/';
-        std::string cmd = "curl -sL --max-time 120 -o \"" + sh_zip + "\" \""
+        std::string cmd = "curl -fsSL --retry 2 --retry-delay 3 --max-time 300 -o \"" + sh_zip + "\" \""
                         + r.asset_url + "\"";
-        auto res = core::safeExecShell(cmd, false, 130000);
+        auto res = core::safeExecShell(cmd, false, 320000);  // v1.40.2: bumped 130s -> 320s for larger LLM-on assets
         if (res.exit_code != 0 || !fs::exists(zip) || fs::file_size(zip) < 1024) {
-            std::cerr << "icmg update: download failed (exit=" << res.exit_code << ")\n";
+            std::cerr << "icmg update: download failed (exit=" << res.exit_code << ", size=" << (fs::exists(zip) ? fs::file_size(zip) : 0) << ")\n";
             fs::remove(zip);
             return 5;
         }
