@@ -8,6 +8,9 @@
 #include "../../core/registry.hpp"
 #include "../../core/intent_cache.hpp"
 
+// v1.40.0 C++23 adoption pilot: replace iostream chains with std::format
+// where ergonomic. GCC 15 + libstdc++ 15.2 support std::format from C++20.
+#include <format>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -41,8 +44,10 @@ public:
             std::string p = o.str();
             auto it = (sub == "regex") ? core::IntentCache::classifyRegex(p)
                                        : core::IntentCache::classify(p);
-            std::cout << "{\"intent\":\"" << core::intentName(it)
-                      << "\",\"hash\":\""  << core::IntentCache::hashPrompt(p) << "\"}\n";
+            // v1.40.0 C++23 std::format adoption.
+            std::cout << std::format("{{\"intent\":\"{}\",\"hash\":\"{}\"}}\n",
+                                     core::intentName(it),
+                                     core::IntentCache::hashPrompt(p));
             return 0;
         }
         if (sub == "stats") {
