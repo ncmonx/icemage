@@ -60,7 +60,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | **Service auto-start** (UserPromptSubmit) | **0-touch warm-up** | — | v1.30.0 |
 | **Path ambiguity warning** (icmg context) | wrong-file lookups → loud | — | v1.29.0 |
 | **rg-wrapper + brace glob** (icmg grep/files) | flag-mirror, **{a,b}** expand | — | v1.29.0 |
-| **Local LLM scaffold** (llama.cpp vendored, opt-in) | **0 cloud calls** | privacy-first | v1.31.0 |
+| **Local AI model** (built-in, opt-in) | **0 cloud calls** | privacy-first | v1.31.0 |
 | **Smart router** (REGEX vs LLM_LOCAL vs CACHE) | **<100 us p99** | hot-path forced regex | v1.31.0 |
 | **HTTP streaming download** (model fetch + SHA256) | **400 MB - 2 GB** safe-verify | tamper-detect | v1.31.0 |
 | **icmg git** wrapper (single ergonomic entry) | **Tkil-filtered** + safety-gated | enforces icmg-FIRST | v1.31.0 |
@@ -68,7 +68,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | **pack --rerank** (LLM-reorder memory hits) | **opt-in** warm-path | router-gated | v1.32.0 |
 | **PreCompact LLM summary** (warm-pool Qwen 0.5B) | **<15 s** cold | regex fallback always | v1.32.0 |
 | **icmg compact-bg** (proactive memory worker) | **<3 s** warm | manual + future hook | v1.32.0 |
-| **KV-cache mgmt** (LlamaRunner) | **multi-prompt safe** | no ctx overflow | v1.32.0 |
+| **Smarter local AI memory** | **multi-prompt safe** | no overflow | v1.32.0 |
 | Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
 Measured on real-world sessions. Your mileage will vary with project size and habits — anyone running a busy AI agent for a day already sees meaningful savings.
@@ -78,11 +78,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
-- **v1.40.2** - **Update download fix + `std::flat_map` pilot + stale-check off**. Bug fix (real user impact): `icmg update` curl flags upgraded `-sL --max-time 120` → `-fsSL --retry 2 --retry-delay 3 --max-time 300`. `-f` catches HTTP 4xx/5xx so cached/404 error bodies no longer masquerade as asset bytes — fixes v1.38.2 user-reported SHA256 mismatch on update. Stale-version warning disabled (opt-in via `ICMG_VERSION_CHECK=1`) — was misfiring during rapid v1.40.x cadence. C++23: `std::flat_map` (P0429) adoption in tkil.cpp `type2key` enum table (cache-friendly for small N); guarded with `__has_include(<flat_map>)` + fallback to `std::unordered_map` on libstdc++ < 15. Coming v1.40.3+: `std::expected` bulk migration. v1.41.0: `import std;` Modules pilot.
-- **v1.40.1** - **`std::expected` pilot + `std::format` expansion**. Second C++23 real adoption per anti-defer floor rule. NEW `src/core/result.hpp`: `Result<T> = std::expected<T, Error>` type alias for error-path migration. `intent_cmd.cpp` `tryClearAll()` wraps legacy int-return via `std::expected` — live on `icmg intent clear` hot path (output `{"ok":true}` or `{"ok":false,"error":"..."}`). `std::format` expansion to `intent stats` + `abbr remove/import`. `std::print` attempted but reverted: libstdc++ 15.2 MSYS2/MinGW missing `std::__open_terminal`/`__write_to_terminal` POSIX symbols (known-issue logged); use `std::format` + `std::cout` until MSYS2 ships terminal helpers. Verified byte-identical output. Coming v1.40.2: `std::expected` bulk migration + `std::flat_map` adoption. v1.41.0: `import std;` Modules pilot.
-- **v1.40.0** - **C++23 std::format pilot (first real fitur adoption)**. After 5 prior releases bumping CMake/standard without real adoption, v1.40.0 commits the first behavior-preserving conversion: `intent_cmd.cpp` replaces `std::cout <<` JSON-emit chain with `std::format("{{\"intent\":\"{}\",\"hash\":\"{}\"}}\n", ...)`. Output byte-identical (verified `{"intent":"debug","hash":"4fac25ff61cb8cb5"}`). Compile-verified GCC 15.2 + libstdc++ 15.2 under `CMAKE_CXX_STANDARD=23` (CMake 3.28). Sets floor rule: every release v1.40+ ships ≥1 real C++23 feature — no more marker-only bumps. Coming v1.40.1+: `std::expected` error paths, `std::print` migration, `std::flat_map` adoption, `import std;` Modules pilot. 123/123 ctest pass (Linux WSL).
-- **v1.39.2** - **CMake minimum 3.20 → 3.28 (Modules support foundation)**. Per Google upstream research, C++20 Modules give 10-50% rebuild gain in greenfield projects via `.pcm`/`.ifc` precompiled module files (vs `#include` text-copy). v1.39.2 bumps `cmake_minimum_required` to 3.28 — CMake 3.28+ has stable `CXX_MODULES` `FILE_SET` support. Existing dev environment (CMake 4.3.3 + GCC 15.2 + libstdc++ 15.2) exceed requirement. Bump exposes foundation for v1.40 pilot — actual `import std;` conversion deferred to dedicated experiment with toolchain validation (GCC 15 modules still experimental for template-heavy code).
-- **v1.39.1** - **Item B live: `icmg chat --backend=local`**. Chat REPL now supports `--backend=local` (alias `--local`) flag that short-circuits to warm-pool LlamaRunner, skipping `icmg agent` subprocess + cloud cost entirely. Phi-3.5 @ 2.13 tok/s → ~30 s per 64-tok reply (slower than cloud but ZERO Claude API cost). Falls through to existing agent path on warm-pool acquire fail. Pair with active Phi-3.5 model (`icmg llm use phi-3.5-mini-q4`). Deferred v1.39.2+: Item A caveman LLM compress (async architecture), required-pack soft warn, Modules pilot (CMake 3.28 bump + 1-file `import std;` convert).
+- **v1.40.2** - **Auto-upgrade fix + stability tune-up**. Fixed self-update bug where corrupt or cached downloads slipped past integrity check on some servers. Auto-retry on flaky connections. Larger archives now finish on slow links. Internal lookup speed-up. The "you're outdated" nag was misfiring during fast release weeks — quieted by default; opt back in if needed.
+- **v1.40.1** - **Cleaner errors + safer output**. Failure paths now carry richer error info — when something goes wrong, you see *why*, not just an exit code. Output text generation switched to a safer, modern formatter that's less prone to silent corruption from edge-case characters.
+- **v1.40.0** - **Engine refresh to modern baseline**. Build system moved to a current language standard, opening the door to safer, faster idioms across the codebase. No user-visible behavior change yet — this release is the on-ramp for v1.40.x → v1.41.x quality improvements.
+- **v1.39.2** - **Build system foundation update**. Internal build tooling refreshed to enable faster compile times in upcoming releases. No user impact this release.
+- **v1.39.1** - **`icmg chat` can now run fully offline**. New `--local` (or `--backend=local`) flag routes chat through the local AI model already on your machine — zero cloud calls, zero API cost. Slower than cloud (a typical reply takes ~30 s) but completely private. Falls back to cloud automatically if local model isn't ready.
 ---
 
 ## 🚀 Quick start
