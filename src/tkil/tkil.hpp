@@ -46,4 +46,11 @@ private:
     double computeScore(int freq, int64_t last_used) const;
 };
 
+// v1.41.x: forward decl so callers in this namespace resolve cleanly under
+// MSVC (was previously declared `extern` inside Tkil::runFiltered which
+// MSVC mangled into a global symbol mismatch). Definition lives in
+// filters/regex_user_filter.cpp.
+std::string applyUserFilters(const std::string& filtered,
+                             const std::string& command);
+
 } // namespace icmg::tkil

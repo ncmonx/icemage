@@ -81,3 +81,4 @@ state.md
 PROGRESS.md
 third_party/onnxruntime/lib/
 build-clang/
+build-msvc/

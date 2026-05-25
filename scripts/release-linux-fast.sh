@@ -25,10 +25,15 @@ echo "==> Building icmg v$VERSION for Linux x64 (fast path: ext4 native)..."
 # 2. rsync source to ext4 staging. Exclude build dirs + git + binary cruft
 #    so the copy stays small (~50MB vs full ~3GB repo).
 STAGE="/tmp/icmg-build-$VERSION"
-rm -rf "$STAGE"
+# v1.41.x build-speed: keep $STAGE for incremental builds — rsync syncs only
+# changed files, ninja recompiles only changed TUs. Force-wipe via FRESH=1.
+if [[ -n "${FRESH:-}" ]]; then
+    echo "==> FRESH=1 set — wiping $STAGE"
+    rm -rf "$STAGE"
+fi
 mkdir -p "$STAGE"
-echo "==> Staging source → $STAGE (ext4 native)..."
-time rsync -a \
+echo "==> Staging source → $STAGE (ext4 native; delta sync)..."
+time rsync -a --delete-excluded \
     --exclude='build/' \
     --exclude='build-linux/' \
     --exclude='build_linux/' \

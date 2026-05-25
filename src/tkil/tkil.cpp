@@ -3,6 +3,7 @@
 #include "filters/filter_utils.hpp"
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
+#include "../core/posix_compat.hpp"  // v1.41.x MSVC popen/pclose shim
 #include <cctype>
 #include <filesystem>
 // v1.40.2 C++23 std::flat_map pilot (P0429). Header guarded — Linux WSL
@@ -155,7 +156,9 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
     // is absent. Rules are first-match-wins; matching command runs all
     // strip patterns against each line.
     {
-        extern std::string applyUserFilters(const std::string&, const std::string&);
+        // v1.41.x: applyUserFilters declared in tkil.hpp (namespace
+        // icmg::tkil) for proper MSVC name lookup. Definition in
+        // regex_user_filter.cpp.
         std::string after = applyUserFilters(fr.output, command);
         if (after.size() != fr.output.size()) {
             fr.output = after;

@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.28)
 # opted-in via UUID key BEFORE project() call. clang64 (libc++) ships std.cppm
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
-set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "a9e1cf81-9932-4810-974b-6eccaf14e457")
-project(icmg VERSION 1.41.0 LANGUAGES CXX C)
+set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
+project(icmg VERSION 1.41.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -462,6 +462,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_link_libraries(icmg PRIVATE
             -Wl,--whole-archive icmg_lib -Wl,--no-whole-archive)
     endif()
+elseif(MSVC)
+    # v1.41.x MSVC equivalent of --whole-archive. /WHOLEARCHIVE forces all
+    # icmg_lib.lib .obj files to be linked even if no symbol is referenced —
+    # required so static-init ICMG_REGISTER_COMMAND macros pull every cmd in.
+    target_link_libraries(icmg PRIVATE icmg_lib)
+    target_link_options(icmg PRIVATE "/WHOLEARCHIVE:icmg_lib")
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     # Static link runtime → portable exe (no mingw DLL deps).
     if(WIN32)
         target_link_options(icmg PRIVATE
@@ -475,6 +483,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     endif()
 else()
     target_link_libraries(icmg PRIVATE icmg_lib)
+endif()
+
+# v1.41.x MSVC: icmg.rc already embeds RT_MANIFEST (private SxS DLL isolation).
+# MSVC linker tries to auto-embed another by default -> CVT1100 duplicate.
+# Disable auto-manifest on MSVC; MSYS2 ld is fine.
+if(MSVC)
+    target_link_options(icmg PRIVATE "/MANIFEST:NO")
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
