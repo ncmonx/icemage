@@ -3,6 +3,9 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../abbreviation/abbr_store.hpp"
+// v1.40.1 C++23 std::format expansion (std::print reverted — libstdc++
+// 15.2 MinGW missing __open_terminal/__write_to_terminal POSIX symbols).
+#include <format>
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -175,7 +178,7 @@ private:
         std::string domain = flagValue(args, "--domain");
         bool ok = store.remove(args[1], domain);
         if (!ok) { std::cerr << "Not found: " << args[1] << "\n"; return 1; }
-        std::cout << "Removed: " << args[1] << "\n";
+        std::cout << std::format("Removed: {}\n", args[1]);
         return 0;
     }
 
@@ -206,7 +209,7 @@ private:
             try { store.learn(a, /*update=*/false); ++ok; }
             catch (...) { ++skip; }
         }
-        std::cout << "Imported: " << ok << "  skipped: " << skip << "\n";
+        std::cout << std::format("Imported: {}  skipped: {}\n", ok, skip);
         return 0;
     }
 

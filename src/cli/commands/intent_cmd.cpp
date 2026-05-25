@@ -7,9 +7,13 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/intent_cache.hpp"
+#include "../../core/result.hpp"  // v1.40.1: std::expected pilot
 
-// v1.40.0 C++23 adoption pilot: replace iostream chains with std::format
-// where ergonomic. GCC 15 + libstdc++ 15.2 support std::format from C++20.
+// v1.40.0 C++23: std::format pilot. v1.40.1: std::print attempt REVERTED
+// (libstdc++ 15.2 MinGW lacks std::__open_terminal/__write_to_terminal
+// — POSIX-only symbols; link fails on Win). v1.40.1 extends std::format
+// adoption + std::expected pilot via tryClearAll(). Re-evaluate std::print
+// after libstdc++/MinGW ships terminal helpers.
 #include <format>
 #include <iostream>
 #include <sstream>
@@ -17,6 +21,16 @@
 #include <vector>
 
 namespace icmg::cli {
+
+// v1.40.1 C++23 std::expected pilot. tryClearAll() wraps the legacy
+// int-return IntentCache::clearAll() and exposes Result<void> semantics.
+// Future v1.40.4 bulk conversion will lift this pattern into the core
+// layer once Result<> is proven on hot path.
+static core::Result<int> tryClearAll() {
+    int rc = core::IntentCache::clearAll();
+    if (rc != 0) return core::err(rc, "intent cache clearAll failed");
+    return rc;
+}
 
 class IntentCommand : public BaseCommand {
 public:
@@ -51,15 +65,25 @@ public:
             return 0;
         }
         if (sub == "stats") {
-            std::cout << "icmg intent stats\n";
-            std::cout << "  cache_size:   " << core::IntentCache::cacheSize() << "\n";
-            std::cout << "  queue_depth:  " << core::IntentCache::queueDepth() << "\n";
+            // v1.40.1 C++23 std::format expansion (std::print reverted —
+            // libstdc++ 15.2 MinGW missing terminal helpers).
+            std::cout << std::format(
+                "icmg intent stats\n"
+                "  cache_size:   {}\n"
+                "  queue_depth:  {}\n",
+                core::IntentCache::cacheSize(),
+                core::IntentCache::queueDepth());
             return 0;
         }
         if (sub == "clear") {
-            int rc = core::IntentCache::clearAll();
-            std::cout << "{\"ok\":" << (rc == 0 ? "true" : "false") << "}\n";
-            return rc;
+            // v1.40.1 C++23 std::expected pilot via tryClearAll().
+            auto r = tryClearAll();
+            if (!r) {
+                std::cout << std::format("{{\"ok\":false,\"error\":\"{}\"}}\n", r.error().msg);
+                return r.error().code;
+            }
+            std::cout << "{\"ok\":true}\n";
+            return 0;
         }
         std::cerr << "intent: unknown subcommand '" << sub << "'\n";
         return 1;

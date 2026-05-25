@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="ncmonx.icmg" version="1.40.0.0" processorArchitecture="amd64"/>
+  <assemblyIdentity type="win32" name="ncmonx.icmg" version="1.40.1.0" processorArchitecture="amd64"/>
   <!--
     Private SxS DLL isolation. Each <file> entry forces the Win loader to
     treat the named DLL as a "private assembly" of icmg.exe — search ONLY

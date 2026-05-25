@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)  # v1.40.0: bumped 3.20 -> 3.28 for C++20 modules support
-project(icmg VERSION 1.40.0 LANGUAGES CXX C)
+project(icmg VERSION 1.40.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
