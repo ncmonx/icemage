@@ -1,5 +1,11 @@
-cmake_minimum_required(VERSION 3.28)  # v1.40.0: bumped 3.20 -> 3.28 for C++20 modules support
-project(icmg VERSION 1.40.2 LANGUAGES CXX C)
+cmake_minimum_required(VERSION 3.28)
+
+# v1.41.0 REAL Modules pilot. Experimental `import std` feature requires CMake
+# opted-in via UUID key BEFORE project() call. clang64 (libc++) ships std.cppm
+# Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
+# Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
+set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "a9e1cf81-9932-4810-974b-6eccaf14e457")
+project(icmg VERSION 1.41.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,6 +47,17 @@ endif()
 # Opt-in unity build (merges .cpp into batches; faster compile, occasional
 # ODR collision risk on file-static names). Enable: cmake -B build -DICMG_UNITY_BUILD=ON
 option(ICMG_UNITY_BUILD "Merge .cpp files into batches for faster compilation" OFF)
+
+# v1.41.0: C++23 Modules opt-in scaffold. Default OFF — actual `import std;`
+# conversion deferred until GCC + libstdc++ ship stable Modules support for
+# template-heavy code. When ON, future v1.41.x will emit FILE_SET CXX_MODULES.
+option(ICMG_USE_MODULES "Enable C++23 import std; modules pilot (experimental)" OFF)
+if(ICMG_USE_MODULES)
+    # v1.41.0: per-target opt-in (avoid global CMAKE_CXX_MODULE_STD which
+    # propagates to C-only sqlite3). icmg_lib gets the property below.
+    add_compile_definitions(ICMG_USE_MODULES_PILOT=1)
+    message(STATUS "icmg: ICMG_USE_MODULES=ON — REAL Modules pilot (persona_cmd uses import std;)")
+endif()
 
 # ---------------------------------------------------------------------------
 # Third-party: SQLite3 amalgamation (auto-downloaded if missing � gitignored)
@@ -105,6 +122,11 @@ list(FILTER ALL_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
 add_library(icmg_lib STATIC ${ALL_SOURCES})
 target_include_directories(icmg_lib PUBLIC src third_party)
 target_link_libraries(icmg_lib PUBLIC sqlite3 nlohmann_json)
+if(ICMG_USE_MODULES)
+    # v1.41.0: per-target Modules opt-in (avoids breaking C-only sqlite3).
+    set_target_properties(icmg_lib PROPERTIES CXX_MODULE_STD ON)
+    message(STATUS "icmg: icmg_lib uses import std; (clang64 + libc++)")
+endif()
 
 # v1.26.0 (P1): precompiled headers. The 5 biggest hitters by parse cost
 # across ~250 TUs — `<nlohmann/json.hpp>` alone is ~26 k LOC and appears in

@@ -144,6 +144,26 @@ void GlobalDb::runGlobalMigrations() {
         db_->run("CREATE INDEX IF NOT EXISTS idx_drift_emitted ON drift_corrections(emitted)");
         db_->run("INSERT INTO global_migrations(version) VALUES(5)");
     }
+
+    // v1.41.0 migration 6: user_personas (per-user persona storage).
+    // Multi-user single-server — each user keeps own persona+traits used
+    // as system-prompt prefix in chat/agent/ask. Storage only; model
+    // enforces own content policies.
+    int v6 = 0;
+    db_->query("SELECT COUNT(*) FROM global_migrations WHERE version=6", {},
+               [&](const core::Row& r){ if (!r.empty()) try { v6 = std::stoi(r[0]); } catch (...) {} });
+    if (v6 == 0) {
+        db_->run("CREATE TABLE IF NOT EXISTS user_personas("
+                 " user_id     TEXT PRIMARY KEY,"
+                 " persona     TEXT NOT NULL DEFAULT '',"
+                 " traits      TEXT NOT NULL DEFAULT '',"
+                 " created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+                 " updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
+                 ")");
+        db_->run("CREATE INDEX IF NOT EXISTS ix_user_personas_updated "
+                 "ON user_personas(updated_at DESC)");
+        db_->run("INSERT INTO global_migrations(version) VALUES(6)");
+    }
 }
 
 // ---- row helper ------------------------------------------------------------

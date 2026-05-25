@@ -802,6 +802,20 @@ CREATE TABLE IF NOT EXISTS drift_corrections (
 CREATE INDEX IF NOT EXISTS idx_drift_session ON drift_corrections(session_id);
 CREATE INDEX IF NOT EXISTS idx_drift_emitted ON drift_corrections(emitted);
 )SQL"},
+        {31, R"SQL(
+-- 0031_user_personas (v1.41.0)
+-- Per-user persona storage. Multi-user single-server: each user keeps
+-- own persona preference. Used by chat/agent/ask paths as system-
+-- prompt prefix. Storage only — model enforces own content policies.
+CREATE TABLE IF NOT EXISTS user_personas (
+    user_id     TEXT PRIMARY KEY,
+    persona     TEXT NOT NULL DEFAULT '',
+    traits      TEXT NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS ix_user_personas_updated ON user_personas(updated_at DESC);
+)SQL"},
     };
 }
 
