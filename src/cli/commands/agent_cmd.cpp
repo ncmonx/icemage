@@ -18,6 +18,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/persona_loader.hpp"  // v1.42.0 persona prefix
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include <iostream>
@@ -78,6 +79,14 @@ public:
 
         // Build prompt.
         std::ostringstream prompt;
+        // v1.42.0: per-user persona prefix (empty when none set).
+        // Opt-out: ICMG_NO_PERSONA=1.
+        if (!std::getenv("ICMG_NO_PERSONA")) {
+            std::string persona_prefix = icmg::core::buildPersonaPrefix();
+            if (!persona_prefix.empty()) {
+                prompt << persona_prefix;
+            }
+        }
         std::string sys_path = cfg.getString("agent.system_prompt_path", "");
         if (!sys_path.empty()) {
             std::ifstream f(sys_path);

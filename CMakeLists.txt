@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.41.1 LANGUAGES CXX C)
+project(icmg VERSION 1.42.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -784,6 +784,13 @@ if(ICMG_USE_LLAMA)
     set(GGML_BLAS             OFF CACHE BOOL "" FORCE)
     set(GGML_RPC              OFF CACHE BOOL "" FORCE)
     add_subdirectory(third_party/llama.cpp EXCLUDE_FROM_ALL)
+    # v1.42.0 MSVC compat: u8"" ? char8_t under C++20+. /Zc:char8_t- restores legacy.
+    if(MSVC AND TARGET llama)
+        target_compile_options(llama PRIVATE /Zc:char8_t-)
+    endif()
+    if(MSVC AND TARGET ggml)
+        target_compile_options(ggml PRIVATE /Zc:char8_t-)
+    endif()
     target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_LLAMA=1)
     target_include_directories(icmg_lib PUBLIC
         third_party/llama.cpp/include

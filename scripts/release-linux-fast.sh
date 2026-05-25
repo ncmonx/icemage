@@ -25,40 +25,55 @@ echo "==> Building icmg v$VERSION for Linux x64 (fast path: ext4 native)..."
 # 2. rsync source to ext4 staging. Exclude build dirs + git + binary cruft
 #    so the copy stays small (~50MB vs full ~3GB repo).
 STAGE="/tmp/icmg-build-$VERSION"
-# v1.41.x build-speed: keep $STAGE for incremental builds — rsync syncs only
-# changed files, ninja recompiles only changed TUs. Force-wipe via FRESH=1.
-if [[ -n "${FRESH:-}" ]]; then
-    echo "==> FRESH=1 set — wiping $STAGE"
-    rm -rf "$STAGE"
-fi
+# v1.42.0: FRESH wipe path REMOVED. Delta rsync + ninja delta handle all
+# config/source changes automatically. Wipe needed ONLY when manually
+# changing generator/compiler — do manually:  rm -rf /tmp/icmg-build-*
 mkdir -p "$STAGE"
 echo "==> Staging source → $STAGE (ext4 native; delta sync)..."
 time rsync -a --delete-excluded \
     --exclude='build/' \
     --exclude='build-linux/' \
     --exclude='build_linux/' \
+    --exclude='build-msvc/' \
+    --exclude='build-clang/' \
     --exclude='.git/' \
     --exclude='*.zip' \
     --exclude='*.tar.gz' \
     --exclude='.icmg/' \
     --exclude='node_modules/' \
+    --exclude='*.bak' \
     "$REPO_ROOT/" "$STAGE/"
 
 # 3. Configure + build in ext4. PCH ON. Full parallel.
 cd "$STAGE"
 echo "==> Configure (PCH ON, ext4)..."
+# v1.41.x: prefer mold linker if installed (3-5× faster link than ld).
+# Install once: sudo apt install mold ccache
+LINKER_FLAG=""
+if command -v mold >/dev/null 2>&1; then
+    LINKER_FLAG="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
+    echo "==> mold linker detected — link phase fast path"
+fi
 cmake -B build-linux -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DICMG_USE_ONNX=ON \
     -DICMG_USE_TREESITTER=ON \
-    -DICMG_NO_PCH=OFF
+    -DICMG_NO_PCH=OFF \
+    $LINKER_FLAG
 
 echo "==> Build (full parallel = $(nproc))..."
 time cmake --build build-linux --parallel "$(nproc)"
 
 # 4. Test.
-echo "==> ctest..."
-time ctest --test-dir build-linux --output-on-failure -j "$(nproc)"
+# v1.41.x build-speed: skip ctest in dev iter via SKIP_TESTS=1.
+# Use SKIP_TESTS=1 for fast pack-only iteration. Run full ctest before
+# tagged releases (default behaviour).
+if [[ -n "${SKIP_TESTS:-}" ]]; then
+    echo "==> ctest SKIPPED (SKIP_TESTS=1)"
+else
+    echo "==> ctest..."
+    time ctest --test-dir build-linux --output-on-failure -j "$(nproc)"
+fi
 
 # 5. Stage binary.
 PKG_DIR="$STAGE/dist"

@@ -298,11 +298,17 @@ public:
                 try { b = std::stoi(lines.substr(dash + 1)); } catch (...) {}
             }
         }
-        std::ifstream f(path);
-        if (!f) { std::cerr << "slice: cannot open " << path << "\n"; return 2; }
+        // v1.42.0: stdin support — "-" reads stdin instead of file.
+        bool from_stdin = (path == "-");
         std::vector<std::string> all;
         std::string line;
-        while (std::getline(f, line)) all.push_back(line);
+        if (from_stdin) {
+            while (std::getline(std::cin, line)) all.push_back(line);
+        } else {
+            std::ifstream f(path);
+            if (!f) { std::cerr << "slice: cannot open " << path << "\n"; return 2; }
+            while (std::getline(f, line)) all.push_back(line);
+        }
         std::size_t from = 0, to = all.size();
         if (head > 0) to = std::min<std::size_t>(all.size(), (std::size_t)head);
         else if (tail > 0) from = all.size() > (std::size_t)tail ? all.size() - tail : 0;

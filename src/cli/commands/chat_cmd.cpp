@@ -25,6 +25,8 @@
 // v1.39.1 B: local LLM backend via warm-pool.
 #include "../../llm/warm_pool.hpp"
 #include "../../llm/llama_runner.hpp"
+// v1.42.0: persona prefix integration.
+#include "../../core/persona_loader.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -140,7 +142,13 @@ public:
                     icmg::llm::InferParams ip;
                     ip.max_tokens  = 384;
                     ip.temperature = 0.4f;
-                    auto res = run->infer(line, ip);
+                    // v1.42.0: prepend per-user persona prefix (empty when
+                    // none set). Opt-out: ICMG_NO_PERSONA=1.
+                    std::string prompt = line;
+                    if (!std::getenv("ICMG_NO_PERSONA")) {
+                        prompt = icmg::core::buildPersonaPrefix() + prompt;
+                    }
+                    auto res = run->infer(prompt, ip);
                     if (res.ok) {
                         std::cout << res.text << "\n";
                         // Skip subprocess agent + skip auto-store
