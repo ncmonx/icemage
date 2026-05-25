@@ -22,6 +22,9 @@
 #include "../../core/exec_utils.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
+// v1.39.1 B: local LLM backend via warm-pool.
+#include "../../llm/warm_pool.hpp"
+#include "../../llm/llama_runner.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -79,6 +82,9 @@ public:
 
         bool no_llm  = hasFlag(args, "--no-llm");
         bool no_pack = hasFlag(args, "--no-pack");
+        // v1.39.1 B: --backend=local short-circuits to warm-pool LLM,
+        // skipping `icmg agent` subprocess + cloud cost entirely.
+        bool local_backend = hasFlag(args, "--local") || hasFlag(args, "--backend=local");
         std::string session = flagValue(args, "--session", "");
         if (session.empty()) session = sessionStamp();
 
@@ -124,6 +130,29 @@ public:
                 }
                 std::cerr << "unknown command: " << line << "\n";
                 continue;
+            }
+
+            // v1.39.1 B: short-circuit to local warm-pool when --backend=local.
+            if (local_backend && !no_llm) {
+                std::string err;
+                auto* run = icmg::llm::WarmPool::instance().acquire(err);
+                if (run) {
+                    icmg::llm::InferParams ip;
+                    ip.max_tokens  = 384;
+                    ip.temperature = 0.4f;
+                    auto res = run->infer(line, ip);
+                    if (res.ok) {
+                        std::cout << res.text << "\n";
+                        // Skip subprocess agent + skip auto-store
+                        // (local replies in same memory store anyway).
+                        continue;
+                    }
+                    std::cerr << "(local LLM failed: " << res.error
+                              << ") fall through to agent\n";
+                } else {
+                    std::cerr << "(warm-pool acquire: " << err
+                              << ") fall through to agent\n";
+                }
             }
 
             // Build agent command — reuse `icmg agent` for prompt assembly + LLM call.
