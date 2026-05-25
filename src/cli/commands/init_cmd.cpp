@@ -342,6 +342,26 @@ if [[ "${ICMG_NO_CAVEMAN_AUTO:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
     fi
 fi
 
+
+# v1.39.0 A9b: ctx-fill auto-trigger. Estimate session token usage via
+# UserPromptSubmit count + prompt size. At threshold (~75% of 200k Sonnet
+# default ctx), fire detached `icmg compact-bg` worker. Zero blocking.
+# Opt-out: ICMG_NO_AUTO_COMPACT=1.
+if [[ -z "$ICMG_NO_AUTO_COMPACT" ]]; then
+    STATE_DIR="$HOME/.icmg/ctx-state"
+    mkdir -p "$STATE_DIR" 2>/dev/null
+    SESSION_ID="${ICMG_SESSION_ID:-default}"
+    COUNTER="$STATE_DIR/$SESSION_ID.tok"
+    TOT_TOK=$(cat "$COUNTER" 2>/dev/null || echo 0)
+    PROMPT_TOK=$(( ${#PROMPT} / 4 ))
+    TOT_TOK=$(( TOT_TOK + PROMPT_TOK ))
+    echo "$TOT_TOK" > "$COUNTER"
+    if [[ $TOT_TOK -gt 150000 ]]; then
+        ( icmg compact-bg --threshold 75 --query "session decision plan" 2>/dev/null && echo 0 > "$COUNTER" ) &
+        disown 2>/dev/null || true
+    fi
+fi
+
 # Fallback: direct spawn (~360ms).
 printf '%s' "$INPUT" | exec icmg hook userprompt
 )BASH";
