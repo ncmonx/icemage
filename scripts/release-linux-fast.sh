@@ -54,11 +54,18 @@ if command -v mold >/dev/null 2>&1; then
     LINKER_FLAG="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
     echo "==> mold linker detected — link phase fast path"
 fi
+# v1.43.0: prefer gcc-14 if available (libstdc++ Modules support, better C++23 codegen).
+COMPILER_FLAG=""
+if command -v g++-14 >/dev/null 2>&1; then
+    COMPILER_FLAG="-DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14"
+    echo "==> gcc-14 detected — using modern toolchain"
+fi
 cmake -B build-linux -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DICMG_USE_ONNX=ON \
     -DICMG_USE_TREESITTER=ON \
     -DICMG_NO_PCH=OFF \
+    $COMPILER_FLAG \
     $LINKER_FLAG
 
 echo "==> Build (full parallel = $(nproc))..."

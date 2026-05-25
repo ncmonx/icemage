@@ -99,7 +99,12 @@ bool LlamaRunner::load(const std::string& gguf_path,
     }
 
     llama_model_params mp = llama_model_default_params();
-    mp.n_gpu_layers = p.n_gpu_layers;
+    // v1.43+ GPU acceleration: env ICMG_LLM_GPU_LAYERS override (-1 = all).
+    int gpu_layers = p.n_gpu_layers;
+    if (const char* env = std::getenv("ICMG_LLM_GPU_LAYERS")) {
+        try { gpu_layers = std::stoi(env); } catch (...) {}
+    }
+    mp.n_gpu_layers = gpu_layers;
     mp.use_mmap     = p.use_mmap;
     mp.use_mlock    = p.use_mlock;
 

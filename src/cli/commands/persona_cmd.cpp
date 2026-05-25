@@ -44,7 +44,8 @@ public:
             "  set <name> [--traits \"...\"]   Upsert current user's persona\n"
             "  show [--user <id>]            Show persona (default: current user)\n"
             "  list                          List all users + persona names\n"
-            "  clear                         Remove current user's persona\n";
+            "  clear                         Remove current user's persona\n"
+            "  context [--json]              Emit hook prefix (for UserPromptSubmit)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -114,6 +115,44 @@ public:
                 return r.error().code;
             }
             std::cout << std::format("persona cleared: user={}\n", user);
+            return 0;
+        }
+
+        // v1.43.0 Phase 1: hook output for UserPromptSubmit injection.
+        // Emits Claude-Code JSON {hookSpecificOutput:{additionalContext:"..."}}
+        // when persona set, else empty JSON {} so hook is no-op.
+        if (sub == "context") {
+            bool as_json = hasFlag(args, "--json");
+            auto r = fetchPersona(gdb, user);
+            if (!r || r.value().first.empty()) {
+                if (as_json) std::cout << "{}\n";
+                return 0;
+            }
+            const auto& [persona, traits] = r.value();
+            std::string ctx = traits.empty()
+                ? std::format("[Persona: {}]\n\n", persona)
+                : std::format("[Persona: {} | Traits: {}]\n\n", persona, traits);
+            if (as_json) {
+                // Escape ctx for JSON
+                std::string esc;
+                esc.reserve(ctx.size() * 2);
+                for (char c : ctx) {
+                    switch (c) {
+                        case '"':  esc += "\\\""; break;
+                        case '\\': esc += "\\\\"; break;
+                        case '\n': esc += "\\n";  break;
+                        case '\r': esc += "\\r";  break;
+                        case '\t': esc += "\\t";  break;
+                        default:   esc += c;
+                    }
+                }
+                std::cout << std::format(
+                    "{{\"hookSpecificOutput\":{{\"hookEventName\":\"UserPromptSubmit\","
+                    "\"additionalContext\":\"{}\"}}}}\n",
+                    esc);
+            } else {
+                std::cout << ctx;
+            }
             return 0;
         }
 

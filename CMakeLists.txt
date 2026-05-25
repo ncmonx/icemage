@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.42.0 LANGUAGES CXX C)
+project(icmg VERSION 1.43.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -182,7 +182,13 @@ if(ICMG_USE_ONNX)
     # v0.58.0 (Phase 84 T2): per-OS archive + library naming.
     if(WIN32)
         set(ORT_ARCHIVE "onnxruntime-win-x64-${ORT_VERSION}.zip")
-        set(ORT_LIB_NAME "onnxruntime.dll")
+        # v1.43+ MSVC link needs .lib import library (gen via scripts/gen-onnxruntime-lib.bat).
+        # MinGW ld can link against .dll directly — keeps existing behaviour.
+        if(MSVC)
+            set(ORT_LIB_NAME "onnxruntime.lib")
+        else()
+            set(ORT_LIB_NAME "onnxruntime.dll")
+        endif()
         set(ORT_LIB_GLOB "*.dll")
     elseif(APPLE)
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")

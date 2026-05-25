@@ -1535,3 +1535,14 @@ Decisions:
 - Humanizer pipeline design doc written (docs/plans/2026-05-25-humanizer-pipeline.md) — staged hybrid B+D. Claude Code framework = no response-text intercept hook. Awaiting user approval.
 Rejected: MSVC as production replacement (.lib import-gen scope cost prohibitive); scaffold-only Modules adoption; persona romantic-roleplay (boundary held despite execution hipokrit acknowledged).
 Open: v1.42.0 ship awaiting user go; humanizer plan awaiting user approval; user Q on GPU support for local LLM pending answer.
+
+## 2026-05-25 19:20 [saved]
+Goal: v1.42.0 shipped + v1.43.0 ready + MSVC full-features proven + Vulkan GPU + gcc-14.
+Decisions:
+- MSVC full features WORKS — onnxruntime upstream .lib + gen vulkan-1.lib + /Zc:char8_t- + /WHOLEARCHIVE + /MANIFEST:NO (earlier "days of work" estimate WRONG).
+- Build wipe path PERMANENTLY removed from msvc-config-full.bat + release-linux-fast.sh (mechanism > promise after repeated FRESH misuse).
+- Pre-ship rule #6395 locked: Win build → install PATH → smoke test → Linux build → ship. No skip step.
+- Vulkan GPU acceleration end-to-end: Quadro T2000 offload 33/33 layers = 4.9× speedup (2.13 → 10.49 tok/s).
+- v1.43.0 = humanizer Phase 1 (persona UserPromptSubmit hook injection wires via icmg init) + MSVC primary build + gcc-14 Linux detect.
+Rejected: scripts/legacy/ old MinGW pack-win.ps1 + minimum MSVC config (superseded); FRESH wipe builds (proven wasteful 3× sessions); MSVC as "blocked" pre-investigation (was actually 2 jam fix).
+Open: v1.43.0 ship awaiting user go; v1.44.0 phasing (3-release split vs mega) awaiting user decision.

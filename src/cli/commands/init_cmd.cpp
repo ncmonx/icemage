@@ -366,6 +366,15 @@ fi
 printf '%s' "$INPUT" | exec icmg hook userprompt
 )BASH";
 
+// v1.43.0 Phase 1: UserPromptSubmit persona inject.
+static const char* PERSONA_INJECT_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by icmg init. Emits per-user persona prefix as additionalContext.
+# Opt-out: ICMG_NO_PERSONA=1.
+[[ -n "$ICMG_NO_PERSONA" ]] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+icmg persona context --json 2>/dev/null || exit 0
+)BASH";
+
 // Stop hook â€” reminds to log workflow decisions when session had git activity.
 static const char* WFLOG_STOP_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on session Stop.
@@ -1382,6 +1391,7 @@ private:
         }
         // Phase 71: UserPromptSubmit auto-recall + suggest compress.
         n += writeFile(root / ".claude" / "hooks" / "icmg-prompt-recall.sh", PROMPT_RECALL_SH, true);
+        n += writeFile(root / ".claude" / "hooks" / "icmg-persona-inject.sh", PERSONA_INJECT_SH, true);
         // Stop hook: wflog reminder on session end when git has changes.
         n += writeFile(root / ".claude" / "hooks" / "icmg-wflog-stop.sh", WFLOG_STOP_SH, true);
         // v0.42.0: context graph injection hooks.
@@ -1659,6 +1669,14 @@ private:
                     {{"type", "command"},
                      {"timeout", 5},
                      {"command", "bash -c '[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0'"}}
+                })}
+            },
+            {
+                // v1.43.0 Phase 1: persona injection (per-user system prompt prefix).
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"timeout", 3},
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-persona-inject.sh ] && bash .claude/hooks/icmg-persona-inject.sh || exit 0'"}}
                 })}
             }
         });
