@@ -1572,3 +1572,44 @@ Decisions:
 - git filter-repo stripped 140MB vulkan obj from local history v1.27-v1.47.
 Rejected: function-local-static history (dies w/ process); pushing build-msvc-full/ to private.
 Open: v1.48 personal-assistant chat = persistence + quote escape + n_batch fix + full icmg-toolset integration (memory/recall/pack/fetch/graph) + warm-loop.
+## 2026-05-26 16:35 [saved]
+Goal: v1.48.0/.1/.2 personal-assistant chat shipped; chunk-decode fix.
+Decisions:
+- Persistent local_llm_chats in global.db (FTS5 BM25) — separate from memory_nodes per user constraint.
+- Cross-session history via loadRecentTurns (15 turns) — chat continues across REPL invocations.
+- Context injection per turn: past-chats BM25 + project memory + active rules + skills. Cap ~2500 chars.
+- Slash cmds: \sessions/\resume/\new/\context/\sources/\memo/\rule/\unrule/\rules/\skill.
+- v1.48.2 hotfix critical: chunk-decode prompt in 512-tok pieces eliminates GGML_ASSERT on long prompts; n_ctx 2048→8192 fixes decode(step) at i=25.
+- Migration 32 (local_llm_chats + FTS5) embedded but runGlobalMigrations() stops manual at v6 → defensive bootstrap via CREATE TABLE IF NOT EXISTS at first-use.
+Rejected: v1.48.1 defensive "context injection off by default" (wrong direction — user wanted MORE features); single-batch decode (hard-asserts on big prompts).
+Open: v1.49 = auto-detect rule from chat natural language; warm-loop detached process; Migrator framework iteration fix.
+
+## 2026-05-26 17:50 [saved]
+Goal: v1.48.3 + v1.49.0 quick wins shipped.
+Decisions:
+- v1.48.3: ICMG_LLM_N_CTX env + ~/.icmg/llm/n_ctx.txt file fallback (lower n_ctx → smaller KV cache → bigger models fit small VRAM).
+- v1.49.0: runGlobalMigrations() iterates embeddedGlobalMigrations() for versions >=7 (was stuck at v6 manually).
+- Active config T2000 4GB: Qwen 7B GPU=22 + n_ctx=2048 = 8.21 tok/s (proven sweet spot for chat continuity).
+- Phi-3.5 = 7-12 tok/s tapi Indonesian rough. Qwen 1.5B = 24 tok/s tapi no real multi-turn continuity.
+Rejected: v1.48.3 separate ship (folded into v1.49.0 commit); Phi-3.5 daily driver (Indonesian quality); full v1.49 ship cycle (private-push enough, user frustasi build cycles).
+Open: v1.50+ = auto-rule detection from chat NL, natural-lang manage rules/skills, warm-loop detached, smart router, Track A leiden + more tree-sitter, C1/C3/C4 control loops. v1.49 docs PR + gh release deferred.
+
+## 2026-05-26 18:00 [saved]
+Goal: Win-only ship policy decision.
+Decisions:
+- Linux build + tarball SKIPPED from ship cycle until further notice. Saves ~10-15 min/release.
+- Rationale: solo dev cadence; Linux user base small; WSL build flaky.
+- Release flow: Win zip + sha256 + private push + gh release + docs PR. No Linux step.
+Rejected: dual-platform ship every release; open-source pivot (commercial intent TBD).
+Open: Linux re-enable trigger TBD (CI automation OR user demand).
+
+## 2026-05-26 22:05 [saved]
+Goal: v1.51.0 NL rule/skill manage + autoDetectRule TDD extraction.
+Decisions:
+- Extracted autoDetectRule -> src/cli/auto_rule.hpp pure module + injectable adapters (24/24 unit + 2/2 integration tests).
+- NL remove maps to icmg rule disable (soft, reversible) - safety against fuzzy mis-match. Hard remove reserved for \unrule slash.
+- Trigger eval order specific->general (REMOVE/EDIT/SKILL before ADD_RULE). Prevents "hapus rule selalu-foo" collapsing to ADD_RULE.
+- Fuzzy resolver: token-overlap × idf / sqrt(len), name 3x body 1x, threshold 0.5. Ambiguous (top1-top2 < 0.05) -> list candidates, no action.
+- Skill CRUD CLI writes ~/.icmg/skills/*.md sans reindex (icmg skill index --dir crashes Unicode codepage - separate bug).
+Rejected: hard remove for NL (irreversible wrong default); skill content diff edit (full-replace only); auto-reindex in doAdd (skill index --dir Unicode crash).
+Open: S3 NL "delete skill X" via fuzzy needs DB index (icmg skill index --dir Unicode crash blocks); fix v1.52. 32 pre-existing ctest failures unrelated to v1.51.
