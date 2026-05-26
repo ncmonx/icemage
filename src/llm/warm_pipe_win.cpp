@@ -137,4 +137,77 @@ void PipeServer::stop() {
 }
 
 }  // namespace icmg::llm
+
+// ---- PipeClient implementation ----
+
+namespace icmg::llm {
+
+struct PipeClient::Impl {
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    ~Impl() { if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle); }
+};
+
+PipeClient::PipeClient() : impl_(std::make_unique<Impl>()) {}
+PipeClient::~PipeClient() = default;
+PipeClient::PipeClient(PipeClient&&) noexcept = default;
+PipeClient& PipeClient::operator=(PipeClient&&) noexcept = default;
+
+std::optional<PipeClient> PipeClient::connect(
+    const std::string& name, std::chrono::milliseconds timeout)
+{
+    std::string path = fullPipePath(name);
+    std::wstring wp(path.begin(), path.end());
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        HANDLE h = CreateFileW(wp.c_str(),
+                                GENERIC_READ | GENERIC_WRITE,
+                                0, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (h != INVALID_HANDLE_VALUE) {
+            PipeClient pc;
+            pc.impl_->handle = h;
+            return pc;
+        }
+        DWORD err = GetLastError();
+        if (err != ERROR_PIPE_BUSY) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            continue;
+        }
+        WaitNamedPipeW(wp.c_str(), 50);
+    }
+    return std::nullopt;
+}
+
+std::string PipeClient::sendRequest(const std::string& json_req,
+                                     std::chrono::milliseconds read_timeout)
+{
+    if (impl_->handle == INVALID_HANDLE_VALUE) return {};
+    std::string out = json_req;
+    if (out.empty() || out.back() != '\n') out.push_back('\n');
+    DWORD n = 0;
+    if (!WriteFile(impl_->handle, out.data(), (DWORD)out.size(), &n, nullptr) ||
+        n != out.size()) return {};
+
+    auto deadline = std::chrono::steady_clock::now() + read_timeout;
+    std::string buf;
+    char tmp[4096];
+    while (std::chrono::steady_clock::now() < deadline) {
+        DWORD avail = 0;
+        BOOL pok = PeekNamedPipe(impl_->handle, nullptr, 0, nullptr, &avail, nullptr);
+        if (!pok) return {};
+        if (avail == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+        DWORD got = 0;
+        if (!ReadFile(impl_->handle, tmp, sizeof(tmp), &got, nullptr)) return {};
+        buf.append(tmp, got);
+        if (!buf.empty() && buf.back() == '\n') {
+            buf.pop_back();
+            return buf;
+        }
+    }
+    return {};
+}
+
+}  // namespace icmg::llm
 #endif
