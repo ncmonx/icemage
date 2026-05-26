@@ -23,12 +23,18 @@ bool GraphStore::cacheEnabled() const {
 void GraphStore::clearCache() {
     node_cache_.clear();
     node_cache_order_.clear();
+    node_cache_iters_.clear();
 }
 
 std::optional<GraphNode> GraphStore::cacheGetNode(const std::string& path) const {
     if (!cacheEnabled()) return std::nullopt;
     auto it = node_cache_.find(path);
     if (it == node_cache_.end()) return std::nullopt;
+    // v1.45.0 C2: LRU touch -- splice key to back via stored iter.
+    auto iit = node_cache_iters_.find(path);
+    if (iit != node_cache_iters_.end()) {
+        node_cache_order_.splice(node_cache_order_.end(), node_cache_order_, iit->second);
+    }
     return it->second;
 }
 
@@ -37,13 +43,24 @@ void GraphStore::cachePutNode(const std::string& path,
     if (!cacheEnabled()) return;
     // FIFO eviction when capacity reached. Cheap O(1) front-pop; we keep
     // insertion order in a parallel vector. Lookup remains O(1) via map.
+    // v1.45.0 C2: LRU eviction via std::list + iter map. O(1) pop_front.
     if (node_cache_.size() >= NODE_CACHE_MAX && !node_cache_order_.empty()) {
-        node_cache_.erase(node_cache_order_.front());
-        node_cache_order_.erase(node_cache_order_.begin());
+        const std::string victim = node_cache_order_.front();
+        node_cache_.erase(victim);
+        node_cache_iters_.erase(victim);
+        node_cache_order_.pop_front();
     }
     auto [it, inserted] = node_cache_.emplace(path, node);
-    if (inserted) node_cache_order_.push_back(path);
-    else it->second = node;  // refresh; order unchanged
+    if (inserted) {
+        node_cache_order_.push_back(path);
+        node_cache_iters_[path] = std::prev(node_cache_order_.end());
+    } else {
+        it->second = node;
+        auto iit = node_cache_iters_.find(path);
+        if (iit != node_cache_iters_.end()) {
+            node_cache_order_.splice(node_cache_order_.end(), node_cache_order_, iit->second);
+        }
+    }
 }
 
 

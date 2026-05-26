@@ -4,6 +4,7 @@
 #include <optional>
 #include <unordered_map>
 #include <vector>
+#include <list>
 #include <string>
 
 namespace icmg::graph {
@@ -129,9 +130,13 @@ private:
     // safe — graph mutations are typically batched in scan passes, so we
     // pay invalidation cost once per scan, not per edit). Opt-out via
     // ICMG_NO_GRAPH_CACHE=1 (checked lazily).
+    // v1.45.0 C2: upgraded FIFO -> LRU. node_cache_order_ now std::list
+    // for O(1) splice-to-back on cache hit. iter map gives O(1) move.
+    // Bumped cap 256 -> 512 (heavier RAM but bigger hit rate).
     mutable std::unordered_map<std::string, GraphNode> node_cache_;
-    mutable std::vector<std::string> node_cache_order_;  // FIFO insertion order
-    static constexpr size_t NODE_CACHE_MAX = 256;
+    mutable std::list<std::string> node_cache_order_;
+    mutable std::unordered_map<std::string, std::list<std::string>::iterator> node_cache_iters_;
+    static constexpr size_t NODE_CACHE_MAX = 512;
     bool cacheEnabled() const;
     std::optional<GraphNode> cacheGetNode(const std::string& path) const;
     void cachePutNode(const std::string& path, const GraphNode& node) const;
