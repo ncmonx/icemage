@@ -1560,3 +1560,15 @@ Rejected:
 - Romantic/sexualized persona framing (boundary held across multiple user reframes incl. "fiction writer" angle).
 - Promise-based build discipline (replaced with mechanism: script-level wipe removal).
 Open: smart router + chat memory + Track A awaiting user pick for v1.47+.
+
+## 2026-05-26 14:20 [saved]
+Goal: v1.47.0 SHIPPED — local LLM chat ergonomics + MSVC build reliability.
+Decisions:
+- ChatML multi-turn history (capped 10 turns) fixes halo-halo + amnesia.
+- MSVC /Z7 for ggml-vulkan target eliminates shared-PDB parallel race.
+- GPU layers persist via ~/.icmg/llm/gpu-layers.txt fallback chain.
+- Orphan DB co-located with icmg.exe when CWD unwritable.
+- icmg llm respond --hook emits UserPromptSubmit block JSON; !msg / /local msg prefix routes casual chat to local LLM.
+- git filter-repo stripped 140MB vulkan obj from local history v1.27-v1.47.
+Rejected: function-local-static history (dies w/ process); pushing build-msvc-full/ to private.
+Open: v1.48 personal-assistant chat = persistence + quote escape + n_batch fix + full icmg-toolset integration (memory/recall/pack/fetch/graph) + warm-loop.

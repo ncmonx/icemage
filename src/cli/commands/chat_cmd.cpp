@@ -26,6 +26,8 @@
 #include "../../llm/warm_pool.hpp"
 #include "../../llm/llama_runner.hpp"
 #include "../../llm/chat_template.hpp"
+#include "../../llm/chat_persistence.hpp"
+#include "../../core/user_identity.hpp"
 // v1.47.0: per-process chat history (persists across REPL turns,
 // reset on \clear). Capped to last 10 turns to avoid ctx overflow.
 #include <utility>
@@ -47,6 +49,74 @@
 #endif
 
 namespace icmg::cli {
+
+// v1.48.0 context injection: pull from past chats (BM25 cross-session)
+// + project memory_nodes (BM25 within project). Cap each source 300
+// chars; total budget ~1000 chars. Returns formatted block to prepend
+// to system prompt. Empty when no relevant hits or budget exceeded.
+static std::string buildContextInjection(
+        const std::string& user_msg,
+        const std::string& user_id,
+        icmg::imem::MemoryStore& mem) {
+    std::string out;
+    // 1. Past chats BM25 (cross-session, per-user).
+    try {
+        auto hits = icmg::llm::bm25RecallChats(user_id, user_msg, 3);
+        if (!hits.empty()) {
+            out += "[Past chats]\n";
+            for (const auto& h : hits) {
+                std::string snippet = h.content.substr(0, 200);
+                out += "- " + snippet;
+                if (h.content.size() > 200) out += "...";
+                out += "\n";
+            }
+            out += "\n";
+        }
+    } catch (...) {}
+    // 2. Project memory_nodes BM25 recall.
+    try {
+        auto mhits = mem.recall(user_msg, 3);
+        if (!mhits.empty()) {
+            out += "[Project memory]\n";
+            for (const auto& m : mhits) {
+                std::string snippet = m.content.substr(0, 200);
+                out += "- " + snippet;
+                if (m.content.size() > 200) out += "...";
+                out += "\n";
+            }
+            out += "\n";
+        }
+    } catch (...) {}
+    // 3. Active rules (project rule_store via subprocess).
+    try {
+        auto rule_er = icmg::core::safeExecShell(
+            "icmg rule list --active 2>/dev/null", true, 2000);
+        auto rule_res = rule_er.out;
+            if (rule_er.exit_code == 0 && !rule_res.empty() && rule_res.size() < 500) {
+            out += "[Active rules]\n";
+            std::string trimmed = rule_res.substr(0, 400);
+            out += trimmed;
+            if (rule_res.size() > 400) out += "...";
+            out += "\n\n";
+        }
+    } catch (...) {}
+    // 4. Available skills (per-project + global, via subprocess).
+    try {
+        auto skill_er = icmg::core::safeExecShell(
+            "icmg skill list 2>/dev/null", true, 2000);
+        auto skill_res = skill_er.out;
+            if (skill_er.exit_code == 0 && !skill_res.empty() && skill_res.size() < 800) {
+            out += "[Available skills]\n";
+            std::string trimmed = skill_res.substr(0, 400);
+            out += trimmed;
+            if (skill_res.size() > 400) out += "...";
+            out += "\n\n";
+        }
+    } catch (...) {}
+    // Hard cap total inject 2500 chars (allowing 4 sources now).
+    if (out.size() > 2500) out.resize(2500);
+    return out;
+}
 
 static std::string homeDir() {
 #ifdef _WIN32
@@ -79,6 +149,12 @@ public:
             "  \\save <name>   Snapshot session\n"
             "  \\load <name>   Restore session\n"
             "  \\clear         Reset chat context\n"
+            "  \\sessions      List recent chat sessions\n"
+            "  \\resume <id>   Resume past session\n"
+            "  \\new           Start fresh session\n"
+            "  \\context on/off  Toggle auto-context injection\n"
+            "  \\sources       Show what was injected last turn\n"
+            "  \\memo <text>   Save text to project memory\n"
             "  \\help          Show this help\n"
             "  \\quit          Exit\n";
     }
@@ -93,6 +169,12 @@ public:
         bool local_backend = hasFlag(args, "--local") || hasFlag(args, "--backend=local");
         std::string session = flagValue(args, "--session", "");
         if (session.empty()) session = sessionStamp();
+
+        // v1.48.0: lift state to function scope so slash cmds can mutate.
+        std::vector<std::pair<std::string,std::string>> chat_history;
+        bool history_seeded = false;
+        bool inject_context = true;  // \context on/off toggle
+        std::string last_sources_dump;  // \sources debug
 
         auto& cfg = core::Config::instance();
         std::string history_path = homeDir() + "/.icmg/chat-history.txt";
@@ -134,6 +216,102 @@ public:
                     else std::cerr << data << "\n";
                     continue;
                 }
+                if (line == "\\sessions") {
+                    auto sess = icmg::llm::listRecentSessions(
+                        icmg::core::currentUser(), 20);
+                    if (sess.empty()) std::cerr << "(no past sessions)\n";
+                    for (const auto& cs : sess) {
+                        std::cerr << "  " << cs.session_id
+                                  << "  [" << cs.turn_count << " turns]  "
+                                  << cs.preview << "\n";
+                    }
+                    continue;
+                }
+                if (line.rfind("\\resume ", 0) == 0) {
+                    std::string sid = line.substr(8);
+                    if (sid.empty()) { std::cerr << "usage: \\resume <session-id>\n"; continue; }
+                    session = sid;
+                    chat_history = icmg::llm::loadSessionHistory(
+                        icmg::core::currentUser(), session, 20);
+                    history_seeded = true;
+                    std::cerr << "(resumed session: " << sid << " — "
+                              << (chat_history.size()/2) << " turns loaded)\n";
+                    continue;
+                }
+                if (line == "\\new") {
+                    session = sessionStamp();
+                    chat_history.clear();
+                    history_seeded = true;  // skip re-seed for fresh session
+                    std::cerr << "(new session: " << session << ")\n";
+                    continue;
+                }
+                if (line == "\\context off") {
+                    inject_context = false;
+                    std::cerr << "(context injection OFF — raw chat only)\n";
+                    continue;
+                }
+                if (line == "\\context on") {
+                    inject_context = true;
+                    std::cerr << "(context injection ON)\n";
+                    continue;
+                }
+                if (line == "\\sources") {
+                    if (last_sources_dump.empty())
+                        std::cerr << "(no sources injected last turn)\n";
+                    else
+                        std::cerr << last_sources_dump << "\n";
+                    continue;
+                }
+                if (line.rfind("\\memo ", 0) == 0) {
+                    std::string txt = line.substr(6);
+                    if (txt.empty()) { std::cerr << "usage: \\memo <text>\n"; continue; }
+                    try {
+                        icmg::imem::MemoryNode mn;
+                        mn.topic = "chat-memo";
+                        mn.content = txt;
+                        mem.store(mn);
+                        std::cerr << "(saved to project memory)\n";
+                    } catch (const std::exception& e) {
+                        std::cerr << "(memo save failed: " << e.what() << ")\n";
+                    }
+                    continue;
+                }
+                if (line.rfind("\\rule ", 0) == 0) {
+                    std::string txt = line.substr(6);
+                    if (txt.empty()) { std::cerr << "usage: \\rule <text>\n"; continue; }
+                    std::string nm = "chat-" + sessionStamp();
+                    std::string esc; esc.reserve(txt.size() + 8);
+                    for (char c : txt) { if (c == '"') esc += "\\\""; else esc += c; }
+                    std::string cmd = "icmg rule add / custom \"" + nm + "\" \"" + esc + "\"";
+                    auto er = icmg::core::safeExecShell(cmd, true, 5000);
+                    if (er.exit_code == 0) std::cerr << "(rule saved: " << nm << ")\n";
+                    else std::cerr << "(rule save failed)\n";
+                    continue;
+                }
+                if (line.rfind("\\unrule ", 0) == 0) {
+                    std::string nm = line.substr(8);
+                    if (nm.empty()) { std::cerr << "usage: \\unrule <rule-name>\n"; continue; }
+                    std::string cmd = "icmg rule remove \"" + nm + "\"";
+                    auto er = icmg::core::safeExecShell(cmd, true, 5000);
+                    if (er.exit_code == 0) std::cerr << "(rule removed: " << nm << ")\n";
+                    else std::cerr << "(rule remove failed)\n";
+                    continue;
+                }
+                if (line == "\\rules") {
+                    auto er = icmg::core::safeExecShell(
+                        "icmg rule list --active 2>&1", true, 3000);
+                    std::cerr << er.out << "\n";
+                    continue;
+                }
+                if (line.rfind("\\skill ", 0) == 0) {
+                    // \skill add <name> <path> | list | remove <name>
+                    std::string rest = line.substr(7);
+                    std::string cmd = "icmg skill " + rest + " 2>&1";
+                    auto er = icmg::core::safeExecShell(cmd, true, 5000);
+                    std::cerr << er.out;
+                    if (er.exit_code != 0) std::cerr << "(skill cmd failed)\n";
+                    continue;
+                }
                 std::cerr << "unknown command: " << line << "\n";
                 continue;
             }
@@ -157,25 +335,49 @@ public:
                     std::string sys = std::getenv("ICMG_NO_PERSONA")
                                           ? std::string{}
                                           : icmg::core::buildPersonaPrefix();
-                    // v1.47.0: multi-turn history. Static vector
-                    // persists across REPL turns within the chat
-                    // session; \clear resets it (handled below).
-                    static std::vector<std::pair<std::string,std::string>> g_chat_history;
+                    // v1.48.0 context injection (off via \context off).
+                    if (inject_context) {
+                        std::string ctx_block = buildContextInjection(
+                            line, icmg::core::currentUser(), mem);
+                        if (!ctx_block.empty()) {
+                            sys += "\n" + ctx_block;
+                            last_sources_dump = ctx_block;
+                        } else {
+                            last_sources_dump.clear();
+                        }
+                    }
+                    // v1.48.0: persistent multi-turn history (function-scope
+                    // state, mutable by slash cmds). Seeded once from DB.
+                    if (!history_seeded) {
+                        // v1.48.0 user wish: history cross-session, not
+                        // bound to a single session_id. Loads most recent
+                        // turns regardless of which session_id produced them.
+                        chat_history = icmg::llm::loadRecentTurns(
+                            icmg::core::currentUser(), /*max_turns=*/20);
+                        history_seeded = true;
+                    }
                     std::string prompt;
                     if (std::getenv("ICMG_NO_CHAT_TEMPLATE")) {
                         prompt = sys + line;
                     } else {
-                        prompt  = icmg::llm::buildChatMLPromptMulti(sys, g_chat_history, line);
+                        auto trimmed_history = icmg::llm::trimChatHistory(chat_history);
+                        prompt  = icmg::llm::buildChatMLPromptMulti(sys, trimmed_history, line);
                         ip.stop = icmg::llm::chatMLStopToken();
                     }
                     auto res = run->infer(prompt, ip);
                     if (res.ok) {
-                        // Append turn to history (keep last 10 turns = 20 entries).
-                        g_chat_history.emplace_back("user", line);
-                        g_chat_history.emplace_back("assistant", res.text);
-                        while (g_chat_history.size() > 20) {
-                            g_chat_history.erase(g_chat_history.begin());
+                        // Append turn to in-memory history (cap 20 entries).
+                        chat_history.emplace_back("user", line);
+                        chat_history.emplace_back("assistant", res.text);
+                        while (chat_history.size() > 20) {
+                            chat_history.erase(chat_history.begin());
                         }
+                        // v1.48.0 B1: persist to local_llm_chats. Survives REPL close.
+                        const auto& uid = icmg::core::currentUser();
+                        icmg::llm::appendChatTurn(uid, session, "user", line,
+                            "qwen2.5-7b-q4", res.tokens_in, 0);
+                        icmg::llm::appendChatTurn(uid, session, "assistant", res.text,
+                            "qwen2.5-7b-q4", 0, res.tokens_out);
                     }
                     if (res.ok) {
                         std::cout << res.text << "\n";

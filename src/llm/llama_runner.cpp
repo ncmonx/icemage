@@ -153,7 +153,9 @@ bool LlamaRunner::load(const std::string& gguf_path,
 
     llama_context_params cp = llama_context_default_params();
     cp.n_ctx     = p.n_ctx;
-    cp.n_batch   = 512;
+    cp.n_batch   = 8192;  // v1.48.0 B3: bumped from 512 to fit multi-turn
+                          // history. Prevents GGML_ASSERT(n_tokens_all
+                          // <= cparams.n_batch) on long conversations.
     cp.n_threads = (p.n_threads > 0) ? p.n_threads
                                      : static_cast<int>(std::max(1u, std::thread::hardware_concurrency() - 1u));
     cp.n_threads_batch = cp.n_threads;
@@ -205,6 +207,14 @@ InferResult LlamaRunner::infer(const std::string& prompt,
         r.error = "tokenize failed"; return r;
     }
     r.tokens_in = n_prompt;
+    // v1.48.0 B3 hardening: refuse-with-error when prompt
+    // exceeds batch capacity. Prevents GGML_ASSERT crash on
+    // long conversations; chat_cmd pre-trims, this is safety.
+    if (n_prompt > 8192) {
+        r.error = "prompt too long (" + std::to_string(n_prompt) +
+                  " tokens > n_batch=8192). Trim history or \\new session.";
+        return r;
+    }
 
     // Build sampler chain (greedy if temperature==0).
     llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
