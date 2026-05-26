@@ -1613,3 +1613,17 @@ Decisions:
 - Skill CRUD CLI writes ~/.icmg/skills/*.md sans reindex (icmg skill index --dir crashes Unicode codepage - separate bug).
 Rejected: hard remove for NL (irreversible wrong default); skill content diff edit (full-replace only); auto-reindex in doAdd (skill index --dir Unicode crash).
 Open: S3 NL "delete skill X" via fuzzy needs DB index (icmg skill index --dir Unicode crash blocks); fix v1.52. 32 pre-existing ctest failures unrelated to v1.51.
+
+## 2026-05-27 00:50 [saved]
+Goal: v1.52.0 warm-loop spec + skill index Unicode fix + Dolphin 8B swap + LLM sampler/length tuning.
+Decisions:
+- v1.52.0 scope = warm-loop ONLY (B/C/D deferred v1.53+). Spec: docs/superpowers-optimized/specs/2026-05-27-v1.52.0-warm-loop-design.md
+- Warm-loop: explicit `icmg llm warm --start/stop` (DETACHED_PROCESS); reuse icmg.exe; N=4 pipe instances; JSON newline IPC.
+- Skill index Unicode crash: pathToUtf8 via WideCharToMultiByte(CP_UTF8) + manual recursion try/catch. MSVC `fs::path::string()` throws on Chinese paths.
+- Dolphin 8B replaces Qwen 7B (user errors). Sweet spot T2000 4GB: gpu-layers=22, n_ctx=4096.
+- Sampler chain missing repetition penalty entirely. Added repeat_penalty=1.15, last_n=64.
+- max_tokens bumped 256/384 -> 1024/2048 (chat_cmd) for plan/code gen.
+- Build flag gotcha: `cmake -B build` resets CMakeCache. MUST explicit -DICMG_USE_LLAMA/ONNX/TREESITTER=ON + -DGGML_VULKAN=ON.
+- v1.51.1 hotfix shipped: dispatcher version literals + backends re-enabled (v1.51.0 shipped with all OFF accidentally).
+Rejected: auto-launch daemon on chat; SessionStart auto-warm; separate icmg-warm.exe; idle timeout; mega-spec 4 features; v1.51.2 separate ship for unicode fix.
+Open: warm-loop impl pending writing-plans; B/C/D backlog (NL ambiguity, smart router, C1/C3); 8192 ctx OOMs; 32 pre-existing ctest fails unrelated.
