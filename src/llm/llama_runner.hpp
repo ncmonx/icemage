@@ -24,7 +24,7 @@
 namespace icmg::llm {
 
 struct LlamaParams {
-    int  n_ctx        = 2048;   // context window tokens
+    int  n_ctx        = 8192;   // v1.48.2: was 2048, too small for multi-turn + context injection
     int  n_threads    = 0;      // 0 = auto (hardware_concurrency-1)
     int  n_gpu_layers = 0;      // CPU-only default; >0 needs GGML_VULKAN build
     bool use_mmap     = true;

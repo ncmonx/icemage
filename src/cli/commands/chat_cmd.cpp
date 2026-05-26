@@ -173,7 +173,7 @@ public:
         // v1.48.0: lift state to function scope so slash cmds can mutate.
         std::vector<std::pair<std::string,std::string>> chat_history;
         bool history_seeded = false;
-        bool inject_context = true;  // \context on/off toggle
+        bool inject_context = true;  // v1.48.1 ON (chunk-decode handles big prompts safely).
         std::string last_sources_dump;  // \sources debug
 
         auto& cfg = core::Config::instance();
@@ -353,7 +353,7 @@ public:
                         // bound to a single session_id. Loads most recent
                         // turns regardless of which session_id produced them.
                         chat_history = icmg::llm::loadRecentTurns(
-                            icmg::core::currentUser(), /*max_turns=*/20);
+                            icmg::core::currentUser(), /*max_turns=*/15);
                         history_seeded = true;
                     }
                     std::string prompt;

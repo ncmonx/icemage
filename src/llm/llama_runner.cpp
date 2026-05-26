@@ -210,12 +210,6 @@ InferResult LlamaRunner::infer(const std::string& prompt,
     // v1.48.0 B3 hardening: refuse-with-error when prompt
     // exceeds batch capacity. Prevents GGML_ASSERT crash on
     // long conversations; chat_cmd pre-trims, this is safety.
-    if (n_prompt > 8192) {
-        r.error = "prompt too long (" + std::to_string(n_prompt) +
-                  " tokens > n_batch=8192). Trim history or \\new session.";
-        return r;
-    }
-
     // Build sampler chain (greedy if temperature==0).
     llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
     if (ip.temperature <= 0.0f) {
@@ -230,12 +224,19 @@ InferResult LlamaRunner::infer(const std::string& prompt,
         llama_sampler_chain_add(smpl, llama_sampler_init_dist(seed));
     }
 
-    // Decode prompt (one big batch).
-    llama_batch batch = llama_batch_get_one(toks.data(), (int)toks.size());
-    if (llama_decode(impl_->ctx, batch) != 0) {
-        r.error = "decode(prompt) failed";
-        llama_sampler_free(smpl);
-        return r;
+    // v1.48.1: chunk-decode prompt in n_batch-sized pieces. Earlier
+    // single-batch decode triggered GGML_ASSERT on long prompts (context
+    // injection + multi-turn history) even with bumped n_batch=8192.
+    // Robust fix: stream chunks regardless of total prompt size.
+    constexpr int chunk_size = 512;  // Conservative; well under n_batch=8192.
+    for (int off = 0; off < n_prompt; off += chunk_size) {
+        int chunk = (n_prompt - off < chunk_size) ? (n_prompt - off) : chunk_size;
+        llama_batch batch = llama_batch_get_one(toks.data() + off, chunk);
+        if (llama_decode(impl_->ctx, batch) != 0) {
+            r.error = "decode(prompt) failed at offset=" + std::to_string(off);
+            llama_sampler_free(smpl);
+            return r;
+        }
     }
 
     // Generation loop.
