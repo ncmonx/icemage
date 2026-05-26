@@ -961,8 +961,9 @@ public:
         const std::string& sub = args[0];
         std::vector<std::string> rest(args.begin() + 1, args.end());
 
-        // "add"/"remove" write/delete files — no DB needed; handle before DB open.
+        // "add"/"remove"/"edit" write/delete files — no DB needed; handle before DB open.
         if (sub == "add")    return doAdd(rest);
+        if (sub == "edit")   return doAdd(rest);  // alias: skill edit NAME BODY == add --update
         if (sub == "remove") return doRemove(rest);
 
         // Open project DB. `manifest` and `chunk` (no DB) are invoked by the
@@ -996,6 +997,7 @@ public:
         if (sub == "stats")    return doStats(store, rest);
         if (sub == "suggest")  return doSuggest(store, rest);
         if (sub == "add")      return doAdd(rest);
+        if (sub == "edit")     return doAdd(rest);  // alias: skill edit NAME BODY == add --update
         if (sub == "remove")   return doRemove(rest);
 
         std::cerr << "skill: unknown subcommand '" << sub << "'. Try --help.\n";
