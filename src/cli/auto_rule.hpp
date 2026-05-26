@@ -19,7 +19,30 @@ struct NLDetectResult {
 inline NLDetectResult detectNL(const std::string& line) {
     NLDetectResult r;
     if (line.size() < 8 || line.size() > 500) return r;
-    return r;  // always NONE for now
+
+    // Lowercase first 80 chars for prefix-match window.
+    std::string lc;
+    lc.reserve(80);
+    for (size_t i = 0; i < line.size() && i < 80; ++i) {
+        char c = line[i];
+        lc += (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
+    }
+
+    static const char* add_rule_triggers[] = {
+        "ingat ya", "tolong ingat", "aturannya ", "aturan baru",
+        "jangan pernah ", "selalu ", "harus selalu", "mulai sekarang",
+        "sejak sekarang", "peraturan baru:",
+        "remember ", "from now on", "please always", "please never",
+        "always ", "never ", "rule:",
+    };
+    for (const auto* t : add_rule_triggers) {
+        if (lc.rfind(t, 0) == 0) {
+            r.action = NLAction::ADD_RULE;
+            r.content = line;
+            return r;
+        }
+    }
+    return r;
 }
 
 } // namespace icmg::cli

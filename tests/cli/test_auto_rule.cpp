@@ -9,6 +9,32 @@ TEST("auto_rule: short line returns NONE") {
     ASSERT_EQ((int)r.action, (int)NLAction::NONE);
 }
 
+TEST("auto_rule: ingat ya triggers ADD_RULE") {
+    auto r = detectNL("ingat ya jangan buka file lebih dari 500 baris");
+    ASSERT_EQ((int)r.action, (int)NLAction::ADD_RULE);
+    ASSERT_TRUE(!r.content.empty());
+}
+
+TEST("auto_rule: selalu triggers ADD_RULE") {
+    auto r = detectNL("selalu pakai icmg parallel kalau 2+ tugas");
+    ASSERT_EQ((int)r.action, (int)NLAction::ADD_RULE);
+}
+
+TEST("auto_rule: remember triggers ADD_RULE") {
+    auto r = detectNL("remember to always run tests before commit");
+    ASSERT_EQ((int)r.action, (int)NLAction::ADD_RULE);
+}
+
+TEST("auto_rule: rule colon triggers ADD_RULE") {
+    auto r = detectNL("rule: never use git push --force on main");
+    ASSERT_EQ((int)r.action, (int)NLAction::ADD_RULE);
+}
+
+TEST("auto_rule: mid sentence selalu skipped") {
+    auto r = detectNL("kemarin saya selalu lapar di pagi hari");
+    ASSERT_EQ((int)r.action, (int)NLAction::NONE);
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
