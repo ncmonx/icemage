@@ -678,6 +678,7 @@ add_icmg_test(test_session_inject       tests/cli/test_session_inject.cpp)
 add_icmg_test(test_chat_template        tests/llm/test_chat_template.cpp)
 add_icmg_test(test_auto_rule           tests/cli/test_auto_rule.cpp)         # v1.51.0 TDD
 add_icmg_test(test_skill_crud          tests/cli/test_skill_crud.cpp)        # v1.51.0 TDD
+add_icmg_test(test_warm_pipe           tests/llm/test_warm_pipe.cpp)          # v1.52.0 TDD
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
