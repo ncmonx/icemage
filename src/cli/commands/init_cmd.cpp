@@ -375,6 +375,27 @@ command -v icmg >/dev/null 2>&1 || exit 0
 icmg persona context --json 2>/dev/null || exit 0
 )BASH";
 
+// v1.47.0: prefix-based local LLM route. When user prompt starts with `!`
+// or `/local `, strip prefix → call `icmg llm respond --hook <msg>` → emit
+// block JSON. Claude API skipped, local LLM reply shown as assistant turn.
+// Opt-out: ICMG_NO_LOCAL_ROUTE=1. Falls through cleanly (exit 0) on any
+// non-match or LLM failure so other hooks still fire.
+static const char* LOCAL_ROUTE_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by icmg init. Prefix-route trivial prompts to local LLM.
+[[ -n "$ICMG_NO_LOCAL_ROUTE" ]] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+INPUT=$(cat)
+PROMPT=$(printf '%s' "$INPUT" | icmg hookio get prompt 2>/dev/null)
+[[ -z "$PROMPT" ]] && exit 0
+case "$PROMPT" in
+  '!'*)        MSG="${PROMPT#!}"; MSG="${MSG# }" ;;
+  '/local '*)  MSG="${PROMPT#/local }" ;;
+  *)           exit 0 ;;
+esac
+[[ -z "$MSG" ]] && exit 0
+icmg llm respond --hook "$MSG" 2>/dev/null || exit 0
+)BASH";
+
 // Stop hook â€” reminds to log workflow decisions when session had git activity.
 static const char* WFLOG_STOP_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on session Stop.
@@ -1392,6 +1413,8 @@ private:
         // Phase 71: UserPromptSubmit auto-recall + suggest compress.
         n += writeFile(root / ".claude" / "hooks" / "icmg-prompt-recall.sh", PROMPT_RECALL_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-persona-inject.sh", PERSONA_INJECT_SH, true);
+        // v1.47.0: local-route hook (prefix-based casual chat to local LLM).
+        n += writeFile(root / ".claude" / "hooks" / "icmg-local-route.sh", LOCAL_ROUTE_SH, true);
         // Stop hook: wflog reminder on session end when git has changes.
         n += writeFile(root / ".claude" / "hooks" / "icmg-wflog-stop.sh", WFLOG_STOP_SH, true);
         // v0.42.0: context graph injection hooks.
@@ -1677,6 +1700,14 @@ private:
                     {{"type", "command"},
                      {"timeout", 3},
                      {"command", "bash -c '[ -f .claude/hooks/icmg-persona-inject.sh ] && bash .claude/hooks/icmg-persona-inject.sh || exit 0'"}}
+                })}
+            },
+            {
+                // v1.47.0: local-route (prefix-based casual chat to local LLM).
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"timeout", 30},  // LLM cold-load can take seconds.
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-local-route.sh ] && bash .claude/hooks/icmg-local-route.sh || exit 0'"}}
                 })}
             }
         });

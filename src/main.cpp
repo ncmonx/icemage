@@ -11,6 +11,7 @@
 #include "core/migrator.hpp"
 #include "core/logger.hpp"
 #include "core/exec_utils.hpp"
+#include "core/path_utils.hpp"
 #include "core/version_check.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
@@ -112,6 +113,12 @@ static void attachParentConsoleIfAny() {
         }();
         (void)_exit_handler_installed;
     }
+
+    // v1.47.0: UTF-8 console output so emoji/multibyte glyphs
+    // (Indonesian gaul, Chinese, Japanese, etc.) render correctly
+    // instead of becoming mojibake (= ≡fÿ etc.) on CP1252 cmd.exe.
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
 }
 #endif
 
@@ -238,8 +245,31 @@ int main(int argc, char* argv[]) {
             db_path = cfg.projectDbPath(".");
             icmg::core::ensureProjectDb(db_path);
         } catch (const std::exception& e) {
-            std::cerr << "icmg: db init warning: " << e.what()
-                      << " (non-DB commands still work)\n";
+            // v1.47.0: CWD unwritable (e.g. C:\Windows\System32). Fall back to
+            // an orphan DB co-located with the icmg.exe binary so the
+            // "internal memory" stays at one fixed location regardless of
+            // where the user invokes icmg from.
+            bool orphan_ok = false;
+            std::string exe = icmg::core::selfExePath();
+            if (!exe.empty()) {
+                fs::path exe_dir = fs::path(exe).parent_path();
+                fs::path orphan = exe_dir / "icmg-orphan.db";
+                try {
+                    icmg::core::ensureProjectDb(orphan.string());
+                    db_path = orphan.string();
+                    // Make downstream cfg.projectDbPath(".") callers see the
+                    // orphan path too, so chat/recall/etc. open the same DB
+                    // instead of re-trying the unwritable CWD.
+                    cfg.setProjectDbOverride(db_path);
+                    std::cerr << "icmg: cwd unwritable; using orphan DB at "
+                              << db_path << "\n";
+                    orphan_ok = true;
+                } catch (...) {}
+            }
+            if (!orphan_ok) {
+                std::cerr << "icmg: db init warning: " << e.what()
+                          << " (non-DB commands still work)\n";
+            }
         }
     } else {
         // Resolve path lazily for cmds that may need it; do not open/migrate.

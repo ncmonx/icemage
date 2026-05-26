@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.46.0 LANGUAGES CXX C)
+project(icmg VERSION 1.47.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -675,6 +675,7 @@ add_icmg_test(test_sweep_legacy_schtasks tests/core/test_sweep_legacy_schtasks.c
 add_icmg_test(test_turn_cache           tests/core/test_turn_cache.cpp)
 add_icmg_test(test_inject_dedup         tests/core/test_inject_dedup.cpp)
 add_icmg_test(test_session_inject       tests/cli/test_session_inject.cpp)
+add_icmg_test(test_chat_template        tests/llm/test_chat_template.cpp)
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
@@ -796,6 +797,14 @@ if(ICMG_USE_LLAMA)
     endif()
     if(MSVC AND TARGET ggml)
         target_compile_options(ggml PRIVATE /Zc:char8_t-)
+    endif()
+    # v1.47.0: eliminate shared-PDB race on ggml-vulkan target.
+    # 250+ shader .cpp files write debug info to ONE PDB by default
+    # under /MP parallel cl.exe → "Cannot open compiler generated
+    # file: Invalid argument" intermittent fail. /Z7 embeds debug
+    # info in the .obj itself, no shared PDB → zero race.
+    if(MSVC AND TARGET ggml-vulkan)
+        target_compile_options(ggml-vulkan PRIVATE /Z7)
     endif()
     target_compile_definitions(icmg_lib PUBLIC ICMG_HAS_LLAMA=1)
     target_include_directories(icmg_lib PUBLIC

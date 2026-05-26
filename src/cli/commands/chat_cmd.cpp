@@ -25,6 +25,10 @@
 // v1.39.1 B: local LLM backend via warm-pool.
 #include "../../llm/warm_pool.hpp"
 #include "../../llm/llama_runner.hpp"
+#include "../../llm/chat_template.hpp"
+// v1.47.0: per-process chat history (persists across REPL turns,
+// reset on \clear). Capped to last 10 turns to avoid ctx overflow.
+#include <utility>
 // v1.42.0: persona prefix integration.
 #include "../../core/persona_loader.hpp"
 #include <iostream>
@@ -142,13 +146,37 @@ public:
                     icmg::llm::InferParams ip;
                     ip.max_tokens  = 384;
                     ip.temperature = 0.4f;
-                    // v1.42.0: prepend per-user persona prefix (empty when
-                    // none set). Opt-out: ICMG_NO_PERSONA=1.
-                    std::string prompt = line;
-                    if (!std::getenv("ICMG_NO_PERSONA")) {
-                        prompt = icmg::core::buildPersonaPrefix() + prompt;
+                    // v1.47.0: wrap prompt in ChatML so LLM treats role
+                    // turns properly. Without this it autocompletes and
+                    // fabricates User:/Assistant: lines, looping forever.
+                    // Works for Qwen 2.5 family (default). Phi-3.5 and
+                    // Llama-3.1 also accept ChatML via llama.cpp special-
+                    // token parsing (graceful degrade).
+                    // Opt-out: ICMG_NO_PERSONA=1 (persona) or
+                    //          ICMG_NO_CHAT_TEMPLATE=1 (raw passthrough).
+                    std::string sys = std::getenv("ICMG_NO_PERSONA")
+                                          ? std::string{}
+                                          : icmg::core::buildPersonaPrefix();
+                    // v1.47.0: multi-turn history. Static vector
+                    // persists across REPL turns within the chat
+                    // session; \clear resets it (handled below).
+                    static std::vector<std::pair<std::string,std::string>> g_chat_history;
+                    std::string prompt;
+                    if (std::getenv("ICMG_NO_CHAT_TEMPLATE")) {
+                        prompt = sys + line;
+                    } else {
+                        prompt  = icmg::llm::buildChatMLPromptMulti(sys, g_chat_history, line);
+                        ip.stop = icmg::llm::chatMLStopToken();
                     }
                     auto res = run->infer(prompt, ip);
+                    if (res.ok) {
+                        // Append turn to history (keep last 10 turns = 20 entries).
+                        g_chat_history.emplace_back("user", line);
+                        g_chat_history.emplace_back("assistant", res.text);
+                        while (g_chat_history.size() > 20) {
+                            g_chat_history.erase(g_chat_history.begin());
+                        }
+                    }
                     if (res.ok) {
                         std::cout << res.text << "\n";
                         // Skip subprocess agent + skip auto-store

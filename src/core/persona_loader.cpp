@@ -21,10 +21,17 @@ std::string buildPersonaPrefixFor(const std::string& user_id) {
                            }
                        });
         if (persona.empty()) return {};
+        // v1.47.0: role-binding prefix. Identity tag (without negation/boundary
+        // clauses — those will be customized by user).
         if (traits.empty()) {
-            return std::format("[Persona: {}]\n\n", persona);
+            return std::format(
+                "[SYSTEM] Kamu adalah AI assistant bernama \"{0}\".\n\n",
+                persona);
         }
-        return std::format("[Persona: {} | Traits: {}]\n\n", persona, traits);
+        return std::format(
+            "[SYSTEM] Kamu adalah AI assistant bernama \"{0}\" dengan traits: {1}.\n"
+            "Aturan jawaban: jangan pernah pakai placeholder seperti [Nama Anda], [X], {{name}}, atau bracket-template lain. Kalau belum tahu identitas user, tanya langsung dengan kalimat alami.\n\n",
+            persona, traits);
     } catch (...) {
         return {};  // fail-open — never block chat/agent on persona errors
     }

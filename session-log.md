@@ -1546,3 +1546,17 @@ Decisions:
 - v1.43.0 = humanizer Phase 1 (persona UserPromptSubmit hook injection wires via icmg init) + MSVC primary build + gcc-14 Linux detect.
 Rejected: scripts/legacy/ old MinGW pack-win.ps1 + minimum MSVC config (superseded); FRESH wipe builds (proven wasteful 3× sessions); MSVC as "blocked" pre-investigation (was actually 2 jam fix).
 Open: v1.43.0 ship awaiting user go; v1.44.0 phasing (3-release split vs mega) awaiting user decision.
+
+## 2026-05-26 09:05 [saved]
+Goal: v1.46.0 ship + Qwen 7B GPU tuning + native WSL build path.
+Decisions:
+- Track B (B1 tee fallback, B2 compact diff, B3 per-cmd savings) + C2 LRU shipped in v1.44-1.46 bundle.
+- Native WSL ext4 clone (setup-wsl-native.sh + marker detect) eliminates 9P rsync bottleneck — 5-10× Linux build speedup.
+- Qwen 7B Quadro T2000 4GB sweet spot = 22/29 layers @ 8.5 tok/s; full GPU offload OOMs compute buffer at 24+ layers.
+- Local LLM chat memory MUST be separate from memory_nodes (user explicit constraint — log to ~/.icmg/llm-chats/ or new global table).
+- Build mechanism: FRESH wipe permanently removed from scripts; delta always enforced at script level not promise.
+Rejected:
+- Full GPU offload for 7B on 4GB VRAM (OOM at compute pp buffers, not just model weights).
+- Romantic/sexualized persona framing (boundary held across multiple user reframes incl. "fiction writer" angle).
+- Promise-based build discipline (replaced with mechanism: script-level wipe removal).
+Open: smart router + chat memory + Track A awaiting user pick for v1.47+.

@@ -26,6 +26,8 @@
 #include "../../llm/llama_runner.hpp"
 #include "../../llm/telemetry.hpp"
 #include "../../llm/warm_pool.hpp"
+#include "../../llm/chat_template.hpp"
+#include "../../core/persona_loader.hpp"
 
 #include <nlohmann/json.hpp>
 #include <filesystem>
@@ -462,6 +464,72 @@ int cmdBench(const std::vector<std::string>& args) {
 bool isLlmUserDisabled() { return llmDisabled(llmDir()); }
 std::string activeLlmModelId() { return readActive(llmDir()); }
 
+
+int cmdRespond(const std::vector<std::string>& args) {
+    if (args.size() < 2) {
+        std::cerr << "usage: icmg llm respond <prompt...>\n";
+        return 1;
+    }
+    std::string user;
+    for (size_t i = 1; i < args.size(); ++i) {
+        if (i > 1) user += ' ';
+        user += args[i];
+    }
+    if (!llm::LlamaRunner::available()) {
+        std::cerr << "build lacks ICMG_USE_LLAMA — respond unavailable.\n";
+        return 2;
+    }
+    std::string err;
+    auto* run = llm::WarmPool::instance().acquire(err);
+    if (!run) {
+        std::cerr << "icmg llm respond: warm-pool acquire failed: " << err << "\n";
+        return 3;
+    }
+    std::string sys = std::getenv("ICMG_NO_PERSONA")
+                          ? std::string{}
+                          : icmg::core::buildPersonaPrefix();
+    std::string prompt = icmg::llm::buildChatMLPrompt(sys, user);
+    llm::InferParams ip;
+    ip.max_tokens  = 200;
+    ip.temperature = 0.7f;
+    ip.stop        = icmg::llm::chatMLStopToken();
+    auto res = run->infer(prompt, ip);
+    if (!res.ok) {
+        std::cerr << "icmg llm respond: infer failed: " << res.error << "\n";
+        return 4;
+    }
+    bool hook_mode = false;
+    for (const auto& a : args) if (a == "--hook") { hook_mode = true; break; }
+    if (hook_mode) {
+        // Emit UserPromptSubmit block envelope. Claude API skipped; user
+        // sees `reason` text in transcript as the assistant turn.
+        std::string esc;
+        esc.reserve(res.text.size() + 16);
+        for (char c : res.text) {
+            switch (c) {
+                case '"':  esc += "\\\""; break;
+                case '\\': esc += "\\\\"; break;
+                case '\n': esc += "\\n";  break;
+                case '\r': esc += "\\r";  break;
+                case '\t': esc += "\\t";  break;
+                default:
+                    if (static_cast<unsigned char>(c) < 0x20) {
+                        char buf[8];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                        esc += buf;
+                    } else {
+                        esc += c;
+                    }
+            }
+        }
+        std::cout << "{\"decision\":\"block\",\"reason\":\""
+                  << esc << "\"}\n";
+    } else {
+        std::cout << res.text << "\n";
+    }
+    return 0;
+}
+
 class LlmCommand : public BaseCommand {
 public:
     std::string name()        const override { return "llm"; }
@@ -479,6 +547,7 @@ public:
             "  status                                        Build flag + RAM + opt-out + active\n"
             "  disable                                       Persist privacy opt-out\n"
             "  enable                                        Clear opt-out\n"
+            "  respond <prompt>                             Single-turn local-LLM reply (persona+ChatML)\n"
             "  revoke-consent                                Remove first-launch consent sentinel\n";
     }
 
@@ -493,6 +562,7 @@ public:
         if (sub == "bench")   return cmdBench(args);
         if (sub == "disable") return cmdDisable();
         if (sub == "enable")  return cmdEnable();
+        if (sub == "respond") return cmdRespond(args);
         if (sub == "revoke-consent") return cmdRevokeConsent();
         std::cerr << "icmg llm: unknown subcommand '" << sub << "'. Try `icmg llm --help`.\n";
         return 1;

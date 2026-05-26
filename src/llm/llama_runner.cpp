@@ -15,6 +15,7 @@
 
 #ifdef ICMG_HAS_LLAMA
 #  include "llama.h"
+#  include "ggml.h"
 #endif
 
 namespace icmg::llm {
@@ -46,7 +47,25 @@ static std::string detokenize(const llama_vocab* vocab, llama_token tok) {
 
 bool LlamaRunner::available() { return true; }
 
+
+// v1.47.0: silent log callback. llama.cpp + ggml dump device probe,
+// model loader, KV cache, etc. by default — pollutes stdout when chat
+// streams to user terminal. Filter to ERROR only unless opt-in.
+static void llmSilentLogCb(ggml_log_level level, const char* text, void* /*user*/) {
+    if (std::getenv("ICMG_LLM_VERBOSE_LOGS")) {
+        std::fputs(text, stderr);
+        return;
+    }
+    if (level >= GGML_LOG_LEVEL_ERROR) {
+        std::fputs(text, stderr);
+    }
+}
+
 LlamaRunner::LlamaRunner() : impl_(new Impl()) {
+    // v1.47.0: register log callbacks BEFORE backend init so the
+    // Vulkan device probe + model loader progress bar respect them.
+    llama_log_set(llmSilentLogCb, nullptr);
+    ggml_log_set(llmSilentLogCb, nullptr);
     llama_backend_init();
     impl_->backend_inited = true;
 }
@@ -99,10 +118,27 @@ bool LlamaRunner::load(const std::string& gguf_path,
     }
 
     llama_model_params mp = llama_model_default_params();
-    // v1.43+ GPU acceleration: env ICMG_LLM_GPU_LAYERS override (-1 = all).
+    // v1.43+ GPU acceleration. Resolution order:
+    //   1. env ICMG_LLM_GPU_LAYERS  (-1 = all, 0 = CPU only)
+    //   2. file ~/.icmg/llm/gpu-layers.txt (single int line) — persistent
+    //      across shells without env var, set once per machine.
+    //   3. p.n_gpu_layers (default 0 CPU)
     int gpu_layers = p.n_gpu_layers;
     if (const char* env = std::getenv("ICMG_LLM_GPU_LAYERS")) {
         try { gpu_layers = std::stoi(env); } catch (...) {}
+    } else {
+        // Config-file fallback. Quiet on missing — no error spam.
+        const char* home = std::getenv("USERPROFILE");
+        if (!home) home = std::getenv("HOME");
+        if (home) {
+            std::string cfg = std::string(home) + "/.icmg/llm/gpu-layers.txt";
+            FILE* f = std::fopen(cfg.c_str(), "r");
+            if (f) {
+                int v = 0;
+                if (std::fscanf(f, "%d", &v) == 1) gpu_layers = v;
+                std::fclose(f);
+            }
+        }
     }
     mp.n_gpu_layers = gpu_layers;
     mp.use_mmap     = p.use_mmap;
