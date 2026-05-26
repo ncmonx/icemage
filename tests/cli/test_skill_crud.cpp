@@ -6,7 +6,13 @@
 
 namespace fs = std::filesystem;
 
-static int run_cmd(const std::string& cmd) { return std::system(cmd.c_str()); }
+static int run_cmd(const std::string& cmd) {
+#ifdef _WIN32
+    return std::system(("\"" + cmd + "\"").c_str());
+#else
+    return std::system(cmd.c_str());
+#endif
+}
 
 int main() {
     auto tmp = fs::temp_directory_path() / "icmg-skill-crud-test";

@@ -881,8 +881,7 @@ static int doAdd(const std::vector<std::string>& args) {
 // v1.51.0: delete a user-authored skill .md from ~/.icmg/skills/<name>.md
 static int doRemove(const std::vector<std::string>& args) {
     if (args.empty()) {
-        std::cerr << "Usage: icmg skill remove <name>
-";
+        std::cerr << "Usage: icmg skill remove <name>\n";
         return 2;
     }
     const std::string& name = args[0];
@@ -899,29 +898,24 @@ static int doRemove(const std::vector<std::string>& args) {
         }
     }
     while (!san.empty() && san.back() == '-') san.pop_back();
-    if (san.empty()) { std::cerr << "skill remove: invalid skill name
-"; return 2; }
+    if (san.empty()) { std::cerr << "skill remove: invalid skill name\n"; return 2; }
 
     const char* home = std::getenv("USERPROFILE");
     if (!home) home = std::getenv("HOME");
-    if (!home) { std::cerr << "skill remove: HOME/USERPROFILE not set
-"; return 2; }
+    if (!home) { std::cerr << "skill remove: HOME/USERPROFILE not set\n"; return 2; }
 
     auto file = fs::path(home) / ".icmg" / "skills" / (san + ".md");
     if (!fs::exists(file)) {
-        std::cerr << "skill remove: skill not found: " << name << "
-";
+        std::cerr << "skill remove: skill not found: " << name << "\n";
         return 1;
     }
     std::error_code ec;
     fs::remove(file, ec);
     if (ec) {
-        std::cerr << "skill remove: cannot delete " << file.string() << ": " << ec.message() << "
-";
+        std::cerr << "skill remove: cannot delete " << file.string() << ": " << ec.message() << "\n";
         return 1;
     }
-    std::cout << "skill removed: " << name << "
-";
+    std::cout << "skill removed: " << name << "\n";
     return 0;
 }
 
