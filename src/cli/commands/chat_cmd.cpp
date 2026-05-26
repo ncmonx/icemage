@@ -424,14 +424,18 @@ public:
                         sys_early, trimmed_early, line);
                     icmg::llm::InferParams ip_early;
                     ip_early.max_tokens  = 8192;
-                    ip_early.temperature = 0.4f;
+                    ip_early.temperature = 0.7f;
+                    ip_early.repeat_penalty = 1.25f;
+                    ip_early.repeat_last_n = 128;
+                    ip_early.presence_penalty = 0.4f;
+                    ip_early.frequency_penalty = 0.3f;
                     ip_early.stop = icmg::llm::chatMLStopToken();
                     if (auto warm = icmg::llm::tryWarmInfer(prompt_early, ip_early,
                                         std::chrono::milliseconds(1000));
                         warm) {
                         chat_history.emplace_back("user", line);
                         chat_history.emplace_back("assistant", warm->text);
-                        while (chat_history.size() > 20)
+                        while (chat_history.size() > 6)  // v1.52.x: cap 20 -> 6 (3 user+ai pairs) - prevents pattern lock-in
                             chat_history.erase(chat_history.begin());
                         const auto& uid_w = icmg::core::currentUser();
                         icmg::llm::appendChatTurn(uid_w, session, "user", line,
@@ -447,7 +451,11 @@ public:
                 if (run) {
                     icmg::llm::InferParams ip;
                     ip.max_tokens  = 8192;  // v1.52.0: max headroom for long code/plan gen (n_ctx-bounded at runtime)
-                    ip.temperature = 0.4f;
+                    ip.temperature = 0.7f;
+                    ip.repeat_penalty = 1.25f;
+                    ip.repeat_last_n = 128;
+                    ip.presence_penalty = 0.4f;
+                    ip.frequency_penalty = 0.3f;
                     // v1.47.0: wrap prompt in ChatML so LLM treats role
                     // turns properly. Without this it autocompletes and
                     // fabricates User:/Assistant: lines, looping forever.
@@ -503,7 +511,7 @@ public:
                         warm) {
                         chat_history.emplace_back("user", line);
                         chat_history.emplace_back("assistant", warm->text);
-                        while (chat_history.size() > 20)
+                        while (chat_history.size() > 6)  // v1.52.x: cap 20 -> 6 (3 user+ai pairs) - prevents pattern lock-in
                             chat_history.erase(chat_history.begin());
                         const auto& uid2 = icmg::core::currentUser();
                         icmg::llm::appendChatTurn(uid2, session, "user", line,
@@ -518,7 +526,7 @@ public:
                         // Append turn to in-memory history (cap 20 entries).
                         chat_history.emplace_back("user", line);
                         chat_history.emplace_back("assistant", res.text);
-                        while (chat_history.size() > 20) {
+                        while (chat_history.size() > 6) {
                             chat_history.erase(chat_history.begin());
                         }
                         // v1.48.0 B1: persist to local_llm_chats. Survives REPL close.
