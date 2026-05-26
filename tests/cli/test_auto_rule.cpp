@@ -35,6 +35,32 @@ TEST("auto_rule: mid sentence selalu skipped") {
     ASSERT_EQ((int)r.action, (int)NLAction::NONE);
 }
 
+TEST("auto_rule: hapus rule triggers REMOVE_RULE") {
+    auto r = detectNL("hapus rule no-emoji");
+    ASSERT_EQ((int)r.action, (int)NLAction::REMOVE_RULE);
+    ASSERT_EQ(r.target_name, std::string("no-emoji"));
+}
+
+TEST("auto_rule: delete rule triggers REMOVE_RULE") {
+    auto r = detectNL("delete rule foo-bar");
+    ASSERT_EQ((int)r.action, (int)NLAction::REMOVE_RULE);
+    ASSERT_EQ(r.target_name, std::string("foo-bar"));
+}
+
+TEST("auto_rule: ubah rule triggers EDIT_RULE") {
+    auto r = detectNL("ubah rule foo jadi bar baz qux");
+    ASSERT_EQ((int)r.action, (int)NLAction::EDIT_RULE);
+    ASSERT_EQ(r.target_name, std::string("foo"));
+    ASSERT_EQ(r.content, std::string("bar baz qux"));
+}
+
+TEST("auto_rule: change rule triggers EDIT_RULE") {
+    auto r = detectNL("change rule foo to new body here");
+    ASSERT_EQ((int)r.action, (int)NLAction::EDIT_RULE);
+    ASSERT_EQ(r.target_name, std::string("foo"));
+    ASSERT_EQ(r.content, std::string("new body here"));
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
