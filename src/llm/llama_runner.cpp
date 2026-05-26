@@ -233,6 +233,15 @@ InferResult LlamaRunner::infer(const std::string& prompt,
     if (ip.temperature <= 0.0f) {
         llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
     } else {
+        // v1.52.0: repetition penalty FIRST (before top-k/p/temp) to mask repeated tokens
+        // before the distribution is sampled. Fixes Dolphin 8B looping on Indonesian.
+        if (ip.repeat_penalty > 1.0f || ip.frequency_penalty > 0.0f || ip.presence_penalty > 0.0f) {
+            llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
+                ip.repeat_last_n,
+                ip.repeat_penalty,
+                ip.frequency_penalty,
+                ip.presence_penalty));
+        }
         if (ip.top_k > 0)      llama_sampler_chain_add(smpl, llama_sampler_init_top_k(ip.top_k));
         if (ip.top_p < 1.0f)   llama_sampler_chain_add(smpl, llama_sampler_init_top_p(ip.top_p, 1));
         llama_sampler_chain_add(smpl, llama_sampler_init_temp(ip.temperature));

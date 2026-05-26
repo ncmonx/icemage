@@ -36,6 +36,11 @@ struct InferParams {
     float temperature = 0.7f;   // 0 = greedy
     int   top_k     = 40;       // 0 = disabled
     float top_p     = 0.95f;    // 1.0 = disabled
+    // v1.52.0: repetition penalty (fixes Dolphin 8B looping on Indonesian).
+    float repeat_penalty    = 1.15f;  // 1.0 = disabled; 1.1-1.3 typical
+    int   repeat_last_n     = 64;     // tokens of history considered
+    float frequency_penalty = 0.0f;   // alt penalty; 0.0 = disabled
+    float presence_penalty  = 0.0f;   // alt penalty; 0.0 = disabled
     int   seed      = -1;       // -1 = random
     // Optional stop strings (text-level). Match-after-detokenize.
     std::string stop;
