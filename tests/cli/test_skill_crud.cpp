@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -54,6 +55,24 @@ int main() {
     assert(rc3 == 0 && "skill remove returned non-zero");
     assert(!fs::exists(md) && "skill .md file was not deleted");
 
-    std::cout << "test_skill_crud: 2/2 PASS\n";
+    // Test 3 (v1.52.0 regression): non-ASCII filename in skill dir must not
+    // crash icmg skill index (CP_ACP -> "No mapping for Unicode char" was
+    // crashing on Chinese-named .md files in plugin caches).
+    auto skills_dir = tmp / ".icmg" / "skills";
+    fs::create_directories(skills_dir);
+    // Use UTF-8 byte sequence for "三个" (Chinese) + ".md" — written via
+    // u8 string literal so bytes hit disk regardless of source encoding.
+    const char chinese_name_utf8[] = u8"三个-test.md";
+    auto chinese_md = skills_dir / chinese_name_utf8;
+    {
+        std::ofstream f(chinese_md);
+        f << "# chinese-test\n\nbody body\n";
+    }
+    int rc_idx = run_cmd("\"" + icmg + "\" skill index --dir \"" + skills_dir.string() + "\"");
+    // Accept rc 0 OR 1 — must NOT crash with -1073741819 (access violation)
+    // or 3 (Windows "No mapping" uncaught). pathToUtf8() should skip gracefully.
+    assert(rc_idx == 0 || rc_idx == 1 && "skill index crashed on non-ASCII filename");
+
+    std::cout << "test_skill_crud: 3/3 PASS\n";
     return 0;
 }
