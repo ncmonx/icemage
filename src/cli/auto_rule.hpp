@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <cstdlib>
 
 namespace icmg::cli {
 
@@ -18,6 +19,7 @@ struct NLDetectResult {
 
 inline NLDetectResult detectNL(const std::string& line) {
     NLDetectResult r;
+    if (std::getenv("ICMG_NO_AUTO_RULE")) return r;
     if (line.size() < 8 || line.size() > 500) return r;
 
     // Lowercase first 80 chars for prefix-match window.

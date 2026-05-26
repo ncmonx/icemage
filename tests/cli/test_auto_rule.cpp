@@ -85,7 +85,36 @@ TEST("auto_rule: tambah skill name-only returns NONE") {
     ASSERT_EQ((int)r.action, (int)NLAction::NONE);
 }
 
-// 14/14
+#include <cstdlib>
+
+TEST("auto_rule: size_gt_500 returns NONE") {
+    std::string big(600, 'a');
+    auto r = detectNL(big);
+    ASSERT_EQ((int)r.action, (int)NLAction::NONE);
+}
+
+TEST("auto_rule: priority_remove_before_add") {
+    auto r = detectNL("hapus rule selalu-foo");
+    ASSERT_EQ((int)r.action, (int)NLAction::REMOVE_RULE);
+    ASSERT_EQ(r.target_name, std::string("selalu-foo"));
+}
+
+TEST("auto_rule: env_optout ICMG_NO_AUTO_RULE") {
+#ifdef _WIN32
+    _putenv_s("ICMG_NO_AUTO_RULE", "1");
+#else
+    setenv("ICMG_NO_AUTO_RULE", "1", 1);
+#endif
+    auto r = detectNL("ingat ya selalu pakai icmg");
+    ASSERT_EQ((int)r.action, (int)NLAction::NONE);
+#ifdef _WIN32
+    _putenv_s("ICMG_NO_AUTO_RULE", "");
+#else
+    unsetenv("ICMG_NO_AUTO_RULE");
+#endif
+}
+
+// 17/17
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
