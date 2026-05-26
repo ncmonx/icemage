@@ -1627,3 +1627,13 @@ Decisions:
 - v1.51.1 hotfix shipped: dispatcher version literals + backends re-enabled (v1.51.0 shipped with all OFF accidentally).
 Rejected: auto-launch daemon on chat; SessionStart auto-warm; separate icmg-warm.exe; idle timeout; mega-spec 4 features; v1.51.2 separate ship for unicode fix.
 Open: warm-loop impl pending writing-plans; B/C/D backlog (NL ambiguity, smart router, C1/C3); 8192 ctx OOMs; 32 pre-existing ctest fails unrelated.
+
+## 2026-05-27 01:30 [saved]
+Goal: v1.52.0 warm-loop plan written; LLM sampler/length/history tuning shipped uncommitted to tag.
+Decisions:
+- v1.52.0 plan = 14 TDD tasks: warm_pipe Win impl + daemon main + client + CLI + integration tests. Spec/plan paths in state.md.
+- max_tokens defaults bumped (chat_cmd 384->8192, InferParams 256->4096). n_ctx 4096->5120 sweet spot Dolphin 8B + 22L on T2000 4GB.
+- Repetition penalty added (was missing entirely). repeat_penalty=1.15, last_n=64. Fixes Dolphin Indonesian loop.
+- Chat history seed 15->0 default. 15-turn cross-session seed biased model to greeting pattern, ignoring task prompts.
+Rejected: bumping n_ctx beyond 5120 (compute pp buffer OOM on T2000); auto-launch daemon on chat (RAM surprise); separate icmg-warm.exe.
+Open: v1.52.0 impl pending user exec-mode pick (subagent-driven vs inline). 7 commits accumulated on release/v1.51.0 branch ready for v1.52.0 tag.
