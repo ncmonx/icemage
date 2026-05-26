@@ -1,4 +1,5 @@
 #include "global_db.hpp"
+#include "embedded_migrations.hpp"
 #include "path_utils.hpp"
 #include "config.hpp"
 #include <filesystem>
@@ -163,6 +164,29 @@ void GlobalDb::runGlobalMigrations() {
         db_->run("CREATE INDEX IF NOT EXISTS ix_user_personas_updated "
                  "ON user_personas(updated_at DESC)");
         db_->run("INSERT INTO global_migrations(version) VALUES(6)");
+    }
+
+    // v1.49.0: iterate embeddedGlobalMigrations() for versions >= 7.
+    // Earlier hand-written 1-6 retained for backward compat; new migrations
+    // (0027+) embedded as SQL strings get applied here automatically.
+    for (const auto& [version, sql] : embeddedGlobalMigrations()) {
+        if (version < 7) continue;
+        int applied_v = 0;
+        db_->query("SELECT COUNT(*) FROM global_migrations WHERE version=?",
+                   {std::to_string(version)},
+                   [&](const core::Row& r) {
+                       if (!r.empty()) try { applied_v = std::stoi(r[0]); } catch (...) {}
+                   });
+        if (applied_v == 0) {
+            try {
+                db_->run(sql);
+                db_->run("INSERT INTO global_migrations(version) VALUES(?)",
+                         {std::to_string(version)});
+            } catch (...) {
+                // Silent — downstream modules use CREATE TABLE IF NOT EXISTS
+                // as defensive bootstrap fallback.
+            }
+        }
     }
 }
 
