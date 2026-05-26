@@ -50,6 +50,49 @@
 
 namespace icmg::cli {
 
+static std::string sessionStamp();  // fwd decl
+
+// v1.50.0 auto-rule detection. Regex-match user msg against patterns
+// indicating persistent instruction. If hit → save via icmg rule add
+// subprocess + emit inline ack. Conversation continues to LLM normally.
+// Opt-out: ICMG_NO_AUTO_RULE=1.
+static bool autoDetectRule(const std::string& line) {
+    if (std::getenv("ICMG_NO_AUTO_RULE")) return false;
+    if (line.size() < 8 || line.size() > 500) return false;
+    // Lowercase first ~80 chars for prefix match (preserve original for save).
+    std::string lc;
+    lc.reserve(80);
+    for (size_t i = 0; i < line.size() && i < 80; ++i) {
+        char c = line[i];
+        lc += (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
+    }
+    // Trigger patterns (ID + EN). Match-at-start only — avoids false-positive
+    // mid-sentence ("kemarin saya selalu lapar" → no match).
+    static const char* triggers[] = {
+        "ingat ya", "tolong ingat", "aturannya ", "aturan baru",
+        "jangan pernah ", "selalu ", "harus selalu", "mulai sekarang",
+        "sejak sekarang", "peraturan baru:",
+        "remember ", "from now on", "please always", "please never",
+        "always ", "never ", "rule:",
+    };
+    bool matched = false;
+    for (const auto* t : triggers) {
+        if (lc.rfind(t, 0) == 0) { matched = true; break; }
+    }
+    if (!matched) return false;
+    // Save via subprocess. Auto-name "chat-auto-<ts>".
+    std::string nm = "chat-auto-" + sessionStamp();
+    std::string esc; esc.reserve(line.size() + 8);
+    for (char c : line) { if (c == '"') esc += "\\\""; else esc += c; }
+    std::string cmd = "icmg rule add / custom \"" + nm + "\" \"" + esc + "\"";
+    auto er = icmg::core::safeExecShell(cmd, true, 5000);
+    if (er.exit_code == 0) {
+        std::cerr << "(auto-rule saved: " << nm << " — \\unrule to remove)\n";
+        return true;
+    }
+    return false;
+}
+
 // v1.48.0 context injection: pull from past chats (BM25 cross-session)
 // + project memory_nodes (BM25 within project). Cap each source 300
 // chars; total budget ~1000 chars. Returns formatted block to prepend
@@ -315,6 +358,9 @@ public:
                 std::cerr << "unknown command: " << line << "\n";
                 continue;
             }
+
+            // v1.50.0: auto-rule detection on plain user msg.
+            autoDetectRule(line);  // Fire-and-forget; LLM call proceeds.
 
             // v1.39.1 B: short-circuit to local warm-pool when --backend=local.
             if (local_backend && !no_llm) {
