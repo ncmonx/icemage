@@ -414,7 +414,7 @@ public:
                 auto* run = icmg::llm::WarmPool::instance().acquire(err);
                 if (run) {
                     icmg::llm::InferParams ip;
-                    ip.max_tokens  = 2048;  // v1.52.0: was 384 — too short for plan/code gen
+                    ip.max_tokens  = 4096;  // v1.52.0: bumped for long code/plan responses
                     ip.temperature = 0.4f;
                     // v1.47.0: wrap prompt in ChatML so LLM treats role
                     // turns properly. Without this it autocompletes and
@@ -444,8 +444,17 @@ public:
                         // v1.48.0 user wish: history cross-session, not
                         // bound to a single session_id. Loads most recent
                         // turns regardless of which session_id produced them.
-                        chat_history = icmg::llm::loadRecentTurns(
-                            icmg::core::currentUser(), /*max_turns=*/15);
+                        // v1.52.0: default 0 turns (no cross-session seeding).
+                        // Greeting bias from past sessions was confusing the model
+                        // (replies opened "Halo, Cahyo!" instead of answering).
+                        // Override via env ICMG_CHAT_SEED_TURNS=N.
+                        int seed_turns = 0;
+                        if (const char* e = std::getenv("ICMG_CHAT_SEED_TURNS"))
+                            seed_turns = std::max(0, std::atoi(e));
+                        if (seed_turns > 0) {
+                            chat_history = icmg::llm::loadRecentTurns(
+                                icmg::core::currentUser(), seed_turns);
+                        }
                         history_seeded = true;
                     }
                     std::string prompt;
