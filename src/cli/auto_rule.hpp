@@ -3,6 +3,8 @@
 #include <vector>
 #include <functional>
 #include <cstdlib>
+#include <algorithm>
+#include <cmath>
 
 namespace icmg::cli {
 
@@ -136,6 +138,62 @@ inline NLDetectResult detectNL(const std::string& line) {
         }
     }
     return r;
+}
+
+
+struct RuleRecord {
+    std::string id;
+    std::string name;
+    std::string content;
+};
+struct FuzzyMatch {
+    std::string id;
+    std::string name;
+    double score = 0.0;
+};
+
+inline std::vector<std::string> tokenize_lower(const std::string& s) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : s) {
+        char lc = (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
+        if ((lc >= 'a' && lc <= 'z') || (lc >= '0' && lc <= '9')) cur += lc;
+        else if (!cur.empty()) { out.push_back(cur); cur.clear(); }
+    }
+    if (!cur.empty()) out.push_back(cur);
+    return out;
+}
+
+inline std::vector<FuzzyMatch> fuzzyFind(
+    const std::string& query,
+    const std::vector<RuleRecord>& corpus,
+    double threshold = 0.5)
+{
+    auto qtoks = tokenize_lower(query);
+    if (qtoks.empty() || corpus.empty()) return {};
+
+    std::vector<FuzzyMatch> out;
+    for (const auto& r : corpus) {
+        auto name_toks = tokenize_lower(r.name);
+        auto body_toks = tokenize_lower(r.content);
+        double score = 0.0;
+        for (const auto& qt : qtoks) {
+            for (const auto& nt : name_toks) {
+                if (nt == qt) score += 3.0;
+                else if (nt.find(qt) != std::string::npos) score += 1.5;
+            }
+            for (const auto& bt : body_toks) {
+                if (bt == qt) score += 1.0;
+            }
+        }
+        double denom = name_toks.empty() ? 1.0 : std::sqrt((double)name_toks.size());
+        score /= denom;
+        score = std::min(1.0, score / 3.0);
+        if (score >= threshold) out.push_back({r.id, r.name, score});
+    }
+    std::sort(out.begin(), out.end(),
+              [](const FuzzyMatch& a, const FuzzyMatch& b){ return a.score > b.score; });
+    return out;
 }
 
 } // namespace icmg::cli

@@ -114,7 +114,34 @@ TEST("auto_rule: env_optout ICMG_NO_AUTO_RULE") {
 #endif
 }
 
-// 17/17
+// fuzzyFind tests
+static std::vector<RuleRecord> sample_corpus() {
+    return {
+        {"42", "no-emoji",     "do not use emoji in code or commits"},
+        {"43", "always-icmg",  "always use icmg run for noisy commands"},
+        {"44", "max-file-500", "do not read files larger than 500 lines"},
+    };
+}
+
+TEST("fuzzy_exact") {
+    auto res = fuzzyFind("no-emoji", sample_corpus(), 0.5);
+    ASSERT_TRUE(!res.empty());
+    ASSERT_EQ(res.front().id, std::string("42"));
+    ASSERT_TRUE(res.front().score >= 0.9);
+}
+
+TEST("fuzzy_partial") {
+    auto res = fuzzyFind("emoji", sample_corpus(), 0.3);
+    ASSERT_TRUE(!res.empty());
+    ASSERT_EQ(res.front().id, std::string("42"));
+}
+
+TEST("fuzzy_below_threshold") {
+    auto res = fuzzyFind("xyz-nonexistent", sample_corpus(), 0.5);
+    ASSERT_TRUE(res.empty());
+}
+
+// 20/20
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
