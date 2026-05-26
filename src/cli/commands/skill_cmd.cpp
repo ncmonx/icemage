@@ -1,4 +1,4 @@
-// icmg skill — skill index management.
+﻿// icmg skill — skill index management.
 //
 // Subcommands:
 //   index [--dir PATH] [--force]
@@ -826,6 +826,105 @@ static int doSearch(ContextNodeStore& store, const std::vector<std::string>& arg
     return 0;
 }
 
+// ---- add -------------------------------------------------------------------
+
+// v1.51.0: write a user-authored skill .md to ~/.icmg/skills/<name>.md
+static int doAdd(const std::vector<std::string>& args) {
+    // args[0] = name, args[1] = content body
+    if (args.size() < 2) {
+        std::cerr << "Usage: icmg skill add <name> <content>\n";
+        return 2;
+    }
+    const std::string& name = args[0];
+    const std::string& body = args[1];
+
+    // Sanitize: lowercase + [a-z0-9._-] only, other chars collapse to '-'.
+    std::string san;
+    for (char c : name) {
+        char lc = (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
+        if ((lc >= 'a' && lc <= 'z') || (lc >= '0' && lc <= '9') ||
+            lc == '.' || lc == '_' || lc == '-') {
+            san += lc;
+        } else if (!san.empty() && san.back() != '-') {
+            san += '-';
+        }
+    }
+    while (!san.empty() && san.back() == '-') san.pop_back();
+    if (san.empty()) { std::cerr << "skill add: invalid skill name\n"; return 2; }
+
+    const char* home = std::getenv("USERPROFILE");
+    if (!home) home = std::getenv("HOME");
+    if (!home) { std::cerr << "skill add: HOME/USERPROFILE not set\n"; return 2; }
+
+    fs::path dir = fs::path(home) / ".icmg" / "skills";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    if (ec) {
+        std::cerr << "skill add: cannot create " << dir.string() << ": " << ec.message() << "\n";
+        return 1;
+    }
+
+    auto file = dir / (san + ".md");
+    {
+        std::ofstream f(file);
+        if (!f) { std::cerr << "skill add: cannot write " << file.string() << "\n"; return 1; }
+        f << "# " << name << "\n\n" << body << "\n";
+    }
+
+    std::cout << "skill saved: " << name << " -> " << file.string() << "\n";
+    return 0;
+}
+
+
+// ---- remove ----------------------------------------------------------------
+
+// v1.51.0: delete a user-authored skill .md from ~/.icmg/skills/<name>.md
+static int doRemove(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        std::cerr << "Usage: icmg skill remove <name>
+";
+        return 2;
+    }
+    const std::string& name = args[0];
+
+    // Sanitize: lowercase + [a-z0-9._-] only, other chars collapse to '-'.
+    std::string san;
+    for (char c : name) {
+        char lc = (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
+        if ((lc >= 'a' && lc <= 'z') || (lc >= '0' && lc <= '9') ||
+            lc == '.' || lc == '_' || lc == '-') {
+            san += lc;
+        } else if (!san.empty() && san.back() != '-') {
+            san += '-';
+        }
+    }
+    while (!san.empty() && san.back() == '-') san.pop_back();
+    if (san.empty()) { std::cerr << "skill remove: invalid skill name
+"; return 2; }
+
+    const char* home = std::getenv("USERPROFILE");
+    if (!home) home = std::getenv("HOME");
+    if (!home) { std::cerr << "skill remove: HOME/USERPROFILE not set
+"; return 2; }
+
+    auto file = fs::path(home) / ".icmg" / "skills" / (san + ".md");
+    if (!fs::exists(file)) {
+        std::cerr << "skill remove: skill not found: " << name << "
+";
+        return 1;
+    }
+    std::error_code ec;
+    fs::remove(file, ec);
+    if (ec) {
+        std::cerr << "skill remove: cannot delete " << file.string() << ": " << ec.message() << "
+";
+        return 1;
+    }
+    std::cout << "skill removed: " << name << "
+";
+    return 0;
+}
+
 // ---- command ---------------------------------------------------------------
 
 class SkillCommand : public BaseCommand {
@@ -862,6 +961,10 @@ public:
         const std::string& sub = args[0];
         std::vector<std::string> rest(args.begin() + 1, args.end());
 
+        // "add"/"remove" write/delete files — no DB needed; handle before DB open.
+        if (sub == "add")    return doAdd(rest);
+        if (sub == "remove") return doRemove(rest);
+
         // Open project DB. `manifest` and `chunk` (no DB) are invoked by the
         // SessionStart hook even before `icmg init` has materialised a project
         // DB — fail soft for those paths so the hook stays silent.
@@ -892,6 +995,8 @@ public:
         if (sub == "ask")      return doAsk(*db, rest);
         if (sub == "stats")    return doStats(store, rest);
         if (sub == "suggest")  return doSuggest(store, rest);
+        if (sub == "add")      return doAdd(rest);
+        if (sub == "remove")   return doRemove(rest);
 
         std::cerr << "skill: unknown subcommand '" << sub << "'. Try --help.\n";
         return 1;
