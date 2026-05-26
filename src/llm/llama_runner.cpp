@@ -152,7 +152,25 @@ bool LlamaRunner::load(const std::string& gguf_path,
     }
 
     llama_context_params cp = llama_context_default_params();
+    // v1.49.0: ICMG_LLM_N_CTX env override. Lower n_ctx → smaller KV
+    // cache → less VRAM (lets 4GB cards run bigger models partial-offload).
     cp.n_ctx     = p.n_ctx;
+    if (const char* env = std::getenv("ICMG_LLM_N_CTX")) {
+        try { cp.n_ctx = std::stoi(env); } catch (...) {}
+    } else {
+        // File fallback ~/.icmg/llm/n_ctx.txt (mirrors gpu-layers.txt pattern).
+        const char* home = std::getenv("USERPROFILE");
+        if (!home) home = std::getenv("HOME");
+        if (home) {
+            std::string cfg = std::string(home) + "/.icmg/llm/n_ctx.txt";
+            FILE* f = std::fopen(cfg.c_str(), "r");
+            if (f) {
+                int v = 0;
+                if (std::fscanf(f, "%d", &v) == 1 && v > 0) cp.n_ctx = v;
+                std::fclose(f);
+            }
+        }
+    }
     cp.n_batch   = 8192;  // v1.48.0 B3: bumped from 512 to fit multi-turn
                           // history. Prevents GGML_ASSERT(n_tokens_all
                           // <= cparams.n_batch) on long conversations.
