@@ -87,6 +87,38 @@ inline NLDetectResult detectNL(const std::string& line) {
         return r;
     }
 
+    static const PrefixAction add_skill_prefixes[] = {
+        {"tambah skill ", NLAction::ADD_SKILL},
+        {"buat skill ",   NLAction::ADD_SKILL},
+        {"add skill ",    NLAction::ADD_SKILL},
+        {"create skill ", NLAction::ADD_SKILL},
+    };
+    static const PrefixAction remove_skill_prefixes[] = {
+        {"hapus skill ",  NLAction::REMOVE_SKILL},
+        {"buang skill ",  NLAction::REMOVE_SKILL},
+        {"remove skill ", NLAction::REMOVE_SKILL},
+        {"delete skill ", NLAction::REMOVE_SKILL},
+    };
+
+    if (auto p = match_prefix(remove_skill_prefixes,
+                              sizeof(remove_skill_prefixes)/sizeof(remove_skill_prefixes[0]))) {
+        r.action = p->action;
+        r.target_name = trim_token(line.substr(std::string(p->prefix).size()));
+        if (r.target_name.empty()) r.action = NLAction::NONE;
+        return r;
+    }
+    if (auto p = match_prefix(add_skill_prefixes,
+                              sizeof(add_skill_prefixes)/sizeof(add_skill_prefixes[0]))) {
+        std::string rest = line.substr(std::string(p->prefix).size());
+        size_t sp = rest.find(' ');
+        if (sp == std::string::npos) return r;  // NONE — name only
+        r.action = p->action;
+        r.target_name = trim_token(rest.substr(0, sp));
+        r.content = trim_token(rest.substr(sp + 1));
+        if (r.target_name.empty() || r.content.empty()) r.action = NLAction::NONE;
+        return r;
+    }
+
     static const char* add_rule_triggers[] = {
         "ingat ya", "tolong ingat", "aturannya ", "aturan baru",
         "jangan pernah ", "selalu ", "harus selalu", "mulai sekarang",

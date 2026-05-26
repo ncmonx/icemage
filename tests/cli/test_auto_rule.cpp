@@ -61,6 +61,32 @@ TEST("auto_rule: change rule triggers EDIT_RULE") {
     ASSERT_EQ(r.content, std::string("new body here"));
 }
 
+TEST("auto_rule: tambah skill with body triggers ADD_SKILL") {
+    auto r = detectNL("tambah skill linter clang-format runner");
+    ASSERT_EQ((int)r.action, (int)NLAction::ADD_SKILL);
+    ASSERT_EQ(r.target_name, std::string("linter"));
+    ASSERT_EQ(r.content, std::string("clang-format runner"));
+}
+
+TEST("auto_rule: create skill with body triggers ADD_SKILL") {
+    auto r = detectNL("create skill formatter prettier on save");
+    ASSERT_EQ((int)r.action, (int)NLAction::ADD_SKILL);
+    ASSERT_EQ(r.target_name, std::string("formatter"));
+}
+
+TEST("auto_rule: delete skill triggers REMOVE_SKILL") {
+    auto r = detectNL("delete skill linter");
+    ASSERT_EQ((int)r.action, (int)NLAction::REMOVE_SKILL);
+    ASSERT_EQ(r.target_name, std::string("linter"));
+}
+
+TEST("auto_rule: tambah skill name-only returns NONE") {
+    auto r = detectNL("tambah skill foo");
+    ASSERT_EQ((int)r.action, (int)NLAction::NONE);
+}
+
+// 14/14
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
