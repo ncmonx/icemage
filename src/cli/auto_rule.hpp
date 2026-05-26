@@ -3,6 +3,7 @@
 #include <vector>
 #include <functional>
 #include <cstdlib>
+#include <ctime>
 #include <algorithm>
 #include <cmath>
 
@@ -194,6 +195,85 @@ inline std::vector<FuzzyMatch> fuzzyFind(
     std::sort(out.begin(), out.end(),
               [](const FuzzyMatch& a, const FuzzyMatch& b){ return a.score > b.score; });
     return out;
+}
+
+using RuleSaver    = std::function<int(const std::string& name, const std::string& body, bool update)>;
+using RuleDisabler = std::function<int(const std::string& id)>;
+using RuleLister   = std::function<std::vector<RuleRecord>()>;
+using SkillSaver   = std::function<int(const std::string& name, const std::string& body, bool update)>;
+using SkillRemover = std::function<int(const std::string& name)>;
+using SkillLister  = std::function<std::vector<RuleRecord>()>;
+
+struct NLAdapters {
+    RuleSaver    rule_save;
+    RuleDisabler rule_disable;
+    RuleLister   rule_list;
+    SkillSaver   skill_save;
+    SkillRemover skill_remove;
+    SkillLister  skill_list;
+};
+
+inline std::string handleNL(const std::string& line, const NLAdapters& a) {
+    auto d = detectNL(line);
+    if (d.action == NLAction::NONE) return "";
+
+    auto resolve = [&](const std::vector<RuleRecord>& corpus) -> std::string {
+        auto m = fuzzyFind(d.target_name, corpus, 0.5);
+        if (m.empty()) return "";
+        if (m.size() >= 2 && (m[0].score - m[1].score) < 0.05) return "__AMBIGUOUS__";
+        return m.front().id;
+    };
+
+    switch (d.action) {
+    case NLAction::ADD_RULE: {
+        if (!a.rule_save) return "";
+        std::string name = "chat-auto-" + std::to_string(std::time(nullptr));
+        int rc = a.rule_save(name, d.content, false);
+        if (rc == 0) return "(auto-rule saved: " + name + " - \\unrule to remove)";
+        return "(rule save failed)";
+    }
+    case NLAction::REMOVE_RULE: {
+        if (!a.rule_list || !a.rule_disable) return "";
+        auto corpus = a.rule_list();
+        auto id = resolve(corpus);
+        if (id.empty()) return "(no rule matching \"" + d.target_name + "\" - \\rules to list)";
+        if (id == "__AMBIGUOUS__") return "(ambiguous match - use \\unrule with ID)";
+        int rc = a.rule_disable(id);
+        if (rc == 0) return "(rule disabled: " + d.target_name + " - reversible via icmg rule enable)";
+        return "(rule disable failed)";
+    }
+    case NLAction::EDIT_RULE: {
+        if (!a.rule_list || !a.rule_save) return "";
+        auto corpus = a.rule_list();
+        auto id = resolve(corpus);
+        if (id.empty()) return "(no rule matching \"" + d.target_name + "\" - \\rules to list)";
+        if (id == "__AMBIGUOUS__") return "(ambiguous match - use \\rule with ID)";
+        std::string name;
+        for (const auto& r : corpus) if (r.id == id) { name = r.name; break; }
+        int rc = a.rule_save(name, d.content, true);
+        if (rc == 0) return "(rule updated: " + name + ")";
+        return "(rule update failed)";
+    }
+    case NLAction::ADD_SKILL: {
+        if (!a.skill_save) return "";
+        int rc = a.skill_save(d.target_name, d.content, false);
+        if (rc == 0) return "(skill saved: " + d.target_name + ")";
+        return "(skill save failed)";
+    }
+    case NLAction::REMOVE_SKILL: {
+        if (!a.skill_list || !a.skill_remove) return "";
+        auto corpus = a.skill_list();
+        auto id = resolve(corpus);
+        if (id.empty()) return "(no skill matching \"" + d.target_name + "\" - icmg skill list)";
+        if (id == "__AMBIGUOUS__") return "(ambiguous skill match)";
+        std::string name;
+        for (const auto& r : corpus) if (r.id == id) { name = r.name; break; }
+        int rc = a.skill_remove(name);
+        if (rc == 0) return "(skill removed: " + name + ")";
+        return "(skill remove failed)";
+    }
+    default: return "";
+    }
 }
 
 } // namespace icmg::cli

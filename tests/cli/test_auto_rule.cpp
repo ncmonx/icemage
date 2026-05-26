@@ -143,6 +143,56 @@ TEST("fuzzy_below_threshold") {
 
 // 20/20
 
+// --- handleNL dispatcher tests (24/24) ---
+
+TEST("handleNL_add_calls_saver") {
+    std::string captured_name, captured_body;
+    bool captured_update = true;
+    NLAdapters a;
+    a.rule_save = [&](const std::string& name, const std::string& body, bool update) -> int {
+        captured_name = name;
+        captured_body = body;
+        captured_update = update;
+        return 0;
+    };
+    auto msg = handleNL("ingat ya jangan buka file lebih dari 500 baris", a);
+    ASSERT_TRUE(!captured_body.empty());
+    ASSERT_TRUE(captured_update == false);
+    ASSERT_TRUE(msg.find("auto-rule") != std::string::npos);
+}
+
+TEST("handleNL_remove_calls_disabler_soft") {
+    std::string captured_id;
+    NLAdapters a;
+    a.rule_list = []() -> std::vector<RuleRecord> {
+        return {{"42", "no-emoji", "do not use emoji"}};
+    };
+    a.rule_disable = [&](const std::string& id) -> int {
+        captured_id = id;
+        return 0;
+    };
+    auto msg = handleNL("hapus rule no-emoji", a);
+    ASSERT_EQ(captured_id, std::string("42"));
+    ASSERT_TRUE(msg.find("disabled") != std::string::npos);
+    ASSERT_TRUE(msg.find("removed") == std::string::npos);
+}
+
+TEST("handleNL_remove_no_match") {
+    NLAdapters a;
+    a.rule_list = []() -> std::vector<RuleRecord> { return {}; };
+    a.rule_disable = [](const std::string&) -> int { return 0; };
+    auto msg = handleNL("hapus rule unknown-name", a);
+    ASSERT_TRUE(msg.find("no rule matching") != std::string::npos);
+}
+
+TEST("handleNL_none_returns_empty") {
+    NLAdapters a;
+    auto msg = handleNL("just chatting normally here", a);
+    ASSERT_EQ(msg, std::string(""));
+}
+
+// 24/24
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
