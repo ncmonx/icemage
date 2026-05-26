@@ -41,6 +41,10 @@ namespace fs = std::filesystem;
 
 namespace icmg::cli {
 
+// Forward declarations for warm subcommands (implemented in llm_warm_cmd.cpp).
+int runLlmWarm(const std::vector<std::string>&);
+int runLlmWarmLoop(const std::vector<std::string>&);
+
 namespace {
 
 // Embedded default registry. First-launch writes this to disk if registry
@@ -564,6 +568,14 @@ public:
         if (sub == "enable")  return cmdEnable();
         if (sub == "respond") return cmdRespond(args);
         if (sub == "revoke-consent") return cmdRevokeConsent();
+        if (sub == "warm") {
+            std::vector<std::string> rest(args.begin() + 1, args.end());
+            return runLlmWarm(rest);
+        }
+        if (sub == "warm-loop") {
+            std::vector<std::string> rest(args.begin() + 1, args.end());
+            return runLlmWarmLoop(rest);
+        }
         std::cerr << "icmg llm: unknown subcommand '" << sub << "'. Try `icmg llm --help`.\n";
         return 1;
     }
