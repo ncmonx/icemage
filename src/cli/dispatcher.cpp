@@ -1,4 +1,5 @@
 #include "dispatcher.hpp"
+#include "core/version.hpp"
 #include "base_command.hpp"
 #include "../core/registry.hpp"
 #include "../core/config.hpp"
@@ -299,10 +300,10 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 }
 
 void Dispatcher::printHelp() const {
-    std::cout <<
-        "icmg 0.37.0 — unified memory, graph, and Tkil tool\n\n"
-        "Usage: icmg <command> [options]\n\n"
-        "Commands:\n";
+    std::cout << "icmg " << icmg::core::ICMG_VERSION
+              << " — unified memory, graph, and Tkil tool\n\n"
+              << "Usage: icmg <command> [options]\n\n"
+              << "Commands:\n";
     for (auto& [name, desc] : CMDS) {
         std::cout << "  " << std::left;
         std::cout.width(12);
@@ -316,7 +317,7 @@ void Dispatcher::printHelp() const {
 }
 
 void Dispatcher::printVersion() const {
-    std::cout << "icmg 0.37.0\n";
+    std::cout << "icmg " << icmg::core::ICMG_VERSION << "\n";
 }
 
 } // namespace icmg::cli
