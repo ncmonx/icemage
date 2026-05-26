@@ -1637,3 +1637,14 @@ Decisions:
 - Chat history seed 15->0 default. 15-turn cross-session seed biased model to greeting pattern, ignoring task prompts.
 Rejected: bumping n_ctx beyond 5120 (compute pp buffer OOM on T2000); auto-launch daemon on chat (RAM surprise); separate icmg-warm.exe.
 Open: v1.52.0 impl pending user exec-mode pick (subagent-driven vs inline). 7 commits accumulated on release/v1.51.0 branch ready for v1.52.0 tag.
+
+## 2026-05-27 02:15 [saved]
+Goal: v1.52.0 cross-process warm-loop daemon shipped.
+Decisions:
+- Warm-loop daemon detached via DETACHED_PROCESS (Win). N=4 pipe instances at \.\pipe\icmg-llm-warm. JSON newline IPC. Single icmg.exe binary, hidden `llm warm-loop` subcmd = daemon entry.
+- tryWarmInfer probe MUST run before WarmPool::acquire (not inside `if (run)` block). When daemon owns model, in-process WarmPool RAM-refuses. Early probe enables warm path independent of in-process state.
+- chat_cmd warm hit appends 2 turns to chat_history + persists to chat DB (mirrors in-process flow). `continue`s REPL loop to skip cold path.
+- Live perf: ~10s warm vs ~30s cold (Dolphin 8B Q4_K_M, T2000 4GB, gpu-layers=22, n_ctx=5120).
+- Linux unix-socket impl explicitly deferred; all Win code guarded by #ifdef _WIN32.
+Rejected: in-process keep-alive across slash-cmds (loses cross-session); shared memory mapped file (overkill); auto-launch on chat (RAM surprise); idle timeout (user controls lifetime).
+Open: active_clients counter stuck (cosmetic, deferred v1.53); B/C/D backlog still queued (NL ambiguity, smart router, C1/C3 dedup-parallel); Linux warm-loop unix-socket impl.
