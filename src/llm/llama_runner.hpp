@@ -32,7 +32,7 @@ struct LlamaParams {
 };
 
 struct InferParams {
-    int   max_tokens = 1024;    // v1.52.0: was 256 — too short for plan/code gen
+    int   max_tokens = 4096;    // v1.52.0: bumped for long gen (n_ctx-bounded at runtime)
     float temperature = 0.7f;   // 0 = greedy
     int   top_k     = 40;       // 0 = disabled
     float top_p     = 0.95f;    // 1.0 = disabled
