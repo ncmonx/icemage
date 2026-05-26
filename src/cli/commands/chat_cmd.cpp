@@ -412,6 +412,36 @@ public:
 
             // v1.39.1 B: short-circuit to local warm-pool when --backend=local.
             if (local_backend && !no_llm) {
+                // v1.52.0 EARLY: try cross-process warm-pipe BEFORE in-process WarmPool.
+                // Daemon owns the model -> WarmPool::acquire would RAM-refuse here.
+                // Build minimal prompt for the probe; uses ChatML wrap via warm daemon.
+                {
+                    std::string sys_early = std::getenv("ICMG_NO_PERSONA")
+                                              ? std::string{}
+                                              : icmg::core::buildPersonaPrefix();
+                    auto trimmed_early = icmg::llm::trimChatHistory(chat_history);
+                    std::string prompt_early = icmg::llm::buildChatMLPromptMulti(
+                        sys_early, trimmed_early, line);
+                    icmg::llm::InferParams ip_early;
+                    ip_early.max_tokens  = 8192;
+                    ip_early.temperature = 0.4f;
+                    ip_early.stop = icmg::llm::chatMLStopToken();
+                    if (auto warm = icmg::llm::tryWarmInfer(prompt_early, ip_early,
+                                        std::chrono::milliseconds(1000));
+                        warm) {
+                        chat_history.emplace_back("user", line);
+                        chat_history.emplace_back("assistant", warm->text);
+                        while (chat_history.size() > 20)
+                            chat_history.erase(chat_history.begin());
+                        const auto& uid_w = icmg::core::currentUser();
+                        icmg::llm::appendChatTurn(uid_w, session, "user", line,
+                            "warm", 0, 0);
+                        icmg::llm::appendChatTurn(uid_w, session, "assistant", warm->text,
+                            "warm", warm->tok_in, warm->tok_out);
+                        std::cout << warm->text << "\n";
+                        continue;
+                    }
+                }
                 std::string err;
                 auto* run = icmg::llm::WarmPool::instance().acquire(err);
                 if (run) {
@@ -469,7 +499,7 @@ public:
                     }
                     // v1.52.0: try cross-process warm-pipe first.
                     if (auto warm = icmg::llm::tryWarmInfer(prompt, ip,
-                                        std::chrono::milliseconds(100));
+                                        std::chrono::milliseconds(1000));
                         warm) {
                         chat_history.emplace_back("user", line);
                         chat_history.emplace_back("assistant", warm->text);
