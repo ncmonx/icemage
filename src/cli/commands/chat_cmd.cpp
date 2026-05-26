@@ -20,6 +20,9 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/path_utils.hpp"
+#include "../auto_rule.hpp"
+#include <regex>
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 // v1.39.1 B: local LLM backend via warm-pool.
@@ -48,50 +51,89 @@
   #include <unistd.h>
 #endif
 
+namespace {
+
+static std::vector<icmg::cli::RuleRecord> parseRuleListJson(const std::string& json) {
+    std::vector<icmg::cli::RuleRecord> out;
+    // Best-effort: match {"id":X,"name":"Y","content":"Z"} objects.
+    // Uses separate field passes to avoid escaping issues.
+    std::regex re_id(R"re("id"\s*:\s*"?([^",}\s]+)"?)re");
+    std::regex re_name(R"re("name"\s*:\s*"([^"]*)")re");
+    std::regex re_content(R"re("content"\s*:\s*"([^"]*)")re");
+    // Split on top-level objects
+    size_t pos = 0;
+    while (pos < json.size()) {
+        size_t ob = json.find('{', pos);
+        if (ob == std::string::npos) break;
+        size_t cb = json.find('}', ob);
+        if (cb == std::string::npos) break;
+        std::string obj = json.substr(ob, cb - ob + 1);
+        std::smatch m_id, m_name, m_content;
+        if (std::regex_search(obj, m_id, re_id) &&
+            std::regex_search(obj, m_name, re_name) &&
+            std::regex_search(obj, m_content, re_content)) {
+            out.push_back({m_id[1].str(), m_name[1].str(), m_content[1].str()});
+        }
+        pos = cb + 1;
+    }
+    return out;
+}
+
+static icmg::cli::NLAdapters buildNLAdapters() {
+    using namespace icmg::cli;
+    NLAdapters a;
+    std::string self = icmg::core::selfExePath();
+
+    auto esc_dq = [](const std::string& s) {
+        std::string out; out.reserve(s.size() + 8);
+        for (char c : s) { if (c == '"') out += "\\\""; else out += c; }
+        return out;
+    };
+
+    a.rule_save = [self, esc_dq](const std::string& name, const std::string& body, bool update) {
+        std::string cmd = "\"" + self + "\" rule add / custom \"" + esc_dq(name) + "\" \"" + esc_dq(body) + "\"";
+        if (update) cmd += " --update";
+        auto r = icmg::core::safeExecShell(cmd, true, 5000);
+        return r.exit_code;
+    };
+    a.rule_disable = [self](const std::string& id) {
+        std::string cmd = "\"" + self + "\" rule disable " + id;
+        auto r = icmg::core::safeExecShell(cmd, true, 5000);
+        return r.exit_code;
+    };
+    a.rule_list = [self]() {
+        std::vector<RuleRecord> out;
+        std::string cmd = "\"" + self + "\" rule list --json";
+        auto r = icmg::core::safeExecShell(cmd, true, 5000);
+        if (r.exit_code != 0) return out;
+        return parseRuleListJson(r.out);
+    };
+    a.skill_save = [self, esc_dq](const std::string& name, const std::string& body, bool update) {
+        std::string sub = update ? "edit" : "add";
+        std::string cmd = "\"" + self + "\" skill " + sub + " " + esc_dq(name) + " \"" + esc_dq(body) + "\"";
+        auto r = icmg::core::safeExecShell(cmd, true, 10000);
+        return r.exit_code;
+    };
+    a.skill_remove = [self](const std::string& name) {
+        std::string cmd = "\"" + self + "\" skill remove " + name;
+        auto r = icmg::core::safeExecShell(cmd, true, 5000);
+        return r.exit_code;
+    };
+    a.skill_list = [self]() {
+        std::vector<RuleRecord> out;
+        std::string cmd = "\"" + self + "\" skill list --json";
+        auto r = icmg::core::safeExecShell(cmd, true, 5000);
+        if (r.exit_code != 0) return out;
+        return parseRuleListJson(r.out);
+    };
+    return a;
+}
+
+} // anon ns
+
 namespace icmg::cli {
 
 static std::string sessionStamp();  // fwd decl
-
-// v1.50.0 auto-rule detection. Regex-match user msg against patterns
-// indicating persistent instruction. If hit → save via icmg rule add
-// subprocess + emit inline ack. Conversation continues to LLM normally.
-// Opt-out: ICMG_NO_AUTO_RULE=1.
-static bool autoDetectRule(const std::string& line) {
-    if (std::getenv("ICMG_NO_AUTO_RULE")) return false;
-    if (line.size() < 8 || line.size() > 500) return false;
-    // Lowercase first ~80 chars for prefix match (preserve original for save).
-    std::string lc;
-    lc.reserve(80);
-    for (size_t i = 0; i < line.size() && i < 80; ++i) {
-        char c = line[i];
-        lc += (c >= 'A' && c <= 'Z') ? char(c + 32) : c;
-    }
-    // Trigger patterns (ID + EN). Match-at-start only — avoids false-positive
-    // mid-sentence ("kemarin saya selalu lapar" → no match).
-    static const char* triggers[] = {
-        "ingat ya", "tolong ingat", "aturannya ", "aturan baru",
-        "jangan pernah ", "selalu ", "harus selalu", "mulai sekarang",
-        "sejak sekarang", "peraturan baru:",
-        "remember ", "from now on", "please always", "please never",
-        "always ", "never ", "rule:",
-    };
-    bool matched = false;
-    for (const auto* t : triggers) {
-        if (lc.rfind(t, 0) == 0) { matched = true; break; }
-    }
-    if (!matched) return false;
-    // Save via subprocess. Auto-name "chat-auto-<ts>".
-    std::string nm = "chat-auto-" + sessionStamp();
-    std::string esc; esc.reserve(line.size() + 8);
-    for (char c : line) { if (c == '"') esc += "\\\""; else esc += c; }
-    std::string cmd = "icmg rule add / custom \"" + nm + "\" \"" + esc + "\"";
-    auto er = icmg::core::safeExecShell(cmd, true, 5000);
-    if (er.exit_code == 0) {
-        std::cerr << "(auto-rule saved: " << nm << " — \\unrule to remove)\n";
-        return true;
-    }
-    return false;
-}
 
 // v1.48.0 context injection: pull from past chats (BM25 cross-session)
 // + project memory_nodes (BM25 within project). Cap each source 300
@@ -360,7 +402,11 @@ public:
             }
 
             // v1.50.0: auto-rule detection on plain user msg.
-            autoDetectRule(line);  // Fire-and-forget; LLM call proceeds.
+            static auto _nl_adapters = buildNLAdapters();
+            auto _ack = icmg::cli::handleNL(line, _nl_adapters);
+            if (!_ack.empty()) {
+                std::cerr << _ack << "\n";
+            }
 
             // v1.39.1 B: short-circuit to local warm-pool when --backend=local.
             if (local_backend && !no_llm) {
