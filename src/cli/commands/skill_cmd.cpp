@@ -13,6 +13,9 @@
 //       Access skill_chunks rows for a skill.
 
 #include "../base_command.hpp"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -144,6 +147,24 @@ static SkillMeta parseSkillFile(const std::string& path) {
     return meta;
 }
 
+// v1.52.0: convert fs::path to UTF-8 std::string via Win API (avoids
+// CP_ACP exception on non-1252 paths). On non-Windows, fall back to .string().
+static std::string pathToUtf8(const fs::path& p) {
+#ifdef _WIN32
+    const std::wstring& w = p.native();
+    if (w.empty()) return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(),
+                                nullptr, 0, nullptr, nullptr);
+    if (n <= 0) return {};
+    std::string out(n, 0);
+    WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(),
+                        out.data(), n, nullptr, nullptr);
+    return out;
+#else
+    return p.string();
+#endif
+}
+
 static std::vector<std::string> collectSkillFiles(const std::string& extra_dir = "") {
     std::vector<std::string> files;
     std::vector<std::string> search_dirs;
@@ -159,20 +180,34 @@ static std::vector<std::string> collectSkillFiles(const std::string& extra_dir =
 
     for (auto& dir : search_dirs) {
         if (!fs::exists(dir)) continue;
-        std::error_code ec;
-        for (auto& entry : fs::recursive_directory_iterator(dir, ec)) {
-            if (ec) break;
-            auto& p = entry.path();
-            if (p.extension() == ".md") {
-                // Only index files in skills/ subdirs or named like a skill
-                std::string stem = p.stem().string();
-                std::string parent = p.parent_path().filename().string();
-                if (parent == "skills" || parent == "skill" ||
-                    p.string().find("/skills/") != std::string::npos ||
-                    p.string().find("\\skills\\") != std::string::npos) {
-                    files.push_back(p.string());
+        // Manual recursion: stdlib recursive_directory_iterator throws on
+        // CP_ACP path conversion (Windows). Iterate per-dir with try/catch.
+        std::vector<std::string> stack;
+        stack.push_back(dir);
+        while (!stack.empty()) {
+            std::string cur = stack.back(); stack.pop_back();
+            std::error_code ec;
+            try {
+                for (auto& entry : fs::directory_iterator(cur, ec)) {
+                    if (ec) { ec.clear(); break; }
+                    try {
+                        const auto& pp = entry.path();
+                        if (entry.is_directory(ec)) {
+                            if (ec) { ec.clear(); continue; }
+                            stack.push_back(pathToUtf8(pp));
+                            continue;
+                        }
+                        if (pp.extension() != ".md") continue;
+                        std::string path_u8 = pathToUtf8(pp);
+                        std::string parent  = pathToUtf8(pp.parent_path().filename());
+                        if (parent == "skills" || parent == "skill" ||
+                            path_u8.find("/skills/") != std::string::npos ||
+                            path_u8.find("\\skills\\") != std::string::npos) {
+                            files.push_back(path_u8);
+                        }
+                    } catch (const std::exception&) { continue; }
                 }
-            }
+            } catch (const std::exception&) { continue; }
         }
     }
     return files;
