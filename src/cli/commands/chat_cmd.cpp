@@ -28,6 +28,8 @@
 // v1.39.1 B: local LLM backend via warm-pool.
 #include "../../llm/warm_pool.hpp"
 #include "../../llm/llama_runner.hpp"
+// v1.52.0: cross-process warm-pipe fast path.
+#include "../../llm/warm_client.hpp"
 #include "../../llm/chat_template.hpp"
 #include "../../llm/chat_persistence.hpp"
 #include "../../core/user_identity.hpp"
@@ -464,6 +466,22 @@ public:
                         auto trimmed_history = icmg::llm::trimChatHistory(chat_history);
                         prompt  = icmg::llm::buildChatMLPromptMulti(sys, trimmed_history, line);
                         ip.stop = icmg::llm::chatMLStopToken();
+                    }
+                    // v1.52.0: try cross-process warm-pipe first.
+                    if (auto warm = icmg::llm::tryWarmInfer(prompt, ip,
+                                        std::chrono::milliseconds(100));
+                        warm) {
+                        chat_history.emplace_back("user", line);
+                        chat_history.emplace_back("assistant", warm->text);
+                        while (chat_history.size() > 20)
+                            chat_history.erase(chat_history.begin());
+                        const auto& uid2 = icmg::core::currentUser();
+                        icmg::llm::appendChatTurn(uid2, session, "user", line,
+                            "qwen2.5-7b-q4", 0, 0);
+                        icmg::llm::appendChatTurn(uid2, session, "assistant", warm->text,
+                            "qwen2.5-7b-q4", warm->tok_in, warm->tok_out);
+                        std::cout << warm->text << "\n";
+                        continue;
                     }
                     auto res = run->infer(prompt, ip);
                     if (res.ok) {

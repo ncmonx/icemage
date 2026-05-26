@@ -26,6 +26,8 @@
 #include "../../llm/llama_runner.hpp"
 #include "../../llm/telemetry.hpp"
 #include "../../llm/warm_pool.hpp"
+// v1.52.0: cross-process warm-pipe fast path.
+#include "../../llm/warm_client.hpp"
 #include "../../llm/chat_template.hpp"
 #include "../../core/persona_loader.hpp"
 
@@ -497,6 +499,13 @@ int cmdRespond(const std::vector<std::string>& args) {
     ip.max_tokens  = 200;
     ip.temperature = 0.7f;
     ip.stop        = icmg::llm::chatMLStopToken();
+    // v1.52.0: try cross-process warm-pipe first.
+    if (auto warm = icmg::llm::tryWarmInfer(prompt, ip,
+                        std::chrono::milliseconds(100));
+        warm) {
+        std::cout << warm->text << "\n";
+        return 0;
+    }
     auto res = run->infer(prompt, ip);
     if (!res.ok) {
         std::cerr << "icmg llm respond: infer failed: " << res.error << "\n";
