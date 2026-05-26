@@ -69,7 +69,77 @@ constexpr const char* DEFAULT_REGISTRY_JSON = R"JSON({
       "license": "Apache-2.0",
       "context": 32768,
       "language": "multilingual"
+    },
+    {
+      "id": "gemma-2-2b-q4",
+      "name": "Gemma 2 2B Instruct (Q4_K_M)",
+      "url": "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
+      "sha256": "PENDING_FILL_ON_PUBLISH",
+      "size_mb": 1635,
+      "min_ram_mb": 3072,
+      "license": "Gemma-Terms",
+      "context": 8192,
+      "language": "multilingual"
+    },
+    {
+      "id": "llama-3.2-3b-q4",
+      "name": "Llama 3.2 3B Instruct (Q4_K_M)",
+      "url": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "sha256": "PENDING_FILL_ON_PUBLISH",
+      "size_mb": 2020,
+      "min_ram_mb": 4096,
+      "license": "Llama-3.2-Community",
+      "context": 131072,
+      "language": "multilingual"
+    },
+    {
+      "id": "phi-3.5-mini-q4",
+      "name": "Phi-3.5 Mini 3.8B Instruct (Q4_K_M)",
+      "url": "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
+      "sha256": "PENDING_FILL_ON_PUBLISH",
+      "size_mb": 2393,
+      "min_ram_mb": 4608,
+      "license": "MIT",
+      "context": 131072,
+      "language": "multilingual"
+    },
+    {
+      "id": "qwen2.5-7b-q4",
+      "name": "Qwen2.5 7B Instruct (Q4_K_M)",
+      "url": "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "sha256": "PENDING_FILL_ON_PUBLISH",
+      "size_mb": 4683,
+      "min_ram_mb": 8192,
+      "license": "Apache-2.0",
+      "context": 32768,
+      "language": "multilingual",
+      "gpu_recommended": true
+    },
+    {
+      "id": "mistral-7b-v0.3-q4",
+      "name": "Mistral 7B Instruct v0.3 (Q4_K_M)",
+      "url": "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+      "sha256": "PENDING_FILL_ON_PUBLISH",
+      "size_mb": 4368,
+      "min_ram_mb": 8192,
+      "license": "Apache-2.0",
+      "context": 32768,
+      "language": "multilingual",
+      "gpu_recommended": true
+    },
+    {
+      "id": "llama-3.1-8b-q4",
+      "name": "Llama 3.1 8B Instruct (Q4_K_M)",
+      "url": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "sha256": "PENDING_FILL_ON_PUBLISH",
+      "size_mb": 4920,
+      "min_ram_mb": 8704,
+      "license": "Llama-3.1-Community",
+      "context": 131072,
+      "language": "multilingual",
+      "gpu_recommended": true
     }
+
   ]
 })JSON";
 

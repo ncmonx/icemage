@@ -25,10 +25,21 @@ echo "==> Building icmg v$VERSION for Linux x64 (fast path: ext4 native)..."
 # 2. rsync source to ext4 staging. Exclude build dirs + git + binary cruft
 #    so the copy stays small (~50MB vs full ~3GB repo).
 STAGE="/tmp/icmg-build-$VERSION"
+# v1.46.0: native WSL workspace shortcut. When .icmg-native-wsl marker
+# exists (created by scripts/setup-wsl-native.sh), build in-place at
+# REPO_ROOT (already ext4 native) -- skip rsync staging entirely.
+if [[ -f "$REPO_ROOT/.icmg-native-wsl" ]]; then
+    echo "==> Native WSL workspace detected at $REPO_ROOT -- building in-place"
+    STAGE="$REPO_ROOT"
+    NATIVE_BUILD=1
+fi
 # v1.42.0: FRESH wipe path REMOVED. Delta rsync + ninja delta handle all
 # config/source changes automatically. Wipe needed ONLY when manually
 # changing generator/compiler — do manually:  rm -rf /tmp/icmg-build-*
 mkdir -p "$STAGE"
+if [[ "${NATIVE_BUILD:-0}" == "1" ]]; then
+    echo "==> Skip rsync stage (native WSL build in-place)"
+else
 echo "==> Staging source → $STAGE (ext4 native; delta sync)..."
 rsync_rc=0
 time rsync -a --delete-excluded \
@@ -45,6 +56,7 @@ time rsync -a --delete-excluded \
     --exclude='*.bak' \
     "$REPO_ROOT/" "$STAGE/" || rsync_rc=$?
 [[ $rsync_rc -le 24 ]] || exit $rsync_rc
+fi
 
 # 3. Configure + build in ext4. PCH ON. Full parallel.
 cd "$STAGE"
