@@ -414,7 +414,7 @@ public:
                 auto* run = icmg::llm::WarmPool::instance().acquire(err);
                 if (run) {
                     icmg::llm::InferParams ip;
-                    ip.max_tokens  = 384;
+                    ip.max_tokens  = 2048;  // v1.52.0: was 384 — too short for plan/code gen
                     ip.temperature = 0.4f;
                     // v1.47.0: wrap prompt in ChatML so LLM treats role
                     // turns properly. Without this it autocompletes and
