@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.28)
+﻿cmake_minimum_required(VERSION 3.28)
 
 # v1.41.0 REAL Modules pilot. Experimental `import std` feature requires CMake
 # opted-in via UUID key BEFORE project() call. clang64 (libc++) ships std.cppm
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.51.0 LANGUAGES CXX C)
+project(icmg VERSION 1.51.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -677,6 +677,7 @@ add_icmg_test(test_inject_dedup         tests/core/test_inject_dedup.cpp)
 add_icmg_test(test_session_inject       tests/cli/test_session_inject.cpp)
 add_icmg_test(test_chat_template        tests/llm/test_chat_template.cpp)
 add_icmg_test(test_auto_rule           tests/cli/test_auto_rule.cpp)         # v1.51.0 TDD
+add_icmg_test(test_skill_crud          tests/cli/test_skill_crud.cpp)        # v1.51.0 TDD
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
