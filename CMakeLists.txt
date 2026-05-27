@@ -5,7 +5,7 @@
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.53.0 LANGUAGES CXX C)
+project(icmg VERSION 1.54.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -442,7 +442,7 @@ endif()
 # --whole-archive: ensures static-init ICMG_REGISTER_* macros are not
 # dead-stripped (same pattern as test binaries).
 # ---------------------------------------------------------------------------
-if(WIN32)
+if(WIN32 AND NOT DEFINED ENV{ICMG_SKIP_RC})
     enable_language(RC)
     set(ICMG_WIN_RESOURCE src/icmg.rc)
 else()
