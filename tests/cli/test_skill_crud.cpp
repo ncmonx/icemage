@@ -15,6 +15,7 @@ static int run_cmd(const std::string& cmd) {
 #endif
 }
 
+#ifndef ICMG_MONO_TEST
 int main() {
     auto tmp = fs::temp_directory_path() / "icmg-skill-crud-test";
     fs::remove_all(tmp);
@@ -76,3 +77,5 @@ int main() {
     std::cout << "test_skill_crud: 3/3 PASS\n";
     return 0;
 }
+
+#endif  // ICMG_MONO_TEST

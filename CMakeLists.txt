@@ -723,7 +723,13 @@ if(ICMG_MONO_TEST)
                 -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic)
         endif()
     else()
+        # v1.54.0 Sub-C fix: MSVC /WHOLEARCHIVE pulls static-init
+        # ICMG_REGISTER_* macros from icmg_lib.lib (mirrors main icmg exe link).
+        # Without it, MCP tools + cmds dropped from mono test -> "Registry: unknown key".
         target_link_libraries(icmg_test PRIVATE icmg_lib)
+        if(MSVC)
+            target_link_options(icmg_test PRIVATE "/WHOLEARCHIVE:icmg_lib")
+        endif()
     endif()
     target_include_directories(icmg_test PRIVATE tests src third_party)
     add_test(NAME icmg_test COMMAND icmg_test)

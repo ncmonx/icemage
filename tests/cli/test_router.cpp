@@ -35,6 +35,7 @@ static void test_empty_default_cloud() {
     assert(r.route == Route::CLOUD);
 }
 
+#ifndef ICMG_MONO_TEST
 int main() {
     test_short_id_question_local();
     test_short_en_question_local();
@@ -45,3 +46,5 @@ int main() {
     std::cout << "test_router: 6/6 PASS\n";
     return 0;
 }
+
+#endif  // ICMG_MONO_TEST

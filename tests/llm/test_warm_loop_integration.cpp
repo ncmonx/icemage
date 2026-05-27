@@ -43,6 +43,7 @@ static int run_capture(const std::string& cmd, std::string& out) {
 #endif
 }
 
+#ifndef ICMG_MONO_TEST
 int main() {
     // Locate icmg absolute path (ctest cwd is build/).
     std::string icmg;
@@ -100,3 +101,5 @@ int main() {
     std::cout << "test_warm_loop_integration: 3/3 PASS\n";
     return 0;
 }
+
+#endif  // ICMG_MONO_TEST

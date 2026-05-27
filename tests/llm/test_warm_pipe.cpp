@@ -131,6 +131,7 @@ static void test_fullPipePath_format() {
     assert(p == "\\\\.\\pipe\\foo-bar");
 }
 
+#ifndef ICMG_MONO_TEST
 int main() {
     test_pipe_name_nonempty();
     test_server_accepts_single_client();
@@ -143,3 +144,5 @@ int main() {
     std::cout << "test_warm_pipe: 8/8 PASS\n";
     return 0;
 }
+
+#endif  // ICMG_MONO_TEST
