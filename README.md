@@ -19,7 +19,7 @@
 
 A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
 
-**40 MCP tools · 124/124 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
+**40 MCP tools · 913/913 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
