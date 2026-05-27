@@ -384,7 +384,7 @@ if(ICMG_USE_TREESITTER)
         # v1.27.0 Phase 3: tree-sitter-vue/html/svelte grammars (vendored in-tree).
         # tag.h scanner needs `tree_sitter/array.h` from runtime lib/src dir.
         set(_TS_RUNTIME_SRC ${TS_RUNTIME_DIR}/lib/src)
-        foreach(_TS_LANG vue html svelte)
+        foreach(_TS_LANG vue html svelte go rust java cpp)
             set(_TS_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-${_TS_LANG}/src)
             if(EXISTS ${_TS_DIR}/parser.c)
                 set(_TS_SRC ${_TS_DIR}/parser.c)
