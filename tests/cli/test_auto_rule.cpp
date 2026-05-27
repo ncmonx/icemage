@@ -191,7 +191,30 @@ TEST("handleNL_none_returns_empty") {
     ASSERT_EQ(msg, std::string(""));
 }
 
-// 24/24
+// v1.53.0 Sub-D: listAmbiguous helper for interactive disambig.
+TEST("listAmbiguous_returns_candidates") {
+    std::vector<RuleRecord> corpus = {
+        {"1", "foo-alpha", "first foo rule"},
+        {"2", "foo-beta",  "second foo rule"},
+        {"3", "foo-gamma", "third foo rule"},
+        {"4", "bar-other", "unrelated rule"},
+    };
+    auto m = listAmbiguous("foo", corpus, 0.3, 5);
+    ASSERT_TRUE(m.size() >= 2);
+    ASSERT_TRUE(m[0].name.find("foo") != std::string::npos);
+    ASSERT_TRUE(m[1].name.find("foo") != std::string::npos);
+}
+
+TEST("listAmbiguous_respects_limit") {
+    std::vector<RuleRecord> corpus = {
+        {"1", "x1", "body"}, {"2", "x2", "body"}, {"3", "x3", "body"},
+        {"4", "x4", "body"}, {"5", "x5", "body"}, {"6", "x6", "body"},
+    };
+    auto m = listAmbiguous("x", corpus, 0.0, 3);
+    ASSERT_TRUE(m.size() <= 3);
+}
+
+// 26/26
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }

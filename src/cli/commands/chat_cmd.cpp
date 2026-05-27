@@ -404,10 +404,73 @@ public:
             }
 
             // v1.50.0: auto-rule detection on plain user msg.
+            // v1.53.0 Sub-D: interactive disambig on ambiguous fuzzy match.
             static auto _nl_adapters = buildNLAdapters();
+            static std::vector<icmg::cli::FuzzyMatch> _pending_ambig;
+            static icmg::cli::NLAction _pending_action = icmg::cli::NLAction::NONE;
+            static std::string _pending_content;
+            // 1) If pending disambig + line is "1".."9" -> resolve + execute.
+            if (!_pending_ambig.empty() && line.size() <= 2 &&
+                line.size() >= 1 && line[0] >= '1' && line[0] <= '9') {
+                size_t idx = (size_t)(line[0] - '1');
+                if (idx < _pending_ambig.size()) {
+                    const auto& pick = _pending_ambig[idx];
+                    std::string self = icmg::core::selfExePath();
+                    std::string cmd;
+                    if (_pending_action == icmg::cli::NLAction::REMOVE_RULE) {
+                        cmd = "\"" + self + "\" rule disable " + pick.id;
+                    } else if (_pending_action == icmg::cli::NLAction::EDIT_RULE) {
+                        cmd = "\"" + self + "\" rule add / custom \"" + pick.name +
+                              "\" \"" + _pending_content + "\" --update";
+                    } else if (_pending_action == icmg::cli::NLAction::REMOVE_SKILL) {
+                        cmd = "\"" + self + "\" skill remove " + pick.name;
+                    }
+                    if (!cmd.empty()) {
+                        auto er = icmg::core::safeExecShell(cmd, true, 5000);
+                        if (er.exit_code == 0) std::cerr << "(disambig pick #" << (idx+1)
+                                << " executed: " << pick.name << ")\n";
+                        else std::cerr << "(disambig exec failed)\n";
+                    }
+                    _pending_ambig.clear();
+                    _pending_action = icmg::cli::NLAction::NONE;
+                    _pending_content.clear();
+                    continue;
+                }
+            }
+            // 2) Any other input clears pending (non-numeric overrides stash).
+            if (!_pending_ambig.empty()) {
+                _pending_ambig.clear();
+                _pending_action = icmg::cli::NLAction::NONE;
+                _pending_content.clear();
+            }
             auto _ack = icmg::cli::handleNL(line, _nl_adapters);
             if (!_ack.empty()) {
                 std::cerr << _ack << "\n";
+                // 3) Detect "ambiguous" ack -> stash candidates for next-turn pick.
+                if (_ack.find("ambiguous") != std::string::npos) {
+                    auto _detect = icmg::cli::detectNL(line);
+                    if (_detect.action == icmg::cli::NLAction::REMOVE_RULE ||
+                        _detect.action == icmg::cli::NLAction::EDIT_RULE) {
+                        auto _corpus = _nl_adapters.rule_list ? _nl_adapters.rule_list()
+                                                              : std::vector<icmg::cli::RuleRecord>{};
+                        _pending_ambig = icmg::cli::listAmbiguous(_detect.target_name, _corpus);
+                    } else if (_detect.action == icmg::cli::NLAction::REMOVE_SKILL) {
+                        auto _corpus = _nl_adapters.skill_list ? _nl_adapters.skill_list()
+                                                               : std::vector<icmg::cli::RuleRecord>{};
+                        _pending_ambig = icmg::cli::listAmbiguous(_detect.target_name, _corpus);
+                    }
+                    if (!_pending_ambig.empty()) {
+                        _pending_action = _detect.action;
+                        _pending_content = _detect.content;
+                        std::cerr << "  candidates:\n";
+                        for (size_t i = 0; i < _pending_ambig.size(); ++i) {
+                            std::cerr << "    " << (i+1) << ". " << _pending_ambig[i].name
+                                      << " (score " << _pending_ambig[i].score << ")\n";
+                        }
+                        std::cerr << "  reply with 1.." << _pending_ambig.size()
+                                  << " to pick, anything else cancels.\n";
+                    }
+                }
             }
 
             // v1.39.1 B: short-circuit to local warm-pool when --backend=local.

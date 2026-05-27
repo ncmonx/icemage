@@ -213,6 +213,20 @@ struct NLAdapters {
     SkillLister  skill_list;
 };
 
+// v1.53.0 Sub-D: list ambiguous candidates for interactive disambig in REPL.
+// Caller invokes when handleNL returns string containing "ambiguous". Returns
+// up to top-5 fuzzy matches (top-1 if score >= 0.9 ranked above any tied tail).
+inline std::vector<FuzzyMatch> listAmbiguous(
+    const std::string& query,
+    const std::vector<RuleRecord>& corpus,
+    double threshold = 0.5,
+    size_t limit = 5)
+{
+    auto m = fuzzyFind(query, corpus, threshold);
+    if (m.size() > limit) m.resize(limit);
+    return m;
+}
+
 inline std::string handleNL(const std::string& line, const NLAdapters& a) {
     auto d = detectNL(line);
     if (d.action == NLAction::NONE) return "";
