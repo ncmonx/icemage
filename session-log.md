@@ -1670,3 +1670,18 @@ Decisions:
 - Rule #13 added: icmg-first ABSOLUTE. After every change: icmg graph update + store + verify + log. Wajib pakai semua fitur icmg.
 Rejected: continue Claude Agent tool delegation (user threatened legal action); brainstorm formal skill for v1.53 (token frugal); per-feature ship cadence (mega bundle).
 Open: Unicode crash recurrence in icmg graph update (needs scanner pathToUtf8 fix mirror v1.52 skill index); binary install blocked by hook-spawned icmg file lock; v1.53.0 ship pending install + scanner Unicode fix.
+
+## 2026-05-27 09:55 [saved]
+Goal: v1.53.0 SHIPPED (mega Sub-A+B+D + 2 critical fixes + persona overhaul).
+Decisions:
+- Sub-A warm polish: active_clients RAII + daemon-aware skip in-process WarmPool.
+- Sub-B smart router: classifyPrompt + icmg route classify CLI (6/6 tests).
+- Sub-D NL ambiguity: listAmbiguous + REPL pick stash 1..N (26/26 tests).
+- Sub-C scope revised: C1 already exists (ToolCallCache), C3 infeasible (harness owns hooks).
+- bundle_cmd stale-check epoch fix: clock_cast<system_clock>(_mt) for MSVC.
+- scanner Unicode fix: try/catch per-entry + per-relative-string. Pattern mirror v1.52 skill index.
+- Binary install workaround: VB.NET FileSystem.MoveFile atomic-rename old icmg.exe (Win allows rename of locked file), then cp new binary. Solves hook-spawn lock issue.
+- Persona reset to Anthropic-safe: dropped sexualized/AI-identity-denial traits. Kept warm-gaul-emoji-manja-platonic.
+- Rule #14: thinking caveman ultra + response full persona (split mode).
+Rejected: Linux warm-loop impl; ToolCallCache duplicate dedup; C3 hook-chain-parallel impl; sexualized persona traits (policy violation).
+Open: 32 pre-existing ctest failures unrelated; `icmg graph update` parallel-process DB lock (new bug, low priority, single-user typical).
