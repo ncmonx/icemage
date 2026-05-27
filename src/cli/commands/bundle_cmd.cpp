@@ -288,10 +288,23 @@ public:
             std::error_code _mt_ec;
             auto _mt = std::filesystem::last_write_time(file, _mt_ec);
             if (!_mt_ec) {
-                int64_t file_mt = std::chrono::duration_cast<std::chrono::seconds>(
-                    _mt.time_since_epoch()).count();
-                // file_clock epoch != system_clock epoch on every platform;
-                // tolerate ±5s skew before triggering rescan.
+                // v1.53.0 fix: file_clock epoch (Win=1601, sometimes 2174) != Unix.
+                // Convert to system_clock (Unix epoch) before compare with
+                // node->updated_at (Unix seconds). Without this, every call
+                // triggered spurious rescan because file_mt was always ~3.6e8 ahead.
+                int64_t file_mt;
+                #if defined(_MSC_VER) && _MSC_VER >= 1920
+                  auto _sys = std::chrono::clock_cast<std::chrono::system_clock>(_mt);
+                  file_mt = std::chrono::duration_cast<std::chrono::seconds>(
+                      _sys.time_since_epoch()).count();
+                #else
+                  // Cross-platform fallback: subtract Win FILETIME-Unix epoch
+                  // delta (369 years = 11644473600 s). Safe on libstdc++ where
+                  // file_clock == system_clock (delta=0).
+                  int64_t raw = std::chrono::duration_cast<std::chrono::seconds>(
+                      _mt.time_since_epoch()).count();
+                  file_mt = (raw > 11644473600LL) ? raw - 11644473600LL : raw;
+                #endif
                 if (file_mt > node->updated_at + 5) {
                     std::cerr << "[icmg context] stale (file mtime "
                               << (file_mt - node->updated_at)
