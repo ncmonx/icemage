@@ -1648,3 +1648,13 @@ Decisions:
 - Linux unix-socket impl explicitly deferred; all Win code guarded by #ifdef _WIN32.
 Rejected: in-process keep-alive across slash-cmds (loses cross-session); shared memory mapped file (overkill); auto-launch on chat (RAM surprise); idle timeout (user controls lifetime).
 Open: active_clients counter stuck (cosmetic, deferred v1.53); B/C/D backlog still queued (NL ambiguity, smart router, C1/C3 dedup-parallel); Linux warm-loop unix-socket impl.
+
+## 2026-05-27 07:30 [saved]
+Goal: v1.53.0 mega plan + Sub-A warm polish shipped uncommitted to tag.
+Decisions:
+- v1.53.0 = 4 sub-features mega bundle: warm polish (A) + smart router (B) + dedup/parallel (C) + NL ambiguity (D). Multi-session exec.
+- Sub-A: active_clients RAII guard (counter leak); daemon-aware skip in-process WarmPool::acquire (kills RAM-guard spurious fail when daemon owns model).
+- Chat REPL repetition bug (15-iter test reproduced): sampler temp 0.4 too deterministic + missing presence/freq_penalty + history cap 20 too wide. Fixed: temp 0.7, repeat_penalty 1.25, presence 0.4, freq 0.3, history cap 6.
+- LLaMA 3 8B Dolphin Uncensored installed + active (sha 7dcc6b844c309701ddcb20642d5729736a04c70cf10fdd6b3c0653b16eb649f4). Same VRAM footprint as Qwen 7B; gpu-layers=22 + n_ctx=5120 stable on T2000 4GB.
+Rejected: per-feature ship cadence (mega bundle preferred); brainstorm formal skill for v1.53 (token frugal); Linux warm-loop impl (Win-only); bumping n_ctx > 5120 (Vulkan compute pp buffer OOM).
+Open: Sub-B/C/D pending next sessions; final ship after all sub-features; smart router classifier rules need calibration against real prompts; C3 hook parallel may need opt-in per-hook flag.
