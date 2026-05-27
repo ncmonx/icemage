@@ -28,6 +28,14 @@ struct DaemonState {
     std::atomic<bool> stop_flag{false};
 };
 
+struct ClientCounter {
+    DaemonState& ds_;
+    explicit ClientCounter(DaemonState& ds) : ds_(ds) { ds_.active_clients++; }
+    ~ClientCounter() { ds_.active_clients--; }
+    ClientCounter(const ClientCounter&) = delete;
+    ClientCounter& operator=(const ClientCounter&) = delete;
+};
+
 std::string extractString(const std::string& json, const std::string& key) {
     std::regex r("\"" + key + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
     std::smatch m;
@@ -168,14 +176,15 @@ int runWarmLoop(const WarmLoopConfig& cfg) {
             while (!ds.stop_flag && !ss.get_token().stop_requested()) {
                 auto conn = server.accept(ss.get_token());
                 if (!conn) break;
-                ds.active_clients++;
-                auto req = server.readMessage(**conn);
-                if (!req.empty()) {
-                    auto resp = handleRequest(req, ds, *runner, model_id);
-                    server.writeMessage(**conn, resp);
-                }
+                {
+                    ClientCounter cc(ds);
+                    auto req = server.readMessage(**conn);
+                    if (!req.empty()) {
+                        auto resp = handleRequest(req, ds, *runner, model_id);
+                        server.writeMessage(**conn, resp);
+                    }
+                }  // cc destructor decrements
                 server.disconnect(**conn);
-                ds.active_clients--;
             }
         });
     }
