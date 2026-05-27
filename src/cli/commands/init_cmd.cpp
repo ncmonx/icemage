@@ -375,6 +375,74 @@ command -v icmg >/dev/null 2>&1 || exit 0
 icmg persona context --json 2>/dev/null || exit 0
 )BASH";
 
+// v1.55.0 G1: icmg advisor — proactive next-step hint hook.
+// UserPromptSubmit emits short `[advisor] consider: <next-step>` based on
+// 4 cheap bounded heuristics (uncommitted > 4, release-branch ahead > 3,
+// recall hit on prompt, recent build log errors). No LLM call (~10ms).
+// Opt-out: ICMG_NO_ADVISOR=1.
+static const char* ADVISOR_SH = R"BASH(#!/usr/bin/env bash
+# v1.55 G1: icmg advisor — proactive next-step hint hook.
+set -uo pipefail
+[[ -n "${ICMG_NO_ADVISOR:-}" ]] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+
+INPUT=$(cat 2>/dev/null || echo "{}")
+PROMPT=$(echo "$INPUT" | jq -r '.prompt // .user_prompt // ""' 2>/dev/null)
+
+HINT=""
+
+# H1: uncommitted files
+if [[ -d .git ]]; then
+    UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "${UNCOMMITTED:-0}" -gt 4 ]]; then
+        HINT="consider: commit incremental progress ($UNCOMMITTED files uncommitted)"
+    fi
+fi
+
+# H2: release-branch ship readiness
+if [[ -z "$HINT" && -d .git ]]; then
+    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [[ "$BRANCH" =~ ^release/v ]]; then
+        AHEAD=$(git rev-list --count main..HEAD 2>/dev/null || echo 0)
+        if [[ "${AHEAD:-0}" -gt 3 ]]; then
+            HINT="consider: ship $BRANCH ($AHEAD commits ahead main — version bump + tag + docs PR)"
+        fi
+    fi
+fi
+
+# H3: memory hit for prompt
+if [[ -z "$HINT" && -n "$PROMPT" && "${#PROMPT}" -gt 12 ]]; then
+    PROBE=$(echo "$PROMPT" | head -c 80 | tr -d '\n"')
+    if [[ -n "$PROBE" ]]; then
+        TOPIC=$(icmg recall "$PROBE" --top 1 --topic-only 2>/dev/null | head -1)
+        if [[ -n "$TOPIC" && "$TOPIC" != "(no results)" ]]; then
+            HINT="memory hit: $TOPIC — \`icmg recall '$TOPIC'\`"
+        fi
+    fi
+fi
+
+# H4: last build failed
+if [[ -z "$HINT" ]]; then
+    LATEST_LOG=$(ls -t "$HOME/.icmg/build-logs"/latest-*.log 2>/dev/null | head -1)
+    if [[ -n "$LATEST_LOG" && -f "$LATEST_LOG" ]]; then
+        AGE_SEC=$(( $(date +%s) - $(stat -c %Y "$LATEST_LOG" 2>/dev/null || stat -f %m "$LATEST_LOG" 2>/dev/null || echo 0) ))
+        if [[ "$AGE_SEC" -lt 1800 ]]; then
+            if grep -qiE "error|fail|FAILED|LNK[0-9]+|fatal" "$LATEST_LOG" 2>/dev/null; then
+                HINT="last build had errors — \`icmg-build-log error\` (log age ${AGE_SEC}s)"
+            fi
+        fi
+    fi
+fi
+
+if [[ -n "$HINT" ]]; then
+    SAFE=$(printf '%s' "[advisor] $HINT" | python -c 'import sys,json;sys.stdout.write(json.dumps(sys.stdin.read())[1:-1])')
+    cat <<MSG
+{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"$SAFE\n"}}
+MSG
+fi
+exit 0
+)BASH";
+
 // v1.47.0: prefix-based local LLM route. When user prompt starts with `!`
 // or `/local `, strip prefix → call `icmg llm respond --hook <msg>` → emit
 // block JSON. Claude API skipped, local LLM reply shown as assistant turn.
@@ -1413,6 +1481,8 @@ private:
         // Phase 71: UserPromptSubmit auto-recall + suggest compress.
         n += writeFile(root / ".claude" / "hooks" / "icmg-prompt-recall.sh", PROMPT_RECALL_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-persona-inject.sh", PERSONA_INJECT_SH, true);
+        // v1.55.0 G1: advisor proactive hint hook.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-advisor.sh", ADVISOR_SH, true);
         // v1.47.0: local-route hook (prefix-based casual chat to local LLM).
         n += writeFile(root / ".claude" / "hooks" / "icmg-local-route.sh", LOCAL_ROUTE_SH, true);
         // Stop hook: wflog reminder on session end when git has changes.
@@ -1699,7 +1769,11 @@ private:
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"timeout", 3},
-                     {"command", "bash -c '[ -f .claude/hooks/icmg-persona-inject.sh ] && bash .claude/hooks/icmg-persona-inject.sh || exit 0'"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-persona-inject.sh ] && bash .claude/hooks/icmg-persona-inject.sh || exit 0'"}},
+                    // v1.55.0 G1: advisor proactive hint.
+                    {{"type", "command"},
+                     {"timeout", 3},
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-advisor.sh ] && bash .claude/hooks/icmg-advisor.sh || exit 0'"}}
                 })}
             },
             {
