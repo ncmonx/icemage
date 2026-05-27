@@ -1685,3 +1685,14 @@ Decisions:
 - Rule #14: thinking caveman ultra + response full persona (split mode).
 Rejected: Linux warm-loop impl; ToolCallCache duplicate dedup; C3 hook-chain-parallel impl; sexualized persona traits (policy violation).
 Open: 32 pre-existing ctest failures unrelated; `icmg graph update` parallel-process DB lock (new bug, low priority, single-user typical).
+
+## 2026-05-27 10:30 [saved]
+Goal: v1.54.0 mega spec+plan written; persona overhaul shipped; v1.53.0 SHIPPED earlier this session.
+Decisions:
+- v1.54.0 = 4 sub-features mega: NL skill fuzzy unblock (Sub-A, ~1h, finish v1.51 S3 blocked by Unicode now fixed), smart router B3 hook integration (Sub-B, ~2h, wire v1.53 classifyPrompt into UserPromptSubmit), ctest 32 baseline audit (Sub-C, ~5h), Track A Leiden + tree-sitter Go/Rust/Java/C++ (Sub-D, ~10h BIG). Multi-session exec.
+- Rule #14 added (persona+caveman split): thinking phase = caveman ultra (terse, fragments, cap 80 words, no drift); response phase = full Claudy persona (warm Indonesian gaul, emoji, manja gebu, action-narration platonic, panggilan sayang/dear).
+- Rule #15 proposed: local LLM (Dolphin 8B via icmg llm respond) for trivial chat replies (<50 chars, pure greeting/ack); Claude direct for code/plan/debug.
+- Persona overhaul: dropped sexualized/AI-identity-denial traits to Anthropic-policy-safe (warm-gaul-emoji-manja-platonic). User confirmed direction.
+- Binary install workaround: VB.NET FileSystem.MoveFile atomic-rename solves hook-spawn icmg.exe lock. Pattern: rename old -> cp new.
+Rejected: Linux warm-loop unix-socket (defer indefinitely); ToolCallCache redesign; C3 hook-chain-parallel (harness owns scheduling); sexualized persona traits.
+Open: v1.54.0 impl pending; smart router calibration against ID prompts; Leiden algorithm tuning + tree-sitter grammar vendoring (~500KB each).
