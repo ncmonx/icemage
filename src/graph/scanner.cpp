@@ -259,7 +259,11 @@ int Scanner::scan(const std::string& root, const Options& opts) {
         std::error_code iter_ec;
         for (auto& entry : fs::directory_iterator(dir, iter_ec)) {
             if (iter_ec) { iter_ec.clear(); continue; }
-            std::string name = entry.path().filename().string();
+            // v1.53.0: skip entries whose path triggers CP_ACP exception
+            // (non-1252 chars on Win, e.g. Chinese filenames in plugin caches).
+            std::string name;
+            try { name = entry.path().filename().string(); }
+            catch (const std::exception&) { continue; }
 
             {
                 std::error_code is_dir_ec, is_sym_ec;
@@ -274,13 +278,17 @@ int Scanner::scan(const std::string& root, const Options& opts) {
                     // Check gitignore
                     if (!skip && opts.gitignore) {
                         std::error_code rel_ec;
-                        std::string rel = fs::relative(entry.path(), root_path, rel_ec).string();
+                        std::string rel;
+                        try { rel = fs::relative(entry.path(), root_path, rel_ec).string(); }
+                        catch (const std::exception&) { rel.clear(); rel_ec = std::make_error_code(std::errc::illegal_byte_sequence); }
                         if (!rel_ec && gi.matches(rel)) skip = true;
                     }
                     // T11: check .icmgignore (always active when file present)
                     if (!skip) {
                         std::error_code rel_ec;
-                        std::string rel = fs::relative(entry.path(), root_path, rel_ec).string();
+                        std::string rel;
+                        try { rel = fs::relative(entry.path(), root_path, rel_ec).string(); }
+                        catch (const std::exception&) { rel.clear(); rel_ec = std::make_error_code(std::errc::illegal_byte_sequence); }
                         if (!rel_ec && icmgi.matches(rel)) skip = true;
                     }
                     if (!skip) walk(entry.path(), depth + 1);
@@ -295,13 +303,16 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             // T11: skip files matched by .icmgignore
             {
                 std::error_code rel_ec;
-                std::string rel = fs::relative(entry.path(), root_path, rel_ec).string();
+                std::string rel;
+                try { rel = fs::relative(entry.path(), root_path, rel_ec).string(); }
+                catch (const std::exception&) { rel.clear(); rel_ec = std::make_error_code(std::errc::illegal_byte_sequence); }
                 if (!rel_ec && icmgi.matches(rel)) continue;
             }
             std::error_code fsz_ec;
             auto fsz = entry.file_size(fsz_ec);
             if (fsz_ec) continue;
-            processFile(entry.path(), fsz);
+            try { processFile(entry.path(), fsz); }
+            catch (const std::exception&) { continue; }
         }
     };
 
