@@ -1721,3 +1721,14 @@ Decisions:
 Total session shipping: v1.51.1, v1.52.0, v1.53.0, v1.54.0 = 4 releases + Sub-D D1+D2 partial.
 Rejected: D3/D7 in this session (token capacity 600K+, 15-jam fatigue, build complexity).
 Open v1.55 backlog: G1 advisor, G2 strict enforce, G3 everything wrapper, G5 (G5 SHIPPED actually — Edit-Intent), G6 (G6 SHIPPED — build-log), G7 icmg patch inline, F1 daemon, F6 LLM router, F11 shrink-prompt, Sub-D D3/D7. Backlog doc: docs/superpowers-optimized/backlog/v1.55+-icmg-evolution.md
+
+## 2026-05-27 18:30 [saved]
+Goal: v1.55.0 mega bundle in progress (G7+F11+Sub-D D3+D7+G1).
+Decisions:
+- G7 icmg-patch shipped: shell-over-Python wrapper, direct overwrite + 10x retry (Win hook race blocks os.replace).
+- F11 persona-inject shrink: session-state marker, 90% per-turn save (1059B->101B repeat).
+- Bundle all v1.55 backlog single release per user "bungkus semua dong"; multi-session exec.
+- icmg-patch uses cygpath to translate MSYS->Win paths before Python.
+Rejected: atomic rename (Win hook holds file); C++ native patch Phase 2 (defer v1.56+).
+Open: Sub-D D3 (4 TS extractors) next; D7 Leiden; G1 advisor; final ship.
+Files: ~/bin/icmg-patch, .claude/hooks/icmg-persona-inject.sh, docs/superpowers-optimized/specs/2026-05-27-v1.55.0-mega-design.md
