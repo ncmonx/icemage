@@ -485,12 +485,7 @@ int cmdRespond(const std::vector<std::string>& args) {
         std::cerr << "build lacks ICMG_USE_LLAMA — respond unavailable.\n";
         return 2;
     }
-    std::string err;
-    auto* run = llm::WarmPool::instance().acquire(err);
-    if (!run) {
-        std::cerr << "icmg llm respond: warm-pool acquire failed: " << err << "\n";
-        return 3;
-    }
+    // v1.53.0: if daemon owns model, skip in-process WarmPool::acquire (would RAM-refuse).
     std::string sys = std::getenv("ICMG_NO_PERSONA")
                           ? std::string{}
                           : icmg::core::buildPersonaPrefix();
@@ -499,12 +494,22 @@ int cmdRespond(const std::vector<std::string>& args) {
     ip.max_tokens  = 200;
     ip.temperature = 0.7f;
     ip.stop        = icmg::llm::chatMLStopToken();
-    // v1.52.0: try cross-process warm-pipe first.
-    if (auto warm = icmg::llm::tryWarmInfer(prompt, ip,
-                        std::chrono::milliseconds(100));
-        warm) {
-        std::cout << warm->text << "\n";
-        return 0;
+    if (icmg::llm::warmAvailable()) {
+        // Daemon visible: route through warm-pipe only; in-process acquire would fail.
+        if (auto warm = icmg::llm::tryWarmInfer(prompt, ip,
+                            std::chrono::milliseconds(100));
+            warm) {
+            std::cout << warm->text << "\n";
+            return 0;
+        }
+        std::cerr << "icmg llm respond: warm daemon visible but request failed\n";
+        return 3;
+    }
+    std::string err;
+    auto* run = llm::WarmPool::instance().acquire(err);
+    if (!run) {
+        std::cerr << "icmg llm respond: warm-pool acquire failed: " << err << "\n";
+        return 3;
     }
     auto res = run->infer(prompt, ip);
     if (!res.ok) {

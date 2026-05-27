@@ -415,7 +415,10 @@ public:
                 // v1.52.0 EARLY: try cross-process warm-pipe BEFORE in-process WarmPool.
                 // Daemon owns the model -> WarmPool::acquire would RAM-refuse here.
                 // Build minimal prompt for the probe; uses ChatML wrap via warm daemon.
-                {
+                // v1.53.0: capture daemon visibility BEFORE probe so that a pipe miss
+                // (daemon visible but request failed) skips in-process acquire entirely.
+                bool warm_was_available = icmg::llm::warmAvailable();
+                if (warm_was_available) {
                     std::string sys_early = std::getenv("ICMG_NO_PERSONA")
                                               ? std::string{}
                                               : icmg::core::buildPersonaPrefix();
@@ -445,6 +448,10 @@ public:
                         std::cout << warm->text << "\n";
                         continue;
                     }
+                    // Daemon was visible but pipe request failed -- skip in-process acquire
+                    // (it would RAM-refuse since daemon holds the model).
+                    std::cerr << "(warm daemon visible but request failed - falling to agent)\n";
+                    continue;
                 }
                 std::string err;
                 auto* run = icmg::llm::WarmPool::instance().acquire(err);
