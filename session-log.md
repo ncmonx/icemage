@@ -1696,3 +1696,17 @@ Decisions:
 - Binary install workaround: VB.NET FileSystem.MoveFile atomic-rename solves hook-spawn icmg.exe lock. Pattern: rename old -> cp new.
 Rejected: Linux warm-loop unix-socket (defer indefinitely); ToolCallCache redesign; C3 hook-chain-parallel (harness owns scheduling); sexualized persona traits.
 Open: v1.54.0 impl pending; smart router calibration against ID prompts; Leiden algorithm tuning + tree-sitter grammar vendoring (~500KB each).
+
+## 2026-05-27 17:28 [saved]
+Goal: v1.54.0 SHIPPED (Sub-A+B+C + 3 critical fixes). Build infra revamped.
+Decisions:
+- Sub-A NL skill fuzzy unblocked by v1.53 Unicode fix (CLI works direct).
+- Sub-B smart router hook: icmg-router-hint.sh emits [router-hint] route=X confidence=Y reason=Z via UserPromptSubmit; ICMG_FORCE_ROUTE env override; wired in settings.local.json.
+- Sub-C ctest audit: 151 FAIL -> 0, 736 PASS -> 913 PASS (100%). Root: MSVC test exe lacked /WHOLEARCHIVE:icmg_lib -> ICMG_REGISTER_* dropped. Fix: target_link_options + #ifndef ICMG_MONO_TEST wrap per-exe main().
+- Sub-D Track A (Leiden + 4 tree-sitter): DEFERRED v1.55 (~10h fresh session needed).
+- ICMG_SKIP_RC env-gate: bypass cmake-ninja RC depfile RC1107 quirk (binary lacks Win version resource, acceptable dev).
+- G5 Edit-Intent bypass: ~/.icmg/edit-prep.txt allowlist + ~/bin/icmg-edit-prep CLI; hook icmg-shrink-read.sh skip cap for flagged files.
+- G6 Build log + dedup: ~/.icmg/build-logs/<ts>-<target>.log + latest-*.log symlink; msvc-build*.bat patched; ~/bin/icmg-build-log show|tail|error|list|path; 30s rebuild dedup.
+- G7 (v1.55 plan #10692): icmg patch inline cmd to eliminate temp .py file detour.
+Rejected: Sub-D in this session (token capacity); manual rerun build on error (use icmg-build-log).
+Open: Sub-D Track A fresh session; G7 impl pending; binary version resource (cmake-ninja RC quirk root fix).
