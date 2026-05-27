@@ -194,6 +194,7 @@ Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
 
 
 
+
 ---
 
 ## Git Remote Rules (ABSOLUTE — never override)
@@ -316,6 +317,7 @@ git push private restore/private-main:main --force
 | `icmg caveman [on/off/status]` | Toggle caveman mode |
 | `icmg chat` | Interactive REPL |
 <!-- icmg:commands:end -->
+
 
 
 
