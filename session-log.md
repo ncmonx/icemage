@@ -1658,3 +1658,15 @@ Decisions:
 - LLaMA 3 8B Dolphin Uncensored installed + active (sha 7dcc6b844c309701ddcb20642d5729736a04c70cf10fdd6b3c0653b16eb649f4). Same VRAM footprint as Qwen 7B; gpu-layers=22 + n_ctx=5120 stable on T2000 4GB.
 Rejected: per-feature ship cadence (mega bundle preferred); brainstorm formal skill for v1.53 (token frugal); Linux warm-loop impl (Win-only); bumping n_ctx > 5120 (Vulkan compute pp buffer OOM).
 Open: Sub-B/C/D pending next sessions; final ship after all sub-features; smart router classifier rules need calibration against real prompts; C3 hook parallel may need opt-in per-hook flag.
+
+## 2026-05-27 09:00 [saved]
+Goal: v1.53.0 Sub-A+B+D + stale-fix shipped; Sub-C deferred (scope revision).
+Decisions:
+- Sub-A warm polish: active_clients RAII guard + daemon-aware skip in-process WarmPool::acquire when daemon owns model.
+- Sub-B smart router: classifyPrompt(text) -> {LOCAL,CLOUD,CACHE} based on length+keywords+tool verbs. CLI: icmg route classify [--json].
+- Sub-D NL ambiguity: listAmbiguous helper + chat REPL pending_disambig stash. Numeric 1..N next turn picks; any other input cancels.
+- Sub-C reframed: C1 (PreToolUse Bash dedup) already exists as core::ToolCallCache. C3 (hook chain parallel) infeasible - Claude Code harness owns scheduling. icmg parallel covers intra-hook fan-out.
+- Stale-fix bundle_cmd: file_clock (Win epoch 1601) vs system_clock (Unix 1970) made file_mt always huge -> stale always true -> spurious rescan every icmg context call. Fix uses clock_cast<system_clock>(_mt) for MSVC, FILETIME-Unix delta fallback elsewhere.
+- Rule #13 added: icmg-first ABSOLUTE. After every change: icmg graph update + store + verify + log. Wajib pakai semua fitur icmg.
+Rejected: continue Claude Agent tool delegation (user threatened legal action); brainstorm formal skill for v1.53 (token frugal); per-feature ship cadence (mega bundle).
+Open: Unicode crash recurrence in icmg graph update (needs scanner pathToUtf8 fix mirror v1.52 skill index); binary install blocked by hook-spawned icmg file lock; v1.53.0 ship pending install + scanner Unicode fix.
