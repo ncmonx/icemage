@@ -1710,3 +1710,14 @@ Decisions:
 - G7 (v1.55 plan #10692): icmg patch inline cmd to eliminate temp .py file detour.
 Rejected: Sub-D in this session (token capacity); manual rerun build on error (use icmg-build-log).
 Open: Sub-D Track A fresh session; G7 impl pending; binary version resource (cmake-ninja RC quirk root fix).
+
+## 2026-05-27 17:55 [saved] [WRAP]
+Goal: Session wrap after 15+ jam.
+Decisions:
+- Sub-D D1+D2 SHIPPED: vendored tree-sitter Go/Rust/Java/C++ (4 grammars, total ~36MB parser.c) + CMake foreach extended; 4 new tree_sitter_*.lib linked into icmg_lib; ICMG_HAS_TREESITTER_{GO,RUST,JAVA,CPP}=1 defines available.
+- D3 extractor tree-sitter wrapper rewrite DEFERRED (existing regex extractors still work; semantic accuracy upgrade marginal vs effort, defer v1.55).
+- D7 Leiden algorithm DEFERRED (graph community detection, ~4-6h fresh session needed).
+- Commit d0308bf962 on release/v1.54.0 (private pushed).
+Total session shipping: v1.51.1, v1.52.0, v1.53.0, v1.54.0 = 4 releases + Sub-D D1+D2 partial.
+Rejected: D3/D7 in this session (token capacity 600K+, 15-jam fatigue, build complexity).
+Open v1.55 backlog: G1 advisor, G2 strict enforce, G3 everything wrapper, G5 (G5 SHIPPED actually — Edit-Intent), G6 (G6 SHIPPED — build-log), G7 icmg patch inline, F1 daemon, F6 LLM router, F11 shrink-prompt, Sub-D D3/D7. Backlog doc: docs/superpowers-optimized/backlog/v1.55+-icmg-evolution.md
