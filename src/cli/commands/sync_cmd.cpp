@@ -233,7 +233,15 @@ private:
 
         fs::path out = dir / (tbl + ".jsonl");
         std::ofstream of(out, std::ios::binary);
-        for (auto& r : rows) of << r.dump() << "\n";
+        // v1.61 bug-fix: a row value may contain non-UTF-8 bytes (e.g. a
+        // memory node holding raw PNG/binary content — 0x89 PNG magic).
+        // nlohmann json::dump() throws type_error.316 on invalid UTF-8 and
+        // aborts the whole push. Use error_handler::replace so offending
+        // bytes become U+FFFD and the sync completes (binary content is not
+        // meaningfully diffable anyway; the row is preserved, just sanitised).
+        for (auto& r : rows)
+            of << r.dump(-1, ' ', false,
+                         nlohmann::json::error_handler_t::replace) << "\n";
         of.close();
         return (int)rows.size();
     }
