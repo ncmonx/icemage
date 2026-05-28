@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <filesystem>   // v1.57.1: --recurse tree copy (no MSYS mangling)
 
 namespace icmg::cli {
 
@@ -30,6 +31,8 @@ public:
         std::cout <<
             "Usage: icmg copy --from <src> [options]\n\n"
             "Options:\n"
+            "  --recurse, -r        Tree-copy a directory (src+dest are dirs)\n"
+            "                       Use instead of robocopy/xcopy (no MSYS flag mangling)\n"
             "  --from <file>        Source file (required)\n"
             "  --lines A-B          Line range to copy (1-indexed, inclusive)\n"
             "  --to <file>          Destination file (default: stdout)\n"
@@ -53,10 +56,50 @@ public:
         std::string ins_s   = flagValue(args, "--insert-at");
         bool append         = hasFlag(args, "--append");
         bool dry_run        = hasFlag(args, "--dry-run");
+        bool recurse        = hasFlag(args, "--recurse") || hasFlag(args, "-r");
 
         if (src.empty()) {
             std::cerr << "icmg copy: --from <file> required\n";
             return 1;
+        }
+
+        // v1.57.1: recursive directory (tree) copy via std::filesystem.
+        // Replaces robocopy / xcopy, which break under git-bash because MSYS
+        // path conversion mangles Windows-style flags (robocopy /E -> E:/).
+        // fs::copy runs in-process — no shell, no arg mangling, cross-platform.
+        if (recurse) {
+            if (dest.empty()) {
+                std::cerr << "icmg copy --recurse: --to <dir> required\n";
+                return 1;
+            }
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            if (!fs::exists(src, ec) || !fs::is_directory(src, ec)) {
+                std::cerr << "icmg copy --recurse: source is not a directory: "
+                          << src << "\n";
+                return 1;
+            }
+            if (dry_run) {
+                int n = 0;
+                for (auto it = fs::recursive_directory_iterator(
+                         src, fs::directory_options::skip_permission_denied, ec);
+                     !ec && it != fs::recursive_directory_iterator(); ++it) ++n;
+                std::cout << "[dry-run] would copy " << n
+                          << " entries from " << src << " -> " << dest << "\n";
+                return 0;
+            }
+            fs::create_directories(dest, ec);
+            fs::copy(src, dest,
+                     fs::copy_options::recursive
+                         | fs::copy_options::overwrite_existing
+                         | fs::copy_options::copy_symlinks,
+                     ec);
+            if (ec) {
+                std::cerr << "icmg copy --recurse: " << ec.message() << "\n";
+                return 1;
+            }
+            std::cout << "icmg copy: tree-copied " << src << " -> " << dest << "\n";
+            return 0;
         }
 
         // Parse --lines A-B
