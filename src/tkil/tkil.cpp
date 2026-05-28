@@ -1,6 +1,7 @@
 #include "tkil.hpp"
 #include "runner.hpp"
 #include "filters/filter_utils.hpp"
+#include "ultra_pipeline.hpp"   // v1.56 T1
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
 #include "../core/posix_compat.hpp"  // v1.41.x MSVC popen/pclose shim
@@ -73,7 +74,7 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
 }
 
 int Tkil::runFiltered(const std::string& command, bool raw, bool json,
-                     bool dry_run, bool stream) {
+                     bool dry_run, bool stream, bool ultra) {
     CmdType type = detector_.detect(command);
 
     // A7: dry-run mode
@@ -184,6 +185,21 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             fr.filtered_lines = (int)splitLines(after).size();
         }
     }
+    // v1.56 T1: Tkil Ultra pipeline (Stages 2-5). Applies when explicit
+    // --ultra flag / env ICMG_TKIL_ULTRA is set OR auto-trigger fires
+    // (output > 5 KB AND duplication-ratio > 0.4). Error/fatal lines
+    // survive every stage via isAlwaysVerbatim allowlist.
+    if (!raw) {
+        bool do_ultra = ultra || icmg::tkil::autoTriggerUltra(fr.output);
+        if (do_ultra) {
+            std::string ultra_out = icmg::tkil::applyUltraPipeline(fr.output, command);
+            if (ultra_out.size() != fr.output.size()) {
+                fr.output = ultra_out;
+                fr.filtered_lines = (int)splitLines(ultra_out).size();
+            }
+        }
+    }
+
 
     // v1.21.1 (S2): turn_cache wiring for idempotent read-only commands.
     // Wired only for `grep`, `rg`, `git status`, `git diff` (no fs side

@@ -92,6 +92,9 @@ public:
         bool dry_run  = hasFlag(args, "--dry-run");
         bool stream   = hasFlag(args, "--stream");
         bool yes      = hasFlag(args, "--yes") || hasFlag(args, "-y");
+        bool ultra    = hasFlag(args, "--ultra");                                // v1.56 T1
+        if (const char* e = std::getenv("ICMG_TKIL_ULTRA"); e && *e && *e != '0')
+            ultra = true;                                                         // env opt-in
 
         // Everything that's not a flag is part of the command.
         // Re-quote args containing whitespace/quotes so parseArgv can recover
@@ -112,7 +115,7 @@ public:
         for (auto& a : args) {
             if (a.empty()) continue;
             if (a[0] == '-' && (a == "--raw" || a == "--json" || a == "--yes" || a == "-y" ||
-                                a == "--dry-run" || a == "--stream")) continue;
+                                a == "--dry-run" || a == "--stream" || a == "--ultra")) continue;
             cmd_args.push_back(a);
             if (!command.empty()) command += " ";
             command += quote_arg(a);
@@ -138,7 +141,7 @@ public:
         core::Db db(cfg.projectDbPath("."));
         tkil::Tkil executor(db);
 
-        return executor.runFiltered(command, raw, json_out, dry_run, stream);
+        return executor.runFiltered(command, raw, json_out, dry_run, stream, ultra);
     }
 };
 

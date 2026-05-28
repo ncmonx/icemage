@@ -22,11 +22,15 @@ public:
     explicit Tkil(core::Db& db);
 
     // A1: argv-safe run + filter + print + record
+    // v1.56 T1: `ultra` chains Stages 2-5 of the Tkil Ultra pipeline on
+    // top of the per-cmd BaseFilter (Stage 1). Auto-trigger fires
+    // regardless of the flag when output > 5 KB AND dup-ratio > 0.4.
     int runFiltered(const std::string& command,
                     bool raw    = false,
                     bool json   = false,
                     bool dry_run = false,   // A7
-                    bool stream = false);   // A2
+                    bool stream = false,    // A2
+                    bool ultra  = false);   // v1.56 T1
 
     // Suggest commands by score (freq × recency)
     std::vector<CmdRecord> suggest(const std::string& prefix = "", int limit = 10);
