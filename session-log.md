@@ -1732,3 +1732,15 @@ Decisions:
 Rejected: atomic rename (Win hook holds file); C++ native patch Phase 2 (defer v1.56+).
 Open: Sub-D D3 (4 TS extractors) next; D7 Leiden; G1 advisor; final ship.
 Files: ~/bin/icmg-patch, .claude/hooks/icmg-persona-inject.sh, docs/superpowers-optimized/specs/2026-05-27-v1.55.0-mega-design.md
+
+## 2026-05-27 19:55 [saved]
+Goal: v1.55.0 SHIPPED; v1.56.0 mega bundle spec'd.
+Decisions:
+- v1.55.0 shipped (sha 1c825e6db02a): G7+F11+D3+D7+G1; docs PR #158 merged.
+- Build cmd: scripts/msvc-build-v155.bat (ICMG_SKIP_RC=1 + vcvars64).
+- Install pattern: VB.NET MoveFile via .ps1 file (cmd /c mangles $true).
+- Headline numbers synced 124 -> 913 (gist + README L22 + repo About).
+- v1.56.0 spec: T1 Tkil Ultra + T2 G3 wrapper + T3 F1 daemon + T4 G2 strict; opt-in; auto >5KB+dup>0.4.
+- PR #155 dependabot CodeQL Catch-22; manual merge only.
+Rejected: atomic os.replace icmg-patch; jargon in README; cross-session glossary persist.
+Open: PR #155 manual merge; v1.56.0 Session 1 next.
