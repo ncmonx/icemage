@@ -142,7 +142,7 @@ if [[ "${ICMG_STRICT_BASH:-0}" = "1" ]]; then
     fi
 fi
 
-PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status|Get-Content|Get-ChildItem|Select-String|Get-Item|Where-Object|ForEach-Object|Get-Process|Measure-Object|Out-String|Format-Table|Invoke-WebRequest|iwr|curl|wget)([[:space:]]|$)'
+PATTERN='^[[:space:]]*(grep|rg|ag|fd|find|ls|cat|head|tail|wc|awk|sed|tree|du|node|deno|bun|ts-node|tsx|python|python3|py|ruby|php|java|perl|lua|cargo build|cargo test|cargo check|npm test|npm run build|yarn build|jest|vitest|pytest|dotnet build|dotnet test|dotnet run|go build|go test|go run|tsc|eslint|ruff|black|prettier|cmake|make|ninja|msbuild|gradle build|mvn|sqlcmd|osql|mysql|mariadb|psql|git log|git diff|git show|git status|Get-Content|Get-ChildItem|Select-String|Get-Item|Where-Object|ForEach-Object|Get-Process|Measure-Object|Out-String|Format-Table|Invoke-WebRequest|iwr|curl|wget)([[:space:]]|$)'
 if [[ "$CMD_MATCH" =~ $PATTERN ]]; then
     # v1.29.0 #5: exempt small-scope native grep/rg. Heuristic:
     # `grep PATTERN file` with NO -r/-R/--recursive flag AND no '*' glob
