@@ -3,6 +3,7 @@
 #include "../core/hook_bus.hpp"
 #include "../core/user_identity.hpp"
 #include "../core/exec_utils.hpp"
+#include <unordered_set>
 #include "../embed/embedder.hpp"
 #include "../embed/embed_store.hpp"
 #include <chrono>
@@ -132,6 +133,40 @@ std::vector<MemoryNode> MemoryStore::findSimilar(const std::string& topic,
         std::string nc = n.topic + " " + n.content;
         if (jaccardSimilarity(combined, nc) >= threshold) {
             result.push_back(n);
+        }
+    }
+
+    // v1.62 F15: optional semantic near-dup pass. Word-set Jaccard misses
+    // cross-phrasing ("fixed X bug" vs "X bug resolved"). When
+    // ICMG_SEMANTIC_DEDUP=1 and an embedder is available, also flag nodes
+    // whose embedding cosine to the query >= 0.95 as duplicates. Opt-in so
+    // the default store() hot path stays embedding-free; Jaccard remains the
+    // primary signal and fallback.
+    if (const char* envsd = std::getenv("ICMG_SEMANTIC_DEDUP");
+        envsd && *envsd && std::string(envsd) != "0") {
+        if (auto* embedder = embed::cachedEmbedder()) {
+            auto qvec = embedder->embed(combined);
+            int dim = embedder->dim();
+            if (!qvec.empty() && !nodes.empty()) {
+                std::vector<int64_t> ids;
+                ids.reserve(nodes.size());
+                for (auto& n : nodes) ids.push_back(n.id);
+                embed::EmbedStore es(db_);
+                auto vecs = es.getMany("memory", ids, dim);
+                std::unordered_map<int64_t, std::vector<float>> byid;
+                for (auto& kv : vecs) byid[kv.first] = kv.second;
+                std::unordered_set<int64_t> seen;
+                for (auto& r : result) seen.insert(r.id);
+                for (auto& n : nodes) {
+                    if (seen.count(n.id)) continue;
+                    auto it = byid.find(n.id);
+                    if (it == byid.end() || it->second.empty()) continue;
+                    if (embed::cosine(qvec, it->second) >= 0.95f) {
+                        result.push_back(n);
+                        seen.insert(n.id);
+                    }
+                }
+            }
         }
     }
     return result;
