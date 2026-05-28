@@ -550,6 +550,8 @@ add_icmg_test(test_filter_utils tests/tkil/test_filter_utils.cpp)
 add_icmg_test(test_filters      tests/tkil/test_filters.cpp)
 add_icmg_test(test_lang_filters tests/tkil/test_lang_filters.cpp)  # v1.21.5
 add_icmg_test(test_dedup_pass   tests/tkil/test_dedup_pass.cpp)
+add_icmg_test(test_db_mmap      tests/core/test_db_mmap.cpp)
+add_icmg_test(test_node_bloom   tests/graph/test_node_bloom.cpp)
 add_icmg_test(test_relax_acl    tests/core/test_relax_acl.cpp)
 add_icmg_test(test_pattern_pass tests/tkil/test_pattern_pass.cpp)
 add_icmg_test(test_outcome      tests/tkil/test_outcome.cpp)
