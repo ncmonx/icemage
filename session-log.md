@@ -1868,3 +1868,13 @@ Decisions:
 Rejected: bundling ICM dual-memory (schema-deep, needs own specs); re-doing already-shipped speed/daemon/dedup items.
 Open: v1.64 quick-wins next (branchless BM25 + AOT stmt-cache). Moonshots M1-M5 + F9 low-urgency.
 Files: icm-graph-upgrade-plan.md (source, read-only), docs/superpowers-optimized/plans/2026-05-29-v1.64-plus-upgrade-execution.md (new)
+
+## 2026-05-29 01:40 [saved]
+Goal: v1.64.0 SHIPPED — perf quick-wins T1 (BM25 hoist) + T3 (SQLite pragmas).
+Decisions:
+- v1.64.0 SHIPPED (release+docs PR #168 MERGED, sha f2f30b4287). ctest 1044/1044.
+- T1 BM25: hoisted loop-invariant doc-len norm + (k1+1) out of per-query-token loop (scorer.cpp bm25). Bit-identical (parity = correctness, scorer 4/4 + full 1044 unchanged). Kept find()+continue skip-on-miss (correct+cheap); rejected plan's "branchless select" (iterates misses needlessly).
+- T3 SQLite pragmas: DEFAULT_MEMSTATUS=0, OMIT_DEPRECATED, OMIT_PROGRESS_CALLBACK on sqlite3 static target. Conservative — skipped MEMSYS5 (heap config) + MAX_EXPR_DEPTH=0 (removes safety bound). Full ctest green.
+Rejected: T2 AOT stmt-cache + T4 lazy-init MCP this session (Db-core lifetime + MCP registration refactor = higher-risk; 47hr/821K-token session -> defer to fresh context).
+Open: v1.64 leftover T2 stmt-cache + T4 lazy-init MCP; then v1.65 security, v1.66 Graphify, v1.67+ ICM dual-memory. Plan: docs/superpowers-optimized/plans/2026-05-29-v1.64-plus-upgrade-execution.md.
+Files: src/imem/scorer.cpp, CMakeLists.txt
