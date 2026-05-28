@@ -26,6 +26,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/global_db.hpp"
+#include "../../core/persona_db.hpp"   // v1.57 S2: exe-dir persona DB
 #include "../../core/user_identity.hpp"
 #include "../../core/result.hpp"  // v1.41.0 std::expected adoption
 
@@ -162,44 +163,33 @@ public:
 
 private:
     // v1.41.0 std::expected adoption — Result<int> = rows-affected on success.
-    static core::Result<int> upsertPersona(core::GlobalDb& gdb,
+    static core::Result<int> upsertPersona(core::GlobalDb& /*gdb*/,
                                            const std::string& user,
                                            const std::string& persona,
                                            const std::string& traits) {
-        try {
-            gdb.db().run("INSERT INTO user_personas(user_id,persona,traits,updated_at) "
-                    "VALUES(?,?,?,strftime('%s','now')) "
-                    "ON CONFLICT(user_id) DO UPDATE SET "
-                    "  persona=excluded.persona, "
-                    "  traits=excluded.traits, "
-                    "  updated_at=excluded.updated_at",
-                    {user, persona, traits});
-            return 1;
-        } catch (const std::exception& e) {
-            return core::err(2, e.what());
-        }
+        // v1.57 S2: write to exe-dir persona DB (falls back to global DB
+        // inside writePersona when exe dir is not writable).
+        if (core::writePersona(user, persona, traits)) return 1;
+        return core::err(2, "persona write failed (exe-dir + global both)");
     }
 
     static core::Result<std::pair<std::string, std::string>>
-    fetchPersona(core::GlobalDb& gdb, const std::string& user) {
+    fetchPersona(core::GlobalDb& /*gdb*/, const std::string& user) {
         std::pair<std::string, std::string> out;
-        try {
-            gdb.db().query("SELECT persona, traits FROM user_personas WHERE user_id=?",
-                      {user},
-                      [&](const core::Row& r) {
-                          if (r.size() >= 2) {
-                              out.first  = r[0];
-                              out.second = r[1];
-                          }
-                      });
-            return out;
-        } catch (const std::exception& e) {
-            return core::err(2, e.what());
-        }
+        // readPersona tries exe-dir first, then legacy global DB.
+        core::readPersona(user, out.first, out.second);
+        return out;
     }
 
     static core::Result<int> clearPersona(core::GlobalDb& gdb,
                                            const std::string& user) {
+        // Delete from BOTH stores so a clear is total regardless of where
+        // the row lived (exe-dir for v1.57+, global for legacy).
+        try {
+            if (core::personaDbAvailable())
+                core::personaDb().run(
+                    "DELETE FROM user_personas WHERE user_id=?", {user});
+        } catch (...) { /* non-fatal */ }
         try {
             gdb.db().run("DELETE FROM user_personas WHERE user_id=?", {user});
             return 1;
