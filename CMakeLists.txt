@@ -107,6 +107,11 @@ target_compile_definitions(sqlite3 PUBLIC
     SQLITE_THREADSAFE=1
     SQLITE_DEFAULT_WAL_SYNCHRONOUS=1
     SQLITE_ENABLE_FTS5=1
+    # v1.64 T3: perf compile flags (cold-start + query). Conservative set;
+    # MEMSYS5 / MAX_EXPR_DEPTH skipped (need extra config / risk).
+    SQLITE_DEFAULT_MEMSTATUS=0
+    SQLITE_OMIT_DEPRECATED
+    SQLITE_OMIT_PROGRESS_CALLBACK
 )
 
 # Third-party: nlohmann/json single header
