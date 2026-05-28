@@ -1855,3 +1855,16 @@ Decisions:
 Rejected: F7 embedding-fuzzy (auto_rule.hpp header-only design + tiny rule corpus = low ROI); F9 fine-tune (moonshot).
 Open: backlog now = Tier-4 moonshots only (M1 LSP, M2 federated, M3 auto-spec, M4 replay-debug, M5 smart-bisect) + F9. All large/low-urgency. No urgent work remaining.
 Files: src/cli/commands/{gist,mine}_cmd.cpp, src/cli/mine_logic.hpp, src/cli/commands/route_cmd.cpp, tests/cli/test_{gist,mine}.cpp
+
+## 2026-05-29 01:10 [saved]
+Goal: Read icm-graph-upgrade-plan.md; derived non-overwriting v1.64+ execution plan.
+Decisions:
+- New plan docs/superpowers-optimized/plans/2026-05-29-v1.64-plus-upgrade-execution.md — maps comprehensive upgrade doc to release chunks WITHOUT touching source or prior specs.
+- Explicit "already shipped" table (v1.55-v1.63): mmap/bloom/txn/daemon/confidence/dedup/router/mine/gist/tkil/diff-context -> do not re-implement.
+- v1.64 C++ quick-wins (branchless BM25 30m, AOT stmt-cache 2-4h, SQLite compile-pragmas 1h, lazy-init MCP 4-8h) — all deterministic-testable, start here.
+- v1.65 security (path-traversal normalize, daemon IPC token auth 0600, secret-scanner FS mode) — negative+positive test each. Encryption-at-rest + rate-limit deferred v1.66+.
+- v1.66 Graphify (icmg viz HTML D3, edge-confidence migration, god-node degree-centrality, GRAPH_REPORT.md).
+- v1.67+ ICM dual-memory/transcript FTS5/typed-relations/decay/TUI — schema-deep, per-feature specs, NOT bundled.
+Rejected: bundling ICM dual-memory (schema-deep, needs own specs); re-doing already-shipped speed/daemon/dedup items.
+Open: v1.64 quick-wins next (branchless BM25 + AOT stmt-cache). Moonshots M1-M5 + F9 low-urgency.
+Files: icm-graph-upgrade-plan.md (source, read-only), docs/superpowers-optimized/plans/2026-05-29-v1.64-plus-upgrade-execution.md (new)
