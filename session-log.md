@@ -1744,3 +1744,114 @@ Decisions:
 - PR #155 dependabot CodeQL Catch-22; manual merge only.
 Rejected: atomic os.replace icmg-patch; jargon in README; cross-session glossary persist.
 Open: PR #155 manual merge; v1.56.0 Session 1 next.
+## 2026-05-28 12:30 [saved]
+Goal: v1.56.0 SHIPPED; v1.57.0 started (S2+S4 done).
+Decisions:
+- v1.56.0 SHIPPED (Tkil Ultra 5-stage + icmg-server daemon + multi-user DB hotfix). Release+docs PR #159 MERGED. sha 661f174d. ~75 new tests.
+- v1.57.0 scope = all 4 (user "semuanya"). S4 Tkil wire-in already done v1.56 (verified --ultra live). S2 persona DB -> exe-dir (src/core/persona_db.{hpp,cpp}, fallback global read).
+- Build cmd: cmd.exe //c scripts\msvc-build-v155.bat (Release config; VS18 generator needs --config Release). Test build: scripts\msvc-build-test.bat (Release).
+- ORT test-harness crash (API 25 vs DLL 1.17.1) blocks full mono ctest embed subset; PRODUCT binary ONNX healthy. Headline kept 913 unverified-bump.
+Rejected: bump headline without clean ctest; daemon auto-connect in marathon session (risky, fresh context).
+Open: S1 daemon hardening (auto-connect gated + pidfile guard for multi-daemon race); S3 ORT test linkage fix + headline bump; then ship v1.57.0.
+Files: src/core/persona_db.{hpp,cpp}, src/core/persona_loader.cpp, src/cli/commands/persona_cmd.cpp, src/tkil/* (Tkil Ultra v1.56), src/server/* (daemon v1.56)
+
+## 2026-05-28 12:50 [saved]
+Goal: v1.57.0 SHIPPED (all 4 sub-features S1-S4).
+Decisions:
+- v1.57.0 SHIPPED (release+docs PR #160 MERGED, sha 1482e1815a01). Full ctest 988/988.
+- S3 ORT fix: headers API 25 vs bundled DLL 1.17.1 -> GetApi(25) null -> crash. Fix = version-walk GetApi(v) down from ORT_API_VERSION until non-null (v17 on DLL). embedder uses only <=API11 fns, ABI-safe. Unblocked full mono ctest 913->988.
+- S2 persona DB: <exe-dir>/icmg-persona.db (core::persona_db helpers readPersona/writePersona/personaDbAvailable), ACL-relaxed, legacy global-DB read fallback. persona_loader+persona_cmd routed.
+- S1 daemon: single-instance guard via pipe-ping (refuse 2nd start); dispatcher fast-path gated ICMG_USE_SERVER=1 (forward to daemon, fallback in-process; skip 'server' cmd + --project). Opt-in = default unchanged.
+- S4 already done v1.56 (verified --ultra live, no code change).
+Rejected: pidfile guard (pipe-ping cleaner, no stale-PID); auto-connect default-on (opt-in safer).
+Open followup v1.58: persona_db unit test (smoke-only now); daemon glossary cross-call via session_id; PR#155 dependabot manual merge.
+Files: src/embed/embedder_onnx.cpp, src/core/persona_db.{hpp,cpp}, src/cli/dispatcher.cpp, src/cli/commands/server_cmd.cpp
+
+## 2026-05-28 13:00 [saved]
+Goal: v1.57.1 SHIPPED (tree-copy); v1.58.0 Speed bundle planned.
+Decisions:
+- v1.57.1 SHIPPED: icmg copy --recurse/-r tree-copy via std::filesystem (in-process, no shell). Fixes git-bash MSYS mangling robocopy /E -> E:/. Release sha 00b8e01831. For other server: use icmg copy -r instead of robocopy.
+- v1.58.0 = Speed bundle "dibungkus jadi 1" (user). Spec+plan committed, branch pushed. F2 mmap (PRAGMA mmap_size db.cpp), F3 bloom negative-lookup (node_bloom), F4 async writes (write_queue, GRAPH-ONLY regenerable, ICMG_ASYNC_WRITES=1), F5 prefetch (cmd_bigram, ICMG_PREFETCH=1), FU1 persona_db unit test, FU2 daemon glossary cross-call (session_id map).
+Rejected: async writes on memory/decisions (durability required — graph-only since regenerable); prefetch default-on (opt-in, 1-in-flight); mmap uncapped (256MB / 2x-file cap vs address-space exhaustion).
+Open: v1.58 Session 1 = bump + F2 + F3. Then F4+F5, FU1+FU2, ship. Followup carryover: PR#155 dependabot manual merge.
+Files: src/cli/commands/copy_cmd.cpp (shipped), docs/superpowers-optimized/{specs,plans}/2026-05-28-v1.58.0-speed*
+
+## 2026-05-28 13:30 [saved]
+Goal: v1.58.0 Speed bundle SHIPPED (all 6 sub-features).
+Decisions:
+- v1.58.0 SHIPPED (release+docs PR #161 MERGED, sha fae0c0f6a6). Full ctest 988->1016. Headline gist+desc+README synced 1016.
+- F2 mmap: ALREADY active (db.cpp PRAGMA mmap_size=256MB); added regression tests only.
+- F3 bloom (node_bloom): double-hash fnv1a+splitmix, k=7, m=next_pow2(10n), <1% FP, no false-neg, conservative until markBuilt(). Primitive tested 6/6.
+- F4 write_queue: bg-thread drain (100ms/depth/flush/dtor), lock-released per job. Graph-only durability contract. 5/5.
+- F5 cmd_bigram: prev->next counts, predictNext + confidence + serialize. 7/7.
+- FU1 persona_db tests 5/5 (closes v1.57 gap). FU2 daemon per-session glossary map (session_id keyed, applied post-capture) 3/3.
+Rejected: hot-path wiring of F3/F4/F5 in v1.58 (getNode bloom gate risks suffix-match; async GraphStore inserts; prefetch tap) -> all DEFERRED v1.59 focused integration pass (primitives tested+shipped, wiring needs careful opt-in plumbing).
+Open: v1.59 = wire F3/F4/F5 into hot paths (opt-in env-gated). PR#155 dependabot manual merge.
+Files: src/core/{write_queue,cmd_bigram}.{hpp,cpp}, src/graph/node_bloom.{hpp,cpp}, src/server/icmg_server.{hpp,cpp}, tests/{core,graph,server}/*
+
+## 2026-05-28 21:55 [saved]
+Goal: v1.59.0 SHIPPED — F3 bloom gate integration (deferred wiring from v1.58).
+Decisions:
+- v1.59.0 SHIPPED (release+docs PR #162 MERGED, sha 0d4bd32361). ctest 1016->1022. Headline synced 1022.
+- F3 getNode bloom gate: lazy ensureBloomSeeded (every path+basename, markBuilt), gate returns nullopt zero-SQL when all path-variants+basename bloom-absent. No false-neg (any matchable node has path+basename seeded). Incremental add on upsertNode; removeNode leaves harmless stale bits. Opt-out ICMG_NO_GRAPH_BLOOM=1.
+- Soundness fix REQUIRED for gate: getNode suffix `%base` (over-broad, matched xbar.cpp for bar.cpp) -> path-component `%/base|%\base|=base` mirroring findByBasename. Also latent-bug fix.
+Rejected: F4 async GraphStore inserts wiring (read-after-write vs bloom+cache consistency hazard; async insert + bloom says maybe-present + SQL miss = wrong nullopt); F5 prefetch bg-spawn (loop/waste risk). Both DEFERRED v1.60 dedicated design. Shipping F3 solo = clean measurable win.
+Open: v1.60 = F4+F5 hot-path wiring with consistency/bg-spawn design. PR#155 dependabot manual merge.
+Files: src/graph/graph_store.{hpp,cpp}, tests/graph/test_getnode_bloom.cpp
+
+## 2026-05-28 22:15 [saved]
+Goal: v1.60.0 SHIPPED — F4 transaction batching; v1.58 speed backlog fully resolved.
+Decisions:
+- v1.60.0 SHIPPED (release+docs PR #163 MERGED, sha abcd82d5e4). ctest 1022/1022.
+- F4 REFRAMED: async write-queue (v1.58 plan) -> SQLite transaction batching. Root cost = autocommit fsync-per-INSERT. TxnGuard RAII (file-local, BEGIN ctor/COMMIT scope-exit) wraps 3 bulk edge passes (resolveAndInsertEdges, buildXRefEdges, resolveEdges). 3-5x graph update, synchronous, zero read-after-write hazard. Verified via existing 14 edge tests (semantics unchanged).
+- F5 prefetch DROPPED: 30-50% wall-clock benefit needs warm daemon to hold context; standalone bg-spawn icmg pack = speculative hit-rate + spawn-loop risk. Not worth padding a release. cmd_bigram primitive stays for future daemon-integrated prefetch.
+Rejected: async write-queue wiring (transactions correct tool); F5 bg-spawn (loop risk); shipping speculative feature for release padding.
+Open: v1.58 speed backlog DONE (F2 verified/F3 v1.59/F4 v1.60/F5 dropped). Next backlog tier = T2 Intelligence (F6 LLM router, F7 embedding-fuzzy, F8 pattern-mine, F9 fine-tune, F10 confidence) or T3 Token (F12 gist, F14 diff-context, F15 semantic-dedup). PR#155 dependabot manual merge.
+Files: src/graph/graph_store.cpp (TxnGuard)
+
+## 2026-05-28 22:40 [saved]
+Goal: v1.61.0 T2+T3 mega started (spec + F10). Checkpoint at 44h session.
+Decisions:
+- v1.61.0 = Tier2 Intelligence + Tier3 Token bundle (user "lanjut t2 dan t3 bersamaan"). Spec committed. F11/F13 already shipped earlier (v1.55/56); F9 fine-tune moonshot deferred.
+- F10 confidence-band SHIPPED to branch: central bands Low<0.40<Medium<0.75<High in router.hpp (confidenceBand/isLowConfidence/confidenceBandName, header-only inline). 4 tests. F6 will use isLowConfidence to escalate ambiguous routes to LLM.
+- F15 finding: imem dedup is JACCARD word-set (memory_store.cpp:99/findSimilar 0.85), NOT FNV byte-exact (spec was wrong). embed::cosine already wired for recall (L504). F15 = swap findSimilar to cosine when ONNX avail, Jaccard fallback, threshold >=0.95.
+- CORE PRINCIPLE locked: no LLM/embedding path becomes default hot path; all opt-in or low-confidence-gated; regex/Jaccard/token-overlap fallbacks stay.
+Rejected: grinding all 7 features in one 44h session (quality risk on output-affecting intelligence features — need challenge/verify gauntlet + fresh context).
+Open: v1.61 remaining F15/F7/F6/F8/F12/F14 next session. Then ship. PR#155 dependabot.
+Files: src/cli/router.hpp, tests/cli/test_confidence.cpp, spec doc
+
+## 2026-05-28 23:10 [saved]
+Goal: v1.61.0 SHIPPED — 2 field crash fixes + F10 confidence (cut T2/T3 mega early for urgent fixes).
+Decisions:
+- v1.61.0 SHIPPED (release+docs PR #164 MERGED, sha 0bd00a4104). ctest 1031/1031. Headline synced.
+- Bug 1 (context --lines/--max-bytes crash "module could not be found"): root = capOutput over-cap spill path; std::filesystem::temp_directory_path() throws filesystem_error whose Win32 msg for err 126 = "specified module could not be found" on broken temp-dir host; uncaught -> terminate. Plain output stayed under 4096 cap -> early return, no spill, no crash. Fix: error_code overload + try/catch -> in-memory truncation fallback. output_cap.hpp.
+- Bug 2 (sync push type_error.316 invalid UTF-8 0x89): memory/graph row held raw binary (PNG magic); nlohmann json::dump rejects non-UTF-8 -> aborts push. Fix: dump(-1,' ',false,error_handler_t::replace) -> U+FFFD sanitise. sync_cmd.cpp:236.
+- F10 confidence-band (router.hpp inline: Low<0.40<Medium<0.75<High) shipped too.
+- CUT v1.61 EARLY: was T2+T3 mega; shipped F10+2 fixes to deliver crash fixes fast. T2/T3 remainder -> v1.62 (spec reused).
+Rejected: separate v1.60.1 patch (fixes already on v1.61 branch; cutting v1.61 early simpler); holding crash fixes for full mega.
+Open: v1.62 = F15/F7/F6/F8/F12/F14 (spec exists). PR#155 dependabot.
+Files: src/core/output_cap.hpp, src/cli/commands/sync_cmd.cpp, src/cli/router.hpp, tests/core/test_bugfix_v161.cpp, tests/cli/test_confidence.cpp
+
+## 2026-05-29 00:10 [saved]
+Goal: v1.62.0 SHIPPED (F15 semantic dedup) + PR #155 dependabot catch-22 resolved.
+Decisions:
+- v1.62.0 SHIPPED (release+docs PR #166 MERGED, sha 86c9fdcd47). ctest 1034/1034.
+- F15 semantic-dedup: findSimilar adds embedding-cosine pass (>=0.95) when ICMG_SEMANTIC_DEDUP=1 + embedder avail; Jaccard stays default+fallback. memory_store.cpp. Tested via public store() dedup path (findSimilar private) w/ ICMG_DEDUP_SILENT. 3 tests.
+- F14 differential-context ALREADY DONE: pack --diff persists .icmg/last-pack.txt, auto-diffs next call, 60-90% cut, 6 existing tests. No new work.
+- F7 embedding-fuzzy SKIPPED: auto_rule.hpp header-only by design (embed:: dep breaks header-only testability) + rule corpus tiny so token-overlap suffices. Low ROI.
+- PR #155 RESOLVED: dependabot codeql-action bump can't self-merge (PR bumping codeql-action skips required CodeQL check = unsatisfiable branch protection). Fix pattern: apply identical SHA bump via NORMAL branch (PR #165) where CodeQL runs -> merge -> dependabot PR auto-closes via "Closes #155".
+Rejected: padding v1.62 with awkward F7; grinding LLM features (F6/F8/F12) at hour 45.
+Open: v1.63 = T2 Intelligence LLM-heavy (F6 router, F8 mine, F12 gist) — fresh context + verify gauntlet. F9 fine-tune moonshot deferred. Spec reused.
+Files: src/imem/memory_store.cpp, tests/imem/test_semantic_dedup.cpp, .github/workflows/{codeql,scorecard}.yml
+
+## 2026-05-29 00:40 [saved]
+Goal: v1.63.0 SHIPPED — Tier-2 Intelligence (gist/mine/router). T2+T3 backlog essentially done.
+Decisions:
+- v1.63.0 SHIPPED (release+docs PR #167 MERGED, sha 122fa725cd). ctest 1044/1044.
+- F12 icmg gist: LLM/heuristic file TL;DR, cached .icmg/gist-cache/<fnv>.txt, always tagged summary. gist_cmd.cpp. LLM-command pattern: warmAvailable->tryWarmInfer else WarmPool::acquire->infer, ChatML-wrapped, guarded ICMG_USE_LLAMA, deterministic heuristic fallback.
+- F8 icmg mine: recurring memory -> candidate rule SUGGESTIONS (never applies). Pure logic (topicPrefix+heuristicMine) in mine_logic.hpp for testability. LLM proposal or freq-heuristic (prefix recurring>=2, cap 5).
+- F6 router: confidence band (low/med/high) in classify output + ICMG_LLM_ROUTER=1 low-conf LLM adjudication (parseLlmRoute first-keyword-wins); regex sub-ms default unchanged.
+- PATTERN for LLM features: opt-in/low-conf-gated, deterministic fallback, test the deterministic parts + extract pure logic to header, LLM output smoke-only (non-deterministic).
+Rejected: F7 embedding-fuzzy (auto_rule.hpp header-only design + tiny rule corpus = low ROI); F9 fine-tune (moonshot).
+Open: backlog now = Tier-4 moonshots only (M1 LSP, M2 federated, M3 auto-spec, M4 replay-debug, M5 smart-bisect) + F9. All large/low-urgency. No urgent work remaining.
+Files: src/cli/commands/{gist,mine}_cmd.cpp, src/cli/mine_logic.hpp, src/cli/commands/route_cmd.cpp, tests/cli/test_{gist,mine}.cpp
