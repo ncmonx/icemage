@@ -71,14 +71,22 @@ double Scorer::bm25(const std::string& query, const MemoryNode& node) const {
     std::unordered_map<std::string, int> tf_map;
     for (auto& t : d_tokens) tf_map[t]++;
 
+    // v1.64 T1: hoist loop-invariants out of the per-query-token loop.
+    // The doc-length normalization term and (k1+1) do not depend on the
+    // query token, so compute them once instead of every iteration.
+    // Result is bit-identical to the prior form (same operations, fewer
+    // times) — verified by parity test.
+    const double len_norm = k1_ * (1.0 - b_ + b_ * (avgdl_ > 0 ? dl / avgdl_ : 1.0));
+    const double k1p1     = k1_ + 1.0;
+
     double score = 0.0;
     for (auto& qt : q_tokens) {
         auto it = tf_map.find(qt);
         if (it == tf_map.end()) continue;
         double tf = static_cast<double>(it->second);
         double idf_val = idf(qt);
-        double denom = tf + k1_ * (1.0 - b_ + b_ * (avgdl_ > 0 ? dl / avgdl_ : 1.0));
-        score += idf_val * (tf * (k1_ + 1.0)) / denom;
+        double denom = tf + len_norm;
+        score += idf_val * (tf * k1p1) / denom;
     }
     return score;
 }
