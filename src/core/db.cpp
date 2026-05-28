@@ -296,8 +296,10 @@ void ensureProjectDb(const std::string& db_path) {
     fs::path p(db_path);
     fs::path dir = p.parent_path();
 
+    bool dir_created = false;
     if (!fs::exists(dir)) {
         fs::create_directories(dir);
+        dir_created = true;
 #ifndef _WIN32
         chmod(dir.string().c_str(), 0700);
 #endif
@@ -306,6 +308,15 @@ void ensureProjectDb(const std::string& db_path) {
     Db db(db_path);
     Migrator migrator;
     migrator.runAll(db);
+
+    // v1.56 hotfix: relax Win ACL on the .icmg directory AND the DB file so
+    // BUILTIN\Users + SYSTEM gain full control. Without this, a DB created
+    // by Win user A is invisible to user B (or to a SYSTEM service spawned
+    // by a scheduled task), and mirror-a/mirror-b backups inherit the same
+    // tight DACL — causing "must have Read permissions" failures across
+    // multi-user / service contexts. No-op on Linux/macOS.
+    if (dir_created) (void)relaxAclEveryone(dir.string());
+    (void)relaxAclEveryone(db_path);
 }
 
 } // namespace icmg::core

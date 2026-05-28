@@ -9,6 +9,9 @@
 #  define NOMINMAX
 #  include <windows.h>
 #  include <shlobj.h>
+#  include <aclapi.h>     // SetEntriesInAclA, SetNamedSecurityInfoA
+#  include <sddl.h>       // ConvertStringSidToSidA
+#  pragma comment(lib, "advapi32.lib")
 #elif defined(__APPLE__)
 #  include <mach-o/dyld.h>
 #endif
@@ -99,6 +102,71 @@ std::string selfExePath() {
     } catch (...) {
         return {};
     }
+#endif
+}
+
+// v1.56 hotfix: persona DB at icmg.exe directory (shared across Win users
+// on same host). Falls back to empty string when selfExePath fails — callers
+// use globalDbPath() in that case.
+std::string personaDbPath() {
+    std::string exe = selfExePath();
+    if (exe.empty()) return {};
+    fs::path exe_dir = fs::path(exe).parent_path();
+    return (exe_dir / "icmg-persona.db").string();
+}
+
+// v1.56 hotfix: relax Win ACL — grant BUILTIN\Users + SYSTEM full control on
+// the target path. This makes shared icmg installs work across Win users
+// and SYSTEM service launches. Idempotent: re-running adds the same ACEs
+// without effect. No-op on non-Win.
+bool relaxAclEveryone(const std::string& path) {
+#ifndef _WIN32
+    (void)path;
+    return true;   // POSIX bits handled elsewhere via chmod
+#else
+    if (path.empty()) return false;
+
+    // Build a DACL with two access-allowed ACEs:
+    //   1. BUILTIN\Users  (S-1-5-32-545) → GENERIC_ALL
+    //   2. NT AUTHORITY\SYSTEM (S-1-5-18) → GENERIC_ALL
+    PSID users_sid = nullptr;
+    PSID system_sid = nullptr;
+    if (!ConvertStringSidToSidA("S-1-5-32-545", &users_sid)) return false;
+    if (!ConvertStringSidToSidA("S-1-5-18", &system_sid)) {
+        LocalFree(users_sid);
+        return false;
+    }
+
+    EXPLICIT_ACCESSA ea[2] = {};
+    ea[0].grfAccessPermissions = GENERIC_ALL;
+    ea[0].grfAccessMode        = SET_ACCESS;
+    ea[0].grfInheritance       = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[0].Trustee.TrusteeForm  = TRUSTEE_IS_SID;
+    ea[0].Trustee.TrusteeType  = TRUSTEE_IS_WELL_KNOWN_GROUP;
+    ea[0].Trustee.ptstrName    = (LPSTR)users_sid;
+
+    ea[1].grfAccessPermissions = GENERIC_ALL;
+    ea[1].grfAccessMode        = SET_ACCESS;
+    ea[1].grfInheritance       = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[1].Trustee.TrusteeForm  = TRUSTEE_IS_SID;
+    ea[1].Trustee.TrusteeType  = TRUSTEE_IS_USER;
+    ea[1].Trustee.ptstrName    = (LPSTR)system_sid;
+
+    PACL pNewDacl = nullptr;
+    DWORD rc_acl = SetEntriesInAclA(2, ea, nullptr, &pNewDacl);
+    bool ok = false;
+    if (rc_acl == ERROR_SUCCESS && pNewDacl) {
+        DWORD rc_set = SetNamedSecurityInfoA(
+            const_cast<LPSTR>(path.c_str()),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            nullptr, nullptr, pNewDacl, nullptr);
+        ok = (rc_set == ERROR_SUCCESS);
+    }
+    if (pNewDacl) LocalFree(pNewDacl);
+    LocalFree(users_sid);
+    LocalFree(system_sid);
+    return ok;
 #endif
 }
 

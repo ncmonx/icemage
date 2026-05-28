@@ -27,4 +27,18 @@ std::string icmgGlobalDir();
 // macOS: _NSGetExecutablePath + canonical. Returns "" on failure.
 std::string selfExePath();
 
+// v1.56 hotfix: persona DB lives at icmg.exe directory, NOT per-user APPDATA.
+// Rationale: one icmg install → one persona shared across all Win users on
+// that host. Previous APPDATA placement made persona invisible to other
+// users / SYSTEM service runs. Returns <exe-dir>/icmg-persona.db on success,
+// empty on selfExePath failure (caller falls back to globalDbPath).
+std::string personaDbPath();
+
+// v1.56 hotfix: relax Win ACL on a file or directory so BUILTIN\Users + SYSTEM
+// gain full control. Called after every new DB or mirror creation so other
+// Win users / SYSTEM service launches can read the same data. No-op on
+// Linux/macOS. Returns true on success or non-Win platforms; false if the
+// Win API call failed (caller may warn but should not abort).
+bool relaxAclEveryone(const std::string& path);
+
 } // namespace icmg::core

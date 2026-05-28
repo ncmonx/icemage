@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -245,30 +246,71 @@ int main(int argc, char* argv[]) {
             db_path = cfg.projectDbPath(".");
             icmg::core::ensureProjectDb(db_path);
         } catch (const std::exception& e) {
-            // v1.47.0: CWD unwritable (e.g. C:\Windows\System32). Fall back to
-            // an orphan DB co-located with the icmg.exe binary so the
-            // "internal memory" stays at one fixed location regardless of
-            // where the user invokes icmg from.
-            bool orphan_ok = false;
-            std::string exe = icmg::core::selfExePath();
-            if (!exe.empty()) {
-                fs::path exe_dir = fs::path(exe).parent_path();
-                fs::path orphan = exe_dir / "icmg-orphan.db";
+            // v1.56 HOTFIX (was v1.47.0): orphan-DB fallback was a misdiagnosis
+            // magnet. Old logic: ANY ensureProjectDb failure → orphan, with
+            // the error hidden as "cwd unwritable". Real causes encountered:
+            //   - locked DB (another icmg running on same project)
+            //   - sqlite UTF-8 path encoding bug on Unicode CWDs
+            //   - schema/migration error (older binary, newer DB)
+            //   - antivirus quarantine on data.db
+            // Result: user lands on an EMPTY orphan and project memory looks
+            // wiped. v1.56 hardens with 3 guards:
+            //   (1) ALWAYS print the original e.what() — no silent masking.
+            //   (2) If project DB already exists in cwd → refuse orphan;
+            //       force the real error to surface.
+            //   (3) Probe-test cwd writability with a throwaway file. Only
+            //       trigger orphan when the probe ALSO fails.
+            std::cerr << "icmg: db init error: " << e.what()
+                      << "\n  -> path: " << db_path << "\n";
+
+            // (2) Project DB exists → orphan would replace real data. Bail.
+            bool project_db_exists = false;
+            try { project_db_exists = fs::exists(fs::path(db_path)); } catch (...) {}
+            if (project_db_exists) {
+                std::cerr << "icmg: project DB already exists in cwd — "
+                             "refusing to fall back to orphan DB. Fix the "
+                             "error above (other icmg process? migration? "
+                             "file lock? AV?) then retry.\n";
+                db_path.clear();   // non-DB commands still work
+            } else {
+                // (3) Probe cwd writability with a real touch.
+                bool cwd_writable = false;
                 try {
-                    icmg::core::ensureProjectDb(orphan.string());
-                    db_path = orphan.string();
-                    // Make downstream cfg.projectDbPath(".") callers see the
-                    // orphan path too, so chat/recall/etc. open the same DB
-                    // instead of re-trying the unwritable CWD.
-                    cfg.setProjectDbOverride(db_path);
-                    std::cerr << "icmg: cwd unwritable; using orphan DB at "
-                              << db_path << "\n";
-                    orphan_ok = true;
+                    fs::path probe = fs::path(".") / ".icmg-probe.tmp";
+                    { std::ofstream of(probe.string()); of << "x"; }
+                    if (fs::exists(probe)) {
+                        cwd_writable = true;
+                        std::error_code ec;
+                        fs::remove(probe, ec);
+                    }
                 } catch (...) {}
-            }
-            if (!orphan_ok) {
-                std::cerr << "icmg: db init warning: " << e.what()
-                          << " (non-DB commands still work)\n";
+
+                if (cwd_writable) {
+                    std::cerr << "icmg: cwd IS writable — refusing to fall "
+                                 "back to orphan DB. The error above is NOT "
+                                 "a permission issue (likely sqlite encoding, "
+                                 "schema, or lock). Fix and retry.\n";
+                    db_path.clear();
+                } else {
+                    bool orphan_ok = false;
+                    std::string exe = icmg::core::selfExePath();
+                    if (!exe.empty()) {
+                        fs::path exe_dir = fs::path(exe).parent_path();
+                        fs::path orphan = exe_dir / "icmg-orphan.db";
+                        try {
+                            icmg::core::ensureProjectDb(orphan.string());
+                            db_path = orphan.string();
+                            cfg.setProjectDbOverride(db_path);
+                            std::cerr << "icmg: cwd unwritable (probe failed); "
+                                         "using orphan DB at " << db_path << "\n";
+                            orphan_ok = true;
+                        } catch (...) {}
+                    }
+                    if (!orphan_ok) {
+                        std::cerr << "icmg: orphan fallback also failed "
+                                     "(non-DB commands still work)\n";
+                    }
+                }
             }
         }
     } else {

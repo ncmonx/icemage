@@ -27,6 +27,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/path_utils.hpp"   // v1.56 hotfix: relaxAclEveryone on new mirrors
 #include "../../core/audit_log.hpp"
 #include "../../core/repair_counter.hpp"
 #include "../../core/schedule_helper.hpp"
@@ -123,6 +124,13 @@ private:
         sqlite3_close(ddb);
         sqlite3_close(sdb);
         if (rc != SQLITE_DONE) { err = "backup_step rc=" + std::to_string(rc); return false; }
+
+        // v1.56 hotfix: relax Win ACL on the new mirror file so other Win
+        // users + SYSTEM service can read it. Previous behaviour inherited
+        // the per-user DACL of the .icmg folder → mirror-a/mirror-b became
+        // unreadable to anyone other than the creator. Failure of the ACL
+        // call is non-fatal (mirror still produced; only access is tight).
+        (void)icmg::core::relaxAclEveryone(dst.string());
         return true;
     }
 
