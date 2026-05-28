@@ -13,7 +13,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -32,7 +34,8 @@ public:
             "Actions:\n"
             "  on        Enable strict mode globally (writes ~/.icmg/strict.flag)\n"
             "  off       Disable (removes flag)\n"
-            "  status    Show current state + check active hooks in CWD\n\n"
+            "  status    Show current state + check active hooks in CWD\n"
+            "  report    Show recent native-tool denials (~/.icmg/strict-denials.jsonl)\n\n"
             "When ON, `icmg init` and `icmg update --apply` auto-install\n"
             "PreToolUse:Read hook in HARD-DENY mode for non-source files >20KB.\n"
             "Claude is forced to use `icmg context <file>` instead of raw Read.\n"
@@ -78,6 +81,62 @@ public:
                 std::cout << "  project hooks: (no .claude/settings.local.json — run `icmg init`)\n";
             }
             if (!on) std::cout << "  Enable with: icmg strict on\n";
+            return 0;
+        }
+        if (action == "report") {
+            // v1.56 T4 (G2): aggregate the strict-denials JSONL written by the
+            // bash-rewrite / bash-strict hooks. Each line is a small JSON
+            // object {"ts":...,"hook":...,"cmd":...,"reason":...}. We do a
+            // cheap field-extract (no full JSON parse) and tally by hook.
+            fs::path log = flagPath().parent_path() / "strict-denials.jsonl";
+            if (!fs::exists(log)) {
+                std::cout << "icmg strict report: no denials logged yet ("
+                          << log.string() << " absent)\n";
+                return 0;
+            }
+            std::ifstream lf(log);
+            std::string line;
+            int total = 0;
+            std::map<std::string, int> by_hook;
+            std::vector<std::string> recent;  // keep last 10 cmd snippets
+            auto field = [](const std::string& s, const std::string& key) -> std::string {
+                std::string pat = "\"" + key + "\":\"";
+                auto p = s.find(pat);
+                if (p == std::string::npos) return {};
+                p += pat.size();
+                auto e = s.find('"', p);
+                while (e != std::string::npos && s[e - 1] == '\\')
+                    e = s.find('"', e + 1);
+                if (e == std::string::npos) return {};
+                return s.substr(p, e - p);
+            };
+            while (std::getline(lf, line)) {
+                if (line.empty()) continue;
+                ++total;
+                std::string hook = field(line, "hook");
+                if (hook.empty()) hook = "(unknown)";
+                ++by_hook[hook];
+                std::string cmd = field(line, "cmd");
+                if (!cmd.empty()) {
+                    if (recent.size() >= 10) recent.erase(recent.begin());
+                    recent.push_back(cmd);
+                }
+            }
+            std::cout << "icmg strict report — " << total
+                      << " native-tool denial(s) logged\n"
+                      << "  log: " << log.string() << "\n\n"
+                      << "By hook:\n";
+            for (const auto& [h, n] : by_hook)
+                std::cout << "  " << h << ": " << n << "\n";
+            if (!recent.empty()) {
+                std::cout << "\nMost recent (up to 10):\n";
+                for (const auto& c : recent) {
+                    std::string snip = c.size() > 80 ? c.substr(0, 77) + "..." : c;
+                    std::cout << "  - " << snip << "\n";
+                }
+            }
+            std::cout << "\nTip: each denial = a native call that had an icmg "
+                         "equivalent. RAW=1 prefix bypasses when truly needed.\n";
             return 0;
         }
         usage();
