@@ -5,6 +5,10 @@
 #include "../core/config.hpp"
 #include "../core/global_db.hpp"
 #include "../core/project_context.hpp"
+#include "../server/rpc_protocol.hpp"   // v1.57 S1: daemon fast-path
+#include "../llm/warm_pipe.hpp"         // v1.57 S1: PipeClient
+#include <chrono>
+#include <cstdlib>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -261,6 +265,36 @@ int Dispatcher::run(const std::vector<std::string>& args) {
     std::string cmd = cleaned.empty() ? "" : cleaned[0];
     if (cmd.empty()) { printHelp(); return 0; }
     std::vector<std::string> rest(cleaned.begin() + 1, cleaned.end());
+
+    // v1.57 S1: optional daemon fast-path. When ICMG_USE_SERVER=1 and a
+    // daemon answers, forward the command over the pipe so per-call
+    // cold-start (~30 ms: Config load + DB open) is skipped. Falls through
+    // to in-process dispatch on any failure. 'server' is never forwarded
+    // (it controls the daemon); --project is not forwarded (daemon holds
+    // its own cwd context).
+    if (cmd != "server" && project_flag.empty()) {
+        if (const char* e = std::getenv("ICMG_USE_SERVER"); e && *e && *e != '0') {
+            auto client = icmg::llm::PipeClient::connect(
+                "icmg-server", std::chrono::milliseconds(300));
+            if (client.has_value()) {
+                icmg::server::RpcRequest req;
+                req.cmd  = cmd;
+                req.args = rest;
+                if (const char* sid = std::getenv("CLAUDE_SESSION_ID"); sid && *sid)
+                    req.session_id = sid;
+                std::string resp =
+                    client->sendRequest(icmg::server::serializeRequest(req));
+                if (!resp.empty()) {
+                    auto parsed = icmg::server::parseResponse(resp);
+                    if (parsed.has_value() && parsed->ok) {
+                        std::cout << parsed->out;
+                        return parsed->exit_code;
+                    }
+                }
+                // fall through to in-process dispatch on any failure
+            }
+        }
+    }
 
     // v1.20.0 (bugfix): RAII guard — clear project-DB override on any return path
     // so the singleton Config doesn't leak `--project X` state across CLI

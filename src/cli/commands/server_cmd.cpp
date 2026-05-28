@@ -62,6 +62,19 @@ public:
         const std::string& action = args[0];
 
         if (action == "start") {
+            // v1.57 S1: single-instance guard via pipe-ping. If a daemon is
+            // already answering on the pipe, refuse to start a second one
+            // (two servers on the same pipe name race + drop connections).
+            {
+                icmg::server::RpcRequest ping;
+                ping.cmd = "ping";
+                auto up = roundTrip(ping, std::chrono::milliseconds(500));
+                if (up.has_value() && up->ok) {
+                    std::cerr << "icmg server: already running — refusing "
+                                 "second instance (use `icmg server stop` first)\n";
+                    return 1;
+                }
+            }
             std::cerr << "icmg server: starting (pipe \\\\.\\pipe\\" << kPipeName
                       << ") — Ctrl-C or `icmg server stop` to exit\n";
             icmg::server::IcmgServer srv(kPipeName);
