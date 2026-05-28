@@ -696,6 +696,7 @@ add_icmg_test(test_skill_crud          tests/cli/test_skill_crud.cpp)        # v
 add_icmg_test(test_warm_pipe           tests/llm/test_warm_pipe.cpp)          # v1.52.0 TDD
 add_icmg_test(test_warm_loop_integration tests/llm/test_warm_loop_integration.cpp) # v1.52.0 TDD
 add_icmg_test(test_router                tests/cli/test_router.cpp)               # v1.53.0 TDD
+add_icmg_test(test_confidence            tests/cli/test_confidence.cpp)           # v1.61 F10
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
