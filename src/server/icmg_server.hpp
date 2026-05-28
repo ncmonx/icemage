@@ -12,6 +12,7 @@
 
 #include "rpc_protocol.hpp"
 #include <atomic>
+#include <memory>
 #include <string>
 
 namespace icmg::server {
@@ -35,6 +36,8 @@ public:
 private:
     std::string        pipe_name_;
     std::atomic<bool>  stop_{false};
+    struct GlossaryMap;                       // v1.58 FU2: per-session glossary
+    std::unique_ptr<GlossaryMap> glossaries_;
 };
 
 }  // namespace icmg::server

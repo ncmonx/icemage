@@ -4,11 +4,14 @@
 #include "../cli/base_command.hpp"
 #include "../core/registry.hpp"
 #include "../llm/warm_pipe.hpp"
+#include "../tkil/session_glossary.hpp"   // v1.58 FU2: cross-call glossary
 
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace icmg::server {
@@ -33,7 +36,19 @@ struct CoutCapture {
 
 }  // namespace
 
-IcmgServer::IcmgServer(const std::string& pipe_name) : pipe_name_(pipe_name) {}
+// v1.58 FU2: per-session Tkil glossary. Persisting one glossary per
+// session_id across dispatch calls lets recurring phrases collapse to
+// tokens that stay stable for the life of a daemon session (the in-process
+// process-glossary used by `icmg run` is lost when each short-lived icmg
+// process exits — the daemon keeps it warm).
+struct IcmgServer::GlossaryMap {
+    std::mutex mtx;
+    std::unordered_map<std::string, icmg::tkil::SessionGlossary> by_session;
+};
+
+IcmgServer::IcmgServer(const std::string& pipe_name)
+    : pipe_name_(pipe_name),
+      glossaries_(std::make_unique<GlossaryMap>()) {}
 IcmgServer::~IcmgServer() = default;
 
 void IcmgServer::stop() { stop_ = true; }
@@ -93,6 +108,16 @@ RpcResponse IcmgServer::dispatch(const RpcRequest& req) {
     }
     res.ok = true;
     res.exit_code = rc;
+
+    // v1.58 FU2: apply the session's persistent glossary to the captured
+    // output. Recurring lines across calls in the same session collapse to
+    // stable $S<N> tokens (expandable via `icmg expand`). Keyed by
+    // session_id; sessions without an id share the "" bucket.
+    if (glossaries_) {
+        std::lock_guard<std::mutex> g(glossaries_->mtx);
+        auto& gl = glossaries_->by_session[req.session_id];
+        res.out = gl.apply(res.out);
+    }
     return res;
 }
 
