@@ -1,5 +1,6 @@
 #pragma once
 #include "graph_node.hpp"
+#include "node_bloom.hpp"   // v1.59 F3: negative-lookup gate
 #include "../core/db.hpp"
 #include <optional>
 #include <unordered_map>
@@ -140,6 +141,18 @@ private:
     bool cacheEnabled() const;
     std::optional<GraphNode> cacheGetNode(const std::string& path) const;
     void cachePutNode(const std::string& path, const GraphNode& node) const;
+
+    // v1.59 F3: bloom-filter negative-lookup gate for getNode. Seeded lazily
+    // from EVERY node path + basename, so a getNode whose path-variants AND
+    // basename are all bloom-absent can return nullopt without any SQL.
+    // No false negatives: any node getNode could match has both its path and
+    // basename in the filter. removeNode leaves stale bits (harmless — just
+    // forces an SQL miss). Opt-out: ICMG_NO_GRAPH_BLOOM=1.
+    mutable NodeBloom node_bloom_;
+    mutable bool bloom_seeded_ = false;
+    bool bloomEnabled() const;
+    void ensureBloomSeeded() const;
+    void bloomAddPath(const std::string& path) const;  // adds path + basename
 };
 
 } // namespace icmg::graph

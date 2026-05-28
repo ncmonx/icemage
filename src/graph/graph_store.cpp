@@ -157,7 +157,37 @@ int64_t GraphStore::upsertNode(const GraphNode& node) {
     int64_t id = 0;
     db_.query("SELECT id FROM graph_nodes WHERE path=?", {node.path},
               [&](const core::Row& r) { if (!r.empty()) id = std::stoll(r[0]); });
+
+    // v1.59 F3: keep bloom incrementally in sync once seeded (no false neg).
+    if (bloom_seeded_) bloomAddPath(node.path);
     return id;
+}
+
+// v1.59 F3: bloom negative-lookup helpers.
+bool GraphStore::bloomEnabled() const {
+    return std::getenv("ICMG_NO_GRAPH_BLOOM") == nullptr;
+}
+
+void GraphStore::bloomAddPath(const std::string& path) const {
+    node_bloom_.add(path);
+    std::string norm = path;
+    std::replace(norm.begin(), norm.end(), '\\', '/');
+    auto pos = norm.rfind('/');
+    std::string base = (pos != std::string::npos) ? norm.substr(pos + 1) : norm;
+    if (!base.empty() && base != path) node_bloom_.add(base);
+}
+
+void GraphStore::ensureBloomSeeded() const {
+    if (bloom_seeded_) return;
+    // Size for current node count; seed full path + basename of every node.
+    int64_t n = 0;
+    db_.query("SELECT COUNT(*) FROM graph_nodes", {},
+              [&](const core::Row& r) { if (!r.empty()) n = std::stoll(r[0]); });
+    node_bloom_.reset(static_cast<std::size_t>(n > 0 ? n : 1024));
+    db_.query("SELECT path FROM graph_nodes", {},
+              [&](const core::Row& r) { if (!r.empty()) bloomAddPath(r[0]); });
+    node_bloom_.markBuilt();
+    bloom_seeded_ = true;
 }
 
 std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
@@ -165,6 +195,30 @@ std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
     // is the input path verbatim (variants are derived deterministically,
     // so a hit for the original path is sufficient).
     if (auto cached = cacheGetNode(path)) return cached;
+
+    // Extract basename once (used by suffix fallback + bloom gate).
+    std::string norm = path;
+    std::replace(norm.begin(), norm.end(), '\\', '/');
+    auto pos = norm.rfind('/');
+    std::string base = (pos != std::string::npos) ? norm.substr(pos + 1) : norm;
+
+    // v1.59 F3: bloom negative-lookup gate. Filter is seeded from every
+    // node's full path AND basename. getNode matches only via (a) an exact
+    // path variant or (b) the path-component suffix below (stored basename
+    // == query basename). So if NONE of the path variants AND the basename
+    // are in the bloom, no row can match — return nullopt, no SQL.
+    if (bloomEnabled()) {
+        ensureBloomSeeded();
+        if (node_bloom_.built()) {
+            bool any_maybe = (!base.empty() && node_bloom_.maybeContains(base));
+            if (!any_maybe) {
+                for (auto& v : pathVariants(path)) {
+                    if (node_bloom_.maybeContains(v)) { any_maybe = true; break; }
+                }
+            }
+            if (!any_maybe) return std::nullopt;   // definitely absent
+        }
+    }
 
     // Try exact match first, then normalized variants
     for (auto& v : pathVariants(path)) {
@@ -179,18 +233,17 @@ std::optional<GraphNode> GraphStore::getNode(const std::string& path) {
             return result;
         }
     }
-    // Last resort: match by filename suffix
+    // Last resort: match by filename component (path-boundary aware).
+    // v1.59: tightened from over-broad `path LIKE %base` (matched 'xbase'
+    // too) to path-component match (`%/base`, `%\base`, or exact `=base`),
+    // mirroring findByBasename. Makes the bloom gate above sound: a stored
+    // path matches only when its basename equals the query basename.
     std::optional<GraphNode> result;
-    std::string norm = path;
-    std::replace(norm.begin(), norm.end(), '\\', '/');
-    // Extract basename
-    auto pos = norm.rfind('/');
-    std::string base = (pos != std::string::npos) ? norm.substr(pos + 1) : norm;
     if (!base.empty()) {
         db_.query(
             "SELECT id,path,lang,context,symbols,size_bytes,file_hash,updated_at,access_count,zone,parent_id,kind,symbol_name,signature,line_start,line_end,body_hash"
-            " FROM graph_nodes WHERE path LIKE ? OR path LIKE ?",
-            {"%" + base, "%" + base},
+            " FROM graph_nodes WHERE path LIKE ? OR path LIKE ? OR path = ?",
+            {"%/" + base, "%\\" + base, base},
             [&](const core::Row& r) {
                 if (!result) result = rowToNode(r); // take first match
             });
