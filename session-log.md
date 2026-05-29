@@ -1912,11 +1912,10 @@ Files: src/core/migrator.cpp, tests/core/test_migration_idempotent.cpp
 ## 2026-05-29 10:10 [saved]
 Goal: v1.68.0 SHIPPED — security S2 (daemon IPC token auth) + S3 (FS secret scan).
 Decisions:
-- v1.68.0 SHIPPED (release+docs PR #172 auto-merge, sha ec0b64f3d1). ctest 1068/1068 (+8). headline 1060->1068.
-- S2: per-user token ~/.icmg/server.token gates every icmg-server RPC (reject BEFORE dispatch in accept-loop -> ping/shutdown also gated, exit 13). tokenMatches fail-closed (empty expected=false). server_token.{hpp,cpp}, RpcRequest.token, client roundTrip injects.
-- S3: icmg scan [path] --fs/--no-redact/--json; scan_logic.scanTree recursive walk + skip-dirs + binary NUL-sniff + offset->line, reuses scanSecrets 21 detectors; exit 1 on hit (CI gate).
-- CSPRNG = BCryptGenRandom NOT rand_s: precompiled header pulls <stdlib.h> before _CRT_RAND_S define -> rand_s undeclared. PCH defeats per-TU macro tricks; use a self-contained API.
-- BUILD recurring-failure fixed permanently: msvc-build-full.bat now ALWAYS --config Release + builds icmg+icmg_test + saves log + prints error-summary+version every run. Release exe is build-msvc-full\Release\icmg.exe (root is stale leftover). icmg_lib compile-error does NOT fail exe link -> relinks STALE lib -> reports OLD version (this is why 'wrong version' kept recurring). known-issue #12574.
-Rejected: rand_s (PCH-defeated); shipping from build-msvc-full root exe (stale); trusting exit-0 build without grepping log (stale-lib relink masks errors).
-Open: v1.69 = Graphify viz (viz/edge-conf/god-node/report) OR ICM dual-memory; Moonshots M1-M5+F9; deferred encryption-at-rest + MCP rate-limit.
-Files: src/core/server_token.{hpp,cpp}, src/core/scan_logic.{hpp,cpp}, src/cli/commands/scan_cmd.cpp, src/server/{rpc_protocol,icmg_server}.{hpp,cpp}, src/cli/commands/server_cmd.cpp, tests/core/test_{server_auth,scan_tree}.cpp, scripts/msvc-build-full.bat
+- v1.68.0 SHIPPED (PR #172 merged, sha ec0b64f3d1). ctest 1068/1068. headline 1060->1068.
+- S2: ~/.icmg/server.token gates every icmg-server RPC; reject in accept-loop BEFORE dispatch so ping/shutdown gated too. tokenMatches fail-closed.
+- S3: icmg scan walks FS, reuses scanSecrets 21 detectors, skip-dirs+binary-sniff, exit 1 on hit (CI gate).
+- CSPRNG=BCryptGenRandom not rand_s: PCH pulls <stdlib.h> before _CRT_RAND_S -> rand_s undeclared. PCH defeats per-TU macro tricks.
+- Build recurring 'wrong version' ROOT: icmg_lib compile-error does NOT fail exe link -> relinks STALE lib -> reports OLD version. Fixed: msvc-build-full.bat always --config Release, logs+prints error-summary+version each run. Release exe=build-msvc-full/Release/icmg.exe. known-issue #12574.
+Rejected: rand_s (PCH-defeated); shipping root icmg.exe (stale); trusting exit-0 without grepping log.
+Open: v1.69 = Graphify viz OR ICM dual-memory; deferred encryption-at-rest + MCP rate-limit.
