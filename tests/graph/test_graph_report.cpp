@@ -69,6 +69,14 @@ TEST("graph-report: markdown lists god-node paths") {
     ASSERT_CONTAINS(md, "f1.cpp");
 }
 
+TEST("graph-viz: neutralizes </script> in node path (no script breakout)") {
+    std::vector<GraphNode> ns = {node(1, "a</script><img src=x onerror=alert(1)>.cpp")};
+    auto deg = degreeCentrality(ns, {});
+    std::string html = buildVizHtml(ns, {}, deg);
+    ASSERT_NOT_CONTAINS(html, "</script><img");   // raw breakout must not survive
+    ASSERT_CONTAINS(html, "\\u003c");              // escaped form present
+}
+
 TEST("graph-viz: emits self-contained HTML with embedded data") {
     std::vector<GraphNode> ns = {node(1,"a.cpp"), node(2,"b.cpp")};
     std::vector<GraphEdge> es = {edge(1,2,"imports")};

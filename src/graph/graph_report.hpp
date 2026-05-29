@@ -104,6 +104,12 @@ inline std::string jsonEscape(const std::string& s) {
             case '\n': o += "\\n";  break;
             case '\r': o += "\\r";  break;
             case '\t': o += "\\t";  break;
+            // The JSON is embedded inside an HTML <script> block, so neutralize
+            // script-context sequences: a path like "</script>..." must not be
+            // able to close the script element (XSS). Emit as \uXXXX.
+            case '<':  o += "\\u003c"; break;
+            case '>':  o += "\\u003e"; break;
+            case '&':  o += "\\u0026"; break;
             default:   o += c;      break;
         }
     }
