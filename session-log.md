@@ -1937,3 +1937,13 @@ Decisions:
 - BUILD VERIFICATION LESSON: 'stale 1.69' was a PHANTOM — `icmg.exe --version` in cmd ran ~/bin (PATH) not cwd (NoDefaultCurrentDirectoryInExePath set). ALWAYS `.\icmg.exe` to verify fresh Win exe. Wasted ~6 rebuilds. Build was fine from the start.
 Rejected: more rebuilds chasing version (was a run-path bug); ccache/PCH/mixed-tree theories (all dead ends — verification was the real bug).
 Open: v1.71 = Graphify viz OR ICM dual-memory; init_cmd cosmetic 1.69 hook-comment; deferred encryption-at-rest + MCP rate-limit.
+
+## 2026-05-29 12:50 [saved]
+Goal: v1.71.0 SHIPPED — Graphify (graph viz + report) + reopen/diagnose client #174.
+Decisions:
+- v1.71.0 SHIPPED (PR #181, sha 56518b598f). ctest 1090/1090 (+8). headline 1082->1090.
+- Graphify pure-logic header graph_report.hpp (edgeConfidence/degreeCentrality/godNodes/buildReportMd/buildVizHtml). icmg graph viz (D3 HTML) + graph report (Markdown god-nodes). Wired via root graph-<sub> auto-dispatch.
+- XSS: viz embeds node paths in <script>; jsonEscape now escapes < > & -> \u00xx so '</script>' can't break out. Flagged by automated security review, fixed pre-ship.
+- #174 REOPENED (premature close in v1.70). Client repros context --lines crash on 1.70 from MSYS bash; NOT reproducible on my host. err126='specified module could not be found' (Win DLL/module OR temp throw). All fs on that path already use error_code; v1.61 capOutput guard was correct but didn't cover client's case. Added filesystem_error diagnostic to main crash handler (prints code+path) + guarded bug_report temp. Need client diagnostic output to pinpoint.
+Rejected: guessing more fixes without repro (added diagnostic instead); blind try/catch wrapping huge context fn (masks root cause).
+Open: #174 root fix pending client diagnostic. v1.72 Security (encrypt-at-rest+MCP rate-limit), v1.73 ICM dual-memory.
