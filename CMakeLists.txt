@@ -199,7 +199,7 @@ if(ICMG_UNITY_BUILD)
 endif()
 
 if(WIN32)
-    target_link_libraries(icmg_lib PUBLIC ws2_32 shlwapi)
+    target_link_libraries(icmg_lib PUBLIC ws2_32 shlwapi bcrypt crypt32)
     target_compile_definitions(icmg_lib PUBLIC
         _WIN32_WINNT=0x0601 NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
@@ -630,6 +630,7 @@ add_icmg_test(test_graph_edges  tests/graph/test_graph_edges.cpp)
 add_icmg_test(test_graph_report tests/graph/test_graph_report.cpp)        # v1.71 Graphify
 add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.75 #187
 add_icmg_test(test_sqlcipher_spike tests/core/test_sqlcipher_spike.cpp) # v1.76 T1
+add_icmg_test(test_db_key tests/core/test_db_key.cpp) # v1.76 T2-3
 add_icmg_test(test_precompact_output tests/core/test_precompact_output.cpp) # v1.75.1 precompact schema
 add_icmg_test(test_zone_resolver tests/core/test_zone_resolver.cpp)
 add_icmg_test(test_csharp_symbols tests/graph/test_csharp_symbols.cpp)
