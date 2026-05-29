@@ -1928,3 +1928,12 @@ Decisions:
 - UTF-8 abort fix: core::safeDump (error_handler::replace). icmg hook userprompt dump threw type_error.316 on invalid-UTF8 memory -> uncaught -> abort. Same class as v1.61 sync. RULE: never raw json::dump() on DB/memory content -> use core::safeDump. known-issue #12579.
 Rejected: memory-seed mechanism (BM25 match not guaranteed every turn); separate v1.68.1 patch (bundled into v1.69 per user).
 Open: v1.70 = Graphify viz OR ICM dual-memory; deferred encryption-at-rest + MCP rate-limit. Current project needs `icmg init` to get the new hook.
+
+## 2026-05-29 11:45 [saved]
+Goal: v1.70.0 SHIPPED — client issues #176 recall-json UTF-8, #177 llm list JSON, #178 run passthrough.
+Decisions:
+- v1.70.0 SHIPPED (PR #179, sha 62336aa2c1). ctest 1082/1082 (+11). headline 1071->1082. Issues #176/#177/#178 closed; #174/#175 already-fixed-v1.61 closed w/ upgrade advice.
+- Fixes extracted to testable headers: run_args.hpp(parseRunArgs leading-flag-only+--), recall_json.hpp(recallNodesToJson nlohmann+safeDump), llm_list_json.hpp(buildLlmListJson pure JSON+active key).
+- BUILD VERIFICATION LESSON: 'stale 1.69' was a PHANTOM — `icmg.exe --version` in cmd ran ~/bin (PATH) not cwd (NoDefaultCurrentDirectoryInExePath set). ALWAYS `.\icmg.exe` to verify fresh Win exe. Wasted ~6 rebuilds. Build was fine from the start.
+Rejected: more rebuilds chasing version (was a run-path bug); ccache/PCH/mixed-tree theories (all dead ends — verification was the real bug).
+Open: v1.71 = Graphify viz OR ICM dual-memory; init_cmd cosmetic 1.69 hook-comment; deferred encryption-at-rest + MCP rate-limit.
