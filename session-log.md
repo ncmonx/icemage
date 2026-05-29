@@ -1947,3 +1947,12 @@ Decisions:
 - #174 REOPENED (premature close in v1.70). Client repros context --lines crash on 1.70 from MSYS bash; NOT reproducible on my host. err126='specified module could not be found' (Win DLL/module OR temp throw). All fs on that path already use error_code; v1.61 capOutput guard was correct but didn't cover client's case. Added filesystem_error diagnostic to main crash handler (prints code+path) + guarded bug_report temp. Need client diagnostic output to pinpoint.
 Rejected: guessing more fixes without repro (added diagnostic instead); blind try/catch wrapping huge context fn (masks root cause).
 Open: #174 root fix pending client diagnostic. v1.72 Security (encrypt-at-rest+MCP rate-limit), v1.73 ICM dual-memory.
+
+## 2026-05-29 13:05 [saved]
+Goal: v1.72.0 SHIPPED — Security: MCP tool-call rate limiting.
+Decisions:
+- v1.72.0 SHIPPED (PR #182, sha 9176dfda23). ctest 1095/1095 (+5). headline 1090->1095.
+- Token-bucket rate limiter (rate_limiter.hpp, pure, caller-clock testable) gated in BaseMcpTool::call() — the final choke point all MCP tools pass through. Per-tool bucket; ICMG_MCP_RATE_LIMIT calls/min (default 240, 0=off); McpError(-32029) over-limit.
+- TDD WIN: caught sentinel bug (b.last==0.0 vs legit now_sec=0.0 -> re-init every call at t=0). Fixed with explicit bool init. Runtime never hit it (steady_clock != 0) but tests would've masked a real edge. Lesson: never use a valid data value (0.0) as an 'uninitialized' sentinel.
+Rejected: encryption-at-rest this release (DB crypto = bigger, own release v1.73); returning error-json instead of McpError (server already maps McpError->JSON-RPC error).
+Open: #174 awaiting client diagnostic (host-specific, not reproducible). v1.73 encryption-at-rest, then ICM dual-memory.
