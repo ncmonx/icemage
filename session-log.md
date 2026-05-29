@@ -1891,12 +1891,10 @@ Open: v1.66 = S2 daemon IPC token auth + S3 secret-scanner FS mode; then Graphif
 Files: src/core/path_utils.{hpp,cpp}, src/mcp/tools/{ingest,port_apply}_tool.cpp, tests/core/test_path_safety.cpp
 
 ## 2026-05-29 08:30 [saved]
-Goal: v1.66.0 SHIPPED — per-project caveman toggle (user wants icmg as exclusive per-project brain).
+Goal: v1.66.0 SHIPPED — per-project caveman toggle.
 Decisions:
-- v1.66.0 SHIPPED (release+docs PR #170 MERGED, sha 2d4b9b249e). ctest 1057/1057.
-- Per-project caveman: precedence project-off (.icmg/caveman.off) > project-on (.icmg/caveman.flag) > global (~/.icmg/caveman.flag) > default OFF. Pure resolver src/cli/caveman_resolve.hpp (7 tests). caveman_cmd: action defaults PROJECT scope, --global targets ~/.icmg; `off` writes project OFF-marker overriding global ON. Hook CAVEMAN_PROMPT_SH (init_cmd) resolves same precedence. Live smoke: source=global/project/project-off all correct.
-- Confirmed icmg ALREADY = exclusive per-project brain: each project .icmg/<project>.db isolates context/memory/wflog/skill/store/persona/rule; global.db only registry. New project = `icmg init`. v1.66 adds independent caveman per project.
+- Per-project caveman precedence: project-off (.icmg/caveman.off) > project-on (.icmg/caveman.flag) > global (~/.icmg/caveman.flag) > default OFF. Pure resolver caveman_resolve.hpp; cmd defaults project scope, --global = all; hook matches.
+- icmg already exclusive per-project brain (.icmg/<project>.db isolates all); v1.66 adds independent caveman per project.
 Rejected: global-only caveman off (user wanted per-project independence).
-Open HIGH followup: fresh-file-DB migration idempotency warning (0003 total_original_lines + 0026 supersedes_id ADD COLUMN dup on partial db) — surfaced in smoke, all 1057 ctest pass so fresh-FILE + cron-race specific; BLOCKS clean new-project init (user's exact goal). Need IF-NOT-EXISTS migration guard OR migrator skip-applied robustness. v1.67 priority.
-Other open: S2 daemon-auth, S3 secret-scanner-FS, Graphify, ICM dual-memory.
-Files: src/cli/caveman_resolve.hpp, src/cli/commands/caveman_cmd.cpp, src/cli/commands/init_cmd.cpp, tests/cli/test_caveman_resolve.cpp
+Open: HIGH — fresh-file-DB migration idempotency warning (0003/0026 ADD COLUMN dup) blocks clean new-project init; need IF-NOT-EXISTS guard. Also S2 daemon-auth, S3 secret-scanner-FS, Graphify, ICM dual-memory.
+Files: src/cli/caveman_resolve.hpp, src/cli/commands/{caveman_cmd,init_cmd}.cpp, tests/cli/test_caveman_resolve.cpp
