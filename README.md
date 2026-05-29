@@ -19,7 +19,7 @@
 
 A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
 
-**40 MCP tools · 1090/1090 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
+**40 MCP tools · 1095/1095 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
@@ -78,11 +78,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.72.0** - **Security: the MCP server now rate-limits tool calls**. When icmg runs as an MCP server for your AI assistant, a runaway or misbehaving client could previously call tools in a tight loop. Each tool now has a token bucket - a short burst is fine, then calls are capped at a steady rate (default 240/minute, tune with `ICMG_MCP_RATE_LIMIT`, set 0 to turn off). Over-limit calls get a clean error instead of running. Pairs with the per-user daemon token (v1.68) and the path-injection guard (v1.65). Full automated suite passes 1095 of 1095 checks.
 - **v1.71.0** - **See your codebase as a graph**. New `icmg graph viz` renders your project's dependency graph as a self-contained interactive web page (drag, zoom, hover) - bigger dots are files more things depend on, so you can spot the load-bearing hubs at a glance. New `icmg graph report` prints the same insight as a quick Markdown summary (the "god-nodes" that fan out across the code, plus edge counts). Both are instant reads of the existing graph - no rescan. This release also adds diagnostics to help track down a host-specific `icmg context --lines` crash a few users hit. Full automated suite passes 1090 of 1090 checks.
 - **v1.70.0** - **Fixes from user reports: cleaner CLI output and command pass-through**. `icmg run` no longer swallows flags meant for the program you're wrapping - `icmg run ./tool --json` now passes `--json` to the tool, and `icmg run -- ...` forwards everything after `--` verbatim. `icmg llm list` now prints a single clean JSON document (it used to tack on a trailing text line that broke JSON parsers). And `icmg recall --json` always returns valid UTF-8, so tools that re-serialize its output no longer choke on notes that captured stray binary bytes. Full automated suite passes 1082 of 1082 checks.
 - **v1.69.0** - **The icmg-first rule now enforces itself**. Getting an AI assistant to reliably go through icmg (instead of raw file reads or shell) used to mean hand-seeding a rule into memory for every new project and every new teammate. Now `icmg init` installs a small hook that reminds the assistant of the rule on every prompt automatically - the full rule on the first turn, a one-liner after - so a fresh project or a new user just runs `icmg init` and it's handled (opt out with ICMG_NO_ICMG_FIRST=1). This release also fixes a crash where building the assistant's context could abort if a saved note contained non-text bytes. Full automated suite passes 1071 of 1071 checks.
 - **v1.68.0** - **Security: a locked-down daemon and a secret scanner**. The optional background daemon now requires a per-user token before it will accept any command (even shutdown), so no other local program can quietly drive it. And a new "icmg scan" command walks your project and flags hardcoded secrets - API keys, access tokens and the like - showing where each one is (redacted by default) and failing if any are found, so it drops straight into a pre-commit or CI check. Full automated suite passes 1068 of 1068 checks.
-- **v1.67.0** - **Fix: clean new-project setup**. Initializing icmg in a brand-new project could hit a 'duplicate column' error if a background task touched the just-created database at the same moment. The database setup now locks and re-checks before applying each step, so concurrent access is safe and a new project initializes cleanly. Full automated suite passes 1060 of 1060 checks.
 
 ## 🚀 Quick start
 
