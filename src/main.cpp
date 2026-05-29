@@ -369,6 +369,15 @@ int main(int argc, char* argv[]) {
             icmg::cli::Dispatcher d2;
             d2.run(cap);
         } catch (...) { /* swallow — never crash twice */ }
+        if (auto fse = dynamic_cast<const std::filesystem::filesystem_error*>(&e)) {
+            std::cerr << "icmg: filesystem error code " << fse->code().value()
+                      << " (" << fse->code().message() << ")
+";
+            if (!fse->path1().empty()) std::cerr << "      path1: " << fse->path1().string() << "
+";
+            if (!fse->path2().empty()) std::cerr << "      path2: " << fse->path2().string() << "
+";
+        }
         std::cerr << "icmg: uncaught error: " << e.what() << "\n"
                   << "      Crash logged. Send report: icmg bug-report --send-pending\n";
         return 1;

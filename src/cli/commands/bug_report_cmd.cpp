@@ -197,7 +197,10 @@ int fileIssue(const std::string& title, const std::string& body, bool dry_run) {
     }
 
     // Write body to a temp file so we don't pass it through shell escaping.
-    fs::path tmp = fs::temp_directory_path() / "icmg-bug-body.md";
+    std::error_code _tec;
+    fs::path _tbase = fs::temp_directory_path(_tec);
+    if (_tec || _tbase.empty()) _tbase = ".";   // v1.71 #174: never throw on broken temp env
+    fs::path tmp = _tbase / "icmg-bug-body.md";
     {
         std::ofstream f(tmp);
         f << body;
