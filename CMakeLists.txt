@@ -704,6 +704,7 @@ add_icmg_test(test_warm_pipe           tests/llm/test_warm_pipe.cpp)          # 
 add_icmg_test(test_warm_loop_integration tests/llm/test_warm_loop_integration.cpp) # v1.52.0 TDD
 add_icmg_test(test_router                tests/cli/test_router.cpp)               # v1.53.0 TDD
 add_icmg_test(test_confidence            tests/cli/test_confidence.cpp)           # v1.61 F10
+add_icmg_test(test_caveman_resolve       tests/cli/test_caveman_resolve.cpp)      # v1.66
 add_icmg_test(test_gist                  tests/cli/test_gist.cpp)                 # v1.63 F12
 add_icmg_test(test_mine                  tests/cli/test_mine.cpp)                 # v1.63 F8
 add_icmg_test(test_bugfix_v161           tests/core/test_bugfix_v161.cpp)         # v1.61 bugfix

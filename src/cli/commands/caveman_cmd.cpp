@@ -1,12 +1,15 @@
-// Phase 51 T2: `icmg caveman on/off/status` — toggle caveman directive
-// auto-inject across Claude Code session via SessionStart hook.
+// Phase 51 T2 + v1.66 per-project: `icmg caveman on/off/status/level`.
 //
-// Flag location: ~/.icmg/caveman.flag (presence = enabled)
-// Hook (icmg-caveman-prompt.sh) reads the flag at session start and emits
-// JSON additionalContext with the caveman directive.
+// Scope precedence (resolveCaveman in ../caveman_resolve.hpp):
+//   project OFF marker (.icmg/caveman.off) > project ON (.icmg/caveman.flag)
+//   > global ON (~/.icmg/caveman.flag) > default OFF.
+// Default action scope is PROJECT; pass --global to target ~/.icmg.
+// Lets each project be independent (new project defaults OFF even if global
+// is on; opt a project ON locally without touching global).
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../caveman_resolve.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -21,81 +24,77 @@ class CavemanCommand : public BaseCommand {
 public:
     std::string name()        const override { return "caveman"; }
     std::string description() const override {
-        return "Toggle caveman directive auto-inject (on/off/status)";
+        return "Toggle caveman directive auto-inject (per-project or --global)";
     }
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg caveman <action>\n\n"
+            "Usage: icmg caveman <action> [--global]\n\n"
             "Actions:\n"
-            "  on             Enable caveman auto-inject (writes ~/.icmg/caveman.flag)\n"
-            "  off            Disable (removes flag)\n"
-            "  status         Show current state\n"
+            "  on             Enable (default: this project; --global = all projects)\n"
+            "  off            Disable (project: writes OFF marker overriding global)\n"
+            "  status         Show effective state + which scope decided it\n"
             "  level <L>      Set level: lite | full | ultra (default ultra)\n\n"
-            "When ON, every Claude Code session that runs icmg-caveman-prompt.sh\n"
-            "(installed by `icmg init`) injects the caveman directive as additional\n"
-            "context — including thinking phases for compatible models.\n";
+            "Scope precedence: project OFF > project ON > global ON > default OFF.\n"
+            "A new project defaults OFF even if global is ON.\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         std::string action = args[0];
-
-        fs::path flag_path = flagPath();
+        bool global = hasFlag(args, "--global");
 
         if (action == "on") {
             std::error_code ec;
-            fs::create_directories(flag_path.parent_path(), ec);
-            std::ofstream f(flag_path);
-            f << "ultra\n";  // default level
-            std::cout << "icmg caveman: ON (level=ultra) — flag at " << flag_path.string() << "\n"
-                      << "  New Claude sessions auto-receive caveman directive.\n"
-                      << "  Run `icmg init --install-hooks --force` if hook not installed.\n";
+            if (global) {
+                fs::create_directories(globalFlag().parent_path(), ec);
+                std::ofstream f(globalFlag()); f << "ultra\n";
+                std::cout << "icmg caveman: ON (global, level=ultra)\n";
+            } else {
+                fs::create_directories(projFlag().parent_path(), ec);
+                fs::remove(projOff(), ec);               // clear OFF marker
+                std::ofstream f(projFlag()); f << "ultra\n";
+                std::cout << "icmg caveman: ON (this project, level=ultra)\n";
+            }
             return 0;
         }
         if (action == "off") {
             std::error_code ec;
-            fs::remove(flag_path, ec);
-            std::cout << "icmg caveman: OFF — flag removed.\n";
+            if (global) {
+                fs::remove(globalFlag(), ec);
+                std::cout << "icmg caveman: OFF (global flag removed)\n";
+            } else {
+                fs::create_directories(projOff().parent_path(), ec);
+                fs::remove(projFlag(), ec);              // clear project ON
+                std::ofstream f(projOff()); f << "off\n"; // OFF marker overrides global
+                std::cout << "icmg caveman: OFF (this project — overrides global)\n";
+            }
             return 0;
         }
         if (action == "status") {
-            if (fs::exists(flag_path)) {
-                std::string level = "ultra";
-                std::ifstream f(flag_path);
-                if (f) std::getline(f, level);
-                std::cout << "icmg caveman: ON (level=" << level << ")\n"
-                          << "  flag: " << flag_path.string() << "\n";
-                // Hook installed?
-                fs::path hook = fs::current_path() / ".claude" / "hooks" / "icmg-caveman-prompt.sh";
-                std::cout << "  hook: " << (fs::exists(hook) ? "INSTALLED" : "MISSING (run icmg init --install-hooks --force)")
-                          << "\n";
-                // Last trigger.
-                fs::path last = flag_path.parent_path() / "caveman-last-trigger.txt";
-                if (fs::exists(last)) {
-                    std::ifstream lf(last);
-                    std::string ts; std::getline(lf, ts);
-                    std::cout << "  last fired: " << ts << "\n";
-                } else {
-                    std::cout << "  last fired: (no record yet — restart Claude session)\n";
-                }
-            } else {
-                std::cout << "icmg caveman: OFF\n"
-                          << "  Enable with: icmg caveman on\n";
-            }
+            auto st = effective();
+            if (st.on)
+                std::cout << "icmg caveman: ON (level=" << st.level
+                          << ", source=" << st.source << ")\n";
+            else
+                std::cout << "icmg caveman: OFF (source=" << st.source << ")\n";
+            std::cout << "  project flag: " << projFlag().string()
+                      << (fs::exists(projFlag()) ? " [present]" : "") << "\n"
+                      << "  project off : " << projOff().string()
+                      << (fs::exists(projOff()) ? " [present]" : "") << "\n"
+                      << "  global flag : " << globalFlag().string()
+                      << (fs::exists(globalFlag()) ? " [present]" : "") << "\n";
             return 0;
         }
         if (action == "level" && args.size() >= 2) {
             std::string lvl = args[1];
-            if (lvl != "lite" && lvl != "full" && lvl != "ultra") {
-                std::cerr << "icmg caveman level: must be lite|full|ultra\n";
-                return 1;
-            }
             std::error_code ec;
-            fs::create_directories(flag_path.parent_path(), ec);
-            std::ofstream f(flag_path);
-            f << lvl << "\n";
-            std::cout << "icmg caveman: level=" << lvl << " (also turns ON)\n";
+            fs::path target = global ? globalFlag() : projFlag();
+            fs::create_directories(target.parent_path(), ec);
+            if (!global) fs::remove(projOff(), ec);
+            std::ofstream f(target); f << lvl << "\n";
+            std::cout << "icmg caveman: level=" << lvl << " (also ON, "
+                      << (global ? "global" : "this project") << ")\n";
             return 0;
         }
 
@@ -104,14 +103,31 @@ public:
     }
 
 private:
-    static fs::path flagPath() {
+    static fs::path globalFlag() {
         const char* home = std::getenv("USERPROFILE");
         if (!home) home = std::getenv("HOME");
         if (!home) home = ".";
         return fs::path(home) / ".icmg" / "caveman.flag";
     }
+    static fs::path projFlag() { return fs::path(".icmg") / "caveman.flag"; }
+    static fs::path projOff()  { return fs::path(".icmg") / "caveman.off";  }
+
+    static std::string readLevel(const fs::path& flag) {
+        std::ifstream f(flag);
+        std::string lvl; if (f) std::getline(f, lvl);
+        return lvl;
+    }
+
+    static CavemanState effective() {
+        bool poff = fs::exists(projOff());
+        bool pon  = fs::exists(projFlag());
+        bool gon  = fs::exists(globalFlag());
+        return resolveCaveman(poff, pon, gon,
+                              pon ? readLevel(projFlag()) : "",
+                              gon ? readLevel(globalFlag()) : "");
+    }
 };
 
 ICMG_REGISTER_COMMAND("caveman", CavemanCommand);
 
-} // namespace icmg::cli
+}  // namespace icmg::cli

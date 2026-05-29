@@ -175,8 +175,12 @@ exec icmg hook pretooluse-read
 static const char* CAVEMAN_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Toggle via `icmg caveman on/off`.
 set -uo pipefail
-flag="${HOME:-$USERPROFILE}/.icmg/caveman.flag"
-[[ -f "$flag" ]] || exit 0
+# v1.66 per-project precedence: project OFF marker > project ON > global ON
+[[ -f ".icmg/caveman.off" ]] && exit 0
+gflag="${HOME:-$USERPROFILE}/.icmg/caveman.flag"
+if [[ -f ".icmg/caveman.flag" ]]; then flag=".icmg/caveman.flag"
+elif [[ -f "$gflag" ]]; then flag="$gflag"
+else exit 0; fi
 level=$(head -n1 "$flag" 2>/dev/null || echo ultra)
 date -u "+%Y-%m-%dT%H:%M:%SZ" > "${HOME:-$USERPROFILE}/.icmg/caveman-last-trigger.txt" 2>/dev/null || true
 msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
