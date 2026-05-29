@@ -19,7 +19,7 @@
 
 A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
 
-**40 MCP tools · 1120/1120 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
+**40 MCP tools · 1134/1134 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
@@ -76,6 +76,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | **Scripted-safe `icmg run`** (non-interactive guard) | **no hang on destructive** | `--yes`/env opt-in | v1.74.0 |
 | **Clean self-upgrade** (idempotent Defender step) | **no phantom B: drive popup** | `--no-defender` opt-out | v1.75.0 |
 | **Encryption-at-rest** (`icmg encrypt`, SQLCipher AES-256) | **opt-in full-DB encrypt** | BM25 recall intact | v1.76.0 |
+| **Hot recall cache** (RAM, daemon-shared) | **< 5 ms repeat recall** | self-governing RAM | v1.77.0 |
 | Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
 Measured on real-world sessions. Your mileage will vary with project size and habits — anyone running a busy AI agent for a day already sees meaningful savings.
@@ -85,11 +86,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.77.0** - **RAM brain: recall gets faster the more you use it**. icmg now keeps recall results hot in memory - repeat recalls of the same query return from RAM in well under 5ms instead of recomputing the full-text search each time (search quality unchanged, only the recompute is skipped). When the background daemon is running, the cache lives there and is shared across sessions, so a result computed in one session is instantly available in another; when the daemon is off, each process uses its own local cache and falls back to computing - no hangs. Any memory write flushes the cache so you never see stale results, and a self-checkup RAM governor shrinks or grows the cache with available system memory while pinning your hottest entries. New `icmg memory cache stats`; opt out with `ICMG_RECALL_CACHE=0`. Full automated suite passes 1134 of 1134 checks.
 - **v1.76.0** - **Encrypt your icmg databases at rest**. Your project memory, decisions, and chat transcripts live in local SQLite files - previously plaintext on disk. v1.76 adds opt-in full-database encryption (SQLCipher / AES-256): run `icmg encrypt enable` and icmg transparently encrypts the project + global DBs, while fast BM25 recall keeps working exactly as before (the whole DB is encrypted, not individual fields). OFF by default - existing DBs untouched. Three key modes: `dpapi` (default, sealed to your Windows account, no passphrase prompts), `shared` (team-readable key for shared servers), `env` (`ICMG_DB_KEY` for CI). Migration backs up, encrypts, atomically swaps, then shreds the plaintext copy; `icmg encrypt disable`/`status` round it out. Back up `~/.icmg/db.key` - losing it is unrecoverable. Full automated suite passes 1120 of 1120 checks.
 - **v1.75.1** - **Fix: the pre-compaction hook's output was silently dropped**. When your AI assistant compacts its context, icmg's `PreCompact` hook runs to snapshot and distill the session. It was emitting its result in a JSON shape Claude Code's PreCompact event doesn't accept, so the output failed validation and was discarded every time (the underlying snapshot/distill work still ran). It now emits a valid response, and a guard clears any stale pre-1.75.1 cached output so the fix applies right after upgrade. Your standing rules + pinned decisions keep being re-anchored by the SessionStart hook as before. Full automated suite passes 1110 of 1110 checks.
 - **v1.75.0** - **Clean upgrades: no more phantom B: drive popup**. Upgrading icmg used to re-register its Windows Defender exclusion every single time, which nudged Defender into scanning all drive letters - waking up any `subst` alias (like a mapped `B:`) and triggering Windows' "insert a disk into drive B:" dialog. Since the exclusion is keyed by the program's path (which never changes across an in-place upgrade), re-adding it did nothing useful. icmg now skips that step when it's already in place, with an opt-out (`--no-defender` / `ICMG_NO_DEFENDER=1`). Full automated suite passes 1105 of 1105 checks.
 - **v1.74.0** - **`icmg run` no longer hangs in scripts**. When a destructive command (like `rm -rf`) runs through `icmg run` in a non-interactive context (a script or agent, no terminal to type into), it used to wait forever for a yes/no answer nobody could give. Now it auto-declines safely in that case - or proceeds if you pass `--yes` / set `ICMG_ASSUME_YES=1` for deliberate scripted cleanups. Full automated suite passes 1100 of 1100 checks.
-- **v1.73.0** - **Set-and-forget memory + workflow rules for every project**. `icmg init` now installs a hook that, right after your AI assistant's context gets compacted, quietly reminds it who you are and which project rules you've set - recalled from icmg's memory, so nothing is lost across the compaction. It also writes a mandatory post-change checklist into the agent guide (refresh graph, save the decision, tag the area, log the step, verify) so the project's knowledge never goes stale. Run `icmg init --force` on existing projects to pick both up. Full automated suite stays green at 1095 checks.
 ## 🚀 Quick start
 
 1. **Download** the latest installer from the [Releases page](https://github.com/ncmonx/icm-graph/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux.
