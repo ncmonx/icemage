@@ -101,18 +101,52 @@ if(NOT EXISTS ${NLOHMANN_DIR}/json.hpp)
     endif()
 endif()
 
-add_library(sqlite3 STATIC third_party/sqlite3/sqlite3.c)
-target_include_directories(sqlite3 PUBLIC third_party/sqlite3)
-target_compile_definitions(sqlite3 PUBLIC
-    SQLITE_THREADSAFE=1
-    SQLITE_DEFAULT_WAL_SYNCHRONOUS=1
-    SQLITE_ENABLE_FTS5=1
-    # v1.64 T3: perf compile flags (cold-start + query). Conservative set;
-    # MEMSYS5 / MAX_EXPR_DEPTH skipped (need extra config / risk).
-    SQLITE_DEFAULT_MEMSTATUS=0
-    SQLITE_OMIT_DEPRECATED
-    SQLITE_OMIT_PROGRESS_CALLBACK
-)
+# v1.76: encryption-at-rest. When ICMG_USE_ENCRYPTION=ON (default), build the
+# `sqlite3` target from the vendored SQLCipher amalgamation with the Windows
+# CNG crypto provider (BCrypt — no new DLL; bcrypt/crypt32 are system libs).
+# SQLCipher without a PRAGMA key behaves exactly like plain SQLite, so existing
+# plaintext DBs keep working; encryption is runtime opt-in (icmg encrypt enable).
+option(ICMG_USE_ENCRYPTION "Build sqlite3 from SQLCipher (encryption-at-rest capable)" ON)
+if(ICMG_USE_ENCRYPTION)
+    add_library(sqlite3 STATIC third_party/sqlcipher/sqlite3.c)
+    target_include_directories(sqlite3 PUBLIC third_party/sqlcipher)
+    target_compile_definitions(sqlite3 PUBLIC
+        SQLITE_THREADSAFE=1
+        SQLITE_DEFAULT_WAL_SYNCHRONOUS=1
+        SQLITE_ENABLE_FTS5=1
+        SQLITE_DEFAULT_MEMSTATUS=0
+        SQLITE_OMIT_DEPRECATED
+        SQLITE_OMIT_PROGRESS_CALLBACK
+        SQLITE_HAS_CODEC
+        SQLITE_TEMP_STORE=2
+        # SQLCipher mandates these init/shutdown hooks be registered.
+        SQLITE_EXTRA_INIT=sqlcipher_extra_init
+        SQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown)
+    # Crypto provider = OpenSSL (SQLCipher 3.53 has no CNG provider). On Windows
+    # we link the vcpkg-built MSVC OpenSSL (libcrypto) and bundle libcrypto-3-x64.dll.
+    target_compile_definitions(sqlite3 PUBLIC SQLCIPHER_CRYPTO_OPENSSL)
+    if(WIN32)
+        set(ICMG_VCPKG_ROOT "C:/vcpkg/installed/x64-windows" CACHE PATH "vcpkg x64-windows tree (OpenSSL)")
+        target_include_directories(sqlite3 PUBLIC ${ICMG_VCPKG_ROOT}/include)
+        target_link_libraries(sqlite3 PUBLIC
+            ${ICMG_VCPKG_ROOT}/lib/libcrypto.lib
+            ws2_32 crypt32)
+    else()
+        target_link_libraries(sqlite3 PUBLIC crypto)
+    endif()
+    message(STATUS "icmg: SQLCipher encryption-at-rest ENABLED (OpenSSL provider)")
+else()
+    add_library(sqlite3 STATIC third_party/sqlite3/sqlite3.c)
+    target_include_directories(sqlite3 PUBLIC third_party/sqlite3)
+    target_compile_definitions(sqlite3 PUBLIC
+        SQLITE_THREADSAFE=1
+        SQLITE_DEFAULT_WAL_SYNCHRONOUS=1
+        SQLITE_ENABLE_FTS5=1
+        SQLITE_DEFAULT_MEMSTATUS=0
+        SQLITE_OMIT_DEPRECATED
+        SQLITE_OMIT_PROGRESS_CALLBACK
+    )
+endif()
 
 # Third-party: nlohmann/json single header
 add_library(nlohmann_json INTERFACE)
@@ -595,6 +629,7 @@ add_icmg_test(test_mcp          tests/mcp/test_mcp.cpp)
 add_icmg_test(test_graph_edges  tests/graph/test_graph_edges.cpp)
 add_icmg_test(test_graph_report tests/graph/test_graph_report.cpp)        # v1.71 Graphify
 add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.75 #187
+add_icmg_test(test_sqlcipher_spike tests/core/test_sqlcipher_spike.cpp) # v1.76 T1
 add_icmg_test(test_precompact_output tests/core/test_precompact_output.cpp) # v1.75.1 precompact schema
 add_icmg_test(test_zone_resolver tests/core/test_zone_resolver.cpp)
 add_icmg_test(test_csharp_symbols tests/graph/test_csharp_symbols.cpp)
