@@ -3,6 +3,7 @@
 #include "rpc_protocol.hpp"
 
 #include <nlohmann/json.hpp>
+#include "../core/json_safe.hpp"   // v1.68.1 safeDump
 
 namespace icmg::server {
 
@@ -14,7 +15,7 @@ std::string serializeRequest(const RpcRequest& req) {
     j["args"] = req.args;
     if (!req.session_id.empty()) j["session_id"] = req.session_id;
     if (!req.token.empty()) j["token"] = req.token;   // v1.68 S2
-    return j.dump() + "\n";   // newline framing
+    return icmg::core::safeDump(j) + "\n";   // newline framing
 }
 
 std::string serializeResponse(const RpcResponse& res) {
@@ -26,7 +27,7 @@ std::string serializeResponse(const RpcResponse& res) {
     } else {
         j["err"] = res.err;
     }
-    return j.dump() + "\n";
+    return icmg::core::safeDump(j) + "\n";
 }
 
 std::optional<RpcRequest> parseRequest(const std::string& wire) {

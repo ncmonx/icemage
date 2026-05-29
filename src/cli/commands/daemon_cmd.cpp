@@ -15,6 +15,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/json_safe.hpp"   // v1.68.1 safeDump
 #include "../../core/path_utils.hpp"
 #include "../../core/exec_utils.hpp"
 #include <nlohmann/json.hpp>
@@ -120,7 +121,7 @@ static std::string dispatchRequest(const std::string& raw) {
         } else {
             resp["error"] = "unknown method: " + method;
         }
-        return resp.dump() + "\n";
+        return icmg::core::safeDump(resp) + "\n";
     } catch (const std::exception& e) {
         return std::string("{\"id\":0,\"error\":\"") + e.what() + "\"}\n";
     }
@@ -511,7 +512,7 @@ private:
             if (resp.contains("result")) {
                 std::string result = resp["result"].is_string()
                     ? resp["result"].get<std::string>()
-                    : resp["result"].dump();
+                    : icmg::core::safeDump(resp["result"]);
                 std::cout << result;
                 if (!result.empty() && result.back() != '\n') std::cout << '\n';
                 return 0;

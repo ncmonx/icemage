@@ -24,6 +24,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/path_utils.hpp"
+#include "../../core/json_safe.hpp"   // v1.68.1 safeDump (UTF-8 crash-safe)
 #include "../../core/exec_utils.hpp"
 #include "../../core/hooks/runners.hpp"
 #include "../../core/hooks/internals.hpp"
@@ -416,7 +417,7 @@ private:
         std::string amnesia_hint  = icmg::core::hooks::runUserPromptAmnesiaInject();
         std::string budget_hint   = (icmg::core::hooks::runPreToolUseTokenBudget(prompt) > 0) ? std::string("TOKEN BUDGET WARN. ICMG_TOKEN_BUDGET_OFF=1 to disable. ") : std::string("");
         out["hookSpecificOutput"]["additionalContext"] = budget_hint + amnesia_hint + escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
-        std::cout << out.dump() << "\n";
+        std::cout << icmg::core::safeDump(out) << "\n";
     }
 
     // ---- userprompt handler -----------------------------------------------
@@ -800,7 +801,7 @@ private:
                 "[dedup] " + file_path + " already read this session. "
                 "Use `icmg context " + file_path + " --lines A-B` for targeted slice, "
                 "or confirm re-read is needed.";
-            std::cout << out.dump() << "\n";
+            std::cout << icmg::core::safeDump(out) << "\n";
             return 0;
         }
 
@@ -848,7 +849,7 @@ private:
                         "[F8 auto-spill] file " + std::to_string((long long)sz)
                         + "B > threshold; full copy saved to " + spill.string()
                         + ". Default Read capped to first 50 lines; expand only if needed.";
-                    std::cout << out.dump() << "\n";
+                    std::cout << icmg::core::safeDump(out) << "\n";
                     return 0;
                 }
             }
@@ -897,7 +898,7 @@ private:
         out["hookSpecificOutput"]["updatedInput"]["file_path"] = file_path;
         out["hookSpecificOutput"]["updatedInput"]["limit"] = cap;
         out["hookSpecificOutput"]["additionalContext"] = ctx.str();
-        std::cout << out.dump() << "\n";
+        std::cout << icmg::core::safeDump(out) << "\n";
         return 0;
     }
 
@@ -1014,7 +1015,7 @@ int HookCommand::cmdPostToolUseBash() {
     json out;
     out["hookSpecificOutput"]["hookEventName"] = "PostToolUse";
     out["hookSpecificOutput"]["additionalContext"] = ctx;
-    std::cout << out.dump() << "\n";
+    std::cout << icmg::core::safeDump(out) << "\n";
     return 0;
 }
 
@@ -1099,7 +1100,7 @@ int HookCommand::cmdPreToolUseWrite() {
         "compressed-write: " + result.mode
         + " expanded " + std::to_string(result.bytes_in)
         + " -> " + std::to_string(result.bytes_out) + " bytes";
-    std::cout << out.dump();
+    std::cout << icmg::core::safeDump(out);
     return 0;
 }
 

@@ -14,6 +14,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/json_safe.hpp"   // v1.68.1 safeDump
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/context_node_store.hpp"
@@ -623,7 +624,7 @@ private:
                                {"source", n.source_file}, {"tags", n.tags},
                                {"content", n.content}});
             }
-            return arr.dump();
+            return icmg::core::safeDump(arr);
         }
 
         if (sub == "get") {
@@ -634,7 +635,7 @@ private:
                       {"tier", node->tier}, {"active", node->active},
                       {"source", node->source_file}, {"tags", node->tags},
                       {"content", node->content}};
-            return j.dump();
+            return icmg::core::safeDump(j);
         }
 
         if ((sub == "add" || sub == "update") && !body_json.empty()) {
