@@ -4,6 +4,7 @@
 #include "../base_mcp_tool.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/path_utils.hpp"   // v1.65 S1: isSafeToolPath
 #include <cstdlib>
 #include <filesystem>
 
@@ -30,6 +31,11 @@ public:
 protected:
     void validateArgs(const json& args) override {
         std::string p = getStr(args, "path");
+        // v1.65 S1: reject shell-meta + traversal BEFORE the path is
+        // interpolated into the `icmg ingest "<path>"` shell command below.
+        if (!core::isSafeToolPath(p)) {
+            throw McpError(-32602, "unsafe path (shell-meta or traversal rejected)");
+        }
         if (p.empty() || !std::filesystem::exists(p)) {
             throw McpError(-32602, std::string("file not found: ") + p);
         }

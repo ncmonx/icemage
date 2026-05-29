@@ -5,6 +5,7 @@
 #include "../base_mcp_tool.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/path_utils.hpp"   // v1.65 S1: isSafeToolPath
 #include <cstdlib>
 
 namespace icmg::mcp {
@@ -35,6 +36,15 @@ protected:
                 || args[k].get<std::string>().empty()) {
                 throw std::invalid_argument(std::string("missing required arg: ") + k);
             }
+            // v1.65 S1: reject shell-meta + traversal before shell interpolation.
+            if (!core::isSafeToolPath(args[k].get<std::string>())) {
+                throw std::invalid_argument(
+                    std::string("unsafe path (shell-meta/traversal) in arg: ") + k);
+            }
+        }
+        if (args.contains("path_map") && args["path_map"].is_string()
+            && !core::isSafeToolPath(args["path_map"].get<std::string>())) {
+            throw std::invalid_argument("unsafe path_map (shell-meta/traversal)");
         }
     }
 

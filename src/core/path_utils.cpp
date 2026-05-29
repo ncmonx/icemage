@@ -170,4 +170,30 @@ bool relaxAclEveryone(const std::string& path) {
 #endif
 }
 
+// v1.65 S1: reject untrusted tool path args (shell-meta + traversal).
+bool isSafeToolPath(const std::string& path) {
+    if (path.empty()) return false;
+    // Reject shell-metacharacters + control chars (defends shell-string
+    // interpolation in MCP-driven commands like `icmg ingest "<path>"`).
+    for (unsigned char c : path) {
+        if (c < 0x20) return false;                 // control / newline / CR
+        switch (c) {
+            case '"': case '\'': case ';': case '|': case '&':
+            case '$': case '`': case '<': case '>': case '*':
+            case '\n': case '\r':
+                return false;
+            default: break;
+        }
+    }
+    // Reject parent-dir traversal segments. Normalize separators first.
+    std::string norm = path;
+    for (char& c : norm) if (c == '\\') c = '/';
+    if (norm == ".." ) return false;
+    if (norm.rfind("../", 0) == 0) return false;        // leading ../
+    if (norm.find("/../") != std::string::npos) return false;  // mid /../
+    if (norm.size() >= 3 && norm.compare(norm.size() - 3, 3, "/..") == 0)
+        return false;                                   // trailing /..
+    return true;
+}
+
 } // namespace icmg::core

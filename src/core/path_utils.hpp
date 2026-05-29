@@ -10,6 +10,13 @@ std::string canonicalize(const std::string& path, bool require_exists = false);
 // True if 'path' is inside 'root' (both canonicalized).
 bool isWithinRoot(const std::string& path, const std::string& root);
 
+// v1.65 S1: validate an UNTRUSTED file-path argument (e.g. from an MCP tool
+// call) before it is interpolated into a shell command or opened. Rejects
+// shell-metacharacters (" ' ; | & $ ` \n \r < > * and control chars) and
+// parent-dir traversal segments ("..") that could escape the project root.
+// Returns true only when the path is safe to use. Empty path -> false.
+bool isSafeToolPath(const std::string& path);
+
 // True if file at 'path' is a SQLite database (magic bytes "SQLite format 3").
 bool isSQLiteFile(const std::string& path);
 
