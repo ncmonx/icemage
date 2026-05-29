@@ -2,6 +2,7 @@
 #include "migrator.hpp"
 #include "embedded_migrations.hpp"
 #include "path_utils.hpp"
+#include "db_key.hpp"   // v1.76: encryption-at-rest key application
 #include <sqlite3.h>
 #include <algorithm>
 #include <cctype>
@@ -30,6 +31,32 @@ Db::Db(const std::string& path) {
 #ifndef _WIN32
     chmod(path.c_str(), 0600);
 #endif
+
+    // v1.76: encryption-at-rest. If enabled for this DB's scope, apply the
+    // SQLCipher key BEFORE any other pragma/query. SQLCipher with no key behaves
+    // exactly like plain SQLite, so when encryption is OFF this block is skipped
+    // and existing plaintext DBs are untouched (back-compat).
+    {
+        auto enc = parseEncryptionConfig(readEncryptConfigText());
+        bool global_db = path.find("global.db") != std::string::npos;
+        bool in_scope = enc.enabled &&
+            (enc.scope == "both" || (enc.scope == "project" && !global_db));
+        if (in_scope) {
+            std::string key = resolveDbKey(enc);
+            if (!key.empty()) {
+                std::string pragma = "PRAGMA key=\"x'" + key + "'\";";
+                sqlite3_exec(db_, pragma.c_str(), nullptr, nullptr, nullptr);
+                // Probe: a wrong key makes the first read of sqlite_master fail
+                // (SQLCipher HMAC). Map that to a clean, actionable error instead
+                // of a downstream crash. A fresh/correctly-keyed DB passes.
+                if (sqlite3_exec(db_, "SELECT count(*) FROM sqlite_master;",
+                                 nullptr, nullptr, nullptr) != SQLITE_OK) {
+                    throw DbError("DB is encrypted and the key doesn't match or "
+                                  "is missing. Run 'icmg encrypt status'.");
+                }
+            }
+        }
+    }
 
     applyPragmas();
 

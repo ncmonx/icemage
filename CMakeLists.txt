@@ -631,6 +631,8 @@ add_icmg_test(test_graph_report tests/graph/test_graph_report.cpp)        # v1.7
 add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.75 #187
 add_icmg_test(test_sqlcipher_spike tests/core/test_sqlcipher_spike.cpp) # v1.76 T1
 add_icmg_test(test_db_key tests/core/test_db_key.cpp) # v1.76 T2-3
+add_icmg_test(test_encrypt_backcompat tests/core/test_encrypt_backcompat.cpp) # v1.76 T4
+add_icmg_test(test_encrypt_migration tests/core/test_encrypt_migration.cpp) # v1.76 T5+T7
 add_icmg_test(test_precompact_output tests/core/test_precompact_output.cpp) # v1.75.1 precompact schema
 add_icmg_test(test_zone_resolver tests/core/test_zone_resolver.cpp)
 add_icmg_test(test_csharp_symbols tests/graph/test_csharp_symbols.cpp)
