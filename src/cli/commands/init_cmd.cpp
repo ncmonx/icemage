@@ -384,6 +384,27 @@ icmg persona context --json 2>/dev/null || exit 0
 // 4 cheap bounded heuristics (uncommitted > 4, release-branch ahead > 3,
 // recall hit on prompt, recent build log errors). No LLM call (~10ms).
 // Opt-out: ICMG_NO_ADVISOR=1.
+// v1.69.0: always-on icmg-first rule injector. Guarantees the icmg-first
+// routing rule sits in the agent context EVERY prompt without any manual
+// memory seeding -- works for any new project or new user that ran `icmg
+// init`. Dedups per session: full rule first turn, one-line reminder after
+// (keeps the rule active while staying token-cheap, like persona F11).
+// Opt-out: ICMG_NO_ICMG_FIRST=1.
+static const char* ICMG_FIRST_SH = R"BASH(#!/usr/bin/env bash
+# v1.69.0 icmg-first always-on rule injector (auto-installed by icmg init).
+set -uo pipefail
+[[ -n "${ICMG_NO_ICMG_FIRST:-}" ]] && exit 0
+INPUT=$(cat 2>/dev/null || echo "{}")
+SID=$(echo "$INPUT" | jq -r '.session_id // "default"' 2>/dev/null || echo default)
+BASE="${HOME:-$USERPROFILE}/.icmg/icmg-first-injected"
+mkdir -p "$BASE" 2>/dev/null || true
+MARK="$BASE/$SID"
+FULL="[icmg-first] ABSOLUTE RULE: before ANY native Read/Grep/Glob/Bash/WebFetch, use the icmg equivalent FIRST -- icmg context <file>, icmg graph symbol <Name>, icmg recall <q>, icmg run <cmd>, icmg fetch <url>, icmg pack <task>. Native tools ONLY when icmg has no equivalent or explicitly errors. Enforced at hook level."
+SHORT="[icmg-first] route Read/Grep/Glob/Bash/WebFetch through icmg first (context/graph/recall/run/fetch); native only if icmg cannot."
+if [[ -f "$MARK" ]]; then MSG="$SHORT"; else MSG="$FULL"; touch "$MARK" 2>/dev/null || true; fi
+jq -cn --arg c "$MSG" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:$c}}' 2>/dev/null || exit 0
+)BASH";
+
 static const char* ADVISOR_SH = R"BASH(#!/usr/bin/env bash
 # v1.55 G1: icmg advisor — proactive next-step hint hook.
 set -uo pipefail
@@ -1485,6 +1506,7 @@ private:
         // Phase 71: UserPromptSubmit auto-recall + suggest compress.
         n += writeFile(root / ".claude" / "hooks" / "icmg-prompt-recall.sh", PROMPT_RECALL_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-persona-inject.sh", PERSONA_INJECT_SH, true);
+        n += writeFile(root / ".claude" / "hooks" / "icmg-icmg-first.sh", ICMG_FIRST_SH, true);  // v1.69.0
         // v1.55.0 G1: advisor proactive hint hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-advisor.sh", ADVISOR_SH, true);
         // v1.47.0: local-route hook (prefix-based casual chat to local LLM).
@@ -1777,7 +1799,10 @@ private:
                     // v1.55.0 G1: advisor proactive hint.
                     {{"type", "command"},
                      {"timeout", 3},
-                     {"command", "bash -c '[ -f .claude/hooks/icmg-advisor.sh ] && bash .claude/hooks/icmg-advisor.sh || exit 0'"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-advisor.sh ] && bash .claude/hooks/icmg-advisor.sh || exit 0'"}},
+                      {{"type", "command"},
+                       {"timeout", 3},
+                       {"command", "bash -c '[ -f .claude/hooks/icmg-icmg-first.sh ] && bash .claude/hooks/icmg-icmg-first.sh || exit 0'"}}
                 })}
             },
             {
