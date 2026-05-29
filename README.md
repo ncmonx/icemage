@@ -19,7 +19,7 @@
 
 A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
 
-**40 MCP tools · 1100/1100 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
+**40 MCP tools · 1105/1105 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
@@ -74,6 +74,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | **MCP server hardening** (token + rate-limit + path-guard) | **abuse / RCE-safe** | — | v1.72.0 |
 | **Post-compact memory re-anchor** | **rules survive compaction** | auto on `init` | v1.73.0 |
 | **Scripted-safe `icmg run`** (non-interactive guard) | **no hang on destructive** | `--yes`/env opt-in | v1.74.0 |
+| **Clean self-upgrade** (idempotent Defender step) | **no phantom B: drive popup** | `--no-defender` opt-out | v1.75.0 |
 | Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
 Measured on real-world sessions. Your mileage will vary with project size and habits — anyone running a busy AI agent for a day already sees meaningful savings.
@@ -83,12 +84,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.75.0** - **Clean upgrades: no more phantom B: drive popup**. Upgrading icmg used to re-register its Windows Defender exclusion every single time, which nudged Defender into scanning all drive letters - waking up any `subst` alias (like a mapped `B:`) and triggering Windows' "insert a disk into drive B:" dialog. Since the exclusion is keyed by the program's path (which never changes across an in-place upgrade), re-adding it did nothing useful. icmg now skips that step when it's already in place, with an opt-out (`--no-defender` / `ICMG_NO_DEFENDER=1`). Full automated suite passes 1105 of 1105 checks.
 - **v1.74.0** - **`icmg run` no longer hangs in scripts**. When a destructive command (like `rm -rf`) runs through `icmg run` in a non-interactive context (a script or agent, no terminal to type into), it used to wait forever for a yes/no answer nobody could give. Now it auto-declines safely in that case - or proceeds if you pass `--yes` / set `ICMG_ASSUME_YES=1` for deliberate scripted cleanups. Full automated suite passes 1100 of 1100 checks.
 - **v1.73.0** - **Set-and-forget memory + workflow rules for every project**. `icmg init` now installs a hook that, right after your AI assistant's context gets compacted, quietly reminds it who you are and which project rules you've set - recalled from icmg's memory, so nothing is lost across the compaction. It also writes a mandatory post-change checklist into the agent guide (refresh graph, save the decision, tag the area, log the step, verify) so the project's knowledge never goes stale. Run `icmg init --force` on existing projects to pick both up. Full automated suite stays green at 1095 checks.
 - **v1.72.0** - **Security: the MCP server now rate-limits tool calls**. When icmg runs as an MCP server for your AI assistant, a runaway or misbehaving client could previously call tools in a tight loop. Each tool now has a token bucket - a short burst is fine, then calls are capped at a steady rate (default 240/minute, tune with `ICMG_MCP_RATE_LIMIT`, set 0 to turn off). Over-limit calls get a clean error instead of running. Pairs with the per-user daemon token (v1.68) and the path-injection guard (v1.65). Full automated suite passes 1095 of 1095 checks.
 - **v1.71.0** - **See your codebase as a graph**. New `icmg graph viz` renders your project's dependency graph as a self-contained interactive web page (drag, zoom, hover) - bigger dots are files more things depend on, so you can spot the load-bearing hubs at a glance. New `icmg graph report` prints the same insight as a quick Markdown summary (the "god-nodes" that fan out across the code, plus edge counts). Both are instant reads of the existing graph - no rescan. This release also adds diagnostics to help track down a host-specific `icmg context --lines` crash a few users hit. Full automated suite passes 1090 of 1090 checks.
-- **v1.70.0** - **Fixes from user reports: cleaner CLI output and command pass-through**. `icmg run` no longer swallows flags meant for the program you're wrapping - `icmg run ./tool --json` now passes `--json` to the tool, and `icmg run -- ...` forwards everything after `--` verbatim. `icmg llm list` now prints a single clean JSON document (it used to tack on a trailing text line that broke JSON parsers). And `icmg recall --json` always returns valid UTF-8, so tools that re-serialize its output no longer choke on notes that captured stray binary bytes. Full automated suite passes 1082 of 1082 checks.
-
 ## 🚀 Quick start
 
 1. **Download** the latest installer from the [Releases page](https://github.com/ncmonx/icm-graph/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux.
