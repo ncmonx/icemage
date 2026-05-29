@@ -1,6 +1,7 @@
 #pragma once
 #include "../core/db.hpp"
 #include "../core/tool_call_cache.hpp"
+#include "../core/rate_limiter.hpp"   // v1.72 Security: MCP rate limiting
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -37,6 +38,11 @@ public:
     // Phase 67 T24: read-only tools wrapped in ToolCallCache (5min TTL).
     // Mutating tools (icmg_store, icmg_sync_*) override isMutating()=true to skip.
     json call(const json& args, core::Db& db) {
+        // v1.72 Security: token-bucket rate limit per tool (env
+        // ICMG_MCP_RATE_LIMIT calls/min, default 240, 0 = off). Protects the
+        // stdio server from a runaway/abusive client. -32029 = custom server err.
+        if (!core::mcpRateOk(name()))
+            throw McpError(-32029, "rate limit exceeded for tool '" + name() + "'");
         validateArgs(args);
         if (isMutating()) return callImpl(args, db);
         // Cache key = tool name + canonical args dump.
