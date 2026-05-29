@@ -8,6 +8,7 @@
 // Hard-coded host github.com. No auto-cron — explicit user invocation only.
 
 #include "../base_command.hpp"
+#include "../defender_decision.hpp"   // v1.75 #187: idempotent Defender gate
 #include "../../core/registry.hpp"
 #include "../../core/version.hpp"
 #include "../../core/exec_utils.hpp"
@@ -215,6 +216,7 @@ public:
             "Actions:\n"
             "  --check                Compare current to latest release\n"
             "  --apply                Download + atomic swap binary\n"
+            "  --no-defender          Skip Windows Defender exclusion step (avoids B: scan popup)\n"
             "  --rollback             Restore .bak (if present)\n\n"
             "Options:\n"
             "  --channel preview      Use latest pre-release\n"
@@ -226,6 +228,13 @@ public:
         if (hasFlag(args, "--help")) { usage(); return 0; }
         bool check    = hasFlag(args, "--check");
         bool apply    = hasFlag(args, "--apply");
+        if (hasFlag(args, "--no-defender")) {
+#ifdef _WIN32
+            _putenv_s("ICMG_NO_DEFENDER", "1");
+#else
+            setenv("ICMG_NO_DEFENDER", "1", 1);
+#endif
+        }
         bool rollback = hasFlag(args, "--rollback");
         bool preview  = flagValue(args, "--channel") == "preview";
         bool json_out = hasFlag(args, "--json");
@@ -794,27 +803,49 @@ private:
         // service-start and pidfile-write is also protected.
         clearUpdatingLock();
 
-        // Re-add new binary to Windows Defender exclusion after path swap.
-        // New path == same path (atomic rename), but re-add ensures fresh hash is excluded.
+        // v1.75 (#187): re-adding the Defender exclusion on EVERY upgrade poked
+        // Defender into a full-volume scan that opened unrelated drives (subst B:).
+        // The exclusion is keyed by process PATH (unchanged across atomic-rename
+        // upgrades), so re-adding is a security no-op. Honor the cached flag +
+        // ICMG_NO_DEFENDER / --no-defender opt-out -> idempotent, no scan trigger.
 #ifdef _WIN32
         {
-            std::string exe = self.string();
-            for (auto& c : exe) if (c == '\\') c = '/';
-            std::string cl = "powershell.exe -NoProfile -NonInteractive -Command "
-                             "\"Add-MpPreference -ExclusionProcess '" + exe + "'\"";
-            std::vector<char> cl_buf(cl.begin(), cl.end());
-            cl_buf.push_back('\0');
-            STARTUPINFOA si{}; si.cb = sizeof(si);
-            PROCESS_INFORMATION pi{};
-            if (CreateProcessA(nullptr, cl_buf.data(), nullptr, nullptr,
-                               FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-                WaitForSingleObject(pi.hProcess, 5000);
-                DWORD ec = 1;
-                GetExitCodeProcess(pi.hProcess, &ec);
-                CloseHandle(pi.hProcess);
-                CloseHandle(pi.hThread);
-                if (ec == 0)
-                    std::cout << "  Defender exclusion refreshed.\n";
+            bool flag_exists = false;
+            const char* prof = std::getenv("USERPROFILE");
+            fs::path marker;
+            if (prof && *prof) {
+                marker = fs::path(prof) / ".icmg" / "defender-excluded.flag";
+                std::error_code _fe; flag_exists = fs::exists(marker, _fe);
+            }
+            const char* nd = std::getenv("ICMG_NO_DEFENDER");
+            bool env_no_defender = (nd && *nd);
+            if (!icmg::cli::shouldRunDefenderExclusion(flag_exists, env_no_defender, false)) {
+                std::cout << "  Defender: exclusion unchanged (cached/opt-out; no scan trigger).\n";
+            } else {
+                std::string exe = self.string();
+                for (auto& c : exe) if (c == '\\') c = '/';
+                std::string cl = "powershell.exe -NoProfile -NonInteractive -Command "
+                                 "\"Add-MpPreference -ExclusionProcess '" + exe + "'\"";
+                std::vector<char> cl_buf(cl.begin(), cl.end());
+                cl_buf.push_back('\0');
+                STARTUPINFOA si{}; si.cb = sizeof(si);
+                PROCESS_INFORMATION pi{};
+                if (CreateProcessA(nullptr, cl_buf.data(), nullptr, nullptr,
+                                   FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+                    WaitForSingleObject(pi.hProcess, 5000);
+                    DWORD ec = 1;
+                    GetExitCodeProcess(pi.hProcess, &ec);
+                    CloseHandle(pi.hProcess);
+                    CloseHandle(pi.hThread);
+                    if (ec == 0) {
+                        std::cout << "  Defender exclusion added.\n";
+                        if (!marker.empty()) {
+                            std::error_code _ed;
+                            fs::create_directories(marker.parent_path(), _ed);
+                            std::ofstream m(marker.string()); m << "ok\n";
+                        }
+                    }
+                }
             }
         }
 #endif
