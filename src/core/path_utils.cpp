@@ -52,16 +52,28 @@ std::string canonicalize(const std::string& path, bool require_exists) {
     std::string expanded = expandTilde(path);
     fs::path p(expanded);
 
-    if (require_exists) {
-        return fs::canonical(p).string();
+    // v1.78 (#174): use the non-throwing error_code overloads. MSVC's
+    // std::filesystem::canonical/weakly_canonical reach the PathCch API-set
+    // (api-ms-win-core-path); on some Windows Server SKUs that fails to resolve
+    // and the THROWING overload raises filesystem_error err126 ("specified
+    // module could not be found"), crashing the command. On failure, fall back
+    // to a purely-lexical normalized path (lexically_normal never touches the OS).
+    std::error_code ec;
+    fs::path out = require_exists ? fs::canonical(p, ec) : fs::weakly_canonical(p, ec);
+    if (ec || out.empty()) {
+        std::error_code ec2;
+        fs::path abs = fs::absolute(p, ec2);
+        return (ec2 ? p : abs).lexically_normal().string();
     }
-    // weakly_canonical doesn't require existence
-    return fs::weakly_canonical(p).string();
+    return out.string();
 }
 
 bool isWithinRoot(const std::string& path, const std::string& root) {
-    fs::path p  = fs::weakly_canonical(path);
-    fs::path r  = fs::weakly_canonical(root);
+    std::error_code ec1, ec2;
+    fs::path p = fs::weakly_canonical(path, ec1);   // #174: no-throw overloads
+    fs::path r = fs::weakly_canonical(root, ec2);
+    if (ec1 || p.empty()) p = fs::path(path).lexically_normal();
+    if (ec2 || r.empty()) r = fs::path(root).lexically_normal();
 
     auto it_p = p.begin();
     auto it_r = r.begin();
