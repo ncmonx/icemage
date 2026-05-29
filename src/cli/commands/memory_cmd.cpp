@@ -3,6 +3,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../core/recall_cache.hpp"
 #include <iostream>
 #include <iomanip>
 #include <chrono>
@@ -382,6 +383,7 @@ public:
         else if (sub == "show")    registered = "memory-show";
         else if (sub == "search")  registered = "memory-search";
         else if (sub == "stats")   registered = "memory-stats";
+        else if (sub == "cache")   registered = "memory-cache";
         else if (sub == "history") registered = "memory-history";
         else if (sub == "purge")   registered = "memory-purge";
         else if (sub == "decay")   registered = "memory-decay";
@@ -649,5 +651,27 @@ public:
 };
 
 ICMG_REGISTER_COMMAND("memory-prune-telemetry", MemoryPruneTelemetryCommand);
+
+// ram-brain: `icmg memory cache stats` -- process-local recall cache counters.
+class MemoryCacheCommand : public BaseCommand {
+public:
+    std::string name() const override { return "memory-cache"; }
+    std::string description() const override { return "Recall cache stats"; }
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty() || args[0] != "stats") {
+            std::cout << "usage: icmg memory cache stats\n";
+            return args.empty() ? 1 : 0;
+        }
+        auto st = icmg::imem::MemoryStore::recallCache().stats();
+        double rate = (st.hits + st.misses) ? (100.0 * st.hits / (st.hits + st.misses)) : 0.0;
+        std::cout << "recall-cache (process-local): hits=" << st.hits
+                  << " misses=" << st.misses
+                  << " hit-rate=" << std::fixed << std::setprecision(1) << rate << "%"
+                  << " entries=" << st.entries << " bytes=" << st.bytes
+                  << " cap_bytes=" << st.cap_bytes << " evictions=" << st.evictions << "\n";
+        return 0;
+    }
+};
+ICMG_REGISTER_COMMAND("memory-cache", MemoryCacheCommand);
 
 } // namespace icmg::cli
