@@ -24,7 +24,7 @@ public:
     bool tryAcquire(const std::string& key, double now_sec) {
         std::lock_guard<std::mutex> lk(mu_);
         auto& b = buckets_[key];
-        if (b.last == 0.0) { b.tokens = cap_; b.last = now_sec; }
+        if (!b.init) { b.tokens = cap_; b.last = now_sec; b.init = true; }
         // refill based on elapsed time, clamp to capacity
         double elapsed = now_sec - b.last;
         if (elapsed > 0) {
@@ -39,7 +39,7 @@ public:
     double capacity() const { return cap_; }
 
 private:
-    struct Bucket { double tokens = 0.0; double last = 0.0; };
+    struct Bucket { double tokens = 0.0; double last = 0.0; bool init = false; };
     double cap_, refill_;
     std::mutex mu_;
     std::unordered_map<std::string, Bucket> buckets_;
