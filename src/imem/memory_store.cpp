@@ -1,5 +1,6 @@
 #include "memory_store.hpp"
 #include "../core/recall_cache.hpp"   // ram-brain: hot recall cache
+#include "../core/recall_cache_client.hpp"
 #include "../cli/recall_json.hpp"
 #include <cstdlib>
 #include "scorer.hpp"
@@ -25,7 +26,7 @@ bool rcEnabled() { const char* v = std::getenv("ICMG_RECALL_CACHE"); return !(v 
 std::string rcKey(const std::string& q, int limit, const std::string& scope, std::int64_t epoch) {
     return std::to_string(epoch) + "|" + scope + "|" + std::to_string(limit) + "|" + q;
 }
-void rcFlushOnWrite() { ++MemoryStore::recallEpoch(); MemoryStore::recallCache().flush(); }
+void rcFlushOnWrite() { ++MemoryStore::recallEpoch(); MemoryStore::recallCache().flush(); core::rcacheDaemonFlush(); }
 } // anon
 
 // ---- helpers ----
@@ -360,6 +361,10 @@ std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
         _rckey = rcKey(effective_query, limit, "default", recallEpoch());
         if (auto _hit = recallCache().get(_rckey))
             return icmg::cli::cacheNodesFromJson(*_hit);
+        if (auto _dh = core::rcacheDaemonGet(_rckey)) {   // daemon-shared tier
+            recallCache().put(_rckey, *_dh);
+            return icmg::cli::cacheNodesFromJson(*_dh);
+        }
     }
 
     auto corpus = all();
@@ -377,7 +382,11 @@ std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
     ctx.set<int>("result_count", (int)ranked.size());
     core::HookBus::instance().emit(core::HookEvent::POST_RECALL, ctx);
 
-    if (!_rckey.empty()) recallCache().put(_rckey, icmg::cli::cacheNodesToJson(ranked));
+    if (!_rckey.empty()) {
+        auto _js = icmg::cli::cacheNodesToJson(ranked);
+        recallCache().put(_rckey, _js);
+        core::rcacheDaemonPut(_rckey, _js);   // share to daemon (best-effort)
+    }
     return ranked;
 }
 

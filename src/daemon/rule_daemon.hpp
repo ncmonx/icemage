@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 #include <cstdint>
+#include "../core/recall_cache.hpp"   // ram-brain: RecallCache value member
 
 #ifdef _WIN32
   #include <windows.h>
@@ -80,6 +81,7 @@ private:
     // Dispatcher map: op-name → handler (request_json → response_json string).
     using JsonHandler = std::function<std::string(const std::string&)>;
     std::unordered_map<std::string, JsonHandler> handlers_;
+    mutable icmg::core::RecallCache rcache_;   // ram-brain: daemon-shared hot recall cache
     void buildDispatcher();
 
     void loadRules();

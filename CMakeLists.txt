@@ -632,6 +632,7 @@ add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.
 add_icmg_test(test_sqlcipher_spike tests/core/test_sqlcipher_spike.cpp) # v1.76 T1
 add_icmg_test(test_recall_cache tests/core/test_recall_cache.cpp) # ram-brain A
 add_icmg_test(test_recall_cache_wiring tests/imem/test_recall_cache_wiring.cpp) # ram-brain B
+add_icmg_test(test_rcache_rpc tests/daemon/test_rcache_rpc.cpp) # ram-brain C
 add_icmg_test(test_db_key tests/core/test_db_key.cpp) # v1.76 T2-3
 add_icmg_test(test_encrypt_backcompat tests/core/test_encrypt_backcompat.cpp) # v1.76 T4
 add_icmg_test(test_encrypt_migration tests/core/test_encrypt_migration.cpp) # v1.76 T5+T7

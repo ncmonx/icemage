@@ -1,4 +1,6 @@
 #include "rule_daemon.hpp"
+#include "../core/recall_cache.hpp"
+#include "../core/json_safe.hpp"
 #include "../core/db.hpp"
 #include "../core/hooks/runners.hpp"
 #include <nlohmann/json.hpp>
@@ -260,6 +262,27 @@ void RuleDaemon::buildDispatcher() {
         if (!emit.empty()) out["emit"] = emit;
         return out.dump();
     };
+
+    // ram-brain: daemon-shared hot recall cache. Payload carried in "stdin".
+    handlers_["RCACHE_GET"] = [this](const std::string& body) {
+        try { auto j = json::parse(body); std::string k = j.value("stdin", std::string(""));
+              auto v = rcache_.get(k); json r;
+              if (v) { r["value"] = *v; r["emit"] = *v; } else r["miss"] = true;
+              return icmg::core::safeDump(r);
+        } catch (...) { return std::string("{\"miss\":true}"); }
+    };
+    handlers_["RCACHE_PUT"] = [this](const std::string& body) {
+        try { auto j = json::parse(body); auto inner = json::parse(j.value("stdin", std::string("{}")));
+              rcache_.put(inner.value("key", std::string("")), inner.value("value", std::string(""))); } catch (...) {}
+        return std::string("{\"ok\":true}");
+    };
+    handlers_["RCACHE_FLUSH"] = [this](const std::string&) { rcache_.flush(); return std::string("{\"ok\":true}"); };
+    handlers_["RCACHE_STATS"] = [this](const std::string&) {
+        auto st = rcache_.stats(); json r;
+        r["hits"] = st.hits; r["misses"] = st.misses; r["entries"] = st.entries;
+        r["bytes"] = st.bytes; r["evictions"] = st.evictions; r["cap_bytes"] = st.cap_bytes;
+        return icmg::core::safeDump(r);
+    };
 }
 
 // ---- response framing (B5) -------------------------------------------------
@@ -416,3 +439,5 @@ int RuleDaemon::run() {
 #endif
 
 } // namespace icmg::daemon
+
+// ram-brain touch
