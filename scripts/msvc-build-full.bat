@@ -29,12 +29,16 @@ set "LOGDIR=%USERPROFILE%\.icmg\build-logs"
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 set "LOG=%LOGDIR%\msvc-build-latest.log"
 
+REM Truncate the log up front so single-target runs never show stale errors
+REM from a previous build in the error summary below.
+echo === build start (target=%TARGET%) ===> "%LOG%"
+
 set RC1=0
 set RC2=0
 
 if /i "%TARGET%"=="test" goto buildtest
 
-echo === BUILD icmg (Release, with RC manifest) ===> "%LOG%"
+echo === BUILD icmg (Release, with RC manifest) ===>> "%LOG%"
 cmake --build build-msvc-full --target icmg --config Release --parallel >> "%LOG%" 2>&1
 set RC1=%ERRORLEVEL%
 if /i "%TARGET%"=="icmg" goto summary
