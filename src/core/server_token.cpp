@@ -1,22 +1,24 @@
 // v1.68 S2: icmg-server IPC token auth — implementation.
 
-// Use the MSVC CRT CSPRNG (rand_s -> RtlGenRandom). Must be defined before
-// <cstdlib>. On POSIX we read /dev/urandom instead (see genRandomBytes).
-#if defined(_WIN32)
-#  define _CRT_RAND_S
-#endif
-
 #include "server_token.hpp"
 #include "path_utils.hpp"
 
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+// BCryptGenRandom is self-contained (no _CRT_RAND_S macro that a precompiled
+// header would defeat by including <stdlib.h> first). It is the system CSPRNG.
+#  include <windows.h>
+#  include <bcrypt.h>
+#  pragma comment(lib, "bcrypt.lib")
+#  ifndef BCRYPT_USE_SYSTEM_PREFERRED_RNG
+#    define BCRYPT_USE_SYSTEM_PREFERRED_RNG 0x00000002
+#  endif
+#else
 #  include <fcntl.h>
 #  include <unistd.h>
 #  include <sys/stat.h>
@@ -46,14 +48,9 @@ std::string trim(const std::string& s) {
 // the caller must NOT fall back to a weak PRNG for a credential.
 bool genRandomBytes(unsigned char* buf, size_t n) {
 #if defined(_WIN32)
-    size_t i = 0;
-    while (i < n) {
-        unsigned int r = 0;
-        if (rand_s(&r) != 0) return false;   // CSPRNG failure
-        size_t take = (n - i < sizeof(r)) ? (n - i) : sizeof(r);
-        for (size_t k = 0; k < take; ++k) buf[i++] = (unsigned char)((r >> (k * 8)) & 0xFF);
-    }
-    return true;
+    NTSTATUS st = BCryptGenRandom(nullptr, buf, (ULONG)n,
+                                  BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    return st == 0;   // STATUS_SUCCESS
 #else
     int fd = ::open("/dev/urandom", O_RDONLY);
     if (fd < 0) return false;

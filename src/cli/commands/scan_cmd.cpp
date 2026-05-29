@@ -92,6 +92,6 @@ private:
     }
 };
 
-ICMG_REGISTER_COMMAND("scan", ScanCommand)
+ICMG_REGISTER_COMMAND("scan", ScanCommand);
 
 } // namespace icmg::cli
