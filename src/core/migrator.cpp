@@ -78,11 +78,21 @@ void Migrator::apply(Db& db, const Migration& m) {
     // Strip BEGIN/COMMIT from file — migrator owns the transaction
     std::string sql = stripTransactionStatements(raw);
 
-    db.run("BEGIN TRANSACTION");
+    // v1.67: BEGIN IMMEDIATE acquires the write-lock up front, then RE-CHECK
+    // user_version inside the transaction. Fixes a concurrent-migration race:
+    // two icmg processes (e.g. a CLI cmd + a background cron) on a fresh DB
+    // both read user_version=0, both ran `ADD COLUMN` -> "duplicate column".
+    // With IMMEDIATE the second writer blocks until the first commits, then
+    // sees the bumped version and skips — idempotent under concurrency.
+    db.run("BEGIN IMMEDIATE");
     try {
+        if (db.userVersion() >= m.version) {
+            db.run("COMMIT");   // another process already applied this one
+            return;
+        }
         db.run(sql);
-        db.run("COMMIT");
         db.setUserVersion(m.version);
+        db.run("COMMIT");
         std::cerr << "[icmg] applied migration " << m.version
                   << " (" << fs::path(m.path).filename().string() << ")\n";
     } catch (...) {
@@ -105,11 +115,12 @@ void Migrator::runAll(Db& db) {
         // Embedded migrations fallback (binary deployed away from repo)
         for (auto& [ver, sql] : embeddedMigrations()) {
             if (ver <= current) continue;
-            db.run("BEGIN TRANSACTION");
+            db.run("BEGIN IMMEDIATE");   // v1.67: lock + recheck (race-safe)
             try {
+                if (db.userVersion() >= ver) { db.run("COMMIT"); continue; }
                 db.run(stripTransactionStatements(sql));
-                db.run("COMMIT");
                 db.setUserVersion(ver);
+                db.run("COMMIT");
             } catch (...) {
                 db.run("ROLLBACK");
                 throw;
