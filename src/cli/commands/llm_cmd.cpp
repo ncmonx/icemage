@@ -32,6 +32,7 @@
 #include "../../core/persona_loader.hpp"
 
 #include <nlohmann/json.hpp>
+#include "../llm_list_json.hpp"   // v1.70.0 #177
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -271,9 +272,10 @@ int cmdList() {
     ensureRegistry(dir);
     std::ifstream f(dir / "registry.json");
     std::stringstream ss; ss << f.rdbuf();
-    std::cout << ss.str() << "\n";
     std::string active = readActive(dir);
-    std::cout << "\nactive: " << (active.empty() ? "(none)" : active) << "\n";
+    // v1.70.0 #177: emit a single pure-JSON document with an "active" key
+    // (no trailing plain-text line that breaks json::parse).
+    std::cout << buildLlmListJson(ss.str(), active) << "\n";
     return 0;
 }
 

@@ -1,4 +1,5 @@
 #include "../base_command.hpp"
+#include "../run_args.hpp"   // v1.70.0 #178
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -87,39 +88,13 @@ public:
             usage(); return 0;
         }
 
-        bool raw      = hasFlag(args, "--raw");
-        bool json_out = hasFlag(args, "--json");
-        bool dry_run  = hasFlag(args, "--dry-run");
-        bool stream   = hasFlag(args, "--stream");
-        bool yes      = hasFlag(args, "--yes") || hasFlag(args, "-y");
-        bool ultra    = hasFlag(args, "--ultra");                                // v1.56 T1
+        RunArgs ra = parseRunArgs(args);   // v1.70.0 #178: leading-flag-only + "--" passthrough
+        bool raw = ra.raw, json_out = ra.json_out, dry_run = ra.dry_run,
+             stream = ra.stream, yes = ra.yes, ultra = ra.ultra;
         if (const char* e = std::getenv("ICMG_TKIL_ULTRA"); e && *e && *e != '0')
             ultra = true;                                                         // env opt-in
-
-        // Everything that's not a flag is part of the command.
-        // Re-quote args containing whitespace/quotes so parseArgv can recover
-        // the original tokens — without this, paths with spaces fragment.
-        auto quote_arg = [](const std::string& a) -> std::string {
-            if (a.empty()) return "\"\"";
-            if (a.find_first_of(" \t\"") == std::string::npos) return a;
-            std::string out = "\"";
-            for (char c : a) {
-                if (c == '"') out += "\\\"";
-                else          out += c;
-            }
-            out += "\"";
-            return out;
-        };
-        std::vector<std::string> cmd_args; // raw (unquoted) for pattern analysis
-        std::string command;
-        for (auto& a : args) {
-            if (a.empty()) continue;
-            if (a[0] == '-' && (a == "--raw" || a == "--json" || a == "--yes" || a == "-y" ||
-                                a == "--dry-run" || a == "--stream" || a == "--ultra")) continue;
-            cmd_args.push_back(a);
-            if (!command.empty()) command += " ";
-            command += quote_arg(a);
-        }
+        std::vector<std::string> cmd_args = ra.cmd_args;  // raw child tokens
+        std::string command = ra.command;                 // quoted child command line
         if (command.empty()) { std::cerr << "icmg run: requires <command>\n"; return 1; }
 
         // Destructive-op guard: prompt before executing dangerous commands

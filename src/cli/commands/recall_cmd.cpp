@@ -1,4 +1,5 @@
 #include "../base_command.hpp"
+#include "../recall_json.hpp"   // v1.70.0 #176
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -272,21 +273,9 @@ private:
     }
 
     void printJson(const std::vector<imem::MemoryNode>& nodes) const {
-        std::cout << "[\n";
-        for (size_t i = 0; i < nodes.size(); ++i) {
-            auto& n = nodes[i];
-            if (i) std::cout << ",\n";
-            std::cout << "  {\"id\":" << n.id
-                      << ",\"topic\":\""; escapeJson(std::cout, n.topic);
-            std::cout << "\",\"content\":\""; escapeJson(std::cout, n.content);
-            std::cout << "\",\"keywords\":\""; escapeJson(std::cout, n.keywords);
-            std::cout << "\",\"importance\":" << n.importance
-                      << ",\"frequency\":" << n.frequency
-                      << ",\"score\":" << std::fixed << std::setprecision(2) << n.score
-                      << ",\"git_sha\":\""; escapeJson(std::cout, n.git_sha);
-            std::cout << "\"}";
-        }
-        std::cout << "\n]\n";
+        // v1.70.0 #176: emit via nlohmann + safeDump so output is always
+        // valid UTF-8 (memory content may hold raw non-UTF-8 bytes).
+        std::cout << recallNodesToJson(nodes) << "\n";
     }
 };
 
