@@ -1974,3 +1974,13 @@ Decisions:
 - MANDATORY 5-sync rule lives in ROUTING_BLOCK -> AGENTS.md (init writes AGENTS.md, NOT CLAUDE.md which is user-private/gitignored).
 Rejected: hardcoding identity in embedded hook (clients differ); writing rule to CLAUDE.md (init uses AGENTS.md).
 Open: #174 awaiting client diag; v1.74 encryption-at-rest; then ICM dual-memory.
+
+## 2026-05-29 14:05 [saved]
+Goal: v1.74.0 SHIPPED — fix #184 (icmg run hangs on destructive cmd, non-interactive) + backfill README headline table.
+Decisions:
+- v1.74.0 SHIPPED (PR #186, sha 1d96bea0c0). ctest 1100/1100 (+5). headline 1095->1100. #184 + #180 closed.
+- #184: destructive guard std::getline blocked forever on non-TTY stdin. Pure destructiveDecision() (run_args.hpp): non-TTY->Deny(130), --yes/ICMG_ASSUME_YES->Proceed, TTY->Prompt. tty via _isatty/isatty.
+- Honored new baku rule: backfilled Headline-numbers table (drifted to v1.32) with rows for v1.65-v1.74 features. Lesson confirmed: table review IS part of every feature docs PR.
+- #180 third-party badge: closed not-planned (first-party badges only).
+Rejected: confirmation-timeout (TTY-detect cleaner than arbitrary timeout); embedding external badge.
+Open: #174 awaiting client diagnostic (host err126). v1.75 encryption-at-rest; then ICM dual-memory.
