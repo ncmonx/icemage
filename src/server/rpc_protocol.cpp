@@ -13,6 +13,7 @@ std::string serializeRequest(const RpcRequest& req) {
     j["cmd"] = req.cmd;
     j["args"] = req.args;
     if (!req.session_id.empty()) j["session_id"] = req.session_id;
+    if (!req.token.empty()) j["token"] = req.token;   // v1.68 S2
     return j.dump() + "\n";   // newline framing
 }
 
@@ -42,6 +43,9 @@ std::optional<RpcRequest> parseRequest(const std::string& wire) {
     }
     if (j.contains("session_id") && j["session_id"].is_string()) {
         req.session_id = j["session_id"].get<std::string>();
+    }
+    if (j.contains("token") && j["token"].is_string()) {   // v1.68 S2
+        req.token = j["token"].get<std::string>();
     }
     return req;
 }

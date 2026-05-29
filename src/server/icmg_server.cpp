@@ -3,6 +3,7 @@
 #include "icmg_server.hpp"
 #include "../cli/base_command.hpp"
 #include "../core/registry.hpp"
+#include "../core/server_token.hpp"           // v1.68 S2: IPC auth
 #include "../llm/warm_pipe.hpp"
 #include "../tkil/session_glossary.hpp"   // v1.58 FU2: cross-call glossary
 
@@ -122,6 +123,11 @@ RpcResponse IcmgServer::dispatch(const RpcRequest& req) {
 }
 
 int IcmgServer::run() {
+    // v1.68 S2: establish the per-user auth token. Every client request must
+    // present this exact token or the worker refuses to dispatch (incl.
+    // shutdown/ping), so a foreign pipe client cannot drive the daemon.
+    token_ = icmg::core::loadOrCreateServerToken();
+
     icmg::llm::PipeConfig cfg;
     cfg.name = pipe_name_;
     cfg.max_instances = 4;
@@ -148,6 +154,11 @@ int IcmgServer::run() {
                     if (!req.has_value()) {
                         res.ok = false;
                         res.err = "malformed request";
+                    } else if (!icmg::core::tokenMatches(token_, req->token)) {
+                        // v1.68 S2: reject before dispatch — gates shutdown/ping too.
+                        res.ok = false;
+                        res.err = "unauthorized";
+                        res.exit_code = 13;
                     } else {
                         res = dispatch(*req);
                     }

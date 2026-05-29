@@ -17,6 +17,7 @@ struct RpcRequest {
     std::string              cmd;          // first argv token (command name)
     std::vector<std::string> args;         // remaining argv tokens
     std::string              session_id;   // hook session id (for glossary)
+    std::string              token;        // v1.68 S2: per-user auth token
 };
 
 struct RpcResponse {

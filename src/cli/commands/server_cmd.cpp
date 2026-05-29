@@ -9,6 +9,7 @@
 #include "../../core/registry.hpp"
 #include "../../server/icmg_server.hpp"
 #include "../../server/rpc_protocol.hpp"
+#include "../../core/server_token.hpp"        // v1.68 S2: client auth token
 #include "../../llm/warm_pipe.hpp"
 
 #include <chrono>
@@ -30,7 +31,10 @@ roundTrip(const icmg::server::RpcRequest& req,
           std::chrono::milliseconds timeout = std::chrono::milliseconds(2000)) {
     auto client = icmg::llm::PipeClient::connect(kPipeName, timeout);
     if (!client.has_value()) return std::nullopt;
-    std::string wire = icmg::server::serializeRequest(req);
+    // v1.68 S2: attach this user's token so the daemon authorizes the request.
+    icmg::server::RpcRequest authed = req;
+    authed.token = icmg::core::readServerToken();
+    std::string wire = icmg::server::serializeRequest(authed);
     std::string resp = client->sendRequest(wire);
     if (resp.empty()) return std::nullopt;
     return icmg::server::parseResponse(resp);

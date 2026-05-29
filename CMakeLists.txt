@@ -5,7 +5,7 @@
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.67.0 LANGUAGES CXX C)
+project(icmg VERSION 1.68.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -565,6 +565,8 @@ add_icmg_test(test_daemon_glossary tests/server/test_daemon_glossary.cpp)
 add_icmg_test(test_relax_acl    tests/core/test_relax_acl.cpp)
 add_icmg_test(test_path_safety   tests/core/test_path_safety.cpp)
 add_icmg_test(test_migration_idempotent tests/core/test_migration_idempotent.cpp)
+add_icmg_test(test_server_auth   tests/core/test_server_auth.cpp)            # v1.68 S2
+add_icmg_test(test_scan_tree     tests/core/test_scan_tree.cpp)              # v1.68 S3
 add_icmg_test(test_pattern_pass tests/tkil/test_pattern_pass.cpp)
 add_icmg_test(test_outcome      tests/tkil/test_outcome.cpp)
 add_icmg_test(test_session_glossary tests/tkil/test_session_glossary.cpp)

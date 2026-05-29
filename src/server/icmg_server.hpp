@@ -35,6 +35,7 @@ public:
 
 private:
     std::string        pipe_name_;
+    std::string        token_;                // v1.68 S2: required client auth token
     std::atomic<bool>  stop_{false};
     struct GlossaryMap;                       // v1.58 FU2: per-session glossary
     std::unique_ptr<GlossaryMap> glossaries_;
