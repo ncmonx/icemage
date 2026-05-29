@@ -746,6 +746,26 @@ CONTENT=$(icmg wake-up 2>/dev/null) || true
 printf '%s' "$CONTENT" | icmg hookio emit SessionStart --ctx-stdin
 )BASH";
 
+// v1.73.0: SessionStart post-compaction re-anchor of user + standing rules.
+static const char* POSTCOMPACT_MEMORY_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. Fires on SessionStart after a compaction
+# (source=compact|resume) and re-anchors the user + their standing rules from
+# icmg memory so a context compaction never drops them. Generic: recalls
+# whatever rules/conventions THIS user has stored (no hardcoded identity).
+set -uo pipefail
+command -v icmg >/dev/null 2>&1 || exit 0
+INPUT=$(cat 2>/dev/null || echo '{}')
+SRC=$(echo "$INPUT" | icmg hookio get source 2>/dev/null || echo "")
+case "$SRC" in compact|resume) ;; *) exit 0;; esac
+RULES=$(icmg recall "rules conventions workflow persona icmg-first mandatory sync" --limit 6 2>/dev/null | head -40)
+WHO=$(icmg whoami 2>/dev/null | head -1)
+CONTENT="[icmg post-compact] Context was compacted -- re-anchoring your standing rules.
+${WHO:+User: ${WHO}}
+Recalled rules/conventions from icmg memory:
+${RULES:-(none stored yet -- persist rules via: icmg store --topic decisions-<area>)}"
+printf '%s' "$CONTENT" | icmg hookio emit SessionStart --ctx-stdin
+)BASH";
+
 // v0.42.0: UserPromptSubmit â€” BM25-match cold context_nodes + skill index per prompt.
 static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Auto-installed by `icmg init`. Fires on UserPromptSubmit.
@@ -985,6 +1005,15 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Generate scaffold | `icmg template extract <ref> --save-as X` then `icmg template apply X --to <new>` |
 
 **Auto-rewrite hook installed.** Raw `grep`, `node`, `cargo build`, `pytest`, etc. auto-redirect through `icmg run`. Bypass with `RAW=1 <cmd>`.
+
+### MANDATORY post-change sync (WAJIB — every change, no exceptions)
+After EVERY change (edit / fix / feature / refactor / doc), run all five before the task is done:
+1. `icmg graph update` — refresh the graph (nodes/edges/symbols)
+2. `icmg store --topic decisions-<area> "<what+why>"` — persist the decision/learning
+3. `icmg zone add <path> --zone <subsystem>` — tag the touched subsystem
+4. `icmg wflog add "<summary>"` — record the workflow step
+5. `icmg verify --command "<test/build>"` — record verification in the audit trail
+Run independent ones together via `icmg parallel`. Checklist: graph ✓ store ✓ zone ✓ wflog ✓ verify ✓ — not all five means the change is incomplete.
 
 ### Persist learnings (always)
 - Fixed a bug? `icmg known-issue add "<pattern>" --fix "<resolution>"`
@@ -1520,6 +1549,8 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-edit-expand.sh", EDIT_DIFF_EXPAND_SH, true);
         // #1084: wake-up briefing on SessionStart.
         n += writeFile(root / ".claude" / "hooks" / "icmg-wakeup-session.sh", WAKEUP_SESSION_SH, true);
+        // v1.73.0: post-compaction memory/rules re-anchor.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-postcompact-memory.sh", POSTCOMPACT_MEMORY_SH, true);
         // v0.42.0: rule enforcement hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-rule-enforce.sh", RULE_ENFORCE_SH, true);
         // v1.19.2: git-leash + graph-update shim. settings.local.json wires both.
@@ -1767,7 +1798,10 @@ private:
                      {"command", "bash -c '[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0'"}},
                     {{"type", "command"},
                      {"timeout", 5},
-                     {"command", "bash -c '[ -f .claude/hooks/icmg-wakeup-session.sh ] && bash .claude/hooks/icmg-wakeup-session.sh || exit 0'"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-wakeup-session.sh ] && bash .claude/hooks/icmg-wakeup-session.sh || exit 0'"}},
+                    {{"type", "command"},
+                     {"timeout", 12},
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-postcompact-memory.sh ] && bash .claude/hooks/icmg-postcompact-memory.sh || exit 0'"}}
                 })}
             }
         });
