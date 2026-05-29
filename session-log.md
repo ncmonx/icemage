@@ -1898,3 +1898,13 @@ Decisions:
 Rejected: global-only caveman off (user wanted per-project independence).
 Open: HIGH — fresh-file-DB migration idempotency warning (0003/0026 ADD COLUMN dup) blocks clean new-project init; need IF-NOT-EXISTS guard. Also S2 daemon-auth, S3 secret-scanner-FS, Graphify, ICM dual-memory.
 Files: src/cli/caveman_resolve.hpp, src/cli/commands/{caveman_cmd,init_cmd}.cpp, tests/cli/test_caveman_resolve.cpp
+
+## 2026-05-29 09:00 [saved]
+Goal: v1.67.0 SHIPPED — fix concurrent migration race (clean new-project init).
+Decisions:
+- Root: 2 procs (CLI cmd + bg cron mirror/maintain/sentinel) open fresh .icmg/data.db, both read user_version=0 (deferred BEGIN), both run ALTER ADD COLUMN -> "duplicate column". Migrator took write-lock too late.
+- Fix (migrator.cpp apply + embedded path): BEGIN IMMEDIATE (write-lock up front) + re-read user_version INSIDE txn, skip if already applied; setUserVersion moved inside txn. 2nd proc blocks then no-ops.
+- Unblocks user goal: clean `icmg init` on brand-new project even with crons.
+Rejected: SQL-level ADD COLUMN IF NOT EXISTS (SQLite lacks it) -> migrator-level recheck instead.
+Open: v1.68 backlog = S2 daemon-auth, S3 secret-scanner-FS, Graphify viz, ICM dual-memory, Moonshots.
+Files: src/core/migrator.cpp, tests/core/test_migration_idempotent.cpp
