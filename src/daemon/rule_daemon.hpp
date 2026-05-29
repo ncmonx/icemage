@@ -82,6 +82,7 @@ private:
     using JsonHandler = std::function<std::string(const std::string&)>;
     std::unordered_map<std::string, JsonHandler> handlers_;
     mutable icmg::core::RecallCache rcache_;   // ram-brain: daemon-shared hot recall cache
+    mutable int rcache_puts_ = 0;              // ram-brain: governor tick counter
     void buildDispatcher();
 
     void loadRules();

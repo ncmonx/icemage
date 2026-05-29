@@ -1,6 +1,7 @@
 #include "rule_daemon.hpp"
 #include "../core/recall_cache.hpp"
 #include "../core/json_safe.hpp"
+#include "../core/sys_resources.hpp"
 #include "../core/db.hpp"
 #include "../core/hooks/runners.hpp"
 #include <nlohmann/json.hpp>
@@ -274,6 +275,9 @@ void RuleDaemon::buildDispatcher() {
     handlers_["RCACHE_PUT"] = [this](const std::string& body) {
         try { auto j = json::parse(body); auto inner = json::parse(j.value("stdin", std::string("{}")));
               rcache_.put(inner.value("key", std::string("")), inner.value("value", std::string(""))); } catch (...) {}
+        // ram-brain governor: self-checkup every 32 puts (adaptive cap + pin hot).
+        if (++rcache_puts_ % 32 == 0)
+            icmg::core::runGovernorOnce(rcache_, icmg::core::availableRamMB(), icmg::core::totalRamMB());
         return std::string("{\"ok\":true}");
     };
     handlers_["RCACHE_FLUSH"] = [this](const std::string&) { rcache_.flush(); return std::string("{\"ok\":true}"); };
