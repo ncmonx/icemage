@@ -19,7 +19,7 @@
 
 A small helper app that makes AI coding assistants — Claude Code, Cursor, and friends — **70 – 98 % cheaper** to run, without making them less helpful.
 
-**40 MCP tools · 1057/1057 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
+**40 MCP tools · 1060/1060 tests · single-binary · 100 % local · pure-bash hooks** (zero Python/jq dependency).
 
 If you've ever watched a huge token bill evaporate on a single file read, paid for "thinking" you didn't need, or re-explained your project to the AI for the fifth time today — Icemage is for you.
 
@@ -78,11 +78,11 @@ Measured on real-world sessions. Your mileage will vary with project size and ha
 
 > **Recent releases.** Older entries archived in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **v1.67.0** - **Fix: clean new-project setup**. Initializing icmg in a brand-new project could hit a 'duplicate column' error if a background task touched the just-created database at the same moment. The database setup now locks and re-checks before applying each step, so concurrent access is safe and a new project initializes cleanly. Full automated suite passes 1060 of 1060 checks.
 - **v1.66.0** - **Per-project terse mode**. The compact 'caveman' response mode is now decided per project instead of one global switch - handy when using icmg as a dedicated brain for a project that should behave differently from the rest. `icmg caveman on/off` targets the current project by default (add `--global` for all); a project can even stay off while the global setting is on. Full automated suite passes 1057 of 1057 checks.
 - **v1.65.0** - **Security fix: safer file paths from automated tools**. Two tools that accept a file path from an automated (MCP) client used to pass it straight to a shell command, so a carefully crafted path could run unintended commands. Paths are now validated first - shell symbols, line breaks, and parent-directory escapes are rejected before anything runs. Normal file paths are unaffected. Full automated suite passes 1050 of 1050 checks.
 - **v1.64.0** - **Performance tune-up**. Memory search does a little less arithmetic per query (same results, fewer steps), and the embedded database is compiled with leaner options that trim start-up and per-query overhead. No behaviour change - purely faster under the hood. Full automated suite stays green at 1044 checks.
 - **v1.63.0** - **Smarter helpers: summarize, suggest, route**. New `icmg gist <file>` gives a dense summary of a big file before you read the whole thing (cached, with a plain fallback when the local model isn't available). New `icmg mine` looks at your recent decisions and *suggests* candidate rules - suggestions only, nothing is changed automatically. And prompt routing now reports a confidence level and can ask the local model to break ties on unclear cases (opt-in). Every smart feature keeps a simple, fast fallback. Full automated suite passes 1044 of 1044 checks.
-- **v1.62.0** - **Smarter memory de-duplication**. Saved notes used to be considered duplicates only when they shared the same words; now (opt-in) the tool can also spot notes that mean the same thing phrased differently - 'fixed the linker error' and 'linker error resolved' - and merge them, keeping recall cleaner. Word-overlap stays the default; the smarter check turns on with a switch when the local model is available. Full automated suite passes 1034 of 1034 checks.
 ---
 
 ## 🚀 Quick start
