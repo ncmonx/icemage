@@ -12,7 +12,7 @@ using icmg::cli::recallNodesToJson;
 using nlohmann::json;
 
 TEST("recall-json: invalid UTF-8 content -> still parseable JSON") {
-    imem::MemoryNode n;
+    icmg::imem::MemoryNode n;
     n.id = 7;
     n.topic = "decisions-db";
     n.content = std::string("note ") + (char)0x89 + "PNG raw";   // invalid UTF-8
@@ -38,7 +38,7 @@ TEST("recall-json: invalid UTF-8 content -> still parseable JSON") {
 }
 
 TEST("recall-json: clean content round-trips fields") {
-    imem::MemoryNode n;
+    icmg::imem::MemoryNode n;
     n.id = 1; n.topic = "t"; n.content = "hello"; n.keywords = "k";
     n.importance = 1; n.frequency = 1; n.score = 0.5; n.git_sha = "";
     json parsed = json::parse(recallNodesToJson({n}));
