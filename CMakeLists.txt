@@ -5,7 +5,7 @@
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.75.0 LANGUAGES CXX C)
+project(icmg VERSION 1.75.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -595,6 +595,7 @@ add_icmg_test(test_mcp          tests/mcp/test_mcp.cpp)
 add_icmg_test(test_graph_edges  tests/graph/test_graph_edges.cpp)
 add_icmg_test(test_graph_report tests/graph/test_graph_report.cpp)        # v1.71 Graphify
 add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.75 #187
+add_icmg_test(test_precompact_output tests/core/test_precompact_output.cpp) # v1.75.1 precompact schema
 add_icmg_test(test_zone_resolver tests/core/test_zone_resolver.cpp)
 add_icmg_test(test_csharp_symbols tests/graph/test_csharp_symbols.cpp)
 add_icmg_test(test_parallel tests/core/test_parallel.cpp)

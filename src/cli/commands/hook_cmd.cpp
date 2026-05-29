@@ -27,6 +27,7 @@
 #include "../../core/json_safe.hpp"   // v1.68.1 safeDump (UTF-8 crash-safe)
 #include "../../core/exec_utils.hpp"
 #include "../../core/hooks/runners.hpp"
+#include "../../core/hooks/precompact_output.hpp"  // v1.75.1: PreCompact schema guard
 #include "../../core/hooks/internals.hpp"
 #include "../../daemon/rule_daemon_client.hpp"
 #include "../../imem/memory_store.hpp"
@@ -122,7 +123,14 @@ public:
             if (age > max_age_seconds) return "";
             std::ifstream f(p, std::ios::binary);
             std::ostringstream ss; ss << f.rdbuf();
-            return ss.str();
+            std::string cached = ss.str();
+            // v1.75.1: never serve a precompact cache entry that fails
+            // Claude Code's PreCompact schema (e.g. stale pre-1.75.1 output
+            // using hookSpecificOutput.additionalContext) -> force fresh emit.
+            if (event == "precompact" &&
+                !icmg::core::hooks::isValidPreCompactOutput(cached))
+                return "";
+            return cached;
         } catch (...) { return ""; }
     }
 
