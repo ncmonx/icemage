@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <stdexcept>
 
+namespace icmg::core { class RecallCache; }   // ram-brain fwd decl
+
 namespace icmg::imem {
 
 class DuplicateError : public std::runtime_error {
@@ -20,6 +22,12 @@ public:
 
     // Store new node. Throws DuplicateError if too similar (use force=true to bypass).
     int64_t store(const MemoryNode& node, bool force = false);
+
+    // ram-brain: process-local hot recall cache (shared via daemon when up).
+    // Exposed for the governor + tests. Epoch bumps on any write -> old keys
+    // become un-findable (global flush invalidation).
+    static core::RecallCache& recallCache();
+    static std::int64_t& recallEpoch();
 
     // Update content of existing node.
     bool update(int64_t id, const std::string& content, const std::string& keywords = "");

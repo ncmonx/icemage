@@ -1,4 +1,7 @@
 #include "memory_store.hpp"
+#include "../core/recall_cache.hpp"   // ram-brain: hot recall cache
+#include "../cli/recall_json.hpp"
+#include <cstdlib>
 #include "scorer.hpp"
 #include "../core/hook_bus.hpp"
 #include "../core/user_identity.hpp"
@@ -13,6 +16,17 @@
 #include <unordered_map>
 
 namespace icmg::imem {
+
+// ram-brain: process-local hot recall cache + global-flush epoch.
+core::RecallCache& MemoryStore::recallCache() { static core::RecallCache c; return c; }
+std::int64_t& MemoryStore::recallEpoch() { static std::int64_t e = 0; return e; }
+namespace {
+bool rcEnabled() { const char* v = std::getenv("ICMG_RECALL_CACHE"); return !(v && v[0] == '0'); }
+std::string rcKey(const std::string& q, int limit, const std::string& scope, std::int64_t epoch) {
+    return std::to_string(epoch) + "|" + scope + "|" + std::to_string(limit) + "|" + q;
+}
+void rcFlushOnWrite() { ++MemoryStore::recallEpoch(); MemoryStore::recallCache().flush(); }
+} // anon
 
 // ---- helpers ----
 
@@ -173,6 +187,7 @@ std::vector<MemoryNode> MemoryStore::findSimilar(const std::string& topic,
 }
 
 int64_t MemoryStore::store(const MemoryNode& node, bool force) {
+    rcFlushOnWrite();   // ram-brain: invalidate recall cache on any write
     // v1.1.0 Task 3: any write invalidates the embed cache. Next recall
     // refreshes from DB. Cheap (clear map + bool flip).
     embed_cache_.clear();
@@ -256,6 +271,7 @@ bool MemoryStore::update(int64_t id, const std::string& content, const std::stri
 }
 
 bool MemoryStore::remove(int64_t id) {
+    rcFlushOnWrite();   // ram-brain: invalidate recall cache on any write
     int64_t now = nowEpoch();
     db_.run("UPDATE memory_nodes SET deleted_at=? WHERE id=? AND deleted_at IS NULL",
             {std::to_string(now), std::to_string(id)});
@@ -263,12 +279,14 @@ bool MemoryStore::remove(int64_t id) {
 }
 
 bool MemoryStore::restore(int64_t id) {
+    rcFlushOnWrite();   // ram-brain: invalidate recall cache on any write
     db_.run("UPDATE memory_nodes SET deleted_at=NULL WHERE id=?",
             {std::to_string(id)});
     return true;
 }
 
 int MemoryStore::purge(int days_old) {
+    rcFlushOnWrite();   // ram-brain: invalidate recall cache on any write
     int64_t cutoff = nowEpoch() - (int64_t)days_old * 86400;
     int count = 0;
     db_.query("SELECT COUNT(*) FROM memory_nodes WHERE deleted_at IS NOT NULL AND deleted_at < ?",
@@ -337,6 +355,13 @@ std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
 
     std::string effective_query = ctx.get<std::string>("query", query);
 
+    std::string _rckey;
+    if (rcEnabled()) {
+        _rckey = rcKey(effective_query, limit, "default", recallEpoch());
+        if (auto _hit = recallCache().get(_rckey))
+            return icmg::cli::cacheNodesFromJson(*_hit);
+    }
+
     auto corpus = all();
     auto& scorer = Scorer::instance();
     scorer.fit(corpus);
@@ -352,6 +377,7 @@ std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
     ctx.set<int>("result_count", (int)ranked.size());
     core::HookBus::instance().emit(core::HookEvent::POST_RECALL, ctx);
 
+    if (!_rckey.empty()) recallCache().put(_rckey, icmg::cli::cacheNodesToJson(ranked));
     return ranked;
 }
 
