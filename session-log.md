@@ -1956,3 +1956,11 @@ Decisions:
 - TDD WIN: caught sentinel bug (b.last==0.0 vs legit now_sec=0.0 -> re-init every call at t=0). Fixed with explicit bool init. Runtime never hit it (steady_clock != 0) but tests would've masked a real edge. Lesson: never use a valid data value (0.0) as an 'uninitialized' sentinel.
 Rejected: encryption-at-rest this release (DB crypto = bigger, own release v1.73); returning error-json instead of McpError (server already maps McpError->JSON-RPC error).
 Open: #174 awaiting client diagnostic (host-specific, not reproducible). v1.73 encryption-at-rest, then ICM dual-memory.
+
+## 2026-05-29 13:15 [saved]
+Goal: Add mandatory post-change icmg-sync rule (user directive).
+Decisions:
+- New WAJIB & MUTLAK rule in CLAUDE.md (before Persist-learnings): after EVERY change run 5 syncs — graph update / store / zone / wflog / verify. Change incomplete until all 5 done. Strengthens prior Rule #13 (icmg-first) with explicit zone+wflog+verify coverage.
+- Persisted to memory decisions-workflow (#6532 lineage). Dogfooded on the CLAUDE.md edit itself.
+Rejected: leaving it implicit in Rule #13 (user wanted explicit enumerated checklist incl zone+wflog).
+Open: v1.73 encryption-at-rest (DB crypto, own release); #174 awaiting client diagnostic.
