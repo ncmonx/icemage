@@ -1919,3 +1919,12 @@ Decisions:
 - Build recurring 'wrong version' ROOT: icmg_lib compile-error does NOT fail exe link -> relinks STALE lib -> reports OLD version. Fixed: msvc-build-full.bat always --config Release, logs+prints error-summary+version each run. Release exe=build-msvc-full/Release/icmg.exe. known-issue #12574.
 Rejected: rand_s (PCH-defeated); shipping root icmg.exe (stale); trusting exit-0 without grepping log.
 Open: v1.69 = Graphify viz OR ICM dual-memory; deferred encryption-at-rest + MCP rate-limit.
+
+## 2026-05-29 10:45 [saved]
+Goal: v1.69.0 SHIPPED — auto-enforce icmg-first hook + UTF-8 abort fix (bundle).
+Decisions:
+- v1.69.0 SHIPPED (PR #173, sha 00d86a4817). ctest 1071/1071. headline 1068->1071.
+- icmg-first auto-enforce: icmg init installs always-on UserPromptSubmit hook (icmg-icmg-first.sh) injecting the rule every prompt (full turn-1, short after, dedup per-session, opt-out ICMG_NO_ICMG_FIRST=1). Chosen over memory-seed (deterministic, not BM25-dependent). New project/user just runs icmg init — zero manual memory.
+- UTF-8 abort fix: core::safeDump (error_handler::replace). icmg hook userprompt dump threw type_error.316 on invalid-UTF8 memory -> uncaught -> abort. Same class as v1.61 sync. RULE: never raw json::dump() on DB/memory content -> use core::safeDump. known-issue #12579.
+Rejected: memory-seed mechanism (BM25 match not guaranteed every turn); separate v1.68.1 patch (bundled into v1.69 per user).
+Open: v1.70 = Graphify viz OR ICM dual-memory; deferred encryption-at-rest + MCP rate-limit. Current project needs `icmg init` to get the new hook.
