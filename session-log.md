@@ -1964,3 +1964,13 @@ Decisions:
 - Persisted to memory decisions-workflow (#6532 lineage). Dogfooded on the CLAUDE.md edit itself.
 Rejected: leaving it implicit in Rule #13 (user wanted explicit enumerated checklist incl zone+wflog).
 Open: v1.73 encryption-at-rest (DB crypto, own release); #174 awaiting client diagnostic.
+
+## 2026-05-29 13:35 [saved]
+Goal: v1.73.0 SHIPPED — bake post-compact memory hook + 5-sync rule into icmg init (client onboarding).
+Decisions:
+- v1.73.0 SHIPPED (PR #183, sha 5e5bd37837). ctest 1095 (unchanged — init-template wiring, smoke-verified).
+- Root need: v1.72 PostCompact hook + 5-sync rule were LOCAL only; clients got nothing. Now embedded in init_cmd.cpp -> every `icmg init`/--force gets them.
+- POSTCOMPACT_MEMORY_SH GENERIC (no hardcoded ncmonx/claudy): recalls each user's OWN rules+identity (icmg recall + whoami), source=compact|resume gated. Lesson: embedded hooks must be identity-agnostic.
+- MANDATORY 5-sync rule lives in ROUTING_BLOCK -> AGENTS.md (init writes AGENTS.md, NOT CLAUDE.md which is user-private/gitignored).
+Rejected: hardcoding identity in embedded hook (clients differ); writing rule to CLAUDE.md (init uses AGENTS.md).
+Open: #174 awaiting client diag; v1.74 encryption-at-rest; then ICM dual-memory.
