@@ -3,6 +3,8 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../graph/graph_store.hpp"
+#include "../../graph/graph_report.hpp"   // v1.71 Graphify
+#include <fstream>
 #include "../../graph/scanner.hpp"
 #include "../../graph/daemon.hpp"
 #include "../../data/data_store.hpp"
@@ -1271,6 +1273,8 @@ public:
             "  callees <symbol>              What this symbol calls\n"
             "  list                          List all graph nodes\n"
             "  stats                         Graph statistics\n"
+            "  report [--out F]              Analytics report (god-nodes) as Markdown\n"
+            "  viz [--out F]                 Interactive D3 HTML graph\n"
             "  orphans                       Find orphan files (no inbound edges)\n"
             "  cycles                        Detect circular dependencies\n"
             "  hot                           Show most accessed files\n"
@@ -1281,6 +1285,72 @@ public:
             "  --depth N             BFS depth (default varies by command)\n"
             "  --edge-type T1,T2     Filter edges by type (imports,calls,...)\n"
             "  --json                JSON output\n";
+        return 0;
+    }
+};
+
+
+// v1.71.0 Graphify: graph analytics report (Markdown) + interactive D3 viz.
+// Both are pure reads over GraphStore (file-kind nodes + their out-edges).
+namespace {
+inline void collectFileGraph(graph::GraphStore& store,
+                             std::vector<graph::GraphNode>& nodes,
+                             std::vector<graph::GraphEdge>& edges) {
+    nodes = store.all();
+    nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+        [](const graph::GraphNode& n){ return n.kind != "file"; }), nodes.end());
+    for (const auto& n : nodes) {
+        auto fe = store.edgesFrom(n.id);
+        edges.insert(edges.end(), fe.begin(), fe.end());
+    }
+}
+} // namespace
+
+class GraphReportCommand : public BaseCommand {
+public:
+    std::string name() const override { return "graph-report"; }
+    std::string description() const override { return "Graph analytics report (god-nodes, edge stats) as Markdown"; }
+    int run(const std::vector<std::string>& args) override {
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        std::vector<graph::GraphNode> nodes;
+        std::vector<graph::GraphEdge> edges;
+        collectFileGraph(store, nodes, edges);
+        auto deg  = graph::degreeCentrality(nodes, edges);
+        auto gods = graph::godNodes(deg);
+        std::string md = graph::buildReportMd(nodes, edges, gods);
+        std::string out = flagValue(args, "--out");
+        if (!out.empty()) {
+            std::ofstream f(out, std::ios::binary);
+            f << md;
+            std::cout << "graph report -> " << out << "\n";
+        } else {
+            std::cout << md;
+        }
+        return 0;
+    }
+};
+
+class GraphVizCommand : public BaseCommand {
+public:
+    std::string name() const override { return "graph-viz"; }
+    std::string description() const override { return "Render the graph as a standalone interactive HTML (D3)"; }
+    int run(const std::vector<std::string>& args) override {
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        std::vector<graph::GraphNode> nodes;
+        std::vector<graph::GraphEdge> edges;
+        collectFileGraph(store, nodes, edges);
+        auto deg = graph::degreeCentrality(nodes, edges);
+        std::string html = graph::buildVizHtml(nodes, edges, deg);
+        std::string out = flagValue(args, "--out", ".icmg/graph.html");
+        std::ofstream f(out, std::ios::binary);
+        if (!f) { std::cerr << "icmg graph viz: cannot write " << out << "\n"; return 1; }
+        f << html;
+        std::cout << "graph viz -> " << out << "  (" << nodes.size()
+                  << " nodes, " << edges.size() << " edges) — open in a browser\n";
         return 0;
     }
 };
@@ -1308,6 +1378,8 @@ ICMG_REGISTER_COMMAND("graph-transitive-impact", GraphTransitiveImpactCommand);
 ICMG_REGISTER_COMMAND("graph-path",              GraphPathCommand);
 ICMG_REGISTER_COMMAND("graph-layers",            GraphLayersCommand);
 ICMG_REGISTER_COMMAND("graph-neighbors",         GraphNeighborsCommand);
+ICMG_REGISTER_COMMAND("graph-report",            GraphReportCommand);   // v1.71
+ICMG_REGISTER_COMMAND("graph-viz",               GraphVizCommand);      // v1.71
 ICMG_REGISTER_COMMAND("graph-common",            GraphCommonCommand);
 
 } // namespace icmg::cli
