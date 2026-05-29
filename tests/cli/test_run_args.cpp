@@ -41,3 +41,23 @@ TEST("run-args: args with spaces are re-quoted") {
     auto r = parseRunArgs({"echo", "hello world"});
     ASSERT_CONTAINS(r.command, "\"hello world\"");
 }
+
+using icmg::cli::destructiveDecision;
+using icmg::cli::DestructiveDecision;
+
+TEST("destructive: non-destructive always proceeds") {
+    ASSERT_TRUE(destructiveDecision(false,false,false,false,true) == DestructiveDecision::Proceed);
+}
+TEST("destructive: safe dir proceeds even if destructive") {
+    ASSERT_TRUE(destructiveDecision(false,false,true,true,true) == DestructiveDecision::Proceed);
+}
+TEST("destructive: --yes or env proceeds") {
+    ASSERT_TRUE(destructiveDecision(true,false,true,false,true) == DestructiveDecision::Proceed);
+    ASSERT_TRUE(destructiveDecision(false,true,true,false,true) == DestructiveDecision::Proceed);
+}
+TEST("destructive: non-interactive (no tty) auto-denies, never prompts (#184)") {
+    ASSERT_TRUE(destructiveDecision(false,false,true,false,false) == DestructiveDecision::Deny);
+}
+TEST("destructive: interactive tty prompts") {
+    ASSERT_TRUE(destructiveDecision(false,false,true,false,true) == DestructiveDecision::Prompt);
+}

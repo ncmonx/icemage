@@ -57,4 +57,20 @@ inline RunArgs parseRunArgs(const std::vector<std::string>& args) {
     return r;
 }
 
+
+// v1.74.0 (#184): decide what to do with a destructive command. Pure +
+// testable. In a non-interactive context (stdin not a TTY) we must NOT block
+// on a confirmation prompt — that hangs scripts/agents forever. Auto-deny
+// instead; the user can opt in via --yes / ICMG_ASSUME_YES=1.
+enum class DestructiveDecision { Proceed, Deny, Prompt };
+
+inline DestructiveDecision destructiveDecision(bool yes_flag, bool assume_yes_env,
+                                               bool is_destructive, bool targets_safe,
+                                               bool stdin_is_tty) {
+    if (!is_destructive || targets_safe) return DestructiveDecision::Proceed;
+    if (yes_flag || assume_yes_env)      return DestructiveDecision::Proceed;
+    if (!stdin_is_tty)                   return DestructiveDecision::Deny;   // no hang
+    return DestructiveDecision::Prompt;
+}
+
 } // namespace icmg::cli

@@ -1,5 +1,12 @@
 #include "../base_command.hpp"
 #include "../run_args.hpp"   // v1.70.0 #178
+#include <cstdio>
+#include <cstdlib>
+#if defined(_WIN32)
+#  include <io.h>
+#else
+#  include <unistd.h>
+#endif
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -100,7 +107,25 @@ public:
         // Destructive-op guard: prompt before executing dangerous commands
         // unless --yes/-y is passed or the target is a known-safe directory.
         std::string dest_reason;
-        if (!yes && isDestructiveOp(cmd_args, dest_reason) && !targetsSafeDir(cmd_args)) {
+        bool assume_yes = [] { const char* e = std::getenv("ICMG_ASSUME_YES");
+                               return e && *e && *e != '0'; }();
+#if defined(_WIN32)
+        bool stdin_tty = _isatty(_fileno(stdin)) != 0;
+#else
+        bool stdin_tty = isatty(fileno(stdin)) != 0;
+#endif
+        bool is_dest = isDestructiveOp(cmd_args, dest_reason);
+        auto dd = destructiveDecision(yes, assume_yes, is_dest,
+                                      targetsSafeDir(cmd_args), stdin_tty);
+        if (dd == DestructiveDecision::Deny) {
+            // v1.74 #184: non-interactive stdin -> never block on a prompt
+            // (hangs scripts/agents). Auto-deny; opt in via --yes / env.
+            std::cerr << "[icmg run] destructive op refused (" << dest_reason
+                      << ") in non-interactive context. Re-run with --yes or set "
+                         "ICMG_ASSUME_YES=1 to allow.\n";
+            return 130;
+        }
+        if (dd == DestructiveDecision::Prompt) {
             std::cerr << "[WARN] Destructive operation detected: " << dest_reason << "\n"
                       << "  Command: " << command << "\n"
                       << "  Proceed? [y/N] ";
