@@ -160,9 +160,11 @@ if ($RunTests) {
 
 # copy ship binary to source tree + clean build dir
 # Ninja generator: exe at $BuildDir\icmg.exe (no Release\ subdir)
+# ONLY runs when the icmg target was actually built this invocation
+# (NOT for -Target test, else the clean nukes icmg_test.exe).
 $exeSrc  = if (Test-Path "$BuildDir\Release\icmg.exe") { "$BuildDir\Release\icmg.exe" } else { "$BuildDir\icmg.exe" }
 $exeDest = "$PSScriptRoot\build-msvc-full\Release\icmg.exe"
-if ($RC1 -eq 0 -and (Test-Path $exeSrc)) {
+if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
     logline '--- copy ship binary to source tree ---'
     New-Item -ItemType Directory -Force "$PSScriptRoot\build-msvc-full\Release" | Out-Null
     Copy-Item $exeSrc $exeDest -Force
