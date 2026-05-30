@@ -1,4 +1,4 @@
-﻿#include "exec_utils.hpp"
+#include "exec_utils.hpp"
 #include <stdexcept>
 #include <chrono>
 #include <array>
@@ -447,6 +447,8 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
         return result;
     }
 
+    // init_cmd.cpp background imports now use CreateProcessA(bInheritHandles=FALSE),
+    // so no grandchild inherits this pipe. Original ReadFile loop restored.
     std::array<char, 4096> buf;
     DWORD bytes;
     while (ReadFile(hOutR, buf.data(), (DWORD)buf.size(), &bytes, nullptr) && bytes)
@@ -475,3 +477,4 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
 }
 
 } // namespace icmg::core
+

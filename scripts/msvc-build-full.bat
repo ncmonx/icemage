@@ -20,7 +20,7 @@ REM Usage:  msvc-build-full.bat [icmg|test|both]   (default: both)
 REM ============================================================================
 setlocal enabledelayedexpansion
 call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvars64.bat" >nul
-cd /d "D:\Data Kerja\Personal\AI\icm-graph"
+cd /d "%~dp0.."
 
 set "TARGET=%~1"
 if "%TARGET%"=="" set "TARGET=both"

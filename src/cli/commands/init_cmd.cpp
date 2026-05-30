@@ -1300,13 +1300,28 @@ public:
         // Logs written to .icmg/init-imports.log for post-mortem.
 #ifdef _WIN32
         {
+            // v1.78.4: use CreateProcessA(bInheritHandles=FALSE) so grandchild
+            // processes do NOT inherit our stdout/stderr pipe handles. The old
+            // safeExecShell("start /B ...") approach caused init to hang 30+
+            // minutes: grandchildren that inherited the pipe write handle kept
+            // ReadFile blocked in safeExecShell until they exited.
             std::string log_path = (root / ".icmg" / "init-imports.log").string();
-            // start /B = no new console window; detach.
-            std::string bg_cmd =
-                "start /B cmd /C \"set ICMG_NO_AUTOSPAWN=1 && "
-                "(icmg claudemd import --slim & icmg plan import & icmg skill index) "
-                "> \"" + log_path + "\" 2>&1\"";
-            core::safeExecShell(bg_cmd, true, 3000);
+            std::string cmd_str =
+                "cmd.exe /C \"set ICMG_NO_AUTOSPAWN=1 && "
+                "(icmg claudemd import --slim & icmg plan import & icmg skill index)"
+                " > \"\"" + log_path + "\"\" 2>&1\"";
+            std::vector<char> cmdBuf(cmd_str.begin(), cmd_str.end());
+            cmdBuf.push_back('\0');
+            STARTUPINFOA si{}; si.cb = sizeof(si);
+            PROCESS_INFORMATION pi{};
+            // bInheritHandles=FALSE: grandchildren get no inherited pipe handles.
+            // DETACHED_PROCESS: no console window allocated.
+            if (CreateProcessA(nullptr, cmdBuf.data(), nullptr, nullptr,
+                               FALSE, DETACHED_PROCESS | CREATE_NO_WINDOW,
+                               nullptr, nullptr, &si, &pi)) {
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+            }
             std::cout << "  imports:       claudemd / plan / skill running in background\n";
             std::cout << "                 (log: .icmg/init-imports.log)\n";
         }

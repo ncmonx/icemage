@@ -7,6 +7,7 @@
 #include "../core/project_context.hpp"
 #include "../server/rpc_protocol.hpp"   // v1.57 S1: daemon fast-path
 #include "../llm/warm_pipe.hpp"         // v1.57 S1: PipeClient
+#include "../core/update_lock.hpp"      // v1.78.4: updating.lock startup check
 #include <chrono>
 #include <cstdlib>
 #include <cctype>
@@ -264,6 +265,17 @@ int Dispatcher::run(const std::vector<std::string>& args) {
 
     std::string cmd = cleaned.empty() ? "" : cleaned[0];
     if (cmd.empty()) { printHelp(); return 0; }
+
+    // v1.78.4: bail if a binary upgrade swap is in progress. Without this
+    // check, hooks + Claude Code kept spawning new icmg.exe processes that
+    // grabbed the exe file handle, causing fs::rename(self, .bak) in
+    // update --apply to fail with ERROR_SHARING_VIOLATION.
+    // Allow "update" through so --rollback works during the lock window.
+    if (cmd != "update" && icmg::core::isUpdatingLockFresh()) {
+        std::cerr << "icmg: upgrade in progress (~/.icmg/updating.lock) — retry in a moment.\n"
+                  << "  To force rollback: icmg update --rollback\n";
+        return 1;
+    }
     std::vector<std::string> rest(cleaned.begin() + 1, cleaned.end());
 
     // v1.57 S1: optional daemon fast-path. When ICMG_USE_SERVER=1 and a

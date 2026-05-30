@@ -3,7 +3,7 @@ setlocal
 REM v1.43+: NO wipe path. CMake handles delta config automatically.
 REM Wipe manually only when generator/compiler changes:  rmdir /s /q build-msvc-full
 call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvars64.bat" >nul
-cd /d "D:\Data Kerja\Personal\AI\icm-graph"
+cd /d "%~dp0.."
 cmake -B build-msvc-full -G "Ninja" ^
     -DCMAKE_BUILD_TYPE=Release ^
     -DCMAKE_C_COMPILER=cl ^

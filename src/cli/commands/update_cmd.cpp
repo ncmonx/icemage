@@ -14,6 +14,7 @@
 #include "../../core/exec_utils.hpp"
 #include "../../core/db.hpp"
 #include "../../core/path_utils.hpp"
+#include "../../core/update_lock.hpp"   // v1.78.4: shared lock helpers
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -189,21 +190,11 @@ static int stopOrphanIcmgInstances() {
 // re-spawning on the old binary before swap completes. Cross-platform: on
 // POSIX the sentinel is harmless (no exec_client to check it) but kept for
 // symmetry + future Linux hook checks.
-static fs::path updatingLockPath() {
-    const char* prof = std::getenv("USERPROFILE");
-    if (!prof) prof = std::getenv("HOME");
-    return fs::path(prof ? prof : ".") / ".icmg" / "updating.lock";
-}
-static void writeUpdatingLock() {
-    auto p = updatingLockPath();
-    std::error_code ec;
-    fs::create_directories(p.parent_path(), ec);
-    std::ofstream(p) << std::time(nullptr) << "\n";
-}
-static void clearUpdatingLock() {
-    std::error_code ec;
-    fs::remove(updatingLockPath(), ec);
-}
+// v1.78.4: lock helpers moved to src/core/update_lock.{hpp,cpp}.
+// Bring into local scope for backward-compat call sites below.
+using icmg::core::updatingLockPath;
+using icmg::core::writeUpdatingLock;
+using icmg::core::clearUpdatingLock;
 
 class UpdateCommand : public BaseCommand {
 public:
@@ -654,9 +645,21 @@ private:
 #endif
 
         std::error_code ec;
-        // Backup current.
-        fs::remove(bak, ec);                                  // remove old bak
-        fs::rename(self, bak, ec);
+        // v1.78.4: retry rename up to 3 times with short sleep.
+        // Dispatcher now checks updating.lock so new icmg processes bail out,
+        // but hook-triggered processes that were already mid-flight need time
+        // to exit. 3 × 300ms gives ~900ms grace after stopOrphanIcmgInstances.
+        fs::remove(bak, ec);
+        for (int _attempt = 0; _attempt < 3; ++_attempt) {
+            ec = {};
+            fs::rename(self, bak, ec);
+            if (!ec) break;
+#ifdef _WIN32
+            Sleep(300);
+#else
+            usleep(300000);
+#endif
+        }
         if (ec) {
             // Phase 47.x: lock-detected → spawn detached helper that waits
             // for our process to exit, then performs the swap. User gets
