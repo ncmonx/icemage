@@ -23,6 +23,10 @@
 #include <vector>
 #include <cstdint>
 #include "../core/recall_cache.hpp"   // ram-brain: RecallCache value member
+#include "../core/db.hpp"                // v1.78.3 ram-brain persist Db
+#include "../core/write_queue.hpp"       // v1.78.3 ram-brain persist async writes
+#include <memory>
+#include <set>
 
 #ifdef _WIN32
   #include <windows.h>
@@ -83,7 +87,14 @@ private:
     std::unordered_map<std::string, JsonHandler> handlers_;
     mutable icmg::core::RecallCache rcache_;   // ram-brain: daemon-shared hot recall cache
     mutable int rcache_puts_ = 0;              // ram-brain: governor tick counter
+    // v1.78.3 ram-brain persist wire: daemon owns Db + WriteQueue + scope-hydrate tracker.
+    std::unique_ptr<icmg::core::Db>         persist_db_;
+    std::unique_ptr<icmg::core::WriteQueue> persist_wq_;
+    mutable std::set<std::string>           hydrated_scopes_;
     void buildDispatcher();
+
+    // v1.78.3 Phase 3: lazy-hydrate scope on first PUT/GET. Thread-safe.
+    void ensureScopeHydrated(const std::string& scope) const;
 
     void loadRules();
 

@@ -2042,3 +2042,12 @@ Decisions:
 - Target patch v1.78.2 (additive, back-compat). Plan: `docs/plans/v1.78.2-ram-brain-persist.md`.
 Rejected: JSONL (no encryption, GC complex); mmap (Win lock/portability); persist OFF default (user chose ON); global scope (cross-project leak risk).
 Open: write_queue mockable in tests?; xxh64 vs sha1 for scope_hash; plan approval before TDD exec.
+
+## 2026-05-30 10:30 [saved]
+Goal: v1.78.2 SHIPPED + v1.78.3 plan locked.
+Decisions:
+- v1.78.2 public SHIPPED (tag docs-commit 116f917a, asset sha 6a7d089b3d). Bug-report ergonomics fix (#193 closed) + RAM-cache persist infra Phases A-D (24 new tests, ctest mono 1156). Daemon hookup deferred v1.78.3.
+- v1.78.3 plan = Opt A protocol-extension: RCACHE_PUT/GET payload gains `scope` field (back-compat empty=global). Lazy hydrate per-scope first-touch. Daemon owns Db+WriteQueue lifetime. Cache key composite `scope\x1fkey` (A1 single LRU, governor budget shared). 5 phases TDD-first. Plan: docs/plans/v1.78.3-ram-brain-daemon-wire.md.
+- v1.78.2 architectural friction discovered late: v1.77 daemon rcache is project-shared but v1.78.2 persist is per-project. Opt A resolves via per-payload scope tagging without breaking shared-cache design.
+Rejected: B single-project daemon (anti-v1.77 sharing); C bulk hydrate all-scopes (memory growth); D defer v1.79 (cold-start penalty drags); A2 per-scope sep LRU (governor complication).
+Open: v1.78.3 Phase 1 TDD pending start; longer-term ICM dual-memory + moonshots.

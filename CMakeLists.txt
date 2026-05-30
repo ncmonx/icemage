@@ -5,7 +5,7 @@
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.78.2 LANGUAGES CXX C)
+project(icmg VERSION 1.78.3 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -636,6 +636,7 @@ add_icmg_test(test_recall_cache_persist tests/core/test_recall_cache_persist.cpp
 add_icmg_test(test_recall_cache_writethrough tests/core/test_recall_cache_writethrough.cpp) # v1.78.2 ram-brain persist B
 add_icmg_test(test_recall_cache_warmreload tests/core/test_recall_cache_warmreload.cpp) # v1.78.2 ram-brain persist C
 add_icmg_test(test_recall_cache_persist_marker tests/core/test_recall_cache_persist_marker.cpp) # v1.78.2 ram-brain persist D
+add_icmg_test(test_rcache_persist_wire tests/daemon/test_rcache_persist_wire.cpp) # v1.78.3 daemon wire
 add_icmg_test(test_recall_cache_wiring tests/imem/test_recall_cache_wiring.cpp) # ram-brain B
 add_icmg_test(test_rcache_rpc tests/daemon/test_rcache_rpc.cpp) # ram-brain C
 add_icmg_test(test_governor_tick tests/core/test_governor_tick.cpp) # ram-brain D

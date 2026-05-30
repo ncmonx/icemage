@@ -4,6 +4,8 @@
 #include "../core/sys_resources.hpp"
 #include "../core/db.hpp"
 #include "../core/hooks/runners.hpp"
+#include "../core/recall_cache_persist.hpp"     // v1.78.3 Phase 4 persistEnabled
+#include "../core/recall_cache_persist_db.hpp"  // v1.78.3 Phase 3 hydrate
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -54,11 +56,48 @@ std::string RuleDaemon::pipeName() {
 // ---- constructor / destructor ----------------------------------------------
 
 RuleDaemon::RuleDaemon(const std::string& db_path) : db_path_(db_path) {
+    // v1.78.3 ram-brain persist wire: open Db + WriteQueue. Best-effort —
+    // failure leaves persist_db_/persist_wq_ null and cache falls back to RAM-only.
+    try {
+        persist_db_ = std::make_unique<icmg::core::Db>(db_path);
+        persist_wq_ = std::make_unique<icmg::core::WriteQueue>(100);
+    } catch (...) {
+        persist_db_.reset();
+        persist_wq_.reset();
+    }
+    // v1.78.3 Phase 4: wire write-through sink. RecallCache::putAt fires the
+    // sink on every PUT; sink splits the composite `scope\x1fkey` and enqueues
+    // a non-blocking writeThrough() onto persist_wq_. Honors env opt-out via
+    // persistEnabled() check inside the sink (cheap getenv per put).
+    if (persist_db_ && persist_wq_) {
+        rcache_.setPersistSink([this](const std::string& composite,
+                                       const std::string& value,
+                                       std::size_t bytes) {
+            if (!icmg::core::persistEnabled()) return;
+            auto sep = composite.find('\x1f');
+            std::string scope = (sep == std::string::npos) ? std::string()
+                                                            : composite.substr(0, sep);
+            std::string key   = (sep == std::string::npos) ? composite
+                                                            : composite.substr(sep + 1);
+            // Snapshot pointers; capture-by-value-of-raw is safe because sink
+            // is unset before dtor's persist_db_.reset().
+            icmg::core::Db* dbp = persist_db_.get();
+            persist_wq_->enqueue([dbp, scope, key, value, bytes]() {
+                icmg::core::writeThrough(*dbp, scope, key, value, bytes);
+            });
+        });
+    }
     loadRules();
     buildDispatcher();
 }
 
 RuleDaemon::~RuleDaemon() {
+    // v1.78.3: unset sink first so any in-flight PUT doesn't enqueue against a
+    // queue that is about to drain. Then drain + tear down Db.
+    rcache_.setPersistSink({});
+    if (persist_wq_) persist_wq_->flush();
+    persist_wq_.reset();
+    persist_db_.reset();
 #ifdef _WIN32
     if (pipe_handle_ != INVALID_HANDLE_VALUE) CloseHandle(pipe_handle_);
 #else
@@ -195,6 +234,23 @@ RuleDaemon::CheckResult RuleDaemon::checkFile(const std::string& tool,
     return r;
 }
 
+// ---- v1.78.3 Phase 3: lazy hydrate per-scope -------------------------------
+
+void RuleDaemon::ensureScopeHydrated(const std::string& scope) const {
+    if (!persist_db_) return;
+    if (hydrated_scopes_.count(scope)) return;
+    hydrated_scopes_.insert(scope);
+    try {
+        auto entries = icmg::core::hydrate(*persist_db_, scope, 256);
+        for (auto& e : entries) {
+            std::string composite = scope + std::string("\x1f") + e.key;
+            rcache_.put(composite, e.value);
+        }
+    } catch (...) {
+        // Best-effort: hydrate failure leaves scope empty; future PUT/GET still work.
+    }
+}
+
 // ---- dispatcher map (B2) ---------------------------------------------------
 
 void RuleDaemon::buildDispatcher() {
@@ -265,16 +321,28 @@ void RuleDaemon::buildDispatcher() {
     };
 
     // ram-brain: daemon-shared hot recall cache. Payload carried in "stdin".
+    // v1.78.3 scope ext: top-level "scope" field on request prefixes the cache
+    // key with `scope + \x1f` so per-project entries don't collide. Empty/
+    // missing scope = legacy "" bucket (back-compat with v1.77 clients).
     handlers_["RCACHE_GET"] = [this](const std::string& body) {
         try { auto j = json::parse(body); std::string k = j.value("stdin", std::string(""));
-              auto v = rcache_.get(k); json r;
+              std::string scope = j.value("scope", std::string(""));
+              ensureScopeHydrated(scope);   // v1.78.3 Phase 3: lazy hydrate first-touch
+              std::string composite = scope + std::string("\x1f") + k;
+              auto v = rcache_.get(composite); json r;
               if (v) { r["value"] = *v; r["emit"] = *v; } else r["miss"] = true;
               return icmg::core::safeDump(r);
         } catch (...) { return std::string("{\"miss\":true}"); }
     };
     handlers_["RCACHE_PUT"] = [this](const std::string& body) {
         try { auto j = json::parse(body); auto inner = json::parse(j.value("stdin", std::string("{}")));
-              rcache_.put(inner.value("key", std::string("")), inner.value("value", std::string(""))); } catch (...) {}
+              // Scope can live on either the outer envelope or the inner payload.
+              std::string scope = inner.value("scope", j.value("scope", std::string("")));
+              std::string key   = inner.value("key", std::string(""));
+              std::string val   = inner.value("value", std::string(""));
+              ensureScopeHydrated(scope);   // v1.78.3 Phase 3: lazy hydrate first-touch
+              std::string composite = scope + std::string("\x1f") + key;
+              rcache_.put(composite, val); } catch (...) {}
         // ram-brain governor: self-checkup every 32 puts (adaptive cap + pin hot).
         if (++rcache_puts_ % 32 == 0)
             icmg::core::runGovernorOnce(rcache_, icmg::core::availableRamMB(), icmg::core::totalRamMB());
