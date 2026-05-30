@@ -620,6 +620,7 @@ add_icmg_test(test_scorer       tests/imem/test_scorer.cpp)
 add_icmg_test(test_semantic_dedup tests/imem/test_semantic_dedup.cpp)
 add_icmg_test(test_importance_decay tests/imem/test_importance_decay.cpp)  # v1.23.0 (TDD: M2)
 add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomize T1
+add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
 add_icmg_test(test_rules        tests/rules/test_rules.cpp)
 add_icmg_test(test_data_store   tests/data/test_data_store.cpp)
 add_icmg_test(test_global_db    tests/core/test_global_db.cpp)

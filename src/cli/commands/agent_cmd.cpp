@@ -49,6 +49,7 @@ public:
             "Options:\n"
             "  --exec          Run as a real sub-agent: spawned CLI gets edit/write/bash\n"
             "                  tools + auto-accept, EXECUTES the task (not just advises).\n"
+            "                  Requires ICMG_AGENT_EXEC=1 (arbitrary local automation gate).\n"
             "  --dry-run       Show assembled prompt; do not call LLM\n"
             "  --no-store      Do not auto-store decision\n"
             "  --no-pack       Skip pack step (smaller prompt; for terse tasks)\n"
@@ -176,6 +177,24 @@ public:
                   "--allowedTools \"Edit,Write,Read,Bash,Glob,Grep\"")
             : cfg.getString("agent.command", "claude --print");
         std::string cmd = cmd_override.empty() ? default_cmd : cmd_override;
+
+        // v1.79 SECURITY: --exec grants the spawned CLI write + shell with
+        // auto-accept (arbitrary headless command execution). Gate behind an
+        // explicit env ack so it can never fire accidentally from another tool,
+        // and always echo the resolved command first. dry-run is exempt (no spawn).
+        if (exec && !dry_run) {
+            const char* ack = std::getenv("ICMG_AGENT_EXEC");
+            if (!(ack && ack[0] == '1')) {
+                std::cerr << "icmg agent --exec: agentic mode lets the spawned CLI edit files "
+                             "and run shell commands with auto-accept.\n"
+                          << "  Resolved command: " << cmd << "\n"
+                          << "  This is arbitrary local automation. To proceed, set "
+                             "ICMG_AGENT_EXEC=1 in your environment.\n";
+                return 2;
+            }
+            std::cerr << "[icmg agent --exec] agentic run (auto-accept edits + shell): "
+                      << cmd << "\n";
+        }
         if (cmd.empty()) {
             std::cerr << "icmg agent: agent.command not configured. "
                          "Set in ~/.icmg/config.json or pass --command.\n";
