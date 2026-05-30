@@ -215,7 +215,26 @@ int fileIssue(const std::string& title, const std::string& body, bool dry_run) {
         std::cout << "bug-report: filed → " << r.out;
         return 0;
     }
-    std::cerr << "bug-report: gh issue create failed:\n  " << r.err;
+    // v1.78.2 #193: gh failures used to print only r.err (often empty when gh
+    // routes the diagnostic to stdout, as with missing-label / repo-perm).
+    // Surface exit_code + both streams (capped) + actionable hint.
+    auto cap = [](const std::string& s){ return s.size() > 400 ? s.substr(0, 400) + "…" : s; };
+    std::cerr << "bug-report: gh issue create failed (exit=" << r.exit_code << ")\n";
+    if (!r.err.empty()) std::cerr << "  stderr: " << cap(r.err) << "\n";
+    if (!r.out.empty()) std::cerr << "  stdout: " << cap(r.out) << "\n";
+    if (r.err.empty() && r.out.empty()) {
+        std::cerr << "  (no output captured — likely gh aborted before printing)\n";
+    }
+    auto contains = [](const std::string& a, const char* b){ return a.find(b) != std::string::npos; };
+    const std::string& any = r.err.empty() ? r.out : r.err;
+    if (contains(any, "auto-report") || contains(any, "label")) {
+        std::cerr << "  hint: create the label first → `gh label create auto-report --repo "
+                  << repo << "`\n";
+    } else if (contains(any, "HTTP 404") || contains(any, "Could not resolve")) {
+        std::cerr << "  hint: repo `" << repo << "` may be inaccessible — check `gh repo view " << repo << "`\n";
+    } else if (contains(any, "authentication") || contains(any, "auth")) {
+        std::cerr << "  hint: re-auth → `gh auth status` then `gh auth login`\n";
+    }
     return r.exit_code;
 }
 
@@ -241,7 +260,18 @@ int doSendPending(bool dry_run) {
                  << "- **context:** " << j.value("context", std::string("(none)")) << "\n";
         std::string body = collectDiagnostics(user_msg.str());
         int rc = fileIssue(title, body, dry_run);
-        if (rc == 0) ++sent; else ++failed;
+        if (rc == 0) { ++sent; }
+        else {
+            ++failed;
+            // v1.78.2 #193: abort early after 3 consecutive failures to avoid
+            // spamming gh (saw 13/13 fail in client report). Same error class
+            // keeps failing — surface the hint once + stop.
+            if (failed >= 3 && sent == 0) {
+                std::cerr << "bug-report: aborting after 3 consecutive failures."
+                          << " Fix the gh error above then re-run.\n";
+                break;
+            }
+        }
     }
     f.close();
     std::cout << "bug-report: sent=" << sent << " failed=" << failed << "\n";
