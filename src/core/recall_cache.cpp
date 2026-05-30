@@ -31,6 +31,7 @@ void RecallCache::putAt(const std::string& key, const std::string& value, std::i
     bytes_ += e.bytes;
     lru_.push_front(std::move(e));
     map_[key] = lru_.begin();
+    if (sink_) sink_(key, value, key.size() + value.size());
     evictToFit();
 }
 

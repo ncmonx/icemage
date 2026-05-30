@@ -19,6 +19,8 @@ class RecallCache {
 public:
     void setCap(std::size_t max_entries, std::size_t max_bytes);
     void setTtlSeconds(std::int64_t ttl) { ttl_ = ttl; }
+    using PersistSink = std::function<void(const std::string& key, const std::string& value, std::size_t bytes)>;
+    void setPersistSink(PersistSink s) { sink_ = std::move(s); }
 
     // Production clock (std::time).
     std::optional<std::string> get(const std::string& key);
@@ -47,6 +49,7 @@ private:
     std::unordered_map<std::string, std::list<Entry>::iterator> map_;
     std::size_t cap_entries_ = 256, cap_bytes_ = 16u << 20, bytes_ = 0;
     std::int64_t ttl_ = 300;
+    PersistSink   sink_;
     CacheStats agg_{};       // cumulative hits/misses/evictions
     void touch(std::list<Entry>::iterator it, std::int64_t now);
     void evictLRUUnpinned();

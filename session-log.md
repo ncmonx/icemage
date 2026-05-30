@@ -2022,3 +2022,23 @@ Decisions:
 Rejected: full plugin rename in one pass (too many cross-refs, fragile); symbol substitution inside code blocks (breaks copy-paste).
 Open: user confirm full-rename pass vs hold; live-test hyper level.
 Files: ~/.claude/plugins/cache/claude-community/caveman/84cc3c14fa1e/skills/caveman/SKILL.md
+
+## 2026-05-30 09:00 [saved]
+Goal: v1.78.1 SHIPPED — caveman→sayless hard-rename + memoir-as-source-of-truth rule.
+Decisions:
+- Public release v1.78.1 (PR #194 merged 404359ee, tag on docs-commit only — no source leak path). Asset sha 4a1760281f.
+- Hard-rename caveman→sayless: 22 files sweep, new resolve/migrate/cmd hpp/cpp, 13 new tests (8 resolve + 5 migration incl hyper level). Auto-migration in init for proj+global flag/off + stale hook removal.
+- CLAUDE.md rule 6 MUTLAK & ABSOLUT: 13/13 public README h2 sections = memoir (#22588, #23346, #23505-23525). Forbidden cat/Read/grep README as FIRST step in docs PR; must memoir-recall first.
+Rejected: tag-on-source-commit (caused 90s leak window v1.78.1 first push — corrected); rule 6 WAJIB (proven not strong enough — self-violated 30min later); hand-edit README without memoir-first; ship state machine (exit 127 env issue).
+Open: GH support expunge dangling 2e8821d5 (low risk); next dev = RAM-brain write-through+warm-reload OR ICM dual-memory.
+
+## 2026-05-30 09:30 [saved]
+Goal: v1.78.2 plan locked — RAM-brain write-through + warm-reload (cont. v1.77 RecallCache).
+Decisions:
+- Storage = SQLite table `recall_cache_persist` (reuse SQLCipher v1.76 + write_queue v1.58 F4); rejected JSONL + mmap.
+- Persist default ON; opt-out `ICMG_RECALL_CACHE_PERSIST=0`. Hydrate cap 256 (LRU default). Scope = per-project via `scope_hash` col (sha1/xxh64 of project DB path).
+- Migration `0033_recall_cache_persist.sql` with `IF NOT EXISTS` (anti v1.66 fresh-init dup-column issue).
+- 5 phases TDD-first: A schema+scope → B writethrough → C warmreload → D CLI sub-cmd → E version+5-sync.
+- Target patch v1.78.2 (additive, back-compat). Plan: `docs/plans/v1.78.2-ram-brain-persist.md`.
+Rejected: JSONL (no encryption, GC complex); mmap (Win lock/portability); persist OFF default (user chose ON); global scope (cross-project leak risk).
+Open: write_queue mockable in tests?; xxh64 vs sha1 for scope_hash; plan approval before TDD exec.

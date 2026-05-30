@@ -4,6 +4,9 @@
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../core/recall_cache.hpp"
+#include "../../core/recall_cache_persist.hpp"
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <chrono>
@@ -673,5 +676,56 @@ public:
     }
 };
 ICMG_REGISTER_COMMAND("memory-cache", MemoryCacheCommand);
+
+
+// v1.78.2 Phase D: `icmg memory cache persist enable/disable/status` — per-project
+// OFF marker `.icmg/cache-persist.off`. Daemon reads marker + env on boot.
+class MemoryCachePersistCommand : public BaseCommand {
+public:
+    std::string name() const override { return "memory-cache-persist"; }
+    std::string description() const override {
+        return "Toggle RAM-cache write-through + warm-reload (per-project)";
+    }
+    int run(const std::vector<std::string>& args) override {
+        namespace fs = std::filesystem;
+        if (args.empty()) {
+            std::cout << "usage: icmg memory cache persist <enable|disable|status>\n";
+            return 1;
+        }
+        const std::string& action = args[0];
+        fs::path marker = fs::current_path() / ".icmg" / "cache-persist.off";
+
+        if (action == "enable") {
+            std::error_code ec;
+            fs::create_directories(marker.parent_path(), ec);
+            fs::remove(marker, ec);
+            std::cout << "icmg memory cache persist: ON (this project; marker removed)\n";
+            return 0;
+        }
+        if (action == "disable") {
+            std::error_code ec;
+            fs::create_directories(marker.parent_path(), ec);
+            std::ofstream f(marker); f << "off\n";
+            std::cout << "icmg memory cache persist: OFF (this project; marker set)\n";
+            return 0;
+        }
+        if (action == "status") {
+            std::string root = fs::current_path().string();
+            bool eff = icmg::core::persistEnabledForRoot(root);
+            const char* envv = std::getenv("ICMG_RECALL_CACHE_PERSIST");
+            std::string source;
+            if (envv && envv[0] == '0' && envv[1] == '\0') source = "env=0 (force OFF)";
+            else if (envv && envv[0] != '\0')              source = std::string("env=") + envv + " (force ON)";
+            else if (fs::exists(marker))                   source = "marker=.icmg/cache-persist.off";
+            else                                           source = "default (ON)";
+            std::cout << "icmg memory cache persist: " << (eff ? "ON" : "OFF")
+                      << " (source=" << source << ")\n";
+            return 0;
+        }
+        std::cout << "usage: icmg memory cache persist <enable|disable|status>\n";
+        return 1;
+    }
+};
+ICMG_REGISTER_COMMAND("memory-cache-persist", MemoryCachePersistCommand);
 
 } // namespace icmg::cli

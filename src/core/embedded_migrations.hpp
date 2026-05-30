@@ -857,6 +857,20 @@ CREATE TRIGGER IF NOT EXISTS local_llm_chats_ad
     VALUES('delete', old.id, old.content);
 END;
 )SQL"},
+        {33, R"SQL(
+-- v1.78.2: recall_cache_persist (write-through + warm-reload).
+CREATE TABLE IF NOT EXISTS recall_cache_persist (
+    scope_hash  TEXT    NOT NULL,
+    key         TEXT    NOT NULL,
+    value       BLOB    NOT NULL,
+    hit_count   INTEGER NOT NULL DEFAULT 1,
+    last_used   INTEGER NOT NULL,
+    byte_size   INTEGER NOT NULL,
+    PRIMARY KEY (scope_hash, key)
+);
+CREATE INDEX IF NOT EXISTS idx_rcp_scope_hits
+    ON recall_cache_persist(scope_hash, hit_count DESC);
+)SQL"},
     };
 }
 
