@@ -1033,7 +1033,7 @@ Run independent ones together via `icmg parallel`. Checklist: graph âœ“ store âœ
 
 Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM25).
 
-Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
+Full reference: run `icmg --help` or see https://github.com/ncmonx/icemage
 <!-- icmg:end -->
 )MD";
 

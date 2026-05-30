@@ -128,7 +128,7 @@ private:
         return false;
     }
 
-    static std::string repo() { return "ncmonx/icm-graph"; }
+    static std::string repo() { return "ncmonx/icemage"; }
 
     static bool versionNewer(const std::string& a, const std::string& b) {
         // Compare X.Y.Z lexically as int triples.

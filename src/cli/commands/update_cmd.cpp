@@ -37,7 +37,7 @@ using nlohmann::json;
 namespace icmg::cli {
 
 static const char* CURRENT_VERSION = icmg::core::ICMG_VERSION;
-static const char* REPO            = "ncmonx/icm-graph";
+static const char* REPO            = "ncmonx/icemage";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
 static int semverCmp(const std::string& a, const std::string& b) {

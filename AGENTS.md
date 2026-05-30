@@ -173,7 +173,7 @@ Run independent ones together via `icmg parallel`. Checklist: graph ? store ? zo
 
 Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM25).
 
-Full reference: run `icmg --help` or see https://github.com/ncmonx/icm-graph
+Full reference: run `icmg --help` or see https://github.com/ncmonx/icemage
 <!-- icmg:end -->
 
 
@@ -213,8 +213,8 @@ Two remotes with strict separation:
 
 | Remote | Repo | Contains | Workflow |
 | --- | --- | --- | --- |
-| `private` | ncmonx/icm-graph-src | **ALL files** — src/, tests/, migrations/, CMakeLists.txt, docs/, session-log.md | Push directly to `private/main` — **NO PR** |
-| `origin` | ncmonx/icm-graph | **Docs ONLY** — README.md, CHANGELOG.md, AGENTS.md, COMMANDS.md, .github/ | Use PR workflow |
+| `private` | ncmonx/icemage-src | **ALL files** — src/, tests/, migrations/, CMakeLists.txt, docs/, session-log.md | Push directly to `private/main` — **NO PR** |
+| `origin` | ncmonx/icemage | **Docs ONLY** — README.md, CHANGELOG.md, AGENTS.md, COMMANDS.md, .github/ | Use PR workflow |
 
 ### CRITICAL prohibitions
 

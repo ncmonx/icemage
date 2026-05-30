@@ -4,14 +4,14 @@
 
 # Icemage <sub><sup>(`icmg`)</sup></sub>
 
-[![release](https://img.shields.io/github/v/release/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/releases)
-[![downloads](https://img.shields.io/github/downloads/ncmonx/icm-graph/total)](https://github.com/ncmonx/icm-graph/releases)
-[![last-commit](https://img.shields.io/github/last-commit/ncmonx/icm-graph)](https://github.com/ncmonx/icm-graph/commits/main)
+[![release](https://img.shields.io/github/v/release/ncmonx/icemage)](https://github.com/ncmonx/icemage/releases)
+[![downloads](https://img.shields.io/github/downloads/ncmonx/icemage/total)](https://github.com/ncmonx/icemage/releases)
+[![last-commit](https://img.shields.io/github/last-commit/ncmonx/icemage)](https://github.com/ncmonx/icemage/commits/main)
 [![tests](https://img.shields.io/badge/tests-62%2F62%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-88%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ncmonx/icm-graph/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ncmonx/icm-graph)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ncmonx/icemage/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ncmonx/icemage)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-tip-ff5e5b?logo=ko-fi)](https://ko-fi.com/ncmonx)
 
@@ -155,7 +155,7 @@ Each one is a few percent. Stack them and you get the headline number.
 cmake -B build && cmake --build build
 
 # Or grab the release binary
-# https://github.com/ncmonx/icm-graph/releases
+# https://github.com/ncmonx/icemage/releases
 
 # Bootstrap a project (installs the right hooks for your AI agent)
 icmg init
@@ -354,7 +354,7 @@ Run `icmg --help` for the full list of 82+ subcommands. Each has its own `--help
 **Build from source:**
 
 ```bash
-git clone https://github.com/ncmonx/icm-graph
+git clone https://github.com/ncmonx/icemage
 cd icm-graph
 cmake -B build && cmake --build build
 # Optional capabilities (turn on what you want)

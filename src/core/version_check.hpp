@@ -18,7 +18,7 @@ struct VersionStatus {
 // Cache file: <user_home>/.icmg_version_cache (JSON).
 // If offline and cache >7d stale, lag=-1 and online=false.
 VersionStatus checkVersionStaleness(const std::string& current_version,
-                                    const std::string& repo = "ncmonx/icm-graph");
+                                    const std::string& repo = "ncmonx/icemage");
 
 // Print warning to stderr based on lag. Silent for lag 0-2. No-op when !online.
 void printVersionWarning(const VersionStatus& status);
