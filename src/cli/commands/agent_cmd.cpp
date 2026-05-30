@@ -47,13 +47,17 @@ public:
         std::cout <<
             "Usage: icmg agent <task description...> [options]\n\n"
             "Options:\n"
+            "  --exec          Run as a real sub-agent: spawned CLI gets edit/write/bash\n"
+            "                  tools + auto-accept, EXECUTES the task (not just advises).\n"
             "  --dry-run       Show assembled prompt; do not call LLM\n"
             "  --no-store      Do not auto-store decision\n"
             "  --no-pack       Skip pack step (smaller prompt; for terse tasks)\n"
-            "  --command CMD   Override agent.command (default: from config)\n"
-            "  --timeout SEC   Hard timeout (default 120)\n\n"
+            "  --command CMD   Override the command (default: from config)\n"
+            "  --timeout SEC   Hard timeout (default 120; 600 with --exec)\n\n"
             "Config (~/.icmg/config.json):\n"
-            "  agent.command           shell cmd (default: \"claude --print\")\n"
+            "  agent.command           advisory CLI (default: \"claude --print\")\n"
+            "  agent.exec_command      agentic CLI for --exec (default: claude --print\n"
+            "                          --permission-mode acceptEdits --allowedTools ...)\n"
             "  agent.system_prompt_path optional file prepended verbatim\n"
             "  agent.max_tokens        soft target (logged)\n";
     }
@@ -64,8 +68,13 @@ public:
         bool dry_run = hasFlag(args, "--dry-run");
         bool no_store = hasFlag(args, "--no-store");
         bool no_pack  = hasFlag(args, "--no-pack");
-        int timeout   = 120;
-        try { timeout = std::stoi(flagValue(args, "--timeout", "120")); } catch (...) {}
+        // v1.79: --exec turns the proxy into a real sub-agent — the spawned CLI
+        // gets write/edit/bash tools + auto-accept so it executes the task
+        // (edits files, runs build/tests) instead of just printing advice.
+        bool exec     = hasFlag(args, "--exec");
+        // agentic runs take longer than one-shot Q&A; default 600s in exec mode.
+        int timeout   = exec ? 600 : 120;
+        try { timeout = std::stoi(flagValue(args, "--timeout", std::to_string(timeout))); } catch (...) {}
 
         std::string task;
         for (auto& a : args) {
@@ -94,6 +103,22 @@ public:
                 std::ostringstream s; s << f.rdbuf();
                 prompt << s.str() << "\n\n";
             }
+        } else if (exec) {
+            // v1.79: agentic sub-agent system prompt — the CLI has write/edit/bash
+            // tools and must EXECUTE the task end-to-end, not just advise.
+            prompt << "You are an autonomous engineering sub-agent with file-edit and "
+                      "shell access. EXECUTE the task fully: make the edits, run the "
+                      "build/tests, and fix failures until green. Do not ask for "
+                      "confirmation — you are running headless.\n\n"
+                      "## Rules\n"
+                      "- Use `icmg context <file>`, `icmg graph symbol <name>`, "
+                      "`icmg recall \"<q>\"` instead of raw Read/Grep when possible.\n"
+                      "- For 2+ independent shell steps: use `icmg parallel --task ... --task ...`.\n"
+                      "- Build via `powershell -File build.ps1` (MSVC) — never raw cmake.\n"
+                      "- Follow TDD: failing test first, then implement, then verify green.\n"
+                      "- When done, print a one-line RESULT: summary + the verification command output.\n"
+                      "- After a fix, store via `icmg known-issue add`; after a decision, "
+                      "`icmg store --topic decisions-...`.\n\n";
         } else {
             prompt << "You are an engineering assistant. Be concise. "
                       "Give a decision sentence followed by minimal code or steps.\n\n"
@@ -142,9 +167,15 @@ public:
 
         // Resolve command.
         std::string cmd_override = flagValue(args, "--command", "");
-        std::string cmd = cmd_override.empty()
-            ? cfg.getString("agent.command", "claude --print")
-            : cmd_override;
+        // v1.79: exec mode picks the agentic command (write+bash tools, auto-accept
+        // edits) so the spawned CLI behaves like a real sub-agent. Default mirrors
+        // Claude Code headless agentic invocation; override via agent.exec_command.
+        std::string default_cmd = exec
+            ? cfg.getString("agent.exec_command",
+                  "claude --print --permission-mode acceptEdits "
+                  "--allowedTools \"Edit,Write,Read,Bash,Glob,Grep\"")
+            : cfg.getString("agent.command", "claude --print");
+        std::string cmd = cmd_override.empty() ? default_cmd : cmd_override;
         if (cmd.empty()) {
             std::cerr << "icmg agent: agent.command not configured. "
                          "Set in ~/.icmg/config.json or pass --command.\n";
