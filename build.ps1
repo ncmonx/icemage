@@ -159,7 +159,8 @@ if ($RunTests) {
 }
 
 # copy ship binary to source tree + clean build dir
-$exeSrc  = "$BuildDir\Release\icmg.exe"
+# Ninja generator: exe at $BuildDir\icmg.exe (no Release\ subdir)
+$exeSrc  = if (Test-Path "$BuildDir\Release\icmg.exe") { "$BuildDir\Release\icmg.exe" } else { "$BuildDir\icmg.exe" }
 $exeDest = "$PSScriptRoot\build-msvc-full\Release\icmg.exe"
 if ($RC1 -eq 0 -and (Test-Path $exeSrc)) {
     logline '--- copy ship binary to source tree ---'
@@ -180,10 +181,12 @@ $errs = Select-String $LogFile -Pattern ': error |: fatal error|LNK' -ErrorActio
 if ($errs) { $errs | ForEach-Object { logline "  $($_.Line.Trim())" }; logline '  ^^^ ERRORS' }
 else        { logline '  no errors' }
 logline "rc: icmg=$RC1  icmg_test=$RC2  ctest=$RCT"
-if (Test-Path $exeDest) {
-    $v = & $exeDest --version 2>&1
+$verExe = if (Test-Path $exeDest) { $exeDest } elseif (Test-Path $exeSrc) { $exeSrc } else { $null }
+if ($verExe) {
+    $v = & $verExe --version 2>&1
     logline "version: $v"
     logline "zip name: icmg-$Version-win-x64.zip"
+    logline "exe: $verExe"
 } else { logline 'WARNING: icmg.exe not found' }
 logline '==================='
 
