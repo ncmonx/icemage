@@ -41,7 +41,7 @@ public:
             "  --max-tokens N         Default: 2000\n"
             "  --no-think             Inject no-think directive in each request\n"
             "  --concise              Inject concise directive\n"
-            "  --caveman              Inject caveman directive\n"
+            "  --sayless              Inject sayless directive\n"
             "  --custom-id-prefix P   Default: \"task\" → task-1, task-2, ...\n\n"
             "Pipe pattern:\n"
             "  icmg batch --file tasks.txt --emit-json | curl -X POST \\\n"
@@ -85,13 +85,13 @@ public:
         std::string id_prefix   = flagValue(args, "--custom-id-prefix", "task");
         bool no_think  = hasFlag(args, "--no-think");
         bool concise   = hasFlag(args, "--concise");
-        bool caveman   = hasFlag(args, "--caveman");
+        bool sayless   = hasFlag(args, "--sayless");
 
         BatchOpts opts;
         opts.model = model;
         opts.max_tokens = max_tokens;
         opts.id_prefix = id_prefix;
-        opts.directive = caveman ? BatchDirective::Caveman
+        opts.directive = sayless ? BatchDirective::Sayless
                           : concise ? BatchDirective::Concise
                           : no_think ? BatchDirective::NoThink
                           : BatchDirective::None;

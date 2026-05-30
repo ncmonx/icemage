@@ -223,7 +223,7 @@ static int countThinkingWords(const std::string& raw) {
 
 int complianceCheckThinking(const std::string& text, int max_words) {
     try {
-        fs::path flag_path = homeDir() / ".icmg" / "caveman.flag";
+        fs::path flag_path = homeDir() / ".icmg" / "sayless.flag";
         if (!fs::exists(flag_path)) return 0;
         int words = countThinkingWords(text);
         if (words > max_words) {
@@ -471,17 +471,17 @@ std::string runPreToolUseEnforce(const std::string& stdin_raw) {
     return allowJson();
 }
 
-// ---- v1.1.0 Task 6.6: caveman per-prompt re-inject ------------------------
+// ---- v1.1.0 Task 6.6: sayless per-prompt re-inject ------------------------
 
 namespace {
 
-struct CavemanCache {
+struct SaylessCache {
     int64_t fetched_at = 0;
     int     last_24h   = 0;
 };
-static CavemanCache g_cm_cache;
+static SaylessCache g_cm_cache;
 
-static int recentCavemanViolations(int64_t window_secs) {
+static int recentSaylessViolations(int64_t window_secs) {
     int64_t now = (int64_t)std::time(nullptr);
     if (g_cm_cache.fetched_at != 0 && (now - g_cm_cache.fetched_at) < 60) {
         return g_cm_cache.last_24h;
@@ -512,30 +512,30 @@ static int recentCavemanViolations(int64_t window_secs) {
 
 } // namespace
 
-std::string runUserPromptCavemanInject() {
-    if (std::getenv("ICMG_CAVEMAN_QUIET")) return "";
-    fs::path flag = homeDir() / ".icmg" / "caveman.flag";
+std::string runUserPromptSaylessInject() {
+    if (std::getenv("ICMG_SAYLESS_QUIET")) return "";
+    fs::path flag = homeDir() / ".icmg" / "sayless.flag";
     if (!fs::exists(flag)) return "";
 
-    int n = recentCavemanViolations(/*24h=*/86400);
+    int n = recentSaylessViolations(/*24h=*/86400);
     if (n == 0) return "";
 
     std::ostringstream b;
     if (n >= 10) {
-        b << "FINAL WARNING: caveman ultra. " << n
+        b << "FINAL WARNING: sayless ultra. " << n
           << " thinking-phase overruns in 24h cost ~" << (n * 1500)
-          << " tokens. Apply caveman to thinking RIGHT NOW. "
+          << " tokens. Apply sayless to thinking RIGHT NOW. "
              "Skip thinking entirely if approach is obvious.\n";
     } else if (n >= 5) {
-        b << "STRONG WARNING: caveman ultra ignored " << n
+        b << "STRONG WARNING: sayless ultra ignored " << n
           << " times in 24h (~" << (n * 1500) << " tokens wasted). "
              "Thinking â‰¤80 words THIS TURN. Refuse to expand reasoning.\n";
     } else if (n >= 3) {
-        b << "REMINDER: caveman ultra. " << n
+        b << "REMINDER: sayless ultra. " << n
           << " recent thinking violations (~" << (n * 1500)
           << " tokens). Apply strictly this turn.\n";
     } else {
-        b << "NOTE: caveman ultra active. Thinking â‰¤80 words. "
+        b << "NOTE: sayless ultra active. Thinking â‰¤80 words. "
              "Drop articles/filler.\n";
     }
     return b.str();

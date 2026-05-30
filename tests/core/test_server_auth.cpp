@@ -71,13 +71,13 @@ TEST("server-token: tokenMatches fail-closed") {
 
 TEST("rpc: token survives serialize -> parse roundtrip") {
     RpcRequest req;
-    req.cmd = "caveman";
+    req.cmd = "sayless";
     req.args = {"status"};
     req.token = "deadbeefdeadbeefdeadbeefdeadbeef";
     std::string wire = serializeRequest(req);
     auto back = parseRequest(wire);
     ASSERT_TRUE(back.has_value());
-    ASSERT_EQ(back->cmd, std::string("caveman"));
+    ASSERT_EQ(back->cmd, std::string("sayless"));
     ASSERT_EQ(back->token, req.token);
 }
 

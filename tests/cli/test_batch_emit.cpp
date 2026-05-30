@@ -43,11 +43,11 @@ TEST("batch: concise directive") {
     ASSERT_TRUE(content.find("under 100 words") != std::string::npos);
 }
 
-TEST("batch: caveman directive") {
-    BatchOpts o; o.directive = BatchDirective::Caveman;
+TEST("batch: sayless directive") {
+    BatchOpts o; o.directive = BatchDirective::Sayless;
     auto j = buildBatchSpec({"z"}, o);
     std::string content = j["requests"][0]["params"]["messages"][0]["content"];
-    ASSERT_TRUE(content.find("Caveman mode ultra") != std::string::npos);
+    ASSERT_TRUE(content.find("Sayless mode ultra") != std::string::npos);
 }
 
 TEST("batch: no directive = no preamble") {
@@ -119,12 +119,12 @@ TEST("batch: long task body — pass-through, no truncation") {
     ASSERT_EQ((int)content.size(), 20000);
 }
 
-TEST("batch: caveman directive prefixes task content (not replaces)") {
-    BatchOpts o; o.directive = BatchDirective::Caveman;
+TEST("batch: sayless directive prefixes task content (not replaces)") {
+    BatchOpts o; o.directive = BatchDirective::Sayless;
     auto j = buildBatchSpec({"refactor auth.cs"}, o);
     std::string content = j["requests"][0]["params"]["messages"][0]["content"];
-    // Caveman preamble must precede task body.
-    auto cav_pos  = content.find("Caveman mode");
+    // Sayless preamble must precede task body.
+    auto cav_pos  = content.find("Sayless mode");
     auto task_pos = content.find("refactor auth.cs");
     ASSERT_TRUE(cav_pos != std::string::npos);
     ASSERT_TRUE(task_pos != std::string::npos);

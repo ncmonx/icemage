@@ -20,6 +20,7 @@
 #include "../../core/cron_store.hpp"
 #include "../../core/schedule_helper.hpp"
 #include "../../core/service_install.hpp"
+#include "../sayless_migrate.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
@@ -171,19 +172,19 @@ command -v icmg >/dev/null 2>&1 || exit 0
 exec icmg hook pretooluse-read
 )BASH";
 
-// Phase 51 T2: SessionStart hook injects caveman directive when flag present.
-static const char* CAVEMAN_PROMPT_SH = R"BASH(#!/usr/bin/env bash
-# Auto-installed by `icmg init`. Toggle via `icmg caveman on/off`.
+// Phase 51 T2: SessionStart hook injects sayless directive when flag present.
+static const char* SAYLESS_PROMPT_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. Toggle via `icmg sayless on/off`.
 set -uo pipefail
 # v1.66 per-project precedence: project OFF marker > project ON > global ON
-[[ -f ".icmg/caveman.off" ]] && exit 0
-gflag="${HOME:-$USERPROFILE}/.icmg/caveman.flag"
-if [[ -f ".icmg/caveman.flag" ]]; then flag=".icmg/caveman.flag"
+[[ -f ".icmg/sayless.off" ]] && exit 0
+gflag="${HOME:-$USERPROFILE}/.icmg/sayless.flag"
+if [[ -f ".icmg/sayless.flag" ]]; then flag=".icmg/sayless.flag"
 elif [[ -f "$gflag" ]]; then flag="$gflag"
 else exit 0; fi
 level=$(head -n1 "$flag" 2>/dev/null || echo ultra)
-date -u "+%Y-%m-%dT%H:%M:%SZ" > "${HOME:-$USERPROFILE}/.icmg/caveman-last-trigger.txt" 2>/dev/null || true
-msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
+date -u "+%Y-%m-%dT%H:%M:%SZ" > "${HOME:-$USERPROFILE}/.icmg/sayless-last-trigger.txt" 2>/dev/null || true
+msg=$(printf '%s\n' "SAYLESS MODE ACTIVE - level: ${level}." \
     "Respond terse. All technical substance stay. Only fluff die." \
     "Drop articles, filler, pleasantries, hedging. Fragments OK." \
     "Short synonyms. Technical terms exact. Code blocks unchanged." \
@@ -191,15 +192,15 @@ msg=$(printf '%s\n' "CAVEMAN MODE ACTIVE - level: ${level}." \
     "Code/commits/security/PRs: write normal." \
     "" \
     "THINKING PHASE rules (this is where verbose drift happens):" \
-    "- Apply caveman ultra to internal thinking section too." \
+    "- Apply sayless ultra to internal thinking section too." \
     "- Internal reasoning: bullet fragments, no prose paragraphs." \
     "- Cap thinking to 80 words. If approach is obvious, skip thinking entirely." \
     "- No 'Let me check / Now I will / Looking at...' narration." \
     "- Decision form: '[option] -> [outcome]. pick [winner].'" \
     "- Repeating the question back inside thinking is forbidden." \
     "" \
-    "Off only when user says 'stop caveman' or 'normal mode'.")
-# Phase 67 T32: prepend violation pressure if recent caveman thinking-phase
+    "Off only when user says 'stop sayless' or 'normal mode'.")
+# Phase 67 T32: prepend violation pressure if recent sayless thinking-phase
 # violations recorded. Escalates language at 2+ / 5+ violations in 24h.
 # Phase 70: also surface real session token total to model â€” encourages
 # self-throttling when token usage high.
@@ -337,12 +338,12 @@ if [[ "${ICMG_NO_AUTO_THINK:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
     fi
 fi
 
-# v1.30.0: caveman-auto for long-prose prompts (>800 chars typical
-# explainer/spec). Inject caveman ultra hint so reply is compressed.
-# Opt-out: ICMG_NO_CAVEMAN_AUTO=1
-if [[ "${ICMG_NO_CAVEMAN_AUTO:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
+# v1.30.0: sayless-auto for long-prose prompts (>800 chars typical
+# explainer/spec). Inject sayless ultra hint so reply is compressed.
+# Opt-out: ICMG_NO_SAYLESS_AUTO=1
+if [[ "${ICMG_NO_SAYLESS_AUTO:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
     if [[ ${#PROMPT} -gt 500 ]]; then  # v1.37.0: 800 -> 500 chars per user goal "save tokens"
-        printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] long prompt -> caveman ultra mode for response (set ICMG_NO_CAVEMAN_AUTO=1 to disable)"}}' 2>/dev/null
+        printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] long prompt -> sayless ultra mode for response (set ICMG_NO_SAYLESS_AUTO=1 to disable)"}}' 2>/dev/null
     fi
 fi
 
@@ -994,7 +995,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | System health | `icmg health` |
 | Self-upgrade | `icmg update` |
 | Strict mode | `icmg strict [on/off/status]` |
-| Caveman mode | `icmg caveman [on/off/status]` |
+| Sayless mode | `icmg sayless [on/off/status]` |
 | Reinit hooks | `icmg init --force` |
 | Batch cache writes | `icmg batch` (cut round-trips) |
 | Release notes | `icmg whats-new` |
@@ -1129,7 +1130,7 @@ static const char* COMMANDS_BLOCK = R"MD(<!-- icmg:commands:start -->
 | `icmg doctor` | Diagnose icmg issues |
 | `icmg health` | System health check |
 | `icmg strict [on/off/status]` | Toggle strict mode |
-| `icmg caveman [on/off/status]` | Toggle caveman mode |
+| `icmg sayless [on/off/status]` | Toggle sayless mode |
 | `icmg chat` | Interactive REPL |
 <!-- icmg:commands:end -->
 )MD";
@@ -1516,19 +1517,36 @@ private:
                 std::cout << "  cleanup: removed stale icmg-precompact-snapshot.py\n";
             }
         }
-        // Phase 51 T2: caveman SessionStart hook.
-        n += writeFile(root / ".claude" / "hooks" / "icmg-caveman-prompt.sh", CAVEMAN_PROMPT_SH, true);
-        // Auto-enable caveman ultra on init if flag absent (never overwrite existing level).
+        // v1.78.1: caveman -> sayless migration. Auto-rename old flag files
+        // + remove stale caveman hook script (idempotent; no-op if nothing to do).
+        {
+            int migrated_proj = migrateCavemanToSayless(fs::current_path());
+            const char* h_mig = std::getenv("HOME");
+            if (!h_mig) h_mig = std::getenv("USERPROFILE");
+            int migrated_global = h_mig ? migrateCavemanToSayless(fs::path(h_mig)) : 0;
+            if (migrated_proj + migrated_global > 0) {
+                std::cout << "  cleanup: migrated caveman flag(s) -> sayless ("
+                          << (migrated_proj + migrated_global) << " file(s))\n";
+            }
+            std::error_code _rmec;
+            fs::path stale_hook = root / ".claude" / "hooks" / "icmg-caveman-prompt.sh";
+            if (fs::exists(stale_hook)) {
+                fs::remove(stale_hook, _rmec);
+                std::cout << "  cleanup: removed stale icmg-caveman-prompt.sh (renamed to sayless)\n";
+            }
+        }
+        n += writeFile(root / ".claude" / "hooks" / "icmg-sayless-prompt.sh", SAYLESS_PROMPT_SH, true);
+        // Auto-enable sayless ultra on init if flag absent (never overwrite existing level).
         {
             const char* h2 = std::getenv("HOME");
             if (!h2) h2 = std::getenv("USERPROFILE");
             if (h2) {
-                fs::path cflag = fs::path(h2) / ".icmg" / "caveman.flag";
+                fs::path cflag = fs::path(h2) / ".icmg" / "sayless.flag";
                 if (!fs::exists(cflag)) {
                     fs::create_directories(cflag.parent_path());
                     std::ofstream ofs(cflag);
                     ofs << "ultra\n";
-                    std::cout << "  caveman:    ultra mode enabled (~/.icmg/caveman.flag)\n";
+                    std::cout << "  sayless:    ultra mode enabled (~/.icmg/sayless.flag)\n";
                 }
             }
         }
@@ -1777,7 +1795,7 @@ private:
         });
         cfg["hooks"]["PreToolUse"] = pre_array;
 
-        // Phase 51 T2: SessionStart caveman directive.
+        // Phase 51 T2: SessionStart sayless directive.
         // v0.42.0: also inject hot context_nodes at session start.
         // v1.20.5: revert to script-based SessionStart entries (user-confirmed
         // working). Combined `icmg session-inject` had been triggering the
@@ -1792,7 +1810,7 @@ private:
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"timeout", 5},
-                     {"command", "bash -c '[ -f .claude/hooks/icmg-caveman-prompt.sh ] && bash .claude/hooks/icmg-caveman-prompt.sh || exit 0'"}},
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-sayless-prompt.sh ] && bash .claude/hooks/icmg-sayless-prompt.sh || exit 0'"}},
                     {{"type", "command"},
                      {"timeout", 5},
                      {"command", "bash -c '[ -f .claude/hooks/icmg-context-session.sh ] && bash .claude/hooks/icmg-context-session.sh || exit 0'"}},

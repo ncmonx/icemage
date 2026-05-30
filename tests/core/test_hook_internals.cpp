@@ -25,16 +25,16 @@ void setEnv(const char* k, const char* v) {
 #endif
 }
 
-// complianceCheckThinking gates on ~/.icmg/caveman.flag existence —
+// complianceCheckThinking gates on ~/.icmg/sayless.flag existence —
 // touch it for tests that exercise word-counting; remove afterwards.
-fs::path cavemanFlagPath() {
+fs::path saylessFlagPath() {
     const char* h = std::getenv("USERPROFILE");
     if (!h) h = std::getenv("HOME");
-    return fs::path(h ? h : ".") / ".icmg" / "caveman.flag";
+    return fs::path(h ? h : ".") / ".icmg" / "sayless.flag";
 }
 
-void ensureCavemanFlag(bool& created_by_test) {
-    auto p = cavemanFlagPath();
+void ensureSaylessFlag(bool& created_by_test) {
+    auto p = saylessFlagPath();
     if (fs::exists(p)) { created_by_test = false; return; }
     std::error_code ec;
     fs::create_directories(p.parent_path(), ec);
@@ -42,10 +42,10 @@ void ensureCavemanFlag(bool& created_by_test) {
     created_by_test = true;
 }
 
-void removeCavemanFlagIfCreated(bool created_by_test) {
+void removeSaylessFlagIfCreated(bool created_by_test) {
     if (!created_by_test) return;
     std::error_code ec;
-    fs::remove(cavemanFlagPath(), ec);
+    fs::remove(saylessFlagPath(), ec);
 }
 
 } // namespace
@@ -54,21 +54,21 @@ void removeCavemanFlagIfCreated(bool created_by_test) {
 
 TEST("hook_internals: complianceCheckThinking counts words across thinking blobs") {
     bool flag_owned = false;
-    ensureCavemanFlag(flag_owned);
+    ensureSaylessFlag(flag_owned);
     std::string raw =
         R"({"role":"assistant","content":[)"
         R"({"type":"thinking","thinking":"one two three four five"},)"
         R"({"type":"thinking","thinking":"six seven eight"}]})";
     int n = icmg::core::hooks::complianceCheckThinking(raw, 1000);
-    removeCavemanFlagIfCreated(flag_owned);
+    removeSaylessFlagIfCreated(flag_owned);
     ASSERT_EQ(n, 8);
 }
 
 TEST("hook_internals: complianceCheckThinking returns 0 on no thinking field") {
     bool flag_owned = false;
-    ensureCavemanFlag(flag_owned);
+    ensureSaylessFlag(flag_owned);
     int n = icmg::core::hooks::complianceCheckThinking(R"({"plain":"hi"})", 80);
-    removeCavemanFlagIfCreated(flag_owned);
+    removeSaylessFlagIfCreated(flag_owned);
     ASSERT_EQ(n, 0);
 }
 

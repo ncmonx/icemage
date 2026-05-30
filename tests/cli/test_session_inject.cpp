@@ -44,7 +44,7 @@ TEST("session-inject: --help mentions skip flags") {
     StdoutCapture cap;
     int rc = cmd->run({"--help"});
     ASSERT_EQ(rc, 0);
-    ASSERT_CONTAINS(cap.str(), "--skip-caveman");
+    ASSERT_CONTAINS(cap.str(), "--skip-sayless");
     ASSERT_CONTAINS(cap.str(), "--skip-context");
     ASSERT_CONTAINS(cap.str(), "--skip-wakeup");
 }
@@ -55,7 +55,7 @@ TEST("session-inject: --skip-all runs without crash") {
     StdoutCapture cap;
     StderrCapture err;
     try {
-        int rc = cmd->run({"--skip-caveman", "--skip-context", "--skip-wakeup"});
+        int rc = cmd->run({"--skip-sayless", "--skip-context", "--skip-wakeup"});
         ASSERT_EQ(rc, 0);
         // Empty output OK with all skipped.
     } catch (const std::exception&) {

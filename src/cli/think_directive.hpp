@@ -32,9 +32,9 @@ std::string applyNoThinkDirective(const std::string& text);
 // Stronger: no-think + concise (≤100 words, no code unless requested).
 std::string applyConciseDirective(const std::string& text);
 
-// Strongest: caveman ultra mode — fragment style, drop articles/filler,
+// Strongest: sayless ultra mode — fragment style, drop articles/filler,
 // arrows for causality, abbreviations. Cuts output ~75% on top of no-think.
-std::string applyCavemanDirective(const std::string& text);
+std::string applySaylessDirective(const std::string& text);
 
 bool hasDirective(const std::string& text);
 

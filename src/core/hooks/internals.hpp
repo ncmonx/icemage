@@ -42,7 +42,7 @@ int recordTranscript(const std::string& session_id,
                      size_t max_chars = 200000);
 
 // Count thinking-section words in assistant JSON; log violation if > max_words
-// AND caveman flag is on. Returns word count (regardless of violation).
+// AND sayless flag is on. Returns word count (regardless of violation).
 // Mirrors `icmg compliance check-thinking --max-words <max_words>`.
 int complianceCheckThinking(const std::string& text, int max_words = 80);
 
@@ -70,11 +70,11 @@ std::string compressInPlace(const std::string& input, int threshold = 256);
 //   {"tool_name":"Read","tool_input":{"file_path":"foo.cpp"}}
 std::string runPreToolUseEnforce(const std::string& stdin_raw);
 
-// v1.1.0 Task 6.6: caveman per-prompt re-inject + escalation.
-// Returns an additionalContext text block reminding the model of caveman
+// v1.1.0 Task 6.6: sayless per-prompt re-inject + escalation.
+// Returns an additionalContext text block reminding the model of sayless
 // ultra; intensity scales with violation count in the last 24h.
-// Empty when caveman.flag absent or ICMG_CAVEMAN_QUIET=1.
-std::string runUserPromptCavemanInject();
+// Empty when sayless.flag absent or ICMG_SAYLESS_QUIET=1.
+std::string runUserPromptSaylessInject();
 
 // v1.3.0 Task 8: Focus Chain per-prompt re-inject.
 // Returns a markdown block of in-progress todos for the current session

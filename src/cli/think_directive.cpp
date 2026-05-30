@@ -99,11 +99,11 @@ std::string applyConciseDirective(const std::string& text) {
     return os.str();
 }
 
-std::string applyCavemanDirective(const std::string& text) {
+std::string applySaylessDirective(const std::string& text) {
     if (hasDirective(text)) return text;
     std::ostringstream os;
     os << "<icmg-directive>\n"
-       << "Caveman mode ultra. Answer directly, no analysis, no exploration. "
+       << "Sayless mode ultra. Answer directly, no analysis, no exploration. "
        << "Drop articles (a/an/the), drop filler (just/really/basically/actually/simply), "
        << "drop pleasantries. Use fragments. Use arrows for causality (X → Y). "
        << "Abbreviate where unambiguous (DB, auth, config, fn, impl). "

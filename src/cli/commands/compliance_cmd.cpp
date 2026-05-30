@@ -1,14 +1,14 @@
 // Phase 67 T32: `icmg compliance` — directive-violation tracker.
 //
-// Caveman directive injected via SessionStart, but Anthropic thinking phase
+// Sayless directive injected via SessionStart, but Anthropic thinking phase
 // generation often ignores it (model-internal). icmg can't strip thinking
 // retroactively, but can count violations and surface them upfront on next
 // session — increasing model salience.
 //
 // Stop hook calls `compliance check-thinking` with assistant message text.
-// Violation = thinking section > N words (default 80) when caveman flag ON.
+// Violation = thinking section > N words (default 80) when sayless flag ON.
 // SessionStart hook prepends "X violations in last 24h — comply now" to
-// caveman directive, escalating language if pattern persists.
+// sayless directive, escalating language if pattern persists.
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
@@ -29,7 +29,7 @@ class ComplianceCommand : public BaseCommand {
 public:
     std::string name()        const override { return "compliance"; }
     std::string description() const override {
-        return "Directive-violation tracker (caveman thinking-phase non-compliance)";
+        return "Directive-violation tracker (sayless thinking-phase non-compliance)";
     }
 
     void usage() const override {
@@ -42,7 +42,7 @@ public:
             "  recent [--last N]    List recent violation entries.\n"
             "  reset                Clear violation log.\n"
             "  inject               Print SessionStart additionalContext line\n"
-            "                       (called by caveman hook when violations exist).\n\n"
+            "                       (called by sayless hook when violations exist).\n\n"
             "Options:\n"
             "  --max-words N        Limit (default 80)\n";
     }
@@ -55,7 +55,7 @@ public:
         if (action == "check-thinking") {
             int max_words = 80;
             try { max_words = std::stoi(flagValue(args, "--max-words", "80")); } catch (...) {}
-            // Caveman flag must be ON to count violations.
+            // Sayless flag must be ON to count violations.
             if (!fs::exists(flagPath())) return 0;
             // Read JSON from stdin.
             std::ostringstream buf;
@@ -109,9 +109,9 @@ public:
             else if (last_24h >= 2) severity = "REMINDER";
             else severity = "NOTE";
             std::cout << severity << ": last 24h had " << last_24h
-                      << " thinking-phase caveman violation(s). "
+                      << " thinking-phase sayless violation(s). "
                       << "Each instance burned ~500-2000 tokens. "
-                      << "Apply caveman ultra to thinking strictly THIS TURN. "
+                      << "Apply sayless ultra to thinking strictly THIS TURN. "
                       << "If approach is obvious skip thinking entirely.";
             if (last_24h >= 5) {
                 std::cout << " User has noticed; further violations break trust.";
@@ -131,7 +131,7 @@ private:
         return fs::path(h ? h : ".");
     }
     static fs::path logPath()  { return homeDir() / ".icmg" / "compliance-violations.jsonl"; }
-    static fs::path flagPath() { return homeDir() / ".icmg" / "caveman.flag"; }
+    static fs::path flagPath() { return homeDir() / ".icmg" / "sayless.flag"; }
 
     static int countThinkingWords(const std::string& raw) {
         // Manual scan: find `"thinking":"...` (or similar key) → count

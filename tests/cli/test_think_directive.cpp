@@ -50,10 +50,10 @@ TEST("directive: concise stronger than no-think") {
     ASSERT_TRUE(c.find("under 100 words") != std::string::npos);
 }
 
-TEST("directive: caveman ultra-terse fragment style") {
-    auto c = icmg::cli::applyCavemanDirective("task X");
+TEST("directive: sayless ultra-terse fragment style") {
+    auto c = icmg::cli::applySaylessDirective("task X");
     ASSERT_TRUE(hasDirective(c));
-    ASSERT_TRUE(c.find("Caveman mode") != std::string::npos);
+    ASSERT_TRUE(c.find("Sayless mode") != std::string::npos);
     ASSERT_TRUE(c.find("Drop articles") != std::string::npos);
 }
 

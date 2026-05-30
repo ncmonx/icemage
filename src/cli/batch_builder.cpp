@@ -5,8 +5,8 @@ namespace icmg::cli {
 namespace {
 const char* directivePreamble(BatchDirective d) {
     switch (d) {
-        case BatchDirective::Caveman:
-            return "Caveman mode ultra. Drop articles/filler. Fragments OK. "
+        case BatchDirective::Sayless:
+            return "Sayless mode ultra. Drop articles/filler. Fragments OK. "
                    "Arrows for causality. Reply under 60 words.\n\n";
         case BatchDirective::Concise:
             return "Answer directly. No analysis. Reply under 100 words. "

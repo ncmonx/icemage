@@ -156,7 +156,7 @@ TEST("csv_import: abbreviations from CSV") {
 }
 
 TEST("csv_import: memory from CSV") {
-    std::string csv = "topic,content,importance\nprefs,caveman mode,high\nproject,icmg build,med\n";
+    std::string csv = "topic,content,importance\nprefs,sayless mode,high\nproject,icmg build,med\n";
     std::string path = writeTmp(".csv", csv);
 
     auto db = makeTestDb();

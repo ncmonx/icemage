@@ -114,14 +114,14 @@ public:
             pack_cmd = std::string("\"") + buf + "\" pack \"" + escape(task) + "\" --max-bytes 4096";
             if (hasFlag(args, "--no-think"))    pack_cmd += " --no-think";
             if (hasFlag(args, "--concise"))     pack_cmd += " --concise";
-            if (hasFlag(args, "--caveman"))     pack_cmd += " --caveman";
+            if (hasFlag(args, "--sayless"))     pack_cmd += " --sayless";
             if (hasFlag(args, "--auto-think"))  pack_cmd += " --auto-think";
             if (hasFlag(args, "--cache-prefix")) pack_cmd += " --cache-prefix";
 #else
             pack_cmd = "icmg pack \"" + escape(task) + "\" --max-bytes 4096";
             if (hasFlag(args, "--no-think"))    pack_cmd += " --no-think";
             if (hasFlag(args, "--concise"))     pack_cmd += " --concise";
-            if (hasFlag(args, "--caveman"))     pack_cmd += " --caveman";
+            if (hasFlag(args, "--sayless"))     pack_cmd += " --sayless";
             if (hasFlag(args, "--auto-think"))  pack_cmd += " --auto-think";
             if (hasFlag(args, "--cache-prefix")) pack_cmd += " --cache-prefix";
 #endif

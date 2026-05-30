@@ -14,14 +14,14 @@ public:
     std::string description() const override {
         return "Emit Anthropic Batch API request JSON spec from list of tasks. "
                "User pipes spec to /v1/messages/batches for 50% bulk discount. "
-               "Pre-injects no-think/concise/caveman directives if requested.";
+               "Pre-injects no-think/concise/sayless directives if requested.";
     }
     std::vector<McpToolParam> params() const override {
         return {
             {"tasks",       "array",   "List of task strings",                  true},
             {"model",       "string",  "Default claude-sonnet-4-5",             false},
             {"max_tokens",  "integer", "Default 2000",                          false},
-            {"directive",   "string",  "no-think | concise | caveman | none",   false},
+            {"directive",   "string",  "no-think | concise | sayless | none",   false},
         };
     }
 
@@ -51,7 +51,7 @@ protected:
         if (!model.empty())     cmd += " --model " + model;
         if (directive == "no-think")  cmd += " --no-think";
         if (directive == "concise")   cmd += " --concise";
-        if (directive == "caveman")   cmd += " --caveman";
+        if (directive == "sayless")   cmd += " --sayless";
 
         auto res = core::safeExecShell(cmd, false, 30000);
         try {

@@ -1,10 +1,10 @@
 // v1.15.0: `icmg session-inject` — combined SessionStart RPC.
 //
-// Replaces 3 sequential SessionStart hook scripts (caveman + context +
+// Replaces 3 sequential SessionStart hook scripts (sayless + context +
 // wakeup) with single in-process operation. Emits one
 // {"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"..."}}
 // envelope containing concatenated content from:
-//   - icmg caveman directive (if caveman.flag exists)
+//   - icmg sayless directive (if sayless.flag exists)
 //   - icmg context-node match hot tier + skill manifest + focus + rules
 //   - icmg wake-up briefing (decisions + fixes + memoirs)
 //
@@ -61,12 +61,12 @@ class SessionInjectCommand : public BaseCommand {
 public:
     std::string name()        const override { return "session-inject"; }
     std::string description() const override {
-        return "Combined SessionStart inject (caveman + context + wake-up)";
+        return "Combined SessionStart inject (sayless + context + wake-up)";
     }
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg session-inject [--skip-caveman] [--skip-context] [--skip-wakeup]\n\n"
+            "Usage: icmg session-inject [--skip-sayless] [--skip-context] [--skip-wakeup]\n\n"
             "Emits concatenated SessionStart inject text to stdout.\n"
             "Replaces 3 sequential hook scripts with single in-process call.\n"
             "Pipe through `icmg hookio emit SessionStart --ctx-stdin` for envelope.\n";
@@ -74,7 +74,7 @@ public:
 
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help")) { usage(); return 0; }
-        bool skip_caveman = hasFlag(args, "--skip-caveman");
+        bool skip_sayless = hasFlag(args, "--skip-sayless");
         bool skip_context = hasFlag(args, "--skip-context");
         bool skip_wakeup  = hasFlag(args, "--skip-wakeup");
 
@@ -87,8 +87,8 @@ public:
 
         std::string out;
 
-        // 1. Caveman directive (if flag set).
-        if (!skip_caveman) {
+        // 1. Sayless directive (if flag set).
+        if (!skip_sayless) {
             std::string c = captureCmd("compliance", {"inject"});
             c = trim(c);
             if (!c.empty()) {

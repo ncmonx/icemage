@@ -6,7 +6,7 @@
 
 namespace icmg::cli {
 
-enum class BatchDirective { None, NoThink, Concise, Caveman };
+enum class BatchDirective { None, NoThink, Concise, Sayless };
 
 struct BatchOpts {
     std::string model        = "claude-sonnet-4-5";

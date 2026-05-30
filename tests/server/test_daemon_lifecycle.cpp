@@ -36,18 +36,18 @@ TEST("daemon dispatch: unknown command returns error") {
 }
 
 TEST("daemon dispatch: registered command captures stdout") {
-    // 'caveman status' is a lightweight registered command that prints to
+    // 'sayless status' is a lightweight registered command that prints to
     // stdout without needing a project DB. If it isn't present in this
     // build, fall back to asserting only that SOME registered command runs.
     IcmgServer srv;
     RpcRequest req;
-    req.cmd = "caveman";
+    req.cmd = "sayless";
     req.args = {"status"};
     RpcResponse res = srv.dispatch(req);
     // Either it ran (ok + captured something) or it's genuinely absent.
     if (res.ok) {
         // Output captured into res.out (may be empty if cmd prints nothing,
-        // but caveman status prints a line).
+        // but sayless status prints a line).
         ASSERT_TRUE(res.out.size() >= 0u);   // captured field exists
     } else {
         // Acceptable only if the command truly isn't registered.

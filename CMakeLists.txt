@@ -5,7 +5,7 @@
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.78.0 LANGUAGES CXX C)
+project(icmg VERSION 1.78.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -758,7 +758,8 @@ add_icmg_test(test_warm_pipe           tests/llm/test_warm_pipe.cpp)          # 
 add_icmg_test(test_warm_loop_integration tests/llm/test_warm_loop_integration.cpp) # v1.52.0 TDD
 add_icmg_test(test_router                tests/cli/test_router.cpp)               # v1.53.0 TDD
 add_icmg_test(test_confidence            tests/cli/test_confidence.cpp)           # v1.61 F10
-add_icmg_test(test_caveman_resolve       tests/cli/test_caveman_resolve.cpp)      # v1.66
+add_icmg_test(test_sayless_resolve       tests/cli/test_sayless_resolve.cpp)      # v1.78.1 (renamed from test_caveman_resolve v1.66)
+add_icmg_test(test_sayless_migration     tests/cli/test_sayless_migration.cpp)    # v1.78.1
 add_icmg_test(test_gist                  tests/cli/test_gist.cpp)                 # v1.63 F12
 add_icmg_test(test_mine                  tests/cli/test_mine.cpp)                 # v1.63 F8
 add_icmg_test(test_bugfix_v161           tests/core/test_bugfix_v161.cpp)         # v1.61 bugfix

@@ -1984,3 +1984,41 @@ Decisions:
 - #180 third-party badge: closed not-planned (first-party badges only).
 Rejected: confirmation-timeout (TTY-detect cleaner than arbitrary timeout); embedding external badge.
 Open: #174 awaiting client diagnostic (host err126). v1.75 encryption-at-rest; then ICM dual-memory.
+
+## 2026-05-29 17:55 [saved]
+Goal: v1.76.0 encryption-at-rest SHIPPED.
+Decisions:
+- SQLCipher (vendored 3.53.1 amalgamation, ICMG_USE_ENCRYPTION default ON; no key = plain sqlite, back-compat). Needs SQLITE_HAS_CODEC + EXTRA_INIT/SHUTDOWN. Provider OpenSSL via vcpkg (CNG absent in 3.53) -> +libcrypto DLL.
+- db_key: 3 key-modes dpapi(default)/shared/env. PRAGMA key at Db::Db choke point, wrong-key->DbError. encrypt_cmd enable/disable/status; migration shreds plaintext .bak post-swap.
+- USER RULE (mutlak): no Claude subagents -> use `icmg agent`. state.md = lean current-state only.
+Rejected: CNG (absent 3.53); field-level crypto (kills BM25); libtomcrypt/custom (vs OpenSSL).
+Open: #174 awaiting client diag. NEXT = ICM dual-memory + RAM-governor (see `recall ram-memory-cache`).
+
+## 2026-05-29 19:30 [saved]
+Goal: v1.77.0 RAM-brain hot recall cache SHIPPED + diagnose client #174.
+Decisions:
+- RecallCache (LRU+TTL-via-created+byte+pin) src/core/recall_cache; wired MemoryStore.recall* (key query|limit|scope|epoch), store/forget/purge bump epoch+flush. Daemon RCACHE_GET/PUT/FLUSH/STATS (mutable rcache_, value in stdin, GET mirrors emit). recall_cache_client best-effort callHook fallback. Governor runGovernorOnce every 32 puts (sys_resources watermark, hysteresis 85/60, pin 16, clamp 4-64MB). icmg memory cache stats. Default ON, opt-out ICMG_RECALL_CACHE=0. ctest 1134. PR#191 merged.
+- #174 ROOT FOUND: context lazy-loads onnxruntime.dll (semantic embedder); err126 = onnxruntime.dll dependency missing on Server 2019 (likely VC++ redist). --version skips it. Workaround ICMG_EMBEDDER=python. Fix (v1.78, task spawned): context degrade graceful when onnx load fails + maybe bundle VC runtime.
+Rejected: Phase C+D defer (user chose full bundle); full daemon recall-routing (kept best-effort tier).
+Open: #174 awaiting client confirm (vc_redist + dumpbin). v1.78 = context onnx-resilience. Then write-through + warm-reload (recall ram-memory-cache).
+
+## 2026-05-29 20:30 [saved]
+Goal: v1.78.0 SHIPPED — fix #174 icmg context crash on Windows Server 2019.
+Decisions:
+- ROOT (corrected from onnx guess): path_utils::canonicalize used THROWING std::filesystem::canonical/weakly_canonical; MSVC <filesystem> calls PathCch api-set (api-ms-win-core-path) which fails on some Server 2019 SKUs -> filesystem_error err126 "specified module could not be found" -> crash. --version never canonicalizes. Client disproved onnx (VC redist present, ICMG_EMBEDDER=python no help, --version works w/ onnxruntime linked). dumpbin showed api-ms-win-core-path unresolved = the clue.
+- FIX: error_code overloads + lexically_normal fallback (pure-lexical, no PathCch) in canonicalize() + isWithinRoot(). 4 no-throw tests. ctest 1138. PR#192 merged. #174 CLOSED.
+- LESSON: never throwing fs::canonical on user-path hot paths (same class as v1.61 capOutput err126). Trust client data over own hypothesis (onnx wrong turn corrected fast + honestly).
+Rejected: bundle VC runtime (not the cause); blind try/catch (targeted ec-overload instead); onnx graceful-degrade (wrong root).
+Open: RAM-brain write-through+warm-reload (recall ram-memory-cache); ICM dual-memory. No open client issues.
+
+## 2026-05-30 07:30 [saved]
+Goal: External plugin caveman SKILL.md → glyph rename + ultra/hyper symbol upgrade.
+Decisions:
+- Plugin skill identity renamed `caveman` → `glyph` (copyright-safe, evokes symbol theme); frontmatter `name: glyph`, legacy `/caveman*` triggers retained for back-compat.
+- Ultra level upgraded: full symbol legend (→ ← ⇒ ∴ ∵ Δ != ! ? :: & | @ # ✓ ✗ >> << □) + abbrev table (mw/svc/ctx/tx/cb/ttl/lru/oom).
+- New `hyper` level: ultra + drop recoverable subj/verb, stacked symbols (!→, ?∵, Δ←), 1-3 words/line.
+- Scope this session = SKILL.md only; dir/hook/toml/svg rename = deferred batch.
+- icmg-internal caveman flag (v1.66 per-project toggle) UNCHANGED — different feature.
+Rejected: full plugin rename in one pass (too many cross-refs, fragile); symbol substitution inside code blocks (breaks copy-paste).
+Open: user confirm full-rename pass vs hold; live-test hyper level.
+Files: ~/.claude/plugins/cache/claude-community/caveman/84cc3c14fa1e/skills/caveman/SKILL.md

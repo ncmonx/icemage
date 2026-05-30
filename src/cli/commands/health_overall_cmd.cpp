@@ -79,7 +79,7 @@ public:
         } else {
             int present = 0, total = 4;
             for (auto* f : {"icmg-bash-rewrite.sh", "icmg-shrink-read.sh",
-                             "icmg-cap-output.sh", "icmg-caveman-prompt.sh"}) {
+                             "icmg-cap-output.sh", "icmg-sayless-prompt.sh"}) {
                 if (fs::exists(fs::current_path() / ".claude" / "hooks" / f)) ++present;
             }
             checks.push_back({"hooks",
@@ -87,15 +87,15 @@ public:
                               std::to_string(present) + "/" + std::to_string(total) + " hook scripts"});
         }
 
-        // Caveman flag.
+        // Sayless flag.
         const char* home = std::getenv("USERPROFILE");
         if (!home) home = std::getenv("HOME");
-        fs::path caveman_flag = fs::path(home ? home : ".") / ".icmg" / "caveman.flag";
-        if (fs::exists(caveman_flag)) {
-            std::ifstream f(caveman_flag); std::string lvl; std::getline(f, lvl);
-            checks.push_back({"caveman", "INFO", "ON (level=" + (lvl.empty() ? "ultra" : lvl) + ")"});
+        fs::path sayless_flag = fs::path(home ? home : ".") / ".icmg" / "sayless.flag";
+        if (fs::exists(sayless_flag)) {
+            std::ifstream f(sayless_flag); std::string lvl; std::getline(f, lvl);
+            checks.push_back({"sayless", "INFO", "ON (level=" + (lvl.empty() ? "ultra" : lvl) + ")"});
         } else {
-            checks.push_back({"caveman", "INFO", "OFF (toggle: icmg caveman on)"});
+            checks.push_back({"sayless", "INFO", "OFF (toggle: icmg sayless on)"});
         }
 
         // Sidecars.

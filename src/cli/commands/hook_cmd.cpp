@@ -400,11 +400,11 @@ private:
     }
 
     // Build the additionalContext payload + emit JSON to stdout.
-    // v1.1.0 Task 6.6: prepend caveman re-inject block when caveman.flag is
+    // v1.1.0 Task 6.6: prepend sayless re-inject block when sayless.flag is
     // ON and violations >0. Empty block on healthy sessions â†’ no overhead.
     // v1.3.0 Task 7: prepend skill chunk hint when top score â‰¥ 0.20.
     static void emitContext(const std::string& msg, const std::string& prompt = "") {
-        std::string caveman = icmg::core::hooks::runUserPromptCavemanInject();
+        std::string sayless = icmg::core::hooks::runUserPromptSaylessInject();
         std::string skill_hint = prompt.empty()
             ? ""
             : icmg::core::hooks::runUserPromptSkillSuggest(prompt);
@@ -424,7 +424,7 @@ private:
         std::string escalated_hint= icmg::core::hooks::runUserPromptEscalatedRulesInject();
         std::string amnesia_hint  = icmg::core::hooks::runUserPromptAmnesiaInject();
         std::string budget_hint   = (icmg::core::hooks::runPreToolUseTokenBudget(prompt) > 0) ? std::string("TOKEN BUDGET WARN. ICMG_TOKEN_BUDGET_OFF=1 to disable. ") : std::string("");
-        out["hookSpecificOutput"]["additionalContext"] = budget_hint + amnesia_hint + escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + caveman + msg;
+        out["hookSpecificOutput"]["additionalContext"] = budget_hint + amnesia_hint + escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + sayless + msg;
         std::cout << icmg::core::safeDump(out) << "\n";
     }
 

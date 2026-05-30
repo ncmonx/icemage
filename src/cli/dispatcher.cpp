@@ -106,7 +106,7 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"fetch",    "Download URL with content-aware reduction (HTML/JSON/PDF/binary) + cache"},
     {"batch",    "Emit Anthropic Batch API spec (50% bulk discount)"},
     {"sync",     "Team sync via git-tracked JSONL (init/push/pull/merge/status)"},
-    {"caveman",  "Toggle caveman directive auto-inject (on/off/status/level)"},
+    {"sayless",  "Toggle sayless directive auto-inject (on/off/status/level)"},
     {"health",   "Single sanity check (DB / hooks / version / sidecars / telemetry)"},
     {"strict",   "Toggle hook-level rule enforcement (on/off/status)"},
     {"fail",     "Anti-pattern memory: store/recall failed approaches"},
@@ -119,7 +119,7 @@ static const std::vector<std::pair<std::string,std::string>> CMDS = {
     {"tool-budget", "Per-turn tool-call gate (prevents runaway loops)"},
     {"shorten",  "Heuristic prompt rewriter — strip filler/politeness/redundancy"},
     {"context-budget", "Real Claude session token usage from transcript (covers ALL sources)"},
-    {"compliance", "Track + surface caveman thinking-phase directive violations"},
+    {"compliance", "Track + surface sayless thinking-phase directive violations"},
     {"cron",       "Install/uninstall weekly memory-hygiene scheduler (Win schtasks / POSIX cron)"},
     {"cross-recall", "Cross-project memory recall — find tasks solved in other projects"},
 };

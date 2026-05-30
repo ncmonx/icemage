@@ -1,4 +1,4 @@
-// v1.1.0 Task 6 + 6.6 — PreToolUse hard-deny + caveman re-inject tests.
+// v1.1.0 Task 6 + 6.6 — PreToolUse hard-deny + sayless re-inject tests.
 
 #include "../test_main.hpp"
 #include "../../src/core/hooks/internals.hpp"
@@ -66,25 +66,25 @@ TEST("enforce: unrelated tool (Write) → allow") {
     ASSERT_TRUE(r.find("\"allow\"") != std::string::npos);
 }
 
-// ---- caveman re-inject -----------------------------------------------------
+// ---- sayless re-inject -----------------------------------------------------
 
 namespace {
-fs::path cavemanFlag() {
+fs::path saylessFlag() {
     const char* h = std::getenv("USERPROFILE");
     if (!h) h = std::getenv("HOME");
-    return fs::path(h ? h : ".") / ".icmg" / "caveman.flag";
+    return fs::path(h ? h : ".") / ".icmg" / "sayless.flag";
 }
 } // namespace
 
-TEST("caveman_inject: no flag → empty block") {
-    auto p = cavemanFlag();
+TEST("sayless_inject: no flag → empty block") {
+    auto p = saylessFlag();
     bool existed = fs::exists(p);
     if (existed) {
         // Test must run with flag absent; rename, test, restore.
         std::error_code ec;
         fs::rename(p, p.string() + ".bak", ec);
     }
-    auto r = icmg::core::hooks::runUserPromptCavemanInject();
+    auto r = icmg::core::hooks::runUserPromptSaylessInject();
     if (existed) {
         std::error_code ec;
         fs::rename(p.string() + ".bak", p, ec);
@@ -92,11 +92,11 @@ TEST("caveman_inject: no flag → empty block") {
     ASSERT_TRUE(r.empty());
 }
 
-TEST("caveman_inject: ICMG_CAVEMAN_QUIET=1 → empty block") {
-    setEnv("ICMG_CAVEMAN_QUIET", "1");
-    auto r = icmg::core::hooks::runUserPromptCavemanInject();
+TEST("sayless_inject: ICMG_SAYLESS_QUIET=1 → empty block") {
+    setEnv("ICMG_SAYLESS_QUIET", "1");
+    auto r = icmg::core::hooks::runUserPromptSaylessInject();
     ASSERT_TRUE(r.empty());
-    setEnv("ICMG_CAVEMAN_QUIET", "");
+    setEnv("ICMG_SAYLESS_QUIET", "");
 }
 
 

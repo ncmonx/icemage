@@ -597,7 +597,7 @@ public:
             "  --cache-ttl N         Cache TTL seconds (default 3600)\n"
             "  --no-think            Force directive: skip model analysis pass\n"
             "  --concise             Stronger directive: short reply, no code\n"
-            "  --caveman             Strongest: ultra-terse fragment-style reply (~60 words)\n"
+            "  --sayless             Strongest: ultra-terse fragment-style reply (~60 words)\n"
             "  --auto-think          Classify task; apply --no-think if simple (DEFAULT)\n"
             "  --full-think          Opt out of auto-think — keep full thinking pass\n"
             "  --thinking-stats      Show 30-day thinking-budget telemetry\n"
@@ -1063,41 +1063,41 @@ public:
         // with --full-think for users who want full thinking pass.
         bool no_think    = hasFlag(args, "--no-think");
         bool concise     = hasFlag(args, "--concise");
-        bool caveman     = hasFlag(args, "--caveman");
+        bool sayless     = hasFlag(args, "--sayless");
         bool full_think  = hasFlag(args, "--full-think");
-        // Phase 67 hotfix: if global caveman flag set (~/.icmg/caveman.flag),
-        // force --no-think + --caveman regardless of classifier. Addresses
+        // Phase 67 hotfix: if global sayless flag set (~/.icmg/sayless.flag),
+        // force --no-think + --sayless regardless of classifier. Addresses
         // model thinking-phase directive non-compliance bug — kill thinking
         // outright instead of trying to constrain it via prompt.
         {
             const char* h = std::getenv("USERPROFILE");
             if (!h) h = std::getenv("HOME");
             if (h && !full_think) {
-                std::filesystem::path flag = std::filesystem::path(h) / ".icmg" / "caveman.flag";
+                std::filesystem::path flag = std::filesystem::path(h) / ".icmg" / "sayless.flag";
                 if (std::filesystem::exists(flag)) {
-                    caveman = true;
+                    sayless = true;
                     no_think = true;
                 }
             }
         }
         bool auto_think  = hasFlag(args, "--auto-think") ||
-                           (!no_think && !concise && !caveman && !full_think);
+                           (!no_think && !concise && !sayless && !full_think);
         cli::Intent classified = cli::Intent::Unknown;
-        if (auto_think && !no_think && !concise && !caveman) {
+        if (auto_think && !no_think && !concise && !sayless) {
             classified = cli::classifyIntent(task);
             if (classified == cli::Intent::Simple) no_think = true;
             std::cerr << "[icmg pack] intent=" << cli::intentLabel(classified)
                       << (no_think ? " → no-think directive applied"
                                    : " → thinking kept on") << "\n";
         }
-        if (caveman)       capped = cli::applyCavemanDirective(capped);
+        if (sayless)       capped = cli::applySaylessDirective(capped);
         else if (concise)  capped = cli::applyConciseDirective(capped);
         else if (no_think) capped = cli::applyNoThinkDirective(capped);
 
         // Phase 41 T4: telemetry record.
         // Phase 62: only record when a directive actually applied — skip noise
         // rows that show "0 saved" on the savings dashboard.
-        bool any_directive = no_think || concise || caveman;
+        bool any_directive = no_think || concise || sayless;
         if (any_directive) {
             try {
                 db.run("INSERT INTO thinking_telemetry (cmd, task, intent, no_think, concise, input_bytes) "

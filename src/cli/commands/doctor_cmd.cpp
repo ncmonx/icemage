@@ -3,7 +3,7 @@
 // Goes one step beyond `health` (read-only check). Doctor actively repairs:
 //   - Missing project hooks → re-run `init --install-hooks --force`
 //   - Orphaned `.bak` / `.pending-restart` from stalled updates → archive / clean
-//   - Stale caveman hook (no last-trigger after 30d but flag ON) → reinstall
+//   - Stale sayless hook (no last-trigger after 30d but flag ON) → reinstall
 //   - Strict flag set globally but project hooks NOT in strict mode → reinstall strict
 //   - DB integrity FAIL → suggest backup + reindex (does NOT auto-modify DB)
 //   - Missing bundled DLLs alongside icmg.exe → re-fetch via `update --apply`
@@ -43,7 +43,7 @@ public:
             "Checks and (by default) repairs:\n"
             "  - Missing project hooks (.claude/hooks/icmg-*.sh)\n"
             "  - Orphaned .bak / .pending-restart files from stalled updates\n"
-            "  - Stale caveman hook trigger (>30d) when caveman ON\n"
+            "  - Stale sayless hook trigger (>30d) when sayless ON\n"
             "  - Strict flag global ON but project hooks not in strict mode\n"
             "  - Missing bundled DLLs next to icmg.exe (Windows)\n\n"
             "Options:\n"
@@ -68,7 +68,7 @@ public:
         } else {
             const char* required[] = {
                 "icmg-bash-rewrite.sh", "icmg-shrink-read.sh",
-                "icmg-cap-output.sh", "icmg-caveman-prompt.sh", nullptr
+                "icmg-cap-output.sh", "icmg-sayless-prompt.sh", nullptr
             };
             int miss = 0;
             for (int i = 0; required[i]; ++i) {
@@ -143,13 +143,13 @@ public:
             }
         }
 
-        // 4. Caveman flag ON but no recent trigger?
-        fs::path caveman_flag = homeDir() / ".icmg" / "caveman.flag";
-        if (fs::exists(caveman_flag)) {
-            fs::path last = homeDir() / ".icmg" / "caveman-last-trigger.txt";
+        // 4. Sayless flag ON but no recent trigger?
+        fs::path sayless_flag = homeDir() / ".icmg" / "sayless.flag";
+        if (fs::exists(sayless_flag)) {
+            fs::path last = homeDir() / ".icmg" / "sayless-last-trigger.txt";
             if (!fs::exists(last)) {
                 ++issues;
-                std::cout << "  ! [caveman] flag ON but never fired — hook likely missing.\n";
+                std::cout << "  ! [sayless] flag ON but never fired — hook likely missing.\n";
                 if (!dry) {
                     bool ok = runInitInstallHooks();
                     fixed += ok ? 1 : 0;
@@ -162,10 +162,10 @@ public:
             } else {
                 auto age_days = ageDays(last);
                 if (age_days > 30) {
-                    std::cout << "  ⓘ [caveman] last trigger " << age_days
+                    std::cout << "  ⓘ [sayless] last trigger " << age_days
                               << "d ago — re-verify hook in `.claude/settings.local.json`\n";
                 } else if (verb) {
-                    std::cout << "  ✓ [caveman] last fire " << age_days << "d ago\n";
+                    std::cout << "  ✓ [sayless] last fire " << age_days << "d ago\n";
                 }
             }
         }
