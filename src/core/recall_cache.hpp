@@ -3,6 +3,7 @@
 // is read-through/derived — disk SQLite stays the durable source of truth.
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <optional>
 #include <string>

@@ -59,7 +59,7 @@
       "name": "msvc-release",
       "description": "MSVC 2026 (VS18) Release — Ninja, C++23/latest, vcpkg, full features + Vulkan. Use build.ps1.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-msvc-full",
+      "binaryDir": "C:/icmg-build/build-msvc-full",
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE":           "Release",
