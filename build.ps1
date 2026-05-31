@@ -1,5 +1,5 @@
 #requires -Version 5
-# build.ps1 â€” MSVC 2026 (VS 18) ship build for icemage
+# build.ps1 ” MSVC 2026 (VS 18) ship build for icemage
 # C++23, Ninja, vcpkg manifest, full features + Vulkan
 #
 # Usage:
@@ -27,7 +27,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-# â”€â”€ constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ”” constants ””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””
 $VS       = 'C:\Program Files\Microsoft Visual Studio\18\Enterprise'   # VS 2026
 $vcvars   = "$VS\VC\Auxiliary\Build\vcvars64.bat"
 $cmakeBin = "$VS\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
@@ -36,13 +36,13 @@ $LogDir   = "$env:USERPROFILE\.icmg\build-logs"
 $LogFile  = "$LogDir\msvc-build-latest.log"
 $Jobs     = [Environment]::ProcessorCount          # auto parallel jobs
 
-# Build dir on C:\ (not D:\) â€” faster IO, no D:\ artifact clutter.
+# Build dir on C:\ (not D:\) ” faster IO, no D:\ artifact clutter.
 # Source stays on D:\; only compiled .obj/.exe go to C:\icmg-build\.
 $BuildDir = 'C:\icmg-build\build-msvc-full'
 
 Set-Location $PSScriptRoot
 
-# â”€â”€ auto-read version from CMakeLists.txt (single source of truth) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ”” auto-read version from CMakeLists.txt (single source of truth) ””””””””””””
 function Get-IcmgVersion {
     $line = Get-Content 'CMakeLists.txt' | Select-String 'project\(icmg VERSION' | Select-Object -First 1
     if ($line -match 'VERSION\s+([\d.]+)') { return $Matches[1] }
@@ -50,7 +50,7 @@ function Get-IcmgVersion {
 }
 $Version = Get-IcmgVersion
 
-# â”€â”€ show-log shortcut â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ”” show-log shortcut ”””””””””””””””””””””””””””””””””””””””””””””””””””””””””
 if ($ShowLog) {
     if (-not (Test-Path $LogFile)) { Write-Host 'No log yet.'; exit 0 }
     if ($Lines -gt 0) { Get-Content $LogFile -Tail $Lines } else { Get-Content $LogFile }
@@ -59,7 +59,7 @@ if ($ShowLog) {
 
 if (-not (Test-Path $vcvars)) { throw "VS 2026 not found: $vcvars" }
 
-# â”€â”€ log setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ”” log setup ”””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””
 New-Item -ItemType Directory -Force $LogDir | Out-Null
 $LogTs  = "$LogDir\msvc-build-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 $sw1    = [IO.StreamWriter]::new($LogFile, $false, [Text.Encoding]::UTF8)
@@ -67,7 +67,7 @@ $sw2    = [IO.StreamWriter]::new($LogTs,   $false, [Text.Encoding]::UTF8)
 function logline([string]$s) { Write-Host $s; $sw1.WriteLine($s); $sw1.Flush(); $sw2.WriteLine($s); $sw2.Flush() }
 function close-logs { $sw1.Close(); $sw2.Close() }
 
-# â”€â”€ vcvars: inject VS 2026 env vars into this PS session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ”” vcvars: inject VS 2026 env vars into this PS session ””””””””””””””””””””””
 function Set-VcVars {
     $tmp = [IO.Path]::GetTempFileName()
     cmd /c "`"$vcvars`" >nul && set" 2>$null | Set-Content $tmp -Encoding UTF8
@@ -78,7 +78,7 @@ function Set-VcVars {
     Remove-Item $tmp -ErrorAction SilentlyContinue
 }
 
-# â”€â”€ run command, stream output line-by-line to tee â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ”” run command, stream output line-by-line to tee ””””””””””””””””””””””””””””
 function Invoke-Build([string]$Cmd) {
     $psi = [Diagnostics.ProcessStartInfo]::new('cmd.exe', "/c $Cmd 2>&1")
     $psi.UseShellExecute        = $false
@@ -91,14 +91,14 @@ function Invoke-Build([string]$Cmd) {
     return $p.ExitCode
 }
 
-# â”€â”€ Vulkan .obj guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# mul_mm.comp.cpp = 147 MB â†’ MSVC C1060 (out of heap).
+# ”” Vulkan .obj guard ”””””””””””””””””””””””””””””””””””””””””””””””””””””””””
+# mul_mm.comp.cpp = 147 MB †’ MSVC C1060 (out of heap).
 # If stamp missing, mark .obj newer than .cpp so ninja skips recompile.
 function Protect-VulkanObjs {
     $base  = "$BuildDir\third_party\llama.cpp\ggml\src\ggml-vulkan"
     $stamp = "$base\vulkan-shaders-gen-prefix\src\vulkan-shaders-gen-stamp\vulkan-shaders-gen-build"
     if (Test-Path $stamp) { return }
-    logline '[vulkan-guard] stamp missing â€” skipping 147MB shader recompile'
+    logline '[vulkan-guard] stamp missing ” skipping 147MB shader recompile'
     New-Item -ItemType File -Force $stamp | Out-Null
     $now = Get-Date; $old = $now.AddHours(-1)
     Get-ChildItem $base -Filter '*.comp.cpp'   -ErrorAction SilentlyContinue | % { $_.LastWriteTime = $old }
@@ -106,7 +106,7 @@ function Protect-VulkanObjs {
     logline '[vulkan-guard] done'
 }
 
-# â”€â”€ main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ”” main ”””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””
 $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
 logline "=== icemage v$Version MSVC2026 [$ts] target=$Target jobs=$Jobs ==="
 logline "log: $LogFile"
