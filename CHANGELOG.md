@@ -1,3 +1,7 @@
+## v1.84.0 - 2026-05-31
+- M8 token-efficiency bundle: djb2 LRU hash, query fingerprint dedup, token estimation, microcompaction Stage 0, diminishing-returns guard, cache-break detection, write coalescer, backend scorer, cache-metrics normalizer.
+- 1254/1254 ctest (+40 new tests).
+
 ## v1.83.0 - 2026-05-31
 - icmg init auto-registers project in global.db (M7-A T1).
 - 1214/1214 ctest.
