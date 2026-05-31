@@ -1,4 +1,4 @@
-﻿// `icmg init` â€” bootstrap a project for icmg-aware AI agents.
+// `icmg init` â€” bootstrap a project for icmg-aware AI agents.
 //
 // Creates / updates:
 //   .claude/settings.local.json  â€” installs Bash-rewrite + Read-shrink hooks
@@ -17,6 +17,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
+#include "../../core/global_db.hpp"
 #include "../../core/cron_store.hpp"
 #include "../../core/schedule_helper.hpp"
 #include "../../core/service_install.hpp"
@@ -1435,6 +1436,30 @@ public:
           } // !_defender_skip
         }
 #endif
+
+        // M7-A: auto-register this project in global.db (best-effort, never fails init).
+        try {
+            auto& cfg = core::Config::instance();
+            auto& gdb = core::GlobalDb::instance();
+            std::string cwd_path;
+            {
+                std::error_code _ec;
+                auto p = fs::current_path(_ec);
+                if (!_ec) cwd_path = p.string();
+                for (auto& ch : cwd_path) if (ch == '\\') ch = '/';
+            }
+            std::string proj_name = fs::path(cwd_path).filename().string();
+            if (!cwd_path.empty() && !proj_name.empty() && !gdb.projectExists(proj_name)) {
+                core::Project proj;
+                proj.name = proj_name;
+                proj.path = cwd_path;
+                proj.db_path = cwd_path + "/.icmg/data.db";
+                proj.description = "auto-registered by icmg init";
+                gdb.addProject(proj);
+                std::cout << "  project:    registered '"
+                          << proj.name << "' in global registry\n";
+            }
+        } catch (...) {} // never block init
 
         std::cout << "\nDone. " << steps << " file(s) written.\n"
                   << "Restart your AI agent to pick up new hooks.\n";
