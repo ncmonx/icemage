@@ -1,3 +1,9 @@
+## v1.82.0 - 2026-05-31
+- icmg cron add/list/remove: SQLite-backed scheduler, no schtasks per-job (M6 T2-T4).
+- Daemon maintenance thread: CronStore::dueJobs drained every 60s (M6 T1).
+- Security: cron exec uses safeExec(argv), not shell; metachar rejected at ingest.
+- 1211/1211 ctest (Windows + Linux).
+
 ## v1.81.0 - 2026-05-31
 - icmg memory atomize CLI: run/status/stats subcommands + ICMG_ATOMIZE=0 opt-out (T7).
 - compact-bg tick auto-drains atom queue (bounded 64/tick, best-effort) (T8).
