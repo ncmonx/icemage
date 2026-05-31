@@ -1,3 +1,7 @@
+## v1.85.0 - 2026-06-01
+- M9 T9: `icmg memory cache stats` wired through cache-metrics normalizer; adds --json flag + honest n/a hit-rate.
+- 1254/1254 ctest.
+
 ## v1.84.0 - 2026-05-31
 - M8 token-efficiency bundle: djb2 LRU hash, query fingerprint dedup, token estimation, microcompaction Stage 0, diminishing-returns guard, cache-break detection, write coalescer, backend scorer, cache-metrics normalizer.
 - 1254/1254 ctest (+40 new tests).
