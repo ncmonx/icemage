@@ -65,3 +65,17 @@ TEST("atom_store: recallAtomSources maps atom match to source node") {
     ASSERT_TRUE(!sources.empty());
     ASSERT_EQ((int)sources[0], (int)nid);
 }
+
+#include "../../src/imem/memory_store.hpp"
+#include "../../src/imem/memory_node.hpp"
+
+TEST("store: enqueues node for atomization, does not block (no atoms yet)") {
+    Db db = makeDb();
+    icmg::imem::MemoryStore ms(db);
+    icmg::imem::MemoryNode n;
+    n.topic = "t"; n.content = "Fact one. Fact two."; n.zone = "default";
+    int64_t id = ms.store(n, true);
+    ASSERT_TRUE(id > 0);
+    ASSERT_EQ(countRows(db, "SELECT COUNT(*) FROM memory_atom_queue WHERE node_id=" + std::to_string(id)), 1);
+    ASSERT_EQ(countRows(db, "SELECT COUNT(*) FROM memory_atoms"), 0);
+}

@@ -1,4 +1,7 @@
 #include "memory_store.hpp"
+#include "atom_store.hpp"
+#include <ctime>
+#include <cstdlib>
 #include "../core/recall_cache.hpp"   // ram-brain: hot recall cache
 #include "../core/recall_cache_client.hpp"
 #include "../cli/recall_json.hpp"
@@ -254,6 +257,16 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     // Fire POST_STORE hook
     ctx.set<int64_t>("id", id);
     core::HookBus::instance().emit(core::HookEvent::POST_STORE, ctx);
+
+    // v1.79 ICM dual-memory: enqueue for async atomization (best-effort, never
+    // throws on hot path). Opt-out ICMG_ATOMIZE=0. Atoms appear after a worker
+    // run (icmg atomize run / background tick), NOT synchronously.
+    {
+        const char* off = std::getenv("ICMG_ATOMIZE");
+        if (!(off && off[0] == '0')) {
+            try { AtomStore(db_).enqueue(id, std::time(nullptr)); } catch (...) {}
+        }
+    }
 
     return id;
 }
