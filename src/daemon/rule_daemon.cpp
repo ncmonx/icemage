@@ -1,5 +1,7 @@
 #include "rule_daemon.hpp"
 #include "../core/recall_cache.hpp"
+#include "../core/config.hpp"
+#include "../tkil/runner.hpp"
 #include "../core/json_safe.hpp"
 #include "../core/sys_resources.hpp"
 #include "../core/db.hpp"
@@ -449,7 +451,11 @@ int RuleDaemon::run() {
         return 1;
     }
     std::cout << "rule-daemon: listening on " << pipeName() << "\n";
+    stop_maint_ = false;
+    maint_thread_ = std::thread([this]{ runMaintenance(); });
     servePipe();
+    stop_maint_ = true;
+    if (maint_thread_.joinable()) maint_thread_.join();
     return 0;
 }
 
@@ -504,11 +510,45 @@ int RuleDaemon::run() {
         return 1;
     }
     std::cout << "rule-daemon: listening on " << pipeName() << "\n";
+    stop_maint_ = false;
+    maint_thread_ = std::thread([this]{ runMaintenance(); });
     serveSocket();
+    stop_maint_ = true;
+    if (maint_thread_.joinable()) maint_thread_.join();
     return 0;
 }
 
 #endif
+
+// M6: background maintenance thread — drains CronStore::dueJobs every 60s.
+// Uses global.db (cross-project cron registry). Best-effort: exceptions swallowed.
+void RuleDaemon::runMaintenance() {
+    const std::string global_db = core::Config::instance().globalDbPath();
+    while (!stop_maint_) {
+        // Sleep in 1s increments so we respond to stop_maint_ quickly.
+        for (int i = 0; i < 60 && !stop_maint_; ++i)
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        if (stop_maint_) break;
+        try {
+            core::CronStore cs(global_db);
+            int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            for (auto& job : cs.dueJobs(now)) {
+                const char* off = std::getenv("ICMG_CRON");
+                if (off && off[0] == '0') break;
+                // Security: parse chore into argv (no shell). Validate no metacharacters.
+                static const std::string kBadChars = ";|&$`<>()\\\n\r";
+                if (job.chore.find_first_of(kBadChars) != std::string::npos) {
+                    continue; // reject malformed chore
+                }
+                auto argv = icmg::tkil::parseArgv("icmg " + job.chore);
+                if (!argv.empty()) core::safeExec(argv, true, 30000);
+                cs.markRan(job.project_path, job.chore, now);
+            }
+        } catch (...) {}
+    }
+}
+
 
 } // namespace icmg::daemon
 

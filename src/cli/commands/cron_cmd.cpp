@@ -14,7 +14,8 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
-#include <cstdlib>
+#include "../../core/cron_store.hpp"
+#include "../../core/config.hpp"\n#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -53,6 +54,9 @@ public:
         if (action == "install")   return doInstall(args);
         if (action == "uninstall") return doUninstall(args);
         if (action == "run-now")   return doRunNow();
+        if (action == "add")       return doAdd(args);
+        if (action == "list")      return doList();
+        if (action == "remove" || action == "rm") return doRemove(args);
 
         std::cerr << "icmg cron: unknown action '" << action << "'\n";
         usage();
@@ -184,6 +188,59 @@ private:
         std::cout << "icmg cron: hygiene complete.\n";
         return 0;
     }
+    // M6: daemon-scheduler subcommands — CronStore SQLite, no schtasks.
+    int doAdd(const std::vector<std::string>& args) {
+        // Usage: icmg cron add <chore-cmd> --every <N> [--project <path>]
+        std::string chore, proj = ".";
+        int every = 60;
+        for (size_t i = 1; i < args.size(); ++i) {
+            if (args[i] == "--every" && i + 1 < args.size())
+                try { every = std::stoi(args[++i]); } catch (...) {}
+            else if (args[i] == "--project" && i + 1 < args.size())
+                proj = args[++i];
+            else if (args[i][0] != '-')
+                chore = args[i];
+        }
+        if (chore.empty()) {
+            std::cerr << "icmg cron add: <chore> required\n";
+            return 1;
+        }
+        static const std::string kBad = ";|&$`<>()\\\n\r";
+        if (chore.find_first_of(kBad) != std::string::npos) {
+            std::cerr << "icmg cron add: chore contains forbidden characters\n";
+            return 1;
+        }
+        auto& cfg = core::Config::instance();
+        core::CronStore cs(cfg.globalDbPath());
+        cs.upsert(proj, chore, every);
+        std::cout << "cron: registered \"" << chore << "\" every " << every << "m (project=" << proj << ")\n";
+        return 0;
+    }
+
+    int doList() {
+        auto& cfg = core::Config::instance();
+        core::CronStore cs(cfg.globalDbPath());
+        auto jobs = cs.listAll();
+        if (jobs.empty()) { std::cout << "cron: no jobs registered\n"; return 0; }
+        for (auto& j : jobs)
+            std::cout << j.project_path << "  \"" << j.chore << "\"  every=" << j.every_min << "m  last_run=" << j.last_run << "\n";
+        return 0;
+    }
+
+    int doRemove(const std::vector<std::string>& args) {
+        std::string chore, proj = ".";
+        for (size_t i = 1; i < args.size(); ++i) {
+            if (args[i] == "--project" && i + 1 < args.size()) proj = args[++i];
+            else if (args[i][0] != '-') chore = args[i];
+        }
+        if (chore.empty()) { std::cerr << "icmg cron remove: <chore> required\n"; return 1; }
+        auto& cfg = core::Config::instance();
+        core::CronStore cs(cfg.globalDbPath());
+        cs.remove(proj, chore);
+        std::cout << "cron: removed \"" << chore << "\" (project=" << proj << ")\n";
+        return 0;
+    }
+
 };
 
 ICMG_REGISTER_COMMAND("cron", CronCommand);

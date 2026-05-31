@@ -25,6 +25,9 @@
 #include "../core/recall_cache.hpp"   // ram-brain: RecallCache value member
 #include "../core/db.hpp"                // v1.78.3 ram-brain persist Db
 #include "../core/write_queue.hpp"       // v1.78.3 ram-brain persist async writes
+#include "../core/cron_store.hpp"          // M6 daemon scheduler
+#include <atomic>
+#include <thread>
 #include <memory>
 #include <set>
 
@@ -88,6 +91,11 @@ private:
     mutable icmg::core::RecallCache rcache_;   // ram-brain: daemon-shared hot recall cache
     mutable int rcache_puts_ = 0;              // ram-brain: governor tick counter
     // v1.78.3 ram-brain persist wire: daemon owns Db + WriteQueue + scope-hydrate tracker.
+    // M6 daemon scheduler: background maintenance thread
+    std::atomic<bool>   stop_maint_{false};
+    std::thread         maint_thread_;
+    void                runMaintenance();
+
     std::unique_ptr<icmg::core::Db>         persist_db_;
     std::unique_ptr<icmg::core::WriteQueue> persist_wq_;
     mutable std::set<std::string>           hydrated_scopes_;
