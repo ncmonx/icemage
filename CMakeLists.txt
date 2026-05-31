@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.28)
 
 # v1.41.0 REAL Modules pilot. Experimental `import std` feature requires CMake
 # opted-in via UUID key BEFORE project() call. clang64 (libc++) ships std.cppm
@@ -622,6 +622,7 @@ add_icmg_test(test_importance_decay tests/imem/test_importance_decay.cpp)  # v1.
 add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomize T1
 add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
 add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 smart-bisect
+add_icmg_test(test_atomize_cmd  tests/cli/test_atomize_cmd.cpp)   # v1.80 atomize T7
 add_icmg_test(test_rules        tests/rules/test_rules.cpp)
 add_icmg_test(test_data_store   tests/data/test_data_store.cpp)
 add_icmg_test(test_global_db    tests/core/test_global_db.cpp)

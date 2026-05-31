@@ -395,9 +395,25 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
                        "export PATH=\\\"/usr/bin:/mingw64/bin:$PATH\\\"; "
                        + out + "\"";
         } else {
-            full_cmd = "cmd.exe /s /c \"";
-            full_cmd += cmd_line;
-            full_cmd += "\"";
+            // Prefer pwsh (PS7+) or powershell (PS5) over cmd.exe on non-MSYS Windows.
+            // Enables Select-String, Get-ChildItem, etc. without MSYS install.
+            // Checked once per process: pwsh.exe first, fall back to powershell.exe.
+            static const char* s_ps = nullptr;
+            if (!s_ps) {
+                const char* cands[] = {
+                    "C:/Program Files/PowerShell/7/pwsh.exe",
+                    "C:/Program Files/PowerShell/7.5/pwsh.exe",
+                    "C:/Program Files/PowerShell/7.4/pwsh.exe",
+                    nullptr
+                };
+                for (int i = 0; cands[i]; ++i) {
+                    std::ifstream chk(cands[i]);
+                    if (chk.good()) { s_ps = "pwsh.exe"; break; }
+                }
+                if (!s_ps) s_ps = "powershell.exe";
+            }
+            full_cmd = std::string(s_ps)
+                     + " -NoProfile -NonInteractive -Command \"" + cmd_line + "\"";
         }
     }
 
