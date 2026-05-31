@@ -26,3 +26,16 @@ TEST("atom_split: does not split inside code fence") {
     ASSERT_EQ((int)v.size(), 3);
     ASSERT_TRUE(v[1].find("```") != std::string::npos);
 }
+
+#include "../../src/imem/atom_llm.hpp"
+
+TEST("atom_llm: parses one-fact-per-line model output") {
+    auto v = icmg::imem::parseLlmAtoms("- user fixed auth bug\n- token check off-by-one\n\n- added regression test\n");
+    ASSERT_EQ((int)v.size(), 3);
+    ASSERT_EQ(v[1], std::string("token check off-by-one"));
+}
+
+TEST("atom_llm: empty model output falls back to heuristic split") {
+    auto v = icmg::imem::llmAtomizeOrFallback("Fact A. Fact B.", "");
+    ASSERT_EQ((int)v.size(), 2);
+}
