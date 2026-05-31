@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.85.0 LANGUAGES CXX C)
+project(icmg VERSION 1.86.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,12 +30,15 @@ if(CCACHE_PROGRAM)
     endif()
 endif()
 
-# sccache fallback: if ccache broken, prefer sccache (Mozilla, works with MSVC)
+# Compiler-cache: sccache PRIMARY (Mozilla, MSVC-native, persistent C:/Tools/sccache).
+# ccache fallback only if sccache absent (ccache MSYS2 often ABI-broken: 0xC0000139).
 if(NOT CMAKE_C_COMPILER_LAUNCHER)
     find_program(SCCACHE_PROGRAM sccache
         HINTS
-            "C:/Users/Administrator/AppData/Local/Microsoft/WinGet/Packages/Mozilla.sccache_Microsoft.Winget.Source_8wekyb3d8bbwe/sccache-v0.15.0-x86_64-pc-windows-msvc"
+            "C:/Tools/sccache"
             "$ENV{LOCALAPPDATA}/Microsoft/WinGet/Links"
+        PATHS
+            "C:/Tools/sccache"
     )
     if(SCCACHE_PROGRAM)
         execute_process(COMMAND "${SCCACHE_PROGRAM}" --version
@@ -43,7 +46,7 @@ if(NOT CMAKE_C_COMPILER_LAUNCHER)
         if(_sc_rc EQUAL 0)
             set(CMAKE_C_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
             set(CMAKE_CXX_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
-            message(STATUS "icmg: sccache enabled (${SCCACHE_PROGRAM})")
+            message(STATUS "icmg: sccache enabled (${SCCACHE_PROGRAM}) - persistent compiler cache")
         endif()
     endif()
 endif()
