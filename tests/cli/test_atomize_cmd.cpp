@@ -65,3 +65,17 @@ TEST("atomize_cmd: stats — pending + atom counts correct") {
     ASSERT_EQ(countRows(db, "SELECT COUNT(*) FROM memory_atom_queue"), 0);
     ASSERT_TRUE(countRows(db, "SELECT COUNT(*) FROM memory_atoms WHERE deleted_at=0") >= 1);
 }
+
+
+TEST("recall_atoms: atom match maps back to source node") {
+    Db db = makeDb();
+    db.run("INSERT INTO memory_nodes(topic,content,keywords,zone,created_at) "
+           "VALUES('t','The linker error came from a missing symbol. Rebuilt clean.','','default',1)");
+    int64_t nid = db.lastInsertId();
+    icmg::imem::AtomStore as(db);
+    as.enqueue(nid, 1);
+    as.drainQueue(10);
+    auto sources = as.recallAtomSources("linker missing symbol", 5);
+    ASSERT_TRUE(!sources.empty());
+    ASSERT_EQ((int64_t)sources[0], nid);
+}
