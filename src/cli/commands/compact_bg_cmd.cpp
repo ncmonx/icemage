@@ -18,6 +18,7 @@
 #include "../../core/db.hpp"
 #include "../../core/config.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../imem/atom_store.hpp"
 #include "../../llm/warm_pool.hpp"
 #include "../../llm/smart_router.hpp"
 #include "../../llm/llama_runner.hpp"
@@ -175,6 +176,13 @@ public:
         } catch (const std::exception& e) {
             std::cerr << "icmg compact-bg: store failed: " << e.what() << "\n";
             return 2;
+        }
+        // T8: bounded atom-drain on every compact-bg tick.
+        if (!dry_run) {
+            const char* no_at = std::getenv("ICMG_ATOMIZE");
+            if (!no_at || no_at[0] != '0') {
+                try { imem::AtomStore(db).drainQueue(64); } catch (...) {}
+            }
         }
         (void)used_llm;
         return 0;
