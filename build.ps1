@@ -169,11 +169,9 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
     New-Item -ItemType Directory -Force "$PSScriptRoot\build-msvc-full\Release" | Out-Null
     Copy-Item $exeSrc $exeDest -Force
     logline "copied: $exeDest"
-    logline '--- clean C:\icmg-build (keep third_party .obj, remove all else) ---'
-    # Keep ONLY third_party to preserve Vulkan .obj guard. Remove everything else.
-    Get-ChildItem $BuildDir -Exclude 'third_party' |
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    logline 'clean done (third_party preserved)'
+    # NOTE: do NOT clean $BuildDir here. It lives on C:\ (no D: clutter) and
+    # wiping it forces a full recompile next build + races icmg_test link
+    # (LNK1104). Incremental artifacts stay; third_party Vulkan .obj preserved.
 }
 
 # summary

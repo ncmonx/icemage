@@ -5,6 +5,7 @@
 #include "../../core/db.hpp"
 #include "../../core/global_db.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../imem/atom_store.hpp"
 #include "../../imem/scorer.hpp"
 #include "../ref_registry.hpp"
 #include <iostream>
@@ -81,6 +82,7 @@ public:
         // session. Session id from ICMG_SESSION_ID env (set by SessionStart hook)
         // or fallback to PID-based string.
         bool unseen = hasFlag(args, "--unseen");
+        bool atoms    = hasFlag(args, "--atoms");  // v1.79 atom-FTS hybrid
         std::string session_id = flagValue(args, "--session", "");
         if (session_id.empty()) {
             const char* env_sid = std::getenv("ICMG_SESSION_ID");
@@ -125,7 +127,16 @@ public:
         }
 
         std::vector<imem::MemoryNode> results;
-        if (all_projects) {
+        if (atoms) {
+            // v1.79 ICM dual-memory: match the semantic atom FTS, then return
+            // the SOURCE memory nodes (clustered) so output shape is identical
+            // to normal recall. Default recall path is untouched.
+            imem::AtomStore as(db);
+            for (int64_t sid : as.recallAtomSources(query, limit)) {
+                imem::MemoryNode n = store.get(sid);
+                if (n.id != 0) results.push_back(std::move(n));
+            }
+        } else if (all_projects) {
             // Phase 21 Task 5: aggregate top-K from each registered project DB.
             results = recallAllProjects(query, limit, fuzzy);
         } else if (!topic.empty()) {
