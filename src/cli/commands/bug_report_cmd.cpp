@@ -42,7 +42,7 @@ namespace icmg::cli {
 namespace {
 
 constexpr const char* REPO_OWNER = "ncmonx";
-constexpr const char* REPO_NAME  = "icm-graph";
+constexpr const char* REPO_NAME  = "icemage";   // v1.79.1 rebrand: was icm-graph
 
 fs::path pendingFilePath() {
     return fs::path(core::icmgGlobalDir()) / "crash-pending.jsonl";
