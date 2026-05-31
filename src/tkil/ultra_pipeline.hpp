@@ -11,6 +11,20 @@
 
 namespace icmg::tkil {
 
+
+// M8 T4: microcompact — Stage 0. Truncate outputs > threshold to tail keep_bytes.
+// Prevents oversized tool outputs from saturating downstream pipeline stages.
+// threshold=40KB, keep_bytes=40KB by default (matches claude-code microCompact.ts).
+inline std::string microcompact(const std::string& text,
+                                 std::size_t threshold = 40 * 1024,
+                                 std::size_t keep_bytes = 40 * 1024) {
+    if (text.size() <= threshold) return text;
+    std::size_t tail = text.size() > keep_bytes ? text.size() - keep_bytes : 0;
+    return std::string("[microcompact: ") + std::to_string(text.size()) +
+           " bytes -> kept last " + std::to_string(text.size() - tail) +
+           " bytes]\n" + text.substr(tail);
+}
+
 // Apply the full Ultra pipeline to `input` (which has already been through
 // Stage 1, the per-cmd BaseFilter). `cmdline` is the original command line
 // — used by Stage 3 (pattern profiles) and Stage 4 (outcome-only) to

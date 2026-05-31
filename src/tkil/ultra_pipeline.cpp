@@ -53,8 +53,11 @@ std::string applyUltraPipeline(const std::string& input,
                                 const std::string& cmdline) {
     if (input.empty()) return input;
 
+    // Stage 0: microcompact — surgical truncation if output oversized.
+    std::string s = microcompact(input);
+
     // Stage 2: dedup pass.
-    std::string s = dedupPass(input);
+    s = dedupPass(s);
 
     // Stage 3: pattern collapse (no-op if no profile matches cmdline).
     s = patternPass(s, cmdline);
