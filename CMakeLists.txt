@@ -30,6 +30,24 @@ if(CCACHE_PROGRAM)
     endif()
 endif()
 
+# sccache fallback: if ccache broken, prefer sccache (Mozilla, works with MSVC)
+if(NOT CMAKE_C_COMPILER_LAUNCHER)
+    find_program(SCCACHE_PROGRAM sccache
+        HINTS
+            "C:/Users/Administrator/AppData/Local/Microsoft/WinGet/Packages/Mozilla.sccache_Microsoft.Winget.Source_8wekyb3d8bbwe/sccache-v0.15.0-x86_64-pc-windows-msvc"
+            "$ENV{LOCALAPPDATA}/Microsoft/WinGet/Links"
+    )
+    if(SCCACHE_PROGRAM)
+        execute_process(COMMAND "${SCCACHE_PROGRAM}" --version
+                        RESULT_VARIABLE _sc_rc OUTPUT_QUIET ERROR_QUIET)
+        if(_sc_rc EQUAL 0)
+            set(CMAKE_C_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
+            set(CMAKE_CXX_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
+            message(STATUS "icmg: sccache enabled (${SCCACHE_PROGRAM})")
+        endif()
+    endif()
+endif()
+
 # Opt-in lld linker (~30-50% link phase faster). Off by default because
 # MinGW+ONNX direct-DLL-link uses MS export tables lld handles differently
 # (link rc=57). Enable: cmake -B build -DICMG_USE_LLD=ON
