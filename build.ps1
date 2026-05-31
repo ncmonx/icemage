@@ -125,6 +125,11 @@ logline "cl: $cl"
 # configure if needed (uses $BuildDir on C:\)
 logline "build dir: $BuildDir"
 New-Item -ItemType Directory -Force $BuildDir | Out-Null
+# v1.79: for the test target, skip RC/manifest-embed at CONFIGURE time. The
+# mt.exe manifest-embed reopens the 33MB icmg_test.exe post-link, racing
+# Defender's real-time scan -> LNK1104. icmg_test needs no manifest. The ship
+# binary (-Target icmg) keeps its manifest (B:/ SxS popup fix).
+if ($Target -eq 'test') { $env:ICMG_SKIP_RC = '1' }
 if ($Reconfigure -or -not (Test-Path "$BuildDir\CMakeCache.txt")) {
     logline '--- cmake configure (preset msvc-release) ---'
     # Override binaryDir to C:\icmg-build\build-msvc-full
