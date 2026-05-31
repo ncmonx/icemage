@@ -642,6 +642,7 @@ add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomiz
 add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 smart-bisect
 add_icmg_test(test_atomize_cmd  tests/cli/test_atomize_cmd.cpp)   # v1.80 atomize T7
 add_icmg_test(test_cron_tick    tests/core/test_cron_tick.cpp)    # v1.82 M6 cron-tick
+add_icmg_test(test_token_budget       tests/core/test_token_budget.cpp)        # v1.84 M8 T3
 add_icmg_test(test_query_fingerprint  tests/core/test_query_fingerprint.cpp) # v1.84 M8 T2
 add_icmg_test(test_djb2_hash          tests/core/test_djb2_hash.cpp)           # v1.84 M8 T1
 add_icmg_test(test_init_project_register  tests/cli/test_init_project_register.cpp)  # v1.83 M7-A

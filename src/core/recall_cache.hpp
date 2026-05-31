@@ -9,6 +9,18 @@
 #include <string>
 #include <unordered_map>
 
+// M8 T1: djb2 hash for LRU cache map keys.
+// ~100x faster than SHA256, runtime-stable (no ASLR randomization).
+struct Djb2Hash {
+    std::size_t operator()(const std::string& s) const noexcept {
+        std::size_t h = 5381;
+        for (unsigned char c : s) h = ((h << 5) + h) ^ c;
+        return h;
+    }
+};
+
+
+
 namespace icmg { namespace core {
 
 struct CacheStats {
@@ -47,7 +59,7 @@ private:
         bool pinned;
     };
     std::list<Entry> lru_;   // front = MRU
-    std::unordered_map<std::string, std::list<Entry>::iterator> map_;
+    std::unordered_map<std::string, std::list<Entry>::iterator, Djb2Hash> map_; // M8 T1
     std::size_t cap_entries_ = 256, cap_bytes_ = 16u << 20, bytes_ = 0;
     std::int64_t ttl_ = 300;
     PersistSink   sink_;
