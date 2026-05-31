@@ -54,6 +54,5 @@ TEST("diminishing_returns: never stops if deltas stay large") {
 
 TEST("diminishing_returns: window=1 stops immediately on first low") {
     DiminishingReturnsGuard g(1, 500);
-    ASSERT_FALSE(g.tick(0));   // prev=0, delta=0 < 500 → STOP
-    // wait: first tick delta = abs(0-0) = 0 < 500 → count=1 ≥ window=1 → stop
+    ASSERT_TRUE(g.tick(0));  // delta=0 < 500, count=1 >= window=1 -> stop
 }
