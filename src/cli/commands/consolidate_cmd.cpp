@@ -35,6 +35,7 @@ public:
             "Options:\n"
             "  --threshold N        Cosine 0..1 (default 0.92) or Jaccard fallback (default 0.85)\n"
             "  --topic-prefix S     Scope to topic prefix\n"
+            "  --zone NAME          Scope to one zone (e.g. default)\n"
             "  --dry-run            Report candidates only\n"
             "  --json\n";
     }
@@ -45,6 +46,7 @@ public:
         bool json_out = hasFlag(args, "--json");
         bool all_proj = hasFlag(args, "--all-projects");
         std::string prefix = flagValue(args, "--topic-prefix");
+        std::string zone   = flagValue(args, "--zone");
 
         auto& cfg = core::Config::instance();
         if (all_proj) return runAll(cfg, dry, prefix);
@@ -62,6 +64,11 @@ public:
         if (!prefix.empty()) {
             nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
                 [&](const imem::MemoryNode& n){ return n.topic.find(prefix) != 0; }),
+                nodes.end());
+        }
+        if (!zone.empty()) {
+            nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                [&](const imem::MemoryNode& n){ return n.zone != zone; }),
                 nodes.end());
         }
         if (nodes.size() < 2) {

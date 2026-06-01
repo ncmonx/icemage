@@ -69,7 +69,7 @@ public:
             int64_t id = store.store(node, force);
 
             // v1.21.9 (M4): consolidation hint when zone count > 7.
-            // Surfaces a nudge towards `icmg consolidate --zone X` so memories
+            // Surfaces a nudge towards `icmg memory consolidate --zone X` so memories
             // don't pile up in a single zone forever. Counts ALL non-deleted
             // nodes in the zone (incl. the one we just stored).
             int zone_count = 0;
@@ -89,7 +89,7 @@ public:
             if (show_hint) {
                 std::string z = node.zone.empty() ? std::string("default") : node.zone;
                 hint = "zone '" + z + "' has " + std::to_string(zone_count)
-                     + " entries; consider 'icmg consolidate --zone " + z + "'";
+                     + " entries; consider 'icmg memory consolidate --zone " + z + "'";
             }
 
             if (json_out) {
