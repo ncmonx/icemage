@@ -1,3 +1,7 @@
+## v1.87.0 - 2026-06-01
+- Fix: icmg update/fetch/version-check failed on plain PowerShell since v1.81 (curl=Invoke-WebRequest alias + unescaped inner quotes in pwsh -Command wrapper). curlBin() helper + quote-escape in safeExecShell.
+- 1256/1256 ctest.
+
 ## v1.86.0 - 2026-06-01
 - sccache permanent: installed to C:/Tools/sccache, on User PATH, 10GB persistent cache dir, CMake primary (ccache fallback only). 50-80% faster rebuilds.
 - 1254/1254 ctest.
