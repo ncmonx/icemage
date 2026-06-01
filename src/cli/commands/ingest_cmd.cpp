@@ -9,11 +9,14 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../graph/graph_store.hpp"   // v2.0.0 Phase 3: media -> graph node
+#include "../../graph/media_node.hpp"    // v2.0.0 Phase 3: buildMediaNode
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -40,6 +43,7 @@ public:
             "  --refresh             Bypass cache, re-OCR\n"
             "  --min-chars N         Below this → fall back to vision-recommended (default 30)\n"
             "  --ttl N               Cache TTL seconds (default 604800 = 7d)\n"
+            "  --no-graph            Do not record the media as a graph node\n"
             "  --json                Machine-readable output\n"
             "  -o <file>             Write to file\n";
     }
@@ -59,6 +63,7 @@ public:
         bool refresh   = hasFlag(args, "--refresh");
         bool json_out  = hasFlag(args, "--json");
         std::string out_path = flagValue(args, "-o");
+        bool no_graph  = hasFlag(args, "--no-graph");
         int min_chars = 30;
         int ttl = 604800;
         try { min_chars = std::stoi(flagValue(args, "--min-chars", "30")); } catch (...) {}
@@ -98,6 +103,7 @@ public:
                 if (!text.empty()) {
                     db.run("UPDATE image_cache SET hit_count = hit_count + 1 WHERE image_hash = ?",
                            {hash});
+                    if (!no_graph) recordMediaNode(db, path, text);
                     return emitOcr(text, conf, hash, bytes_in, /*from_cache*/ true,
                                    min_chars, json_out, out_path, /*elapsed_ms*/ 0);
                 }
@@ -129,6 +135,7 @@ public:
                     std::to_string(conf), std::to_string(expires)});
         } catch (...) {}
 
+        if (!no_graph) recordMediaNode(db, path, text);
         return emitOcr(text, conf, hash, bytes_in, /*from_cache*/ false,
                        min_chars, json_out, out_path, elapsed_ms);
     }
@@ -139,6 +146,25 @@ private:
         for (unsigned char c : s) { h ^= c; h *= 1099511628211ULL; }
         char buf[17]; std::snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)h);
         return buf;
+    }
+
+    // v2.0.0 Phase 3: record ingested media as a first-class graph node so
+    // context/graph/zone surface it. Never fails the ingest on graph error.
+    static void recordMediaNode(core::Db& db, const std::string& path,
+                                const std::string& text) {
+        if (text.empty()) return;
+        try {
+            std::string mt = "image";
+            auto dot = path.find_last_of('.');
+            if (dot != std::string::npos) {
+                std::string ext = path.substr(dot + 1);
+                for (auto& ch : ext) ch = (char)std::tolower((unsigned char)ch);
+                if (ext == "pdf") mt = "pdf";
+                else if (ext == "mp4" || ext == "mov" || ext == "mkv" || ext == "webm") mt = "video";
+            }
+            graph::GraphStore store(db);
+            store.upsertNode(graph::buildMediaNode(path, mt, text));
+        } catch (...) {}
     }
 
     // Heuristic confidence based on text density + alphanumeric ratio.

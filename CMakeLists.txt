@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.88.0 LANGUAGES CXX C)
+project(icmg VERSION 1.89.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -710,6 +710,9 @@ add_icmg_test(test_embedder tests/embed/test_embedder.cpp)
 add_icmg_test(test_graph_dedupe tests/graph/test_graph_dedupe.cpp)
 add_icmg_test(test_graph_cache  tests/graph/test_graph_cache.cpp)  # v1.23.0 (TDD: S1)
 add_icmg_test(test_find_basename tests/graph/test_find_basename.cpp)  # v1.29.0 (TDD: #10 ambiguity)
+add_icmg_test(test_graph_prune  tests/graph/test_graph_prune.cpp)   # v2.0.0 Phase 0b (graph prune)
+add_icmg_test(test_media_node   tests/graph/test_media_node.cpp)    # v2.0.0 Phase 3 (multimodal node)
+add_icmg_test(test_agent_lease  tests/core/test_agent_lease.cpp)    # v2.0.0 Phase 4 (multi-agent lease)
 add_icmg_test(test_bfs_expand  tests/graph/test_bfs_expand.cpp)
 add_icmg_test(test_mcp_resources tests/mcp/test_mcp_resources.cpp)
 add_icmg_test(test_lazy_tool_schema tests/mcp/test_lazy_tool_schema.cpp)

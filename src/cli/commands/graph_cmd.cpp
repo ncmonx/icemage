@@ -4,6 +4,7 @@
 #include "../../core/db.hpp"
 #include "../../graph/graph_store.hpp"
 #include "../../graph/graph_report.hpp"   // v1.71 Graphify
+#include "../../graph/graph_prune.hpp"    // v2.0.0 Phase 0b (prune missing-file nodes)
 #include <fstream>
 #include "../../graph/scanner.hpp"
 #include "../../graph/daemon.hpp"
@@ -460,6 +461,52 @@ public:
             if (nodes.empty()) { std::cout << "No orphans found.\n"; return 0; }
             std::cout << "Orphan files (" << nodes.size() << "):\n";
             for (auto& n : nodes) std::cout << "  " << n.path << "\n";
+        }
+        return 0;
+    }
+};
+
+// ---- graph prune ----
+class GraphPruneCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-prune"; }
+    std::string description() const override { return "Remove graph nodes whose file no longer exists"; }
+
+    int run(const std::vector<std::string>& args) override {
+        bool dry      = hasFlag(args, "--dry-run");
+        bool json_out = hasFlag(args, "--json");
+        // --missing is the only mode today (accepted for explicitness / future modes).
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+
+        auto nodes = store.all();
+        auto gone = graph::selectMissingNodes(nodes,
+            [](const std::string& p) {
+                std::error_code ec;
+                return std::filesystem::exists(p, ec);
+            });
+
+        if (!dry) {
+            for (const auto& p : gone) store.removeNode(p);
+        }
+
+        if (json_out) {
+            std::cout << "{\"pruned\":" << gone.size()
+                      << ",\"dry_run\":" << (dry ? "true" : "false") << "}\n";
+            return 0;
+        }
+        if (gone.empty()) { std::cout << "No missing-file nodes to prune.\n"; return 0; }
+        std::cout << (dry ? "Would prune " : "Pruned ") << gone.size()
+                  << " node(s) with missing files:\n";
+        size_t shown = 0;
+        for (const auto& p : gone) {
+            if (shown++ >= 20) {
+                std::cout << "  ... and " << (gone.size() - 20) << " more\n";
+                break;
+            }
+            std::cout << "  " << p << "\n";
         }
         return 0;
     }
@@ -1276,6 +1323,7 @@ public:
             "  report [--out F]              Analytics report (god-nodes) as Markdown\n"
             "  viz [--out F]                 Interactive D3 HTML graph\n"
             "  orphans                       Find orphan files (no inbound edges)\n"
+            "  prune [--dry-run]             Remove nodes whose file no longer exists\n"
             "  cycles                        Detect circular dependencies\n"
             "  hot                           Show most accessed files\n"
             "  watch [dir]                   Start file watcher daemon\n"
@@ -1363,6 +1411,7 @@ ICMG_REGISTER_COMMAND("graph-list",         GraphListCommand);
 ICMG_REGISTER_COMMAND("graph-stats",        GraphStatsCommand);
 ICMG_REGISTER_COMMAND("graph-impact",       GraphImpactCommand);
 ICMG_REGISTER_COMMAND("graph-orphans",      GraphOrphansCommand);
+ICMG_REGISTER_COMMAND("graph-prune",        GraphPruneCommand);
 ICMG_REGISTER_COMMAND("graph-cycles",       GraphCyclesCommand);
 ICMG_REGISTER_COMMAND("graph-hot",          GraphHotCommand);
 ICMG_REGISTER_COMMAND("graph-search",       GraphSearchCommand);
