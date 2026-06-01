@@ -167,14 +167,14 @@ int runWarmLoop(const WarmLoopConfig& cfg) {
     std::string model_id = WarmPool::instance().activeModelId();
 
     PipeServer server(cfg.pipe);
-    std::stop_source ss;
+    std::atomic<bool> ss_stop{false};
 
     std::vector<std::thread> workers;
     workers.reserve(cfg.worker_threads);
     for (int i = 0; i < cfg.worker_threads; ++i) {
         workers.emplace_back([&]{
-            while (!ds.stop_flag && !ss.get_token().stop_requested()) {
-                auto conn = server.accept(ss.get_token());
+            while (!ds.stop_flag && !ss_stop.load()) {
+                auto conn = server.accept(ss_stop);
                 if (!conn) break;
                 {
                     ClientCounter cc(ds);
@@ -192,7 +192,7 @@ int runWarmLoop(const WarmLoopConfig& cfg) {
     while (!ds.stop_flag) std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     server.stop();
-    ss.request_stop();
+    ss_stop.store(true);
     for (auto& t : workers) if (t.joinable()) t.join();
     unlinkPid(cfg.pid_file_path);
     return 0;

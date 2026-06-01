@@ -61,8 +61,8 @@ PipeServer::PipeServer(const PipeConfig& cfg) : impl_(std::make_unique<Impl>(cfg
 PipeServer::~PipeServer() = default;
 
 std::optional<std::shared_ptr<PipeServer::Connection>>
-PipeServer::accept(std::stop_token tok) {
-    while (!tok.stop_requested() && !impl_->stop_flag) {
+PipeServer::accept(std::atomic<bool>& stop) {
+    while (!stop.load() && !impl_->stop_flag) {
         int idx = -1;
         {
             std::lock_guard lk(impl_->mtx);

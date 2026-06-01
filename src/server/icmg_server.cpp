@@ -1,6 +1,7 @@
 // v1.56 T3: long-lived icmg-server daemon — implementation.
 
 #include "icmg_server.hpp"
+#include <atomic>
 #include "../cli/base_command.hpp"
 #include "../core/registry.hpp"
 #include "../core/server_token.hpp"           // v1.68 S2: IPC auth
@@ -133,7 +134,7 @@ int IcmgServer::run() {
     cfg.max_instances = 4;
 
     icmg::llm::PipeServer server(cfg);
-    std::stop_source ss;
+    std::atomic<bool> ss_stop{false};
 
     // Multi-worker accept loop — mirrors the proven v1.52 warm-loop daemon
     // pattern. A single-threaded accept/disconnect loop stalled after the
@@ -144,8 +145,8 @@ int IcmgServer::run() {
     workers.reserve(kWorkers);
     for (int i = 0; i < kWorkers; ++i) {
         workers.emplace_back([&] {
-            while (!stop_ && !ss.get_token().stop_requested()) {
-                auto conn = server.accept(ss.get_token());
+            while (!stop_ && !ss_stop.load()) {
+                auto conn = server.accept(ss_stop);
                 if (!conn) break;                       // stopped
                 std::string wire = server.readMessage(**conn);
                 if (!wire.empty()) {
@@ -174,7 +175,7 @@ int IcmgServer::run() {
     while (!stop_) std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     server.stop();
-    ss.request_stop();
+    ss_stop.store(true);
     for (auto& t : workers) if (t.joinable()) t.join();
     return 0;
 }
