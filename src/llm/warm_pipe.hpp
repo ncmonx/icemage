@@ -2,7 +2,7 @@
 #include <chrono>
 #include <memory>
 #include <optional>
-#include <stop_token>
+#include <atomic>
 #include <string>
 
 namespace icmg::llm {
@@ -21,8 +21,8 @@ public:
     PipeServer(const PipeServer&) = delete;
     PipeServer& operator=(const PipeServer&) = delete;
 
-    // Block until client connects or stop_token requested. nullopt on stop.
-    std::optional<std::shared_ptr<Connection>> accept(std::stop_token tok);
+    // Block until client connects or stop flag is set. nullopt on stop.
+    std::optional<std::shared_ptr<Connection>> accept(std::atomic<bool>& stop);
 
     // Read newline-delimited JSON from conn. Returns empty on EOF/error.
     std::string readMessage(Connection& c);

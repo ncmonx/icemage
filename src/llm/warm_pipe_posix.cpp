@@ -126,10 +126,10 @@ PipeServer::~PipeServer() {
 }
 
 std::optional<std::shared_ptr<PipeServer::Connection>>
-PipeServer::accept(std::stop_token tok) {
+PipeServer::accept(std::atomic<bool>& stop) {
     if (!impl_ || impl_->listen_fd < 0) return std::nullopt;
     for (;;) {
-        if (tok.stop_requested() || impl_->stopping.load()) return std::nullopt;
+        if (stop.load() || impl_->stopping.load()) return std::nullopt;
         pollfd p{impl_->listen_fd, POLLIN, 0};
         int r = ::poll(&p, 1, 200);  // 200 ms tick to re-check stop
         if (r < 0) { if (errno == EINTR) continue; return std::nullopt; }
