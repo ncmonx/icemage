@@ -35,6 +35,10 @@ std::string dpapiUnwrap(const std::vector<unsigned char>& blob);
 #endif
 
 // Resolve the raw hex key per the config's mode. "" if unavailable (fail closed).
+// Strict hex check — the key is interpolated into a PRAGMA blob literal
+// (x'...'), which cannot be bound; reject anything non-hex (fail-closed).
+bool isHexKey(const std::string& s);
+
 std::string resolveDbKey(const EncryptionConfig& c);
 
 // Read ~/.icmg/encrypt.json (returns "" if absent). Used by Db ctor + cmd.
