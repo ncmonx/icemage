@@ -1,4 +1,7 @@
 #include "warm_loop.hpp"
+#ifndef _WIN32
+#include <unistd.h>   // getpid/usleep on POSIX
+#endif
 #include "warm_pool.hpp"
 #include "llama_runner.hpp"
 #include <atomic>
