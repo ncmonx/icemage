@@ -40,15 +40,16 @@ jobs:
         if: startsWith(matrix.runner, 'ubuntu')
         run: |
           sudo apt-get update
-          # v0.59.0: tree-sitter no longer needed via apt (vendored from source).
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build build-essential zlib1g-dev
+            cmake ninja-build build-essential zlib1g-dev \
+            libssl-dev \
+            libvulkan-dev vulkan-headers glslc
 
       - name: Install deps (macOS)
         if: startsWith(matrix.runner, 'macos')
         run: |
           brew update
-          brew install cmake ninja zlib
+          brew install cmake ninja zlib openssl@3 molten-vk shaderc vulkan-headers vulkan-loader
 
       - name: Install deps (Windows / MSYS2)
         if: startsWith(matrix.runner, 'windows')
@@ -61,6 +62,10 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-vulkan-headers
+            mingw-w64-x86_64-vulkan-loader
+            mingw-w64-x86_64-shaderc
 
       # ---- configure + build ------------------------------------------------
 
@@ -71,7 +76,10 @@ jobs:
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DICMG_USE_ONNX=ON \
-            -DICMG_USE_TREESITTER=ON
+            -DICMG_USE_TREESITTER=ON \
+            -DICMG_USE_ENCRYPTION=ON \
+            -DICMG_USE_LLAMA=ON \
+            -DICMG_LLAMA_VULKAN=ON
 
       - name: Configure (Linux)
         if: startsWith(matrix.runner, 'ubuntu')
@@ -81,7 +89,10 @@ jobs:
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DICMG_USE_ONNX=ON \
-            -DICMG_USE_TREESITTER=ON
+            -DICMG_USE_TREESITTER=ON \
+            -DICMG_USE_ENCRYPTION=ON \
+            -DICMG_USE_LLAMA=ON \
+            -DICMG_LLAMA_VULKAN=ON
 
       - name: Configure (macOS)
         if: startsWith(matrix.runner, 'macos')
@@ -91,7 +102,10 @@ jobs:
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DICMG_USE_ONNX=ON \
-            -DICMG_USE_TREESITTER=ON
+            -DICMG_USE_TREESITTER=ON \
+            -DICMG_USE_ENCRYPTION=ON \
+            -DICMG_USE_LLAMA=ON \
+            -DICMG_LLAMA_VULKAN=ON
 
       - name: Build (Windows)
         if: startsWith(matrix.runner, 'windows')
@@ -125,10 +139,15 @@ jobs:
           # v0.59.0: vendored tree-sitter is static — only libwinpthread may be
           # needed (std::thread on MinGW posix model). Static-libstdc++ in link
           # options usually pulls it in, but copy is safety net.
-          for dll in libwinpthread-1.dll; do
+          # MinGW runtime + backend deps (openssl, vulkan, zstd) from /mingw64/bin
+          for dll in libwinpthread-1.dll libzstd.dll libcrypto-3-x64.dll \
+                     libssl-3-x64.dll vulkan-1.dll libstdc++-6.dll libgcc_s_seh-1.dll; do
             cp /mingw64/bin/$dll pkg/ 2>/dev/null || true
           done
-          # Bundle ORT DLLs
+          # Build-emitted backend shared libs (ggml / llama / vulkan)
+          cp build/bin/*.dll pkg/ 2>/dev/null || true
+          cp build/*.dll pkg/ 2>/dev/null || true
+          # ONNX Runtime DLLs
           cp third_party/onnxruntime/lib/*.dll pkg/ 2>/dev/null || true
           # Use PowerShell — MSYS2 MINGW64 doesn't bundle 7z by default.
           powershell -NoProfile -Command "Compress-Archive -Path pkg/* -DestinationPath icmg-${VERSION}-win-x64.zip -Force"
@@ -140,6 +159,8 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           mkdir -p pkg
           cp build/icmg pkg/
+          cp build/bin/*.so* pkg/ 2>/dev/null || true
+          cp build/*.so* pkg/ 2>/dev/null || true
           cp third_party/onnxruntime/lib/*.so* pkg/ 2>/dev/null || true
           chmod +x pkg/icmg
           tar -C pkg -czf "icmg-${VERSION}-linux-x64.tar.gz" .
@@ -152,6 +173,8 @@ jobs:
           ARCH="${{ matrix.arch }}"
           mkdir -p pkg
           cp build/icmg pkg/
+          cp build/bin/*.dylib pkg/ 2>/dev/null || true
+          cp build/*.dylib pkg/ 2>/dev/null || true
           cp third_party/onnxruntime/lib/*.dylib pkg/ 2>/dev/null || true
           chmod +x pkg/icmg
           tar -C pkg -czf "icmg-${VERSION}-macos-${ARCH}.tar.gz" .
