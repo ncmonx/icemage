@@ -19,9 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-x64
-            runner: windows-latest
-            arch: x64
+          # Windows binary is built locally (MSVC + sccache) and uploaded manually;
+          # CI covers the platforms the maintainer cannot build locally.
           - os: linux-x64
             runner: ubuntu-latest
             arch: x64
@@ -53,7 +52,7 @@ jobs:
 
       - name: Install deps (Windows / MSYS2)
         if: startsWith(matrix.runner, 'windows')
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c  # v2
         with:
           msystem: MINGW64
           update: true
@@ -207,7 +206,7 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Create / update release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
         with:
           tag_name: ${{ github.ref_name }}
           files: |
