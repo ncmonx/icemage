@@ -1,0 +1,15 @@
+name: "Icemage CodeQL config"
+
+# Vendored third-party code (llama.cpp, sqlcipher, sqlite amalgamation, onnx
+# headers, etc.) is NOT maintained here — its findings are upstream's surface and
+# would be lost on every vendor update. Scan only first-party Icemage code.
+paths-ignore:
+  - third_party
+  - build
+  - build-msvc-full
+
+# Belt-and-suspenders: restrict positive scan scope to our sources + tests.
+paths:
+  - src
+  - tests
+  - migrations

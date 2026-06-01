@@ -2,6 +2,7 @@
 #include "json_safe.hpp"
 #include <nlohmann/json.hpp>
 #include <cstdlib>
+#include <cctype>
 #include <fstream>
 #include <iterator>
 #ifdef _WIN32
@@ -105,19 +106,41 @@ std::string readEncryptConfigText() {
     return t;
 }
 
+bool isHexKey(const std::string& s) {
+    if (s.empty() || (s.size() % 2) != 0) return false;
+    for (char ch : s) if (!std::isxdigit((unsigned char)ch)) return false;
+    return true;
+}
+
 std::string resolveDbKey(const EncryptionConfig& c) {
     const char* env = std::getenv("ICMG_DB_KEY");
     std::string mode = resolveKeyMode(c, env && *env);
-    if (mode == "env") return env ? std::string(env) : std::string("");
-    std::ifstream f(dbKeyPath(), std::ios::binary);
-    if (!f) return "";
-    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(f)),
-                                     std::istreambuf_iterator<char>());
-    if (mode == "shared") return std::string(bytes.begin(), bytes.end());  // raw hex
+    std::string key;
+    if (mode == "env") {
+        key = env ? std::string(env) : std::string("");
+    } else {
+        std::ifstream f(dbKeyPath(), std::ios::binary);
+        if (!f) return "";
+        std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(f)),
+                                         std::istreambuf_iterator<char>());
+        if (mode == "shared") {
+            key = std::string(bytes.begin(), bytes.end());  // raw hex file
+        }
 #ifdef _WIN32
-    if (mode == "dpapi") return dpapiUnwrap(bytes);
+        else if (mode == "dpapi") {
+            key = dpapiUnwrap(bytes);
+        }
 #endif
-    return std::string(bytes.begin(), bytes.end());
+        else {
+            key = std::string(bytes.begin(), bytes.end());
+        }
+    }
+    // Security (CodeQL cpp/sql-injection): the key is interpolated into a SQLCipher
+    // PRAGMA blob literal x'<key>' which cannot use bound parameters. Enforce strict
+    // hex so a crafted key (e.g. containing a quote) cannot escape the literal.
+    // Fail closed: a non-hex key yields "" -> caller skips keying / reports error.
+    if (!isHexKey(key)) return "";
+    return key;
 }
 
 }} // namespace
