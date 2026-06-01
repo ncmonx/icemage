@@ -588,6 +588,16 @@ enable_testing()
 # Build-time wins from PCH (~15%) + PowerShell matcher widen + RAW=1 nag.
 # Future mono attempt requires TEST() name audit + DB/service singleton
 # teardown between cases — out of scope for v1.26.0.
+# v2.0 fix: define these BEFORE add_icmg_test runs — otherwise on a fresh
+# CMake cache the macro sees ICMG_MONO_TEST undefined and wrongly builds the
+# per-exe path (195 phantom ctest entries that Not-Run under mono).
+option(ICMG_PER_EXE_TEST "Build per-exe tests (one binary per file, ~74 exes) — only for isolation debugging" OFF)
+option(ICMG_MONO_TEST "Build single icmg_test binary (DEFAULT ON v1.40.0; saves ~2.5 min link + 1.5 GB disk)" ON)
+if(ICMG_PER_EXE_TEST)
+    set(ICMG_MONO_TEST OFF CACHE BOOL "" FORCE)
+    message(STATUS "icmg: ICMG_PER_EXE_TEST=ON — disabling mono, building per-exe tests (slow path)")
+endif()
+
 macro(add_icmg_test name source_file)
     # v1.40.0: always collect into ICMG_ALL_TEST_SOURCES (mono needs it).
     # When ICMG_MONO_TEST=ON (default), skip per-exe target — only mono builds.
@@ -834,12 +844,7 @@ add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)     
 # Per-exe model REMAINS the default (this option is OFF unless flipped).
 # When ON, per-exe targets still build alongside — both work.
 # ---------------------------------------------------------------------------
-option(ICMG_PER_EXE_TEST "Build per-exe tests (one binary per file, ~74 exes) — only for isolation debugging" OFF)
-option(ICMG_MONO_TEST "Build single icmg_test binary (DEFAULT ON v1.40.0; saves ~2.5 min link + 1.5 GB disk)" ON)
-if(ICMG_PER_EXE_TEST)
-    set(ICMG_MONO_TEST OFF CACHE BOOL "" FORCE)
-    message(STATUS "icmg: ICMG_PER_EXE_TEST=ON — disabling mono, building per-exe tests (slow path)")
-endif()
+# (ICMG_MONO_TEST options moved earlier — see before macro add_icmg_test)
 if(ICMG_MONO_TEST)
     get_property(_ICMG_TEST_SRCS GLOBAL PROPERTY ICMG_ALL_TEST_SOURCES)
     message(STATUS "icmg: ICMG_MONO_TEST=ON — building mono icmg_test (${_ICMG_TEST_SRCS} sources collected)")
