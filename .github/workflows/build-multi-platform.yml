@@ -43,13 +43,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cmake ninja-build build-essential zlib1g-dev \
             libssl-dev \
-            libvulkan-dev glslc
+            libvulkan-dev glslc spirv-headers spirv-tools
 
       - name: Install deps (macOS)
         if: startsWith(matrix.runner, 'macos')
         run: |
           brew update
-          brew install cmake ninja zlib openssl@3 molten-vk shaderc vulkan-headers vulkan-loader
+          brew install cmake ninja zlib openssl@3 molten-vk shaderc vulkan-headers vulkan-loader spirv-headers spirv-tools
 
       - name: Install deps (Windows / MSYS2)
         if: startsWith(matrix.runner, 'windows')
@@ -66,6 +66,8 @@ jobs:
             mingw-w64-x86_64-vulkan-headers
             mingw-w64-x86_64-vulkan-loader
             mingw-w64-x86_64-shaderc
+            mingw-w64-x86_64-spirv-headers
+            mingw-w64-x86_64-spirv-tools
 
       # ---- configure + build ------------------------------------------------
 
