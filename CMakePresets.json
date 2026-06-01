@@ -73,11 +73,11 @@
         "ICMG_USE_LLAMA":             "ON",
         "ICMG_LLAMA_VULKAN":          "ON",
         "ICMG_USE_ENCRYPTION":        "ON",
-        "ICMG_VCPKG_ROOT":            "C:/vcpkg/installed/x64-windows",
+        "ICMG_VCPKG_ROOT":            "$env{ICMG_VCPKG_ROOT}/installed/x64-windows",
         "GGML_VULKAN":                "ON",
-        "Vulkan_INCLUDE_DIR":         "C:/Users/Administrator/vulkan-headers/include",
-        "Vulkan_LIBRARY":             "C:/msys64/mingw64/lib/vulkan-1.lib",
-        "GLSLC_EXECUTABLE":           "C:/msys64/mingw64/bin/glslc.exe"
+        "Vulkan_INCLUDE_DIR":         "$env{VULKAN_HEADERS_INCLUDE}",
+        "Vulkan_LIBRARY":             "$env{MSYS2_ROOT}/mingw64/lib/vulkan-1.lib",
+        "GLSLC_EXECUTABLE":           "$env{MSYS2_ROOT}/mingw64/bin/glslc.exe"
       }
     }
   ],
