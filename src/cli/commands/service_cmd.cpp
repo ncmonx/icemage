@@ -13,6 +13,9 @@
 // Registry<BaseCommand>::create → zero subprocess fork → no popup flash.
 
 #include "../base_command.hpp"
+#ifndef _WIN32
+#include <unistd.h>   // usleep on POSIX
+#endif
 #include "../../core/registry.hpp"
 #include "../../core/path_utils.hpp"
 #include "../../core/service_loop.hpp"
