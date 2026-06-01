@@ -1,0 +1,44 @@
+#pragma once
+#include <string>
+#include <vector>
+#include <cstdint>
+
+namespace icmg::core {
+
+struct ExecResult {
+    std::string out;
+    std::string err;
+    int         exit_code   = -1;
+    int64_t     duration_ms = 0;
+};
+
+// Safe command execution — argv array, NO shell intermediary.
+// On Windows: uses CreateProcess. On Unix: uses posix_spawn/fork+execvp.
+// Never passes argv through system() or popen(string).
+ExecResult safeExec(const std::vector<std::string>& argv,
+                    bool merge_stderr = false,
+                    int timeout_ms    = 30000);
+
+// Shell command execution — pass-through via /bin/sh -c (Unix) or cmd.exe /s /c (Win).
+// Use ONLY when running a user-supplied command string with shell features
+// (pipes, redirects, &&, ||, glob expansion, paths with spaces). Bypasses
+// argv-quoting that conflicts with cmd.exe's own parser.
+//
+// Security: cmd_line is run through the shell — caller is responsible for
+// trusting / sanitizing the input. Never pass external user input here.
+ExecResult safeExecShell(const std::string& cmd_line,
+                         bool merge_stderr = false,
+                         int timeout_ms    = 30000);
+
+// M10: curl binary name. On Windows under PowerShell, bare  is an alias
+// M10: curl binary name. On Windows under PowerShell, bare `curl` is an alias
+// for Invoke-WebRequest (not curl.exe) -> wrong output. Use `curl.exe` to bypass.
+inline const char* curlBin() {
+#ifdef _WIN32
+    return "curl.exe";
+#else
+    return "curl";
+#endif
+}
+
+} // namespace icmg::core

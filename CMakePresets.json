@@ -1,0 +1,113 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": { "major": 3, "minor": 23, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "default",
+      "description": "Generic Release config",
+      "binaryDir": "${sourceDir}/build",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ICMG_USE_ONNX": "ON",
+        "ICMG_USE_TREESITTER": "ON"
+      }
+    },
+    {
+      "name": "windows",
+      "description": "Windows MSYS2/MinGW — PCH ON, full parallel. Cold ~5-10min.",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "ICMG_NO_PCH": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-native",
+      "description": "Linux native ext4. PCH ON, full parallel. Use when source is on native FS (not /mnt/d). Cold ~2-5min.",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-linux",
+      "cacheVariables": {
+        "ICMG_NO_PCH": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-wsl-mnt",
+      "description": "Linux WSL with source on /mnt/d (9P FS). PCH OFF (thrash), -j4. Cold ~30-40min. AVOID — use scripts/release-linux-fast.sh instead.",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-linux",
+      "cacheVariables": {
+        "ICMG_NO_PCH": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "msvc-release",
+      "description": "MSVC 2026 (VS18) Release — Ninja, C++23/latest, vcpkg, full features + Vulkan. Use build.ps1.",
+      "generator": "Ninja",
+      "binaryDir": "C:/icmg-build/build-msvc-full",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE":           "Release",
+        "CMAKE_C_COMPILER":           "cl",
+        "CMAKE_CXX_COMPILER":         "cl",
+        "CMAKE_CXX_FLAGS":            "/std:c++latest /MP /EHsc /W3",
+        "ICMG_USE_MODULES":           "OFF",
+        "ICMG_NO_PCH":                "ON",
+        "ICMG_USE_ONNX":              "ON",
+        "ICMG_USE_TREESITTER":        "ON",
+        "ICMG_USE_LLAMA":             "ON",
+        "ICMG_LLAMA_VULKAN":          "ON",
+        "ICMG_USE_ENCRYPTION":        "ON",
+        "ICMG_VCPKG_ROOT":            "$env{ICMG_VCPKG_ROOT}/installed/x64-windows",
+        "GGML_VULKAN":                "ON",
+        "Vulkan_INCLUDE_DIR":         "$env{VULKAN_HEADERS_INCLUDE}",
+        "Vulkan_LIBRARY":             "$env{MSYS2_ROOT}/mingw64/lib/vulkan-1.lib",
+        "GLSLC_EXECUTABLE":           "$env{MSYS2_ROOT}/mingw64/bin/glslc.exe"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "msvc-release",
+      "configurePreset": "msvc-release",
+      "jobs": 0
+    },
+    {
+      "name": "windows",
+      "configurePreset": "windows",
+      "jobs": 0
+    },
+    {
+      "name": "linux-native",
+      "configurePreset": "linux-native",
+      "jobs": 0
+    },
+    {
+      "name": "linux-wsl-mnt",
+      "configurePreset": "linux-wsl-mnt",
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

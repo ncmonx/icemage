@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32" name="ncmonx.icmg" version="1.78.0.0" processorArchitecture="amd64"/>
+  <!--
+    Private SxS DLL isolation. Each <file> entry forces the Win loader to
+    treat the named DLL as a "private assembly" of icmg.exe â€” search ONLY
+    in the app directory, never fall through to PATH. This eliminates
+    the "B:\ â€” system cannot find drive" popup that fired during loader
+    PATH scan for transitive deps of onnxruntime/wasmtime/tree-sitter.
+  -->
+  <file name="onnxruntime.dll"/>
+  <file name="onnxruntime_providers_shared.dll"/>
+  <file name="libtree-sitter-0.26.dll"/>
+  <file name="libwinpthread-1.dll"/>
+  <file name="libzstd.dll"/>
+  <file name="wasmtime.dll"/>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>
+    </application>
+  </compatibility>
+</assembly>

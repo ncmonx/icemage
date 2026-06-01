@@ -1,0 +1,252 @@
+#include "schedule_helper.hpp"
+#include "exec_utils.hpp"
+
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+
+#ifdef _WIN32
+  #include <windows.h>
+#endif
+
+namespace fs = std::filesystem;
+
+namespace icmg::core {
+
+std::string icmgTaskHash(const std::string& project_path) {
+    std::string s = project_path;
+    // Include username: prevents task name collision when multiple users
+    // share the same project path on a multi-user server.
+    const char* u = std::getenv("USERNAME");
+    if (!u) u = std::getenv("USER");
+    if (u && *u) { s += '@'; s += u; }
+    uint32_t h = 2166136261u;
+    for (unsigned char c2 : s) { h ^= c2; h *= 16777619u; }
+    std::ostringstream o;
+    o << std::hex << std::setw(8) << std::setfill('0') << h;
+    return o.str();
+}
+
+// Look up the running binary's path. File-local helper.
+static std::string selfExePath() {
+#ifdef _WIN32
+    char buf[1024];
+    DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    if (n > 0 && n < sizeof(buf)) return std::string(buf, n);
+    return "icmg";
+#else
+    try { return fs::canonical("/proc/self/exe").string(); }
+    catch (...) { return "icmg"; }
+#endif
+}
+
+bool writeWrapperCmd(const std::string& wrapper_path,
+                     const std::string& project_root,
+                     const std::string& icmg_cmd,
+                     const std::string& log_relpath) {
+    fs::create_directories(fs::path(wrapper_path).parent_path());
+    std::ofstream f(wrapper_path, std::ios::binary);
+    if (!f) return false;
+    // Windows line endings for cmd.exe.
+    f << "@echo off\r\n"
+      << "cd /d \"" << project_root << "\"\r\n"
+      << "echo === %DATE% %TIME% " << icmg_cmd
+      << " ===>> " << log_relpath << "\r\n"
+      << "\"" << selfExePath() << "\" " << icmg_cmd
+      << " >> " << log_relpath << " 2>&1\r\n";
+    return true;
+}
+
+#ifdef _WIN32
+
+static std::string scheduleSpecToSchtasksFlags(int minutes) {
+    // Pick best schedule type.
+    if (minutes >= 1440 && (minutes % 1440) == 0) {
+        return "/SC DAILY /MO " + std::to_string(minutes / 1440);
+    } else if (minutes >= 60 && (minutes % 60) == 0) {
+        return "/SC HOURLY /MO " + std::to_string(minutes / 60);
+    } else {
+        return "/SC MINUTE /MO " + std::to_string(minutes);
+    }
+}
+
+int registerWindowsSchedule(const ScheduleSpec& spec) {
+    if (spec.wrapper_path.empty() || spec.task_name.empty()) return 1;
+
+    std::string sched = scheduleSpecToSchtasksFlags(spec.minutes);
+
+    // v0.58.1: Generate a VBS launcher invoked via wscript.exe. Both wscript
+    // and the new GUI-subsystem icmg.exe are non-console processes — Windows
+    // never allocates a console window in the chain, eliminating the flash
+    // that PowerShell (console-subsystem) caused even with -WindowStyle Hidden.
+    // WshShell.Run(<cmd>, 0, True) hides cmd.exe + waits for exit.
+    std::string vbs_path = spec.wrapper_path;
+    {
+        size_t dot = vbs_path.rfind('.');
+        if (dot != std::string::npos) vbs_path = vbs_path.substr(0, dot);
+        vbs_path += ".vbs";
+    }
+    {
+        std::ofstream vf(vbs_path, std::ios::binary);
+        if (vf) {
+            // Single-line VBS — invokes the .cmd wrapper with WindowStyle=0
+            // (hidden) and bWaitOnReturn=True (synchronous, scheduler waits).
+            vf << "CreateObject(\"Wscript.Shell\").Run \"cmd /c \"\""
+               << spec.wrapper_path
+               << "\"\"\", 0, True\r\n";
+        }
+    }
+
+    // /TR points at wscript.exe directly. wscript is GUI-subsystem — no
+    // console allocated for the launcher itself. //B = batch mode (no UI on
+    // error). //Nologo suppresses banner.
+    std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Create " + sched
+                    + " /TN \"" + spec.task_name + "\""
+                    + " /TR \"wscript.exe //B //Nologo \\\"" + vbs_path + "\\\"\""
+                    + " /F";
+    auto res = safeExecShell(cmd, true, 15000);
+
+    if (res.exit_code == 0) {
+        std::cout << "  [+] " << spec.label << " auto-on: registered (every "
+                  << spec.minutes << " min)\n";
+        return 0;
+    }
+
+    // Diagnose error.
+    std::string err = res.out.empty() ? res.err : res.out;
+    bool denied = err.find("denied") != std::string::npos
+               || err.find("Access") != std::string::npos
+               || err.find("akses") != std::string::npos;
+
+    if (!denied) {
+        // Hard error — not elevation related. Print real message.
+        std::cerr << "  [!] " << spec.label << " auto-on failed:\n    " << err;
+        return 2;
+    }
+
+    // Elevation required → try PowerShell -Verb RunAs.
+    std::cerr << "  [i] " << spec.label
+              << " — elevation needed; prompting UAC...\n";
+
+    // Build the schtasks argument list as a PowerShell array literal.
+    // Each entry single-quoted (PowerShell). Inner double-quoted paths
+    // preserved by PowerShell verbatim when -ArgumentList is used.
+    std::ostringstream args;
+    args << "'/Create',";
+    // sched is "/SC X /MO N" — split by space into separate args.
+    {
+        std::istringstream is(sched);
+        std::string tok;
+        bool first = true;
+        while (is >> tok) {
+            if (!first) args << ",";
+            first = false;
+            args << "'" << tok << "'";
+        }
+    }
+    args << ",'/TN','" << spec.task_name
+         << "','/TR','wscript.exe //B //Nologo \"" << vbs_path << "\"',"
+         << "'/F'";
+
+    std::string ps_cmd =
+        "powershell -NoProfile -Command \""
+        "Start-Process -FilePath schtasks -ArgumentList "
+        + args.str()
+        + " -Verb RunAs -Wait -WindowStyle Hidden\"";
+
+    auto r2 = safeExecShell(ps_cmd, true, 60000);
+
+    // Verify regardless of r2.exit_code — RunAs can return 0 even on user-cancel.
+    std::string q = "MSYS_NO_PATHCONV=1 schtasks /Query /TN \""
+                  + spec.task_name + "\"";
+    auto verify = safeExecShell(q, false, 5000);
+
+    if (verify.exit_code == 0) {
+        std::cout << "  [+] " << spec.label
+                  << " auto-on: registered via elevation (every "
+                  << spec.minutes << " min)\n";
+        return 0;
+    }
+
+    // Final fallback: manual instructions.
+    std::cerr << "  [!] " << spec.label
+              << " auto-on: elevation declined or failed.\n"
+              << "    Manual setup (run elevated cmd.exe):\n"
+              << "      schtasks /Create " << sched
+              << " /TN \"" << spec.task_name << "\""
+              << " /TR \"wscript.exe //B //Nologo \\\"" << vbs_path << "\\\"\""
+              << " /F\n";
+    return 3;
+}
+
+int unregisterWindowsSchedule(const std::string& task_name) {
+    std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \""
+                    + task_name + "\" /F";
+    auto res = safeExecShell(cmd, true, 5000);
+    return res.exit_code;
+}
+
+bool queryWindowsSchedule(const std::string& task_name, std::string* status_out) {
+    std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Query /TN \""
+                    + task_name + "\" /FO LIST 2>nul";
+    auto res = safeExecShell(cmd, false, 5000);
+    if (res.exit_code != 0) return false;
+    if (status_out) *status_out = res.out;
+    return true;
+}
+
+int sweepLegacySchtasks() {
+    auto res = safeExecShell(
+        "MSYS_NO_PATHCONV=1 schtasks /Query /FO CSV /NH", false, 10000);
+    if (res.exit_code != 0 || res.out.empty()) return 0;
+    int deleted = 0;
+    std::istringstream iss(res.out);
+    std::string line;
+    static const char* kPrefixes[] = {
+        "icmg-backup-", "icmg-maintain-", "icmg-mirror-",
+        "icmg-sentinel-", "icmg-shadow-upgrade-",
+    };
+    while (std::getline(iss, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.empty() || line[0] != '"') continue;
+        size_t qe = line.find('"', 1);
+        if (qe == std::string::npos) continue;
+        std::string name = line.substr(1, qe - 1);
+        if (!name.empty() && name[0] == '\\') name.erase(0, 1);
+        bool match = false;
+        for (auto* pre_c : kPrefixes) {
+            std::string pre = pre_c;
+            if (name.size() == pre.size() + 8
+                && name.compare(0, pre.size(), pre) == 0) {
+                bool hex = true;
+                for (size_t i = pre.size(); i < name.size(); ++i) {
+                    char c = name[i];
+                    if (!((c >= '0' && c <= '9')
+                          || (c >= 'a' && c <= 'f')
+                          || (c >= 'A' && c <= 'F'))) { hex = false; break; }
+                }
+                if (hex) { match = true; break; }
+            }
+        }
+        if (!match) continue;
+        std::string del = "MSYS_NO_PATHCONV=1 schtasks /Delete /TN \""
+                        + name + "\" /F";
+        auto d = safeExecShell(del, true, 5000);
+        if (d.exit_code == 0) ++deleted;
+    }
+    return deleted;
+}
+
+#else // POSIX — placeholders. Each command keeps its existing crontab impl.
+
+int registerWindowsSchedule(const ScheduleSpec&) { return 0; }
+int unregisterWindowsSchedule(const std::string&) { return 0; }
+bool queryWindowsSchedule(const std::string&, std::string*) { return false; }
+int sweepLegacySchtasks() { return 0; }
+
+#endif
+
+} // namespace icmg::core

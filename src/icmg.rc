@@ -1,0 +1,40 @@
+// Windows resource — embeds Icemage icon + version info into icmg.exe.
+#include <windows.h>
+
+IDI_ICON1 ICON "../assets/icmg.ico"
+
+// v1.19.1: embedded application manifest. Private SxS DLL isolation
+// (<file> entries) forces Win loader to resolve onnxruntime/wasmtime/
+// tree-sitter/libzstd/libwinpthread ONLY from the app directory.
+// Eliminates the "B:\ — system cannot find drive" popup from PATH scan
+// of transitive deps.  Resource type 24 = RT_MANIFEST.
+1 24 "icmg.exe.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    1,87,0,0
+ PRODUCTVERSION 1,87,0,0
+ FILEFLAGSMASK  0x3fL
+ FILEFLAGS      0x0L
+ FILEOS         0x40004L
+ FILETYPE       0x1L
+ FILESUBTYPE    0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "ncmonx"
+            VALUE "FileDescription",  "Icemage - context, memory, graph CLI"
+            VALUE "FileVersion",      "1.87.0"
+            VALUE "InternalName",     "icmg"
+            VALUE "LegalCopyright",   "Apache-2.0"
+            VALUE "OriginalFilename", "icmg.exe"
+            VALUE "ProductName",      "Icemage"
+            VALUE "ProductVersion",   "1.87.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

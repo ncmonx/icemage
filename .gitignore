@@ -1,0 +1,85 @@
+# Build
+build/
+cmake-build-*/
+*.o
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+icmg
+icmg.exe
+compile_commands.json
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# Runtime
+.icmg/
+*.pid
+
+# Third-party (large generated files)
+third_party/sqlite3/sqlite3.c
+third_party/sqlite3/sqlite3.h
+third_party/nlohmann/json.hpp
+third_party/tree-sitter-lib/
+third_party/tree-sitter-php/
+
+# v1.31.0 A1: llama.cpp vendored — keep CPU + Vulkan backends only, exclude
+# other GPU/accelerator backends from git (kept on disk locally for users
+# who manually opt-in via custom build). Saves ~210MB of repo bloat.
+third_party/llama.cpp/ggml/src/ggml-cuda/
+third_party/llama.cpp/ggml/src/ggml-sycl/
+third_party/llama.cpp/ggml/src/ggml-opencl/
+third_party/llama.cpp/ggml/src/ggml-hexagon/
+third_party/llama.cpp/ggml/src/ggml-webgpu/
+third_party/llama.cpp/ggml/src/ggml-openvino/
+third_party/llama.cpp/ggml/src/ggml-virtgpu/
+third_party/llama.cpp/ggml/src/ggml-metal/
+third_party/llama.cpp/ggml/src/ggml-zdnn/
+third_party/llama.cpp/ggml/src/ggml-cann/
+third_party/llama.cpp/ggml/src/ggml-rpc/
+third_party/llama.cpp/ggml/src/ggml-musa/
+third_party/llama.cpp/ggml/src/ggml-zendnn/
+
+# Local experiments
+build_test/
+build_linux/
+nul
+
+# AI assistant artifacts
+context-snapshot.json
+
+# Release artifacts (generated, upload to GitHub manually)
+icmg-*.zip
+icmg-*.tar.gz
+icmg-*.sha256
+icmg-*.zip.sha256
+icmg-*.tar.gz.sha256
+dist/
+savings.html
+savings-*.html
+# Alt build dirs (CI / benchmark / Linux WSL)
+build-linux/
+build_linux/
+build_bench/
+# Build logs
+*.log
+bld*.log
+ctest*.log
+build_errors.log
+
+# Claude project + internal planning (not public)
+.claude/
+docs/plans/
+docs/private/
+CLAUDE.md
+session-log.md
+state.md
+PROGRESS.md
+third_party/onnxruntime/lib/
+build-clang/
+build-msvc/
+build-msvc-full/

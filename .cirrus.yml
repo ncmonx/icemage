@@ -1,0 +1,64 @@
+# Cirrus CI — free for OSS public repos. Replaces GitHub Actions
+# (CodeQL SAST + OpenSSF Scorecard) after free-tier minutes exhausted.
+#
+# Setup: install Cirrus CI GitHub App at
+#   https://github.com/marketplace/cirrus-ci
+# Then push to main → Cirrus auto-detects + runs.
+
+# ---------------------------------------------------------------------------
+# Linux: ctest + cppcheck (CodeQL substitute)
+# ---------------------------------------------------------------------------
+linux_task:
+  name: Linux ctest + cppcheck
+  container:
+    image: ubuntu:24.04
+    cpu: 2
+    memory: 4G
+  timeout_in: 30m
+  install_deps_script: |
+    apt-get update
+    apt-get install -y --no-install-recommends \
+      cmake ninja-build build-essential \
+      zlib1g-dev curl git \
+      cppcheck
+  build_script: |
+    cmake -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DICMG_USE_ONNX=OFF \
+      -DICMG_USE_TREESITTER=OFF
+    cmake --build build --parallel
+  ctest_script: |
+    ctest --test-dir build --output-on-failure
+  cppcheck_script: |
+    cppcheck --enable=warning,performance,portability \
+      --error-exitcode=0 \
+      --suppress=missingIncludeSystem \
+      --suppress=unusedFunction \
+      --inline-suppr \
+      -I src \
+      src/ 2> cppcheck.log || true
+    echo "--- cppcheck summary ---"
+    wc -l cppcheck.log
+    head -50 cppcheck.log
+  cppcheck_artifacts:
+    path: cppcheck.log
+    type: text/plain
+
+# ---------------------------------------------------------------------------
+# macOS: ctest only (CI verification — releases still local-built)
+# ---------------------------------------------------------------------------
+macos_task:
+  name: macOS ctest
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-runner:sonoma
+  timeout_in: 30m
+  install_deps_script: |
+    brew install cmake ninja
+  build_script: |
+    cmake -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DICMG_USE_ONNX=OFF \
+      -DICMG_USE_TREESITTER=OFF
+    cmake --build build --parallel
+  ctest_script: |
+    ctest --test-dir build --output-on-failure
