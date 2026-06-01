@@ -13,6 +13,7 @@
 #include <iostream>
 #include <algorithm>
 #include <ctime>
+#include <cstdlib>
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
 #  define NOMINMAX
@@ -62,12 +63,27 @@ static std::string hostName() {
 #endif
 }
 
+// v2.0.0 Phase 4: stable lease owner id. Each icmg CLI invocation is a fresh OS
+// process, so OS pid cannot identify an AGENT across claim/release calls. Agents
+// set ICMG_AGENT_ID (any string) for a stable identity; fallback = OS pid.
+static int64_t agentOwnerId();
+
 static int64_t currentPid() {
 #ifdef _WIN32
     return (int64_t)GetCurrentProcessId();
 #else
     return (int64_t)getpid();
 #endif
+}
+
+static int64_t agentOwnerId() {
+    const char* a = std::getenv("ICMG_AGENT_ID");
+    if (a && *a) {
+        // djb2 hash -> positive int64 so a string id maps to the pid column.
+        unsigned long h = 5381; for (const char* p = a; *p; ++p) h = ((h << 5) + h) + (unsigned char)*p;
+        return (int64_t)(h & 0x7fffffffffffffffULL);
+    }
+    return currentPid();
 }
 
 class SessionCommand : public BaseCommand {
@@ -125,7 +141,7 @@ private:
     int runRelease(const std::vector<std::string>& args) {
         try {
             core::Db gdb(core::Config::instance().globalDbPath());
-            int64_t pid = currentPid();
+            int64_t pid = agentOwnerId();
             std::string host = hostName();
             std::string scope = flagValue(args, "--scope");
             if (scope.empty()) {
@@ -150,7 +166,8 @@ private:
         }
         std::string task;
         for (size_t i = 1; i < args.size(); ++i) {
-            if (i > 1) task += " ";
+            if (args[i].rfind("--", 0) == 0) break;  // stop at flags (e.g. --scope)
+            if (!task.empty()) task += " ";
             task += args[i];
         }
         auto j = loadActiveWork();
@@ -193,7 +210,8 @@ private:
                         existing.push_back(l);
                     }
                 });
-                auto res = core::resolveClaim(existing, scope, pid, host, now, 300);
+                int64_t owner = agentOwnerId();
+                auto res = core::resolveClaim(existing, scope, owner, host, now, 300);
                 if (!res.granted) {
                     std::cerr << "icmg session: scope '" << scope << "' is held by pid="
                               << res.conflict_pid << " @ " << res.conflict_host
@@ -201,10 +219,10 @@ private:
                     return 1;
                 }
                 gdb.run("DELETE FROM agent_leases WHERE scope=? AND pid=? AND host=?",
-                        {scope, std::to_string(pid), host});
+                        {scope, std::to_string(owner), host});
                 gdb.run("INSERT INTO agent_leases(scope,pid,host,task,claimed_at,heartbeat_at)"
                         " VALUES(?,?,?,?,?,?)",
-                        {scope, std::to_string(pid), host, task,
+                        {scope, std::to_string(owner), host, task,
                          std::to_string(now), std::to_string(now)});
                 std::cout << "icmg session: leased scope '" << scope << "' (pid=" << pid << ")\n";
             } catch (const std::exception& e) {
