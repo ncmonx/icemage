@@ -112,11 +112,11 @@ jobs:
       - name: Build (Windows)
         if: startsWith(matrix.runner, 'windows')
         shell: msys2 {0}
-        run: cmake --build build --parallel
+        run: cmake --build build --target icmg icmg_test --parallel
 
       - name: Build (Linux/macOS)
         if: ${{ !startsWith(matrix.runner, 'windows') }}
-        run: cmake --build build --parallel
+        run: cmake --build build --target icmg icmg_test --parallel
 
       # ---- test -------------------------------------------------------------
 
