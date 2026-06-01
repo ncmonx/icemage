@@ -90,7 +90,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## 🚀 Quick start
 
-1. **Download** the latest installer from the [Releases page](https://github.com/ncmonx/icemage/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux.
+1. **Download** the latest build for your platform from the [Releases page](https://github.com/ncmonx/icemage/releases): `icmg-<version>-win-x64.zip` (Windows), `icmg-<version>-linux-x64.tar.gz` (Linux), or `icmg-<version>-macos-arm64.tar.gz` (macOS, Apple Silicon). **Linux and macOS binaries are now built and published automatically by GitHub Actions CI on every release** (Windows built locally + uploaded alongside).
 2. **Extract** the archive into any folder of your choice.
 3. **Add the folder to your `PATH`** so the `icmg` command is available everywhere.
 4. **Open your project** in a terminal and run:
