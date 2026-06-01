@@ -143,7 +143,7 @@ hosted or managed service. Everything else is fair game. Audit the binary, the r
 
 ## 🩹 Honest limits
 
-- **Windows + Linux only** for prebuilt binaries today. macOS users currently need to wait for a self-hosted runner build (planned).
+- **Prebuilt binaries: Windows (x64), Linux (x64), and macOS (Apple Silicon)** — all three built and published automatically by CI on every release. macOS Intel (x86_64) isn't prebuilt yet; build from source (one command) if you need it.
 - **First-time install on Windows with strict antivirus** can be slow until you let Icemage run once. After that it's fast.
 - **Not a replacement for the AI.** Icemage is a token-trimming layer — it doesn't write code for you and it doesn't make a bad AI smart.
 
