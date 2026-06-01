@@ -4,6 +4,9 @@
 // atomic swap, with a .pre-encrypt.bak / .pre-decrypt.bak backup + rollback.
 // Key handling lives in core/db_key. Encryption is opt-in (default OFF).
 #include "../base_command.hpp"
+#ifndef _WIN32
+#include <unistd.h>   // getpid/usleep on POSIX
+#endif
 #include "../../core/registry.hpp"
 #include "../../core/db_key.hpp"
 #include "../../core/config.hpp"
