@@ -146,12 +146,21 @@ if(ICMG_USE_ENCRYPTION)
     # Crypto provider = OpenSSL (SQLCipher 3.53 has no CNG provider). On Windows
     # we link the vcpkg-built MSVC OpenSSL (libcrypto) and bundle libcrypto-3-x64.dll.
     target_compile_definitions(sqlite3 PUBLIC SQLCIPHER_CRYPTO_OPENSSL)
-    if(WIN32)
+    if(MSVC)
+        # MSVC: link vcpkg-built OpenSSL import lib + bundle libcrypto-3-x64.dll.
         set(ICMG_VCPKG_ROOT "C:/vcpkg/installed/x64-windows" CACHE PATH "vcpkg x64-windows tree (OpenSSL)")
         target_include_directories(sqlite3 PUBLIC ${ICMG_VCPKG_ROOT}/include)
         target_link_libraries(sqlite3 PUBLIC
             ${ICMG_VCPKG_ROOT}/lib/libcrypto.lib
             ws2_32 crypt32)
+    elseif(WIN32)
+        # MinGW/MSYS2: system OpenSSL from the toolchain (find_package or -lcrypto).
+        find_package(OpenSSL QUIET)
+        if(OpenSSL_FOUND)
+            target_link_libraries(sqlite3 PUBLIC OpenSSL::Crypto ws2_32 crypt32)
+        else()
+            target_link_libraries(sqlite3 PUBLIC crypto ws2_32 crypt32)
+        endif()
     else()
         target_link_libraries(sqlite3 PUBLIC crypto)
     endif()
