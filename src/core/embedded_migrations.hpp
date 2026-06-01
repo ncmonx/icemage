@@ -898,6 +898,19 @@ CREATE TABLE IF NOT EXISTS recall_cache_persist (
 CREATE INDEX IF NOT EXISTS idx_rcp_scope_hits
     ON recall_cache_persist(scope_hash, hit_count DESC);
 )SQL"},
+        {34, R"SQL(
+-- v2.0.0 Phase 4: agent_leases (multi-agent conflict-free work claims).
+CREATE TABLE IF NOT EXISTS agent_leases (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope        TEXT NOT NULL,
+    pid          INTEGER NOT NULL,
+    host         TEXT NOT NULL DEFAULT '''',
+    task         TEXT NOT NULL DEFAULT '''',
+    claimed_at   INTEGER NOT NULL DEFAULT (strftime('''%s''','''now''')),
+    heartbeat_at INTEGER NOT NULL DEFAULT (strftime('''%s''','''now'''))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_leases_scope ON agent_leases(scope);
+)SQL"},
     };
 }
 
