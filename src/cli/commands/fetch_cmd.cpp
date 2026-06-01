@@ -163,7 +163,7 @@ private:
         for (auto& c : sh_tmp) if (c == '\\') c = '/';
         for (auto& c : sh_hdr) if (c == '\\') c = '/';
 #endif
-        std::string cmd = "curl -sL --max-time 30 -D \"" + sh_hdr + "\" -o \""
+        std::string cmd = std::string(core::curlBin()) + " -sL --max-time 30 -D \"" + sh_hdr + "\" -o \""
                         + sh_tmp + "\" \"" + url + "\"";
         auto res = core::safeExecShell(cmd, true, 35000);
         if (res.exit_code != 0) {

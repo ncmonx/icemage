@@ -1507,7 +1507,7 @@ private:
             "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-windows-amd64.exe";
         std::string tmp_path = (fs::temp_directory_path() / "jq-icmg-download.exe").string();
         std::string curl_cmd =
-            "curl -fsSL --max-time 60 -o \"" + tmp_path + "\" \"" + url + "\"";
+            std::string(core::curlBin()) + " -fsSL --max-time 60 -o \"" + tmp_path + "\" \"" + url + "\"";
         auto dl = core::safeExecShell(curl_cmd, true, 65000);
         if (dl.exit_code != 0 || !fs::exists(tmp_path)) {
             std::cout << "  jq:         download failed — install manually from "

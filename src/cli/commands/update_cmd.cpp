@@ -268,7 +268,7 @@ private:
         std::string url = preview
             ? std::string("https://api.github.com/repos/") + REPO + "/releases?per_page=1"
             : std::string("https://api.github.com/repos/") + REPO + "/releases/latest";
-        std::string cmd = "curl -sL --max-time 10 -H \"User-Agent: icmg/"
+        std::string cmd = std::string(core::curlBin()) + " -sL --max-time 10 -H \"User-Agent: icmg/"
                         + std::string(CURRENT_VERSION) + "\" \"" + url + "\"";
         auto res = core::safeExecShell(cmd, false, 12000);
         if (res.exit_code != 0 || res.out.empty()) return r;
@@ -333,7 +333,7 @@ private:
         fs::path sha_tmp = downloaded; sha_tmp += ".sha256";
         std::string sh_path = sha_tmp.string();
         for (auto& c : sh_path) if (c == '\\') c = '/';  // bash-c safe
-        std::string cmd = "curl -sL --max-time 10 -o \"" + sh_path
+        std::string cmd = std::string(core::curlBin()) + " -sL --max-time 10 -o \"" + sh_path
                         + "\" \"" + sha_url + "\"";
         auto res = core::safeExecShell(cmd, false, 12000);
         if (res.exit_code != 0 || !fs::exists(sha_tmp) || fs::file_size(sha_tmp) < 16) {
@@ -604,7 +604,7 @@ private:
         std::cout << "Downloading " << r.asset_url << " ...\n";
         std::string sh_zip = zip.string();
         for (auto& c : sh_zip) if (c == '\\') c = '/';
-        std::string cmd = "curl -fsSL --retry 2 --retry-delay 3 --max-time 300 -o \"" + sh_zip + "\" \""
+        std::string cmd = std::string(core::curlBin()) + " -fsSL --retry 2 --retry-delay 3 --max-time 300 -o \"" + sh_zip + "\" \""
                         + r.asset_url + "\"";
         auto res = core::safeExecShell(cmd, false, 320000);  // v1.40.2: bumped 130s -> 320s for larger LLM-on assets
         if (res.exit_code != 0 || !fs::exists(zip) || fs::file_size(zip) < 1024) {
@@ -1026,7 +1026,7 @@ private:
     void printReleaseNotes(const std::string& tag) {
         std::string url = std::string("https://api.github.com/repos/")
                         + REPO + "/releases/tags/" + tag;
-        std::string cmd = "curl -sL --max-time 10 -H \"User-Agent: icmg/"
+        std::string cmd = std::string(core::curlBin()) + " -sL --max-time 10 -H \"User-Agent: icmg/"
                         + std::string(CURRENT_VERSION) + "\" \"" + url + "\"";
         auto res = core::safeExecShell(cmd, false, 12000);
         if (res.exit_code != 0 || res.out.empty()) return;
@@ -1164,7 +1164,7 @@ private:
             fs::path sha_tmp = install_dir / (dll + ".sha256.tmp");
             std::string sh_path = sha_tmp.string();
             for (auto& c : sh_path) if (c == '\\') c = '/';  // bash-c safe
-            std::string cmd = "curl -sL --max-time 10 -o \"" + sh_path
+            std::string cmd = std::string(core::curlBin()) + " -sL --max-time 10 -o \"" + sh_path
                             + "\" \"" + sha_url + "\"";
             auto res = core::safeExecShell(cmd, false, 12000);
             if (res.exit_code != 0 || !fs::exists(sha_tmp) || fs::file_size(sha_tmp) < 16) {
@@ -1263,7 +1263,7 @@ private:
     int showOne(const std::string& tag, bool json_out) {
         std::string url = std::string("https://api.github.com/repos/")
                         + REPO + "/releases/tags/" + tag;
-        std::string cmd = "curl -sL --max-time 10 -H \"User-Agent: icmg/"
+        std::string cmd = std::string(core::curlBin()) + " -sL --max-time 10 -H \"User-Agent: icmg/"
                         + std::string(CURRENT_VERSION) + "\" \"" + url + "\"";
         auto res = core::safeExecShell(cmd, false, 12000);
         if (res.exit_code != 0 || res.out.empty()) {
@@ -1284,7 +1284,7 @@ private:
     int showRange(const std::string& since, bool json_out) {
         std::string url = std::string("https://api.github.com/repos/")
                         + REPO + "/releases?per_page=20";
-        std::string cmd = "curl -sL --max-time 10 -H \"User-Agent: icmg/"
+        std::string cmd = std::string(core::curlBin()) + " -sL --max-time 10 -H \"User-Agent: icmg/"
                         + std::string(CURRENT_VERSION) + "\" \"" + url + "\"";
         auto res = core::safeExecShell(cmd, false, 12000);
         if (res.exit_code != 0 || res.out.empty()) {

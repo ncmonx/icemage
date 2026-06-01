@@ -53,7 +53,7 @@ DownloadResult downloadToFile(const std::string& url,
 
     std::string sh_dest = shPath(dest_path);
     std::string cmd =
-        "curl -sSL --fail --location --max-time " + std::to_string(timeout_s) +
+        std::string(curlBin()) + " -sSL --fail --location --max-time " + std::to_string(timeout_s) +
         " --retry 2 --retry-delay 2 -o \"" + sh_dest + "\" -w \"%{http_code}\" \"" + url + "\"";
 
     // Side thread polls file size while main thread waits for curl.

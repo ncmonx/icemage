@@ -205,7 +205,7 @@ private:
 
         // Poll GitHub releases/latest.
         std::string url = "https://api.github.com/repos/" + repo() + "/releases/latest";
-        std::string cmd = "curl -sL --max-time 10 -H \"User-Agent: icmg/"
+        std::string cmd = std::string(core::curlBin()) + " -sL --max-time 10 -H \"User-Agent: icmg/"
                         + std::string(currentVersion()) + "\" \"" + url + "\"";
         auto res = core::safeExecShell(cmd, false, 15000);
         if (res.exit_code != 0 || res.out.empty()) {
@@ -256,7 +256,7 @@ private:
 
         for (auto& a : assets) {
             fs::path out = stage_dir / a;
-            std::string dl = "curl -sL --max-time 60 -o \"" + out.string()
+            std::string dl = std::string(core::curlBin()) + " -sL --max-time 60 -o \"" + out.string()
                            + "\" \"" + base_url + a + "\"";
             auto r1 = core::safeExecShell(dl, false, 90000);
             if (r1.exit_code != 0 || !fs::exists(out) || fs::file_size(out) == 0) {
@@ -265,7 +265,7 @@ private:
             }
             // sha256 sidecar
             fs::path sha_out = stage_dir / (a + ".sha256");
-            std::string dl2 = "curl -sL --max-time 30 -o \"" + sha_out.string()
+            std::string dl2 = std::string(core::curlBin()) + " -sL --max-time 30 -o \"" + sha_out.string()
                             + "\" \"" + base_url + a + ".sha256\"";
             core::safeExecShell(dl2, false, 30000);
             if (!fs::exists(sha_out)) {

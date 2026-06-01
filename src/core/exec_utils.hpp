@@ -30,4 +30,15 @@ ExecResult safeExecShell(const std::string& cmd_line,
                          bool merge_stderr = false,
                          int timeout_ms    = 30000);
 
+// M10: curl binary name. On Windows under PowerShell, bare  is an alias
+// M10: curl binary name. On Windows under PowerShell, bare `curl` is an alias
+// for Invoke-WebRequest (not curl.exe) -> wrong output. Use `curl.exe` to bypass.
+inline const char* curlBin() {
+#ifdef _WIN32
+    return "curl.exe";
+#else
+    return "curl";
+#endif
+}
+
 } // namespace icmg::core

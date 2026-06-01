@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.86.0 LANGUAGES CXX C)
+project(icmg VERSION 1.87.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -653,6 +653,7 @@ add_icmg_test(test_diminishing_returns tests/core/test_diminishing_returns.cpp) 
 add_icmg_test(test_microcompact       tests/tkil/test_microcompact.cpp)        # v1.84 M8 T4
 add_icmg_test(test_token_budget       tests/core/test_token_budget.cpp)        # v1.84 M8 T3
 add_icmg_test(test_query_fingerprint  tests/core/test_query_fingerprint.cpp) # v1.84 M8 T2
+add_icmg_test(test_curl_bin          tests/core/test_curl_bin.cpp)            # v1.87 M10 curl.exe fix
 add_icmg_test(test_djb2_hash          tests/core/test_djb2_hash.cpp)           # v1.84 M8 T1
 add_icmg_test(test_init_project_register  tests/cli/test_init_project_register.cpp)  # v1.83 M7-A
 add_icmg_test(test_rules        tests/rules/test_rules.cpp)

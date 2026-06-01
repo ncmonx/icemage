@@ -412,8 +412,17 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
                 }
                 if (!s_ps) s_ps = "powershell.exe";
             }
+            // Escape inner double-quotes for pwsh -Command "<...>": each " -> \\".
+            // Without this, curl.exe -H "User-Agent:..." breaks the wrapper parse,
+            // the native arg is lost, and HTTP/JSON callers get empty output.
+            std::string esc;
+            esc.reserve(cmd_line.size() + 16);
+            for (char ch : cmd_line) {
+                if (ch == '"') esc += "\\\"";
+                else esc += ch;
+            }
             full_cmd = std::string(s_ps)
-                     + " -NoProfile -NonInteractive -Command \"" + cmd_line + "\"";
+                     + " -NoProfile -NonInteractive -Command \"" + esc + "\"";
         }
     }
 

@@ -77,7 +77,7 @@ void writeCache(const std::string& latest) {
 
 std::string fetchLatestTag(const std::string& repo, const std::string& current_version) {
     std::string url = "https://api.github.com/repos/" + repo + "/releases/latest";
-    std::string cmd = "curl -sL --max-time 8 -H \"User-Agent: icmg/" + current_version
+    std::string cmd = std::string(curlBin()) + " -sL --max-time 8 -H \"User-Agent: icmg/" + current_version
                     + "\" \"" + url + "\"";
     auto res = safeExecShell(cmd, false, 10000);
     if (res.exit_code != 0 || res.out.empty()) return {};
