@@ -106,6 +106,12 @@ void llama_model_t5::load_arch_tensors(llama_model_loader &) {
     }
 }
 
+// Forward-declare the explicit specializations before their first instantiation
+// below — clang rejects 'explicit specialization after instantiation' otherwise
+// (gcc/msvc are lenient). The definitions follow further down.
+template <> llama_model_t5::graph<false>::graph(const llama_model & model, const llm_graph_params & params);
+template <> llama_model_t5::graph<true>::graph(const llama_model & model, const llm_graph_params & params);
+
 std::unique_ptr<llm_graph_context> llama_model_t5::build_arch_graph(const llm_graph_params & params) const {
     switch (params.gtype) {
         case LLM_GRAPH_TYPE_ENCODER:
