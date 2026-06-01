@@ -7,9 +7,9 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icemage)](https://github.com/ncmonx/icemage/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icemage/total)](https://github.com/ncmonx/icemage/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icemage)](https://github.com/ncmonx/icemage/commits/main)
-[![tests](https://img.shields.io/badge/tests-62%2F62%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-1256%2F1256%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-28-blueviolet)](#)
-[![commands](https://img.shields.io/badge/CLI%20commands-88%2B-blue)](#)
+[![commands](https://img.shields.io/badge/CLI%20commands-95%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Elastic--2.0-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ncmonx/icemage/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ncmonx/icemage)
 [![sponsor](https://img.shields.io/badge/sponsor-GitHub-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/ncmonx)
@@ -23,502 +23,180 @@ If you've ever watched 30K tokens evaporate on a single file read, paid for "thi
 
 ---
 
-## What's new in v0.53.0
+## 🟢 Why Icemage
 
-| Feature | What changed |
-|---|---|
-| **BFS graph expansion** | `icmg pack` now traverses the dependency graph up to 3 hops — surfaces transitive imports without manual file-hunting |
-| **AGENTS.md auto-sync** | `icmg init` injects a live `COMMANDS_BLOCK` into AGENTS.md — sub-agents always see the full command index |
-| **WAL bloat fix** | `wal_autocheckpoint` 1000→100 pages — prevents 65 GB WAL files on high-frequency hook writes |
-| **CMD popup suppression** | All subprocess launches now use `CREATE_NO_WINDOW` — no console flicker on Windows 11 |
-| **Zone glob fix** | Zone patterns (e.g. `src/cli/**`) now match Windows absolute paths — nodes no longer fall to `default` on Windows |
-| **Doctor loop fix** | `icmg doctor` no longer re-warns about caveman hook after auto-reinstall |
+AI assistants are powerful but **wasteful by default**. Every time the AI opens a file, runs a command, or starts a new chat, it re-reads context it has seen many times and dumps full output into the conversation. Icemage sits quietly in the background and trims the noise before it ever reaches the AI:
 
-```bash
-icmg pack "<task>"          # now includes transitive deps automatically
-icmg init --force           # refreshes AGENTS.md COMMANDS_BLOCK + hooks
-icmg zone rebuild           # re-tag nodes after upgrading (Windows users)
-```
+- **Long files** → only the relevant slice
+- **Noisy command output** → just the parts that matter
+- **Web pages** → cached + summarised
+- **Past decisions** → remembered across sessions so the AI doesn't ask twice
+- **Repeated work** → results reused instead of recomputed
 
-## What's new in v0.51.0
-
-| Feature | What changed |
-|---|---|
-| **Destructive-op guard** | `icmg run` intercepts `rm -rf`, `DROP TABLE`, `git push --force` etc. — prompts `[y/N]` before executing; `--yes` bypasses |
-| **Version staleness check** | Startup checks GitHub for latest release (24h cached); warns at lag≥3, soft-blocks `init`/`graph` at lag≥10 |
-| **Wake-up per-user filter** | `icmg wake-up` now filters decisions/fixes by `created_by` — multi-user machines no longer mix context |
-| **Hook token efficiency** | `hook userprompt` now respects 4KB budget cap, BM25≥0.15 threshold, adaptive depth, 300s context cache, 1-hop BFS graph expansion |
-| **CMD popup suppression** | `exec_utils` subprocess launch adds `STARTF_USESHOWWINDOW\|SW_HIDE` — no console flicker on all Windows configs |
-| **Init security** | `icmg init` warns on OneDrive/Dropbox path + sets owner-only permissions on `.icmg/` |
-
-```bash
-icmg run --yes rm -rf build/        # skip destructive prompt for safe dirs
-icmg wake-up                        # now shows [user: email] header
-icmg upgrade                        # resolve version staleness warnings
-```
-
-## What's new in v0.42.0
-
-| Feature | What changed |
-|---|---|
-| **Context graph** | CLAUDE.md sections imported as searchable nodes — session starts at ~300 tok instead of ~4 000 tok |
-| **Skill store** | Skills indexed from `~/.claude/` skill files; matching ones surfaced as hints per prompt |
-| **Rule enforcement daemon** | Persistent process evaluates every Read/Glob/Grep at 2-5 ms; files over 500 lines blocked with focused alternative |
-| **Knowledge browser** | `icmg knowledge` CRUD CLI + HTML dashboard + REST API at `icmg serve /knowledge` |
-| **Auto-import on init** | `icmg init` now imports CLAUDE.md and indexes skills automatically |
-
-```bash
-icmg claudemd import        # import CLAUDE.md sections into context graph (auto on init)
-icmg skill index            # index skill .md files for BM25 matching
-icmg rule-daemon start      # start enforcement daemon (auto on init)
-icmg knowledge list         # browse context nodes
-icmg knowledge --html       # open dashboard in browser
-```
-
-## The savings, at a glance
-
-```
-                  WITHOUT ICMG          WITH ICMG
-Big-file Read     ████████████████████  ███▌            (-83%)
-Build/test logs   ████████████████████  █▌              (-92%)
-SQL/table dump    ████████████████████  ▏               (-99%)
-Thinking pass     ████████████████████  █▌              (-92%)
-Stable preamble   ████████████████████  ██              (-90% via cache)
-Repeat queries    ████████████████████  ▏               (-100% local cache)
-Bulk batch ops    ████████████████████  ██████████      (-50% Anthropic batch)
-HTML/PDF fetch    ████████████████████  ██▌             (-87% reduce+cache)
-OCR vs vision     ████████████████████  ██              (-90% on text-heavy)
-```
-
-```
-Combined-stack on a typical turn:    ███▏  85–95% reduction (compounded)
-```
-
-These ranges come from real measurements. Each layer alone is small. Stacked, the headline number lands.
+The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ---
 
-## What it does (single-page tour)
+## 📊 Headline numbers
 
-```
-                ┌───────────────────────┐
-   YOUR TASK ──▶│  icmg pack "<task>"   │── filtered context bundle
-                └────────────┬──────────┘     (memory + graph + diff)
-                             │
-                             ▼
-                ┌───────────────────────┐
-                │   28 MCP tools        │── Claude Code / Cline / Continue
-                │   recall, store, …    │
-                └────────────┬──────────┘
-                             │
-                             ▼
-                ┌───────────────────────┐
-                │  Hooks intercept      │── Read 100-line cap
-                │  Read / Bash / Edit   │── Bash 8KB cap, ANSI strip
-                │  Glob / Grep / Web    │── Glob top-50, WebFetch 4KB
-                └────────────┬──────────┘
-                             │
-                             ▼
-                ┌───────────────────────┐
-                │   Auto-compress       │── reversible glossary on
-                │   (≥3KB pack)         │   pack output
-                └────────────┬──────────┘
-                             │
-                             ▼
-              SAVINGS DASHBOARD + RECEIPTS + COMPLIANCE TRACKING
-```
-
-| Pain | Icmg fix |
-|---|---|
-| Big files inflate every prompt | Surgical context bundles — only what the task actually needs |
-| Noisy command output drowns the model | Output filtering tuned per command type (ANSI strip, dedup ×N, blank collapse) |
-| Same bug solved twice | Persistent memory that surfaces past fixes when they apply |
-| `/clear` wipes hard-won context | Snapshots + auto-distill of session decisions |
-| Models "think" 8K tokens for a one-line rename | Intent-aware directives + caveman mode kill thinking outright |
-| Re-sending the same project preamble every turn | Long-lived prompt-cache markers — pay once, reuse cheap |
-| 30K tokens of logs / diffs / dumps | Lossless context compression with reversible round-trips |
-| AI keeps trying the same broken approach | Anti-pattern memory (`icmg fail`) — failures become guardrails |
-| AI "forgets" your CLAUDE.md instructions | Hard-enforcement hooks block disallowed reads/fetches |
-| Native `Read` bypasses everything | Read cap-and-allow hook caps at 30 lines via `updatedInput.limit` + icmg-context overlay |
-| Same task already solved in another project | `icmg cross-recall` federates memory across all registered projects |
-| DB grows unbounded over months | `icmg cron install` autopilots weekly prune (Windows schtasks / POSIX cron) |
-| Wrong zone wastes BM25 IDF | Auto-zone detect from task keywords (10 zones); no manual `--zone X` |
-
-Each one is a few percent. Stack them and you get the headline number.
-
----
-
-## Quick start
-
-```bash
-# Build
-cmake -B build && cmake --build build
-
-# Or grab the release binary
-# https://github.com/ncmonx/icemage/releases
-
-# Bootstrap a project (installs the right hooks for your AI agent)
-icmg init
-
-# Try one of these
-icmg pack "fix the login bug"          # surgical context bundle
-icmg run npm test                      # noise-filtered build output
-icmg compress < big.log                # cut tokens on dumps + diffs
-icmg pack "rename foo.ts"              # auto-think on; thinking off when task is simple
-icmg context src/auth.ts --symbol parseToken  # one function body, 80%+ cut vs full file
-icmg run --stream npm test             # real-time output + noise filter summary at end
-icmg context src/auth.ts --lines 60-95 # surgical read; replaces native Read offset/limit
-icmg fail store "jwt refresh" "X" "Y"  # record failed approach so AI doesn't repeat
-icmg savings                           # see what you saved (console / --html)
-```
-
-That's it. Nothing else to configure.
-
----
-
-## Headline numbers (measured)
-
-```
-LAYER                       SAVING            SOURCE
-─────────────────────────────────────────────────────────────────────
-Big-file Read           60–80% smaller       file slice, 100-line cap
-Build/test logs         80–95% smaller       icmg run filter pipeline
-SQL/table dumps         95–99% smaller       per-tool shrink strategy
-Thinking overhead       50–90% off           --no-think + caveman
-Stable preamble         90% off              prompt-cache markers
-Repeat queries          100% off             tool_call_cache (5min TTL)
-Bulk operations         50% off              Anthropic Batch API emit
-HTML/PDF fetch          70–90% off           icmg fetch reduce + cache
-Screenshot OCR          90–95% off           icmg ingest pytesseract
-Read repeat-dedup       ~100% on dup         30-min sliding window
-Pack on-repeat          60–97% smaller       icmg pack --diff
-Symbol-slice context    80%+ per lookup      icmg context --symbol (one fn, not whole file)
-Live stream dedup       real-time lines      icmg run --stream (filter summary at end)
-File copy no-output    97% per write        icmg copy --from (zero output tokens generated)
-Filter ANSI/dedup       30–60% on noisy CLI  npm/cargo/pnpm output
-Caveman mode            ~75% on responses    fragment-style directive
-─────────────────────────────────────────────────────────────────────
-COMBINED ON TYPICAL TURN          ≈ 85–95%
-```
-
-Token-cost savings at scale: roughly **\$0.10 per non-trivial Claude turn**, hundreds of dollars a month for active users.
-
----
-
-## Coverage dashboard
-
-`icmg savings` shows where the savings actually came from:
-
-```
-icmg savings — last 30 days
-================================================================
-
-  Command filter (icmg run)             67 calls       16.6K  →  16.2K   (2% saved)
-  Compression  (icmg compress)           1 calls       5.0K   →  5.0K    (0% saved)
-  Thinking     (--no-think)             21 calls       31.5K  →  7.5K    (76% saved)
-  Pack receipts  (memory+graph)         15 calls       9.2K   →  9.2K
-  Strict denials (read/web/bash)         8 calls       12.0K  →  0       (100% saved)
-  Fetch cache    (icmg fetch)            3 hits        7.5K   →  0       (100% saved)
-  Image OCR cache(icmg ingest)           2 hits        4.0K   →  0       (100% saved)
-----------------------------------------------------------------
-  TOTAL                                117 calls       86K    →  38K     (56% saved)
-
-Cost without icmg: $0.50  (input $0.03 / output $0.47)
-Cost with    icmg: $0.13  (input $0.02 / output $0.11)
-You saved:         $0.37  (63.6%)
-
-Real session tokens: 2195587  (icmg-covered 86K = 4%, outside 2.1M)
-Strict-mode denials in window: 8
-  → each block redirected agent to icmg context/fetch
-```
-
-`Real session tokens` row reads the live Claude transcript — surfaces the gap between icmg-instrumented ops and actual context-window fill.
-
----
-
-## Highlights
-
-```
-ONE BINARY            ▸ ~30 MB Windows .exe, no node_modules / venv / Docker
-LOCAL-FIRST           ▸ Per-project SQLite. Never phones home
-MCP SERVER            ▸ 28 tools — recall, store, graph, sync, fetch, batch …
-                        Plugs into Claude Code, Cline, Continue, anything MCP
-PROJECT FEDERATION    ▸ icmg cross-recall — "this was done in project X" lookup
-                        across all registered projects (memory + receipts)
-AUTOPILOT HYGIENE     ▸ icmg cron install — weekly memory prune (auto/session/
-                        fail/correction rotation + telemetry trim) zero-touch
-AUTO-ZONE             ▸ Pack infers zone from keywords (10 zones); sharper IDF
-                        without manual flag — auth/db/graph/imem/tkil/mcp/ui/
-                        cli/hooks/compress
-DASHBOARD             ▸ icmg serve → http://127.0.0.1:8080/
-AST-AWARE             ▸ tree-sitter for C/C++/Python/TypeScript
-                        regex fallback for the rest
-TEAM-FRIENDLY         ▸ Memory + graph share via git-tracked JSONL snapshots
-IMAGE-AWARE           ▸ Local OCR for screenshots; 90%+ vs vision API
-HARD ENFORCEMENT      ▸ Hooks block native Read/WebFetch when icmg has it
-SELF-REPAIR           ▸ DLL sha256 auto-rollback, lock recovery, pending-restart
-SELF-PROTECTION       ▸ Atomic snapshots (24h/7d/4w/6m pyramidal) +
-                        ping-pong dual-mirror (2× live, instant failover) +
-                        7-stage graph integrity check + auto on every upgrade
-HOT-CONTEXT CACHE     ▸ Re-issue same icmg context/compress within session →
-                        ~5ms cache hit (15-30× cold→hot). Boosts hot files
-                        in graph rank automatically. Self-invalidating on edit
-SELF-MAINTENANCE      ▸ icmg maintain run auto-detects HEAVY/IDLE state →
-                        prune chain → keeps only active graph in idle mode
-DRIFT GATE            ▸ icmg drift pin/check — pinned decisions get 10× recall
-                        boost; every prompt matched against anchors;
-                        contradictions flagged BEFORE the model commits
-SENTINEL WATCHDOG     ▸ icmg sentinel — 15-min health checks; auto-prunes when
-                        disk/cache/audit growth crosses thresholds; halts cold
-                        at ≥3 reactions/hour (loop-safe by design)
-SHADOW AUTO-UPGRADE   ▸ icmg shadow-upgrade — daily background poll of GitHub;
-                        sha256-verified download to ~/.icmg/shadow/<version>/;
-                        atomic swap on next invocation. Chrome-style. No
-                        teammate left behind on stale features. Pin/opt-out
-                        available
-AUDIT TRAIL           ▸ chain-signed log of every backup/restore/failover/
-                        sentinel reaction. icmg repair-history verify walks
-                        the chain — tamper-detectable
-SYMBOL SLICE          ▸ icmg context <file> --symbol <Name> — one function body,
-                        not the whole module. 80%+ token cut vs full-file read.
-                        Substring + case-insensitive match. Precision surgical
-SESSION DEDUP         ▸ Recall auto-suppresses nodes already returned this session
-                        — identical results stop flooding multi-turn context.
-                        --no-dedup to override. Zero latency (in-memory set)
-LIVE STREAM FILTER    ▸ icmg run --stream — real-time line-by-line subprocess
-                        output with filter summary appended at end. No buffering
-                        lag; full filter context preserved for summary accuracy
-CONTEXT GRAPH         ▸ CLAUDE.md sections auto-imported as BM25-searchable nodes.
-                        ~93% less context on session start — only relevant sections
-                        injected per prompt. No manual CLAUDE.md load needed
-SKILL STORE           ▸ Skill .md files indexed into the graph (tier=skill).
-                        Matching skills suggested automatically per prompt via hook.
-                        Never miss an applicable skill again. icmg skill index
-RULE ENFORCEMENT      ▸ Persistent enforcement daemon: rules stored in DB, not hooks.
-                        Read/Glob/Grep calls evaluated at 2-5 ms (10x faster).
-                        Files >=500 lines blocked; focused alternative suggested
-KNOWLEDGE BROWSER     ▸ icmg knowledge list/add/edit/delete — full CRUD on context
-                        graph. HTML dashboard at icmg serve /knowledge.
-                        Toggle nodes active/inactive without deleting
-Elastic-2.0           ▸ source-available; no managed-service resale
-```
-
----
-
-## When to use which command
-
-| Situation | Run |
-|---|---|
-| Starting a task | `icmg pack "<task>"` — one bundle, not 5–10 reads |
-| Need a single file | `icmg context <file>` — surgical, not full Read |
-| Need lines 60–95 | `icmg context <file> --lines 60-95` — replaces Read offset/limit |
-| Any noisy command | `icmg run <cmd>` — filtered output |
-| PR review | `icmg diff-summary` — symbol-grouped, not raw diff |
-| Big text input | `icmg compress` — cut tokens, reverse-able |
-| Past decisions | `icmg recall "<query>"` — surfaces what you already learned |
-| Failed approach | `icmg fail store/recall` — anti-pattern memory |
-| Same task in another project | `icmg cross-recall "<prompt>"` — federate across registered projects |
-| Auto-prune old memory weekly | `icmg cron install` — Win schtasks / POSIX cron, zero-touch |
-| Auto-zone for sharper recall | `icmg pack "<task>"` — infers `auth`/`db`/`graph`/etc. from keywords |
-| AI ignored CLAUDE.md | `icmg strict on` — hooks enforce rules at harness level |
-| Full LLM pipeline | `icmg agent "<task>"` — pack + cache + directives + retry |
-| Bulk Anthropic | `icmg batch --task ...` — 50% via Batch API |
-| Download URL | `icmg fetch <url>` — reduced + cached (70-90% off) |
-| Screenshot | `icmg ingest screenshot.png` — OCR text-only payload |
-| Team share | `icmg sync init/push/pull` — git-tracked JSONL |
-| Audit savings | `icmg savings` — console / `--html` / `--json` |
-| Real session tokens | `icmg context-budget` — covers ALL sources |
-| What changed | `icmg whats-new` — release notes after `update` |
-| Visual graph | `icmg serve` — embedded HTTP dashboard |
-| **DB safety net** | `icmg backup snapshot` / `icmg backup restore latest` — atomic, schema-checked |
-| **Instant failover** | `icmg mirror failover` — swaps in valid mirror in seconds |
-| **Self-clean heavy/idle DB** | `icmg maintain run` — auto-detects state, chains prune + integrity |
-| **Repair broken graph** | `icmg graph integrity --fix` — 7-stage check + targeted repair |
-| **Inspect cache layer** | `icmg cache stats / list / prune` — see what's hot |
-| **Pin a decision** | `icmg drift pin --topic X --stance Y` — pinned memory wins recall 10× |
-| **Check prompt drift** | `icmg drift check "<prompt>"` — surfaces conflicts with pinned anchors |
-| **Watchdog health** | `icmg sentinel run` — auto-prunes disk/cache; halt-safe loop guard |
-| **Background upgrade** | `icmg shadow-upgrade check` — daily auto-poll; pin/rollback supported |
-| **Audit trail** | `icmg repair-history tail / verify` — chain-signed event log |
-
-Run `icmg --help` for the full list of 82+ subcommands. Each has its own `--help`.
-
-> More layers in progress. Concrete designs not published.
-
----
-
-## Install
-
-**Windows (recommended):** download the latest release, drop `icmg.exe` somewhere on `PATH`. The bundled DLLs live next to it. Done.
-
-**Build from source:**
-
-```bash
-git clone https://github.com/ncmonx/icemage
-cd icm-graph
-cmake -B build && cmake --build build
-# Optional capabilities (turn on what you want)
-cmake -B build -DICMG_USE_TREESITTER=ON -DICMG_USE_ONNX=ON
-```
-
-Optional capabilities are exactly that — optional. Default build runs everywhere with zero external dependencies beyond a C++17 compiler.
-
----
-
-## How it pays off in practice
-
-After a few days of use you'll notice:
-
-```
-Day 1   ▸ Sessions get visibly longer before /compact fires
-Day 3   ▸ Recurring questions answer themselves from memory
-Day 7   ▸ Big PR reviews stop blowing the context window
-Day 14  ▸ Cache hit-rate climbs as you settle into patterns
-Day 30  ▸ Your monthly Claude bill stops scaring you
-```
-
-Memory recall sharpens over time. Snapshot restore gets faster. Compression learns your codebase's repeated terms. The system compounds.
-
----
-
-## Architecture (one screen)
-
-```
-                       ┌─────────────────────────────────────┐
-                       │           icmg.exe (single binary)   │
-                       └─────────────────────────────────────┘
-                                       │
-        ┌──────────────────────────────┼──────────────────────────────┐
-        │                              │                              │
-   ┌─────────┐                  ┌──────────────┐               ┌──────────────┐
-   │   CLI   │                  │  MCP Server  │               │ HTTP Server  │
-   │ 70+ cmd │                  │  (stdio)     │               │ :8080 read   │
-   └────┬────┘                  └──────┬───────┘               └──────────────┘
-        │                              │
-        ▼                              ▼
-   ┌────────────────────────────────────────────┐
-   │   Core: SQLite WAL · BM25 · embedder       │
-   │         tree-sitter · pytesseract sidecar  │
-   └────────────────────────────────────────────┘
-        │
-        ▼
-   ┌────────────────────────────────────────────┐
-   │  ~/.icmg/global.db        — registry        │
-   │  <proj>/.icmg/data.db     — per-project     │
-   │  ~/.icmg/*.flag           — caveman/strict  │
-   │  ~/.icmg/*-log.{jsonl|txt}— receipts        │
-   └────────────────────────────────────────────┘
-```
-
----
-
-## Security
-
-Local-first design with explicit boundaries:
-
-- **Update integrity:** every release ships a SHA256 sidecar per binary. `update --apply` verifies before swap; mismatch auto-rollbacks. Bypass via `--skip-verify`.
-- **Per-DLL SHA256:** 6 bundled DLLs (onnxruntime / providers-shared / tree-sitter / wasmtime / zstd / winpthread) verified after install; auto-restore from `.bak` on mismatch.
-- **URL sanitization:** `icmg fetch` validates URLs against a shell-metacharacter blocklist (`"$\;|&<>` newlines control chars) before any shell-out.
-- **HTTPS-only** for self-update + fetch.
-- **Parameterized SQL** queries throughout (no SQL injection on store/recall/import).
-- **No telemetry phoned home** — the binary makes network calls only when you invoke `update`, `fetch`, `embed` (Python sidecar), or `whats-new`.
-- **Per-project DB** is plaintext SQLite. If you store secrets as memory, treat the DB file as sensitive (filesystem permissions remain the boundary).
-- **Hooks** modify `.claude/settings.local.json` only on `icmg init`. Review before opt-in.
-
-Open caveats:
-- Image OCR runs Python `pytesseract` + `Pillow` subprocess; respect those projects' CVE history when ingesting untrusted images.
-- MCP stdio is unauthenticated (local-only threat model).
-- DB encryption opt-in still in design (key-recovery UX risk).
-
----
-
-## Self-repair
-
-icmg is designed to recover from common failure modes on its own. The trade-off: recovery takes a few extra seconds in exchange for safety.
-
-| Situation | What happens |
-|---|---|
-| Update target binary locked (Windows) | Detached helper waits for the running process to exit, then performs the swap on the next invocation — no manual restart needed |
-| Update integrity mismatch (sha256) | Aborts before swap, keeps the previous binary in place |
-| DLL bundle drift after upgrade | Per-DLL sha256 verify catches mismatches; auto-rollback restores `.bak` |
-| Stale lockfile from killed process | Auto-detected via PID liveness probe and cleaned up |
-| Pending upgrade interrupted | Marker file resumes the swap on the next `icmg` invocation in any new terminal |
-| Hook scripts drift after upgrade | `update --apply` re-runs `init --install-hooks --force` automatically |
-| Telemetry tables grow unbounded | `icmg memory prune-telemetry` reclaims space; `prune-old --topic 'auto:%'` rotates auto-grown topics |
-| DB schema lag | Migrations apply automatically on next open; backward-compatible |
-| Project graph stale | `icmg context` auto-scans single file inline if not yet indexed |
-| TS/MD/JSON files missing from graph | Auto-detected by extension and indexed on next access |
-| **DB corruption detected** | `icmg mirror failover` swaps in newest valid mirror in seconds; primary quarantined for forensics; audit-logged |
-| **No mirror available** | `icmg backup restore latest` rolls back to most recent atomic snapshot; auto-undo created first |
-| **DB heavy (>100MB or >50K rows)** | `icmg maintain run` chains telemetry-prune → topic-aged prune → decay → consolidate → integrity check |
-| **Project idle (no activity >24h)** | `icmg maintain run --idle-mode` soft-deletes auto/session/cache rows below importance 2; graph + pinned memory untouched |
-
-**Always-on protection (auto-armed on `icmg init` and every upgrade):**
-
-| Layer | Cadence | Disk cost | Purpose |
+| Metric | Typical | Best | Since |
 |---|---|---|---|
-| Snapshot history | hourly | pyramidal (24h/7d/4w/6m) | Time-travel recovery |
-| Dual mirror | 15 min | 2× live | Instant failover |
-| Hygiene maintain | 6 h | n/a | Bounded growth |
-| Graph integrity | within maintain | n/a | Drift detection |
+| File-read savings | 70 – 85 % fewer tokens | up to 92 % | v0.5 |
+| Test / build output | 60 – 80 % shorter | up to 90 % | v0.5 |
+| **Multi-file UI propagation** (style-clone) | **30 – 50× cheaper** | up to 98 % | v1.22.0 |
+| **Cross-project bundle** (port) | **8 – 12× cheaper** | up to 95 % | v1.24.0 |
+| **Compressed-Write** (AI emit diff) | **70 – 95% fewer tokens** | up to 98 % | v1.25.0 |
+| Web-fetch reduction | 70 – 90 % smaller | up to 95 % | v0.4 |
+| Repeat-context recall | near-zero, **< 5 ms cached** | — | v1.21.8 |
+| Past-chat full-text search | **< 10 ms** across months | — | v1.21.7 |
+| Graph symbol lookup | **256-slot in-RAM cache** | — | v1.21.8 |
+| First-prompt warmup | < 1 s | — | v1.18 |
+| **Cold build time** (icmg itself) | **~50 % faster** (20 min → 9-10 min) | — | v1.26.0 |
+| **MCP response filter** (verbose plugins) | **50 – 80 % smaller** | up to 90 % | v1.30.0 |
+| **Auto-thinking suppress** (trivial prompts) | **~1500 tok / call saved** | — | v1.30.0 |
+| **Sayless-auto** (long-prose replies) | **60 – 75 % compress** | up to 85 % | v1.30.0 |
+| **Service auto-start** (UserPromptSubmit) | **0-touch warm-up** | — | v1.30.0 |
+| **Path ambiguity warning** (icmg context) | wrong-file lookups → loud | — | v1.29.0 |
+| **rg-wrapper + brace glob** (icmg grep/files) | flag-mirror, **{a,b}** expand | — | v1.29.0 |
+| **Local AI model** (built-in, opt-in) | **0 cloud calls** | privacy-first | v1.31.0 |
+| **Smart router** (REGEX vs LLM_LOCAL vs CACHE) | **<100 us p99** | hot-path forced regex | v1.31.0 |
+| **HTTP streaming download** (model fetch + SHA256) | **400 MB - 2 GB** safe-verify | tamper-detect | v1.31.0 |
+| **icmg git** wrapper (single ergonomic entry) | **Tkil-filtered** + safety-gated | enforces icmg-FIRST | v1.31.0 |
+| **Python-free core** (PRECOMPACT_PY dropped) | **-200-500 ms** boot saved | single-binary | v1.31.0 |
+| **pack --rerank** (LLM-reorder memory hits) | **opt-in** warm-path | router-gated | v1.32.0 |
+| **PreCompact LLM summary** (warm-pool Qwen 0.5B) | **<15 s** cold | regex fallback always | v1.32.0 |
+| **icmg compact-bg** (proactive memory worker) | **<3 s** warm | manual + future hook | v1.32.0 |
+| **Smarter local AI memory** | **multi-prompt safe** | no overflow | v1.32.0 |
+| **Code graph viz + report** (`icmg graph viz`) | **interactive D3 + god-nodes** | — | v1.71.0 |
+| **Secret scanner** (`icmg scan`) | **21 detectors, CI-gate** | redact-by-default | v1.68.0 |
+| **MCP server hardening** (token + rate-limit + path-guard) | **abuse / RCE-safe** | — | v1.72.0 |
+| **Post-compact memory re-anchor** | **rules survive compaction** | auto on `init` | v1.73.0 |
+| **Scripted-safe `icmg run`** (non-interactive guard) | **no hang on destructive** | `--yes`/env opt-in | v1.74.0 |
+| **Clean self-upgrade** (idempotent Defender step) | **no phantom B: drive popup** | `--no-defender` opt-out | v1.75.0 |
+| **Encryption-at-rest** (`icmg encrypt`, SQLCipher AES-256) | **opt-in full-DB encrypt** | BM25 recall intact | v1.76.0 |
+| **Hot recall cache** (RAM, daemon-shared) | **< 5 ms repeat recall** | self-governing RAM | v1.77.0 |
+| Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
-Most recovery paths take 1–3 seconds. A few (network re-fetch on integrity mismatch, helper-script wait for exit) can take 10–30 seconds. Safety is prioritized over speed — every recovery preserves the previous good state via `.bak` files so manual rollback is always available.
+## ✨ What's new
 
-Run `icmg health` any time to confirm everything is in order.
+- **v1.87.0** - **Fix: `icmg update` and `icmg fetch` no longer fail on plain PowerShell**. Since v1.81, running icmg from a normal PowerShell prompt (not MSYS/Git-Bash) broke every command that calls the GitHub API or fetches a URL — `icmg update --check/--apply`, `icmg fetch`, the self-upgrade check — all returned "failed to query github (network or rate-limit)" even on a healthy connection. Two compounding causes: (1) in PowerShell, `curl` is an alias for `Invoke-WebRequest`, not the real curl, so its output was never the raw response body; (2) the internal shell wrapper passed commands to `pwsh -Command "..."` without escaping inner double-quotes, so a `-H "User-Agent: ..."` header silently broke argument parsing. v1.87 routes through `curl.exe` explicitly and escapes quotes in the wrapper — fixing all HTTP/JSON callers at once. Full automated suite passes (1256 checks).
+- **v1.86.0** - **Compiler cache is now permanent: rebuilds are 50-80% faster out of the box**. The MSVC build previously relied on `ccache`, which ships ABI-broken in many MSYS2 installs (crashes with `0xC0000139` and gets silently skipped, so every build recompiled from scratch). v1.86 makes **sccache** (Mozilla's Rust-based compiler cache, MSVC-native) the primary cache: installed to a stable `C:/Tools/sccache`, on the user PATH, with a persistent 10 GB cache dir, and detected first by CMake (ccache stays as fallback only). Incremental rebuilds now reuse cached object files across sessions instead of recompiling the whole tree. Full automated suite passes (1254 checks).
+- **v1.85.0** - **`icmg memory cache stats` gets a JSON mode and honest hit-rate reporting**. The recall-cache stats command now goes through a unified cache-metrics normalizer: hit-rate shows `n/a` when there have been no requests yet (instead of a misleading 0.0%), and a new `--json` flag emits machine-readable output for dashboards and scripts. First of the v1.84 token-efficiency primitives wired into a live command surface. Full automated suite passes (1254 checks).
+- **v1.84.0** - **Token-efficiency mega bundle: faster cache, smarter truncation, backend routing**. Nine internal optimizations adopted from production CLI tools (claude-code, openclaude): (1) djb2-hashed LRU cache keys (~100x faster than SHA256 lookups); (2) query fingerprinting to skip duplicate recalls within a session; (3) pre-flight token estimation (bytes/4) so oversized payloads are caught before work; (4) **microcompaction** - a new Stage 0 in the token-kill pipeline that surgically keeps the last 40 KB of giant command outputs instead of dropping or truncating blindly; (5) a diminishing-returns loop guard that stops iterative work once it plateaus; (6) cache-break detection via state hashing; (7) write coalescing to batch DB writes; (8) a latency/reliability/cost backend scorer for embedding-backend selection; (9) a unified cache-metrics normalizer for honest cross-layer hit-rate reporting. All additive and opt-in - default behavior unchanged. Full automated suite passes (1254 checks, +40).
+- **v1.83.0** - **`icmg init` now registers your project automatically, and cross-project memory recall is always ready**. Previously you had to run `icmg project add <name> <path>` manually before cross-project recall would surface results from other projects. v1.83 wires project registration directly into `icmg init`: after bootstrapping a new project, it checks the global registry and, if the current directory is not yet registered, adds it automatically — no extra command, no admin rights, best-effort so init never fails. Combined with the existing `icmg recall --all-projects` and `icmg cross-recall`, this means that as soon as you initialize a project, its memory is available to every other icmg-aware session on the same machine. Full automated suite passes (1214 checks).
+
+## 🚀 Quick start
+
+1. **Download** the latest installer from the [Releases page](https://github.com/ncmonx/icemage/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux.
+2. **Extract** the archive into any folder of your choice.
+3. **Add the folder to your `PATH`** so the `icmg` command is available everywhere.
+4. **Open your project** in a terminal and run:
+
+   ```text
+   icmg init
+   ```
+
+   That's it. The next time you launch Claude Code (or Cursor / Cline / Windsurf — see below), Icemage will quietly start trimming tokens.
 
 ---
 
-## Honest limits
+## 🧰 What you'll actually use day-to-day
 
-```
-✓  Windows is primary target. Linux / macOS work but tested less.
-✓  Opinionated. Fight the conventions and you fight the tool.
-✓  Won't make a bad prompt good — makes a good prompt cheap.
-✓  Some optional capabilities require one-time DLL download (binary tells you).
-✓  Compression is semantic glossary — model still must understand aliases inline.
-✓  Real session coverage starts ~50%; climbs as more hooks fire on subsequent ops.
-```
+After install, the only command most people type is `icmg init` once per project. Everything else happens automatically. A few useful commands when you want to peek under the hood:
 
-See [CHANGELOG.md](CHANGELOG.md) for the full ship history (35+ releases, atomic per-task).
+| Want to | Type |
+|---|---|
+| See how much you saved this month | `icmg savings` |
+| See a chart in the terminal | `icmg savings --ascii` |
+| Recall a past decision in this project | `icmg recall "<question>"` |
+| Recall something from another project | `icmg cross-recall "<question>"` |
+| Wake-up briefing for a fresh session | `icmg wake-up` |
+| Update Icemage in place | `icmg update --apply` |
+| Health-check the install | `icmg doctor` |
 
----
-
-## Support
-
-Solo maintainer, no VC backing. If icmg saved you tokens, consider supporting development:
-
-- 💚 [GitHub Sponsors](https://github.com/sponsors/ncmonx) — recurring or one-time
-- ☕ [Ko-fi](https://ko-fi.com/ncmonx) — quick tip, no signup
-
-Every contribution funds priority feature work and faster bug response.
+For the full menu run `icmg --help`.
 
 ---
 
-## License
+## 🤖 Works with
 
-[Elastic License 2.0](LICENSE) — **source-available**. Free to use, copy, modify,
+- **Claude Code** (primary target — best-tested)
+- **Cursor** — drop-in via the same hooks
+- **Cline**, **Windsurf**, **OpenCode** — same approach, may need a small config nudge
+- **Anything that exposes hooks or MCP** — the MCP server bundled with Icemage is reusable
+
+---
+
+## 🛡️ Safety + privacy
+
+- **100 % local.** Everything Icemage knows about your projects lives in a small SQLite database next to your code. Nothing is sent to a remote server — not the project name, not the file paths, not the recalled snippets.
+- **No telemetry.** Icemage doesn't phone home.
+- **Open source.** [Elastic License 2.0](LICENSE) - **source-available**. Free to use, copy, modify,
+and self-host. The one limitation: you may not offer icmg to third parties as a
+hosted or managed service. Everything else is fair game. Audit the binary, the release notes, and the file structure freely. Source code is held privately to keep the bug surface manageable for a solo maintainer — public reports + private fixes is the operating model.
+- **Tamper-evident.** Every release ships with a `sha256` sidecar so you can verify the binary you downloaded.
+
+---
+
+## 🩹 Honest limits
+
+- **Windows + Linux only** for prebuilt binaries today. macOS users currently need to wait for a self-hosted runner build (planned).
+- **First-time install on Windows with strict antivirus** can be slow until you let Icemage run once. After that it's fast.
+- **Not a replacement for the AI.** Icemage is a token-trimming layer — it doesn't write code for you and it doesn't make a bad AI smart.
+
+---
+
+## 💖 Support
+
+If Icemage saved you a few hours or a few dollars and you want to send a small thank-you, both routes work:
+
+- [GitHub Sponsors](https://github.com/sponsors/ncmonx)
+- [Ko-fi tip jar](https://ko-fi.com/ncmonx)
+
+All revenue goes straight into more releases — there is no team behind this, just one maintainer and a long backlog of "make AI agents less wasteful" ideas.
+
+---
+
+## ❓ FAQ
+
+**Does Icemage send my code anywhere?**
+No. Everything is local. The only network call is when you ask Icemage to update itself or fetch a URL through `icmg fetch`.
+
+**Can my company use it?**
+Yes - [Elastic License 2.0](LICENSE): source-available, free for any use including commercial, self-hosting, and modification. The only limit is reselling icmg itself as a hosted/managed service. Want a private support arrangement or custom build? [Open a sponsorship](https://github.com/sponsors/ncmonx).
+
+**Why is the source code repo private?**
+One maintainer, no security team. Public bug reports + private fixes lets me ship hotfixes the same day without telegraphing exploitable details. The release binaries and reproducible build hash are still public.
+
+**Does it slow my AI down?**
+No. Trimming happens *before* the AI reads anything, so the AI sees a smaller, cleaner version of the same context. End-to-end interactions get faster, not slower.
+
+**Where are the savings stored?**
+In `.icmg/data.db` inside each project (small SQLite file). Run `icmg savings` to see the breakdown.
+
+**How do I report a bug or ask for a feature?**
+Open an issue at the [GitHub issues](https://github.com/ncmonx/icemage/issues) page. Real-world reproductions with `icmg savings --json` attached get triaged fastest.
+
+---
+
+## 🌟 Star history
+
+<a href="https://star-history.com/#ncmonx/icemage&Date">
+  <img src="https://api.star-history.com/svg?repos=ncmonx/icemage&type=Date" alt="Star history" width="600"/>
+</a>
+
+---
+
+## 📜 License
+
+[Elastic License 2.0](LICENSE) - **source-available**. Free to use, copy, modify,
 and self-host. The one limitation: you may not offer icmg to third parties as a
 hosted or managed service. Everything else is fair game.
 
-See [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
 ---
 
-## Other docs
+## 📚 Other docs
 
-- `CHANGELOG.md` — every shipped release, outcome-first
-- `AGENTS.md` — how to wire icmg into your AI agent's instruction set
-- `COMMANDS.md` — full CLI reference (70+ commands)
-- `CLAUDE.md` — Claude Code-specific notes
-- `docs/plans/` — phase plans + open backlog (Phase 69)
-
----
-
-**TL;DR:** stop paying full price for AI coding sessions you don't need to. Drop `icmg` in your `PATH`, run `icmg init`, get back to shipping.
-
-```
-                            ◆ icemage
-                  context · memory · graph
-              52/52 tests · 28 MCP · 72+ cmds
-            cross-project federation · autopilot hygiene
-```
+- [CHANGELOG.md](CHANGELOG.md) — full version history
+- [SECURITY.md](SECURITY.md) — vulnerability reporting
+- [NOTICE](NOTICE) — third-party attributions
