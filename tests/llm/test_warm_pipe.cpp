@@ -1,4 +1,5 @@
 #include "llm/warm_pipe.hpp"
+#include <atomic>
 #include <cassert>
 #include <iostream>
 #include <thread>
@@ -16,10 +17,10 @@ static void test_pipe_name_nonempty() {
 static void test_server_accepts_single_client() {
     PipeConfig cfg; cfg.name = "icmg-test-warm-t3";
     PipeServer server(cfg);
-    std::stop_source ss;
+    std::atomic<bool> ss{false};
     bool got = false;
     std::thread acc([&]{
-        auto conn = server.accept(ss.get_token());
+        auto conn = server.accept(ss);
         if (conn) got = true;
     });
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -27,7 +28,7 @@ static void test_server_accepts_single_client() {
     assert(client.has_value());
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     server.stop();
-    ss.request_stop();
+    ss.store(true);
     acc.join();
     assert(got);
 }
@@ -35,9 +36,9 @@ static void test_server_accepts_single_client() {
 static void test_client_ping_round_trip() {
     PipeConfig cfg; cfg.name = "icmg-test-warm-t4";
     PipeServer server(cfg);
-    std::stop_source ss;
+    std::atomic<bool> ss{false};
     std::thread srv([&]{
-        auto conn = server.accept(ss.get_token());
+        auto conn = server.accept(ss);
         if (!conn) return;
         auto req = server.readMessage(**conn);
         server.writeMessage(**conn, std::string("{\"ok\":true,\"echo\":\"") + req + "\"}");
@@ -50,7 +51,7 @@ static void test_client_ping_round_trip() {
     assert(resp.find("\"ok\":true") != std::string::npos);
     assert(resp.find("ping") != std::string::npos);
     server.stop();
-    ss.request_stop();
+    ss.store(true);
     srv.join();
 }
 
@@ -63,9 +64,9 @@ static void test_client_connect_timeout() {
 static void test_oversized_request_rejected() {
     PipeConfig cfg; cfg.name = "icmg-test-warm-t5"; cfg.buffer_size = 4096;
     PipeServer server(cfg);
-    std::stop_source ss;
+    std::atomic<bool> ss{false};
     std::thread srv([&]{
-        auto conn = server.accept(ss.get_token());
+        auto conn = server.accept(ss);
         if (!conn) return;
         auto req = server.readMessage(**conn);
         server.writeMessage(**conn,
@@ -80,23 +81,23 @@ static void test_oversized_request_rejected() {
     std::string resp = client->sendRequest(big);
     assert(resp.find("too_large") != std::string::npos);
     server.stop();
-    ss.request_stop();
+    ss.store(true);
     srv.join();
 }
 
 static void test_server_stop_terminates_accept() {
     PipeConfig cfg; cfg.name = "icmg-test-warm-t5b";
     PipeServer server(cfg);
-    std::stop_source ss;
+    std::atomic<bool> ss{false};
     bool done = false;
     std::thread t([&]{
-        auto conn = server.accept(ss.get_token());
+        auto conn = server.accept(ss);
         done = true;
         (void)conn;
     });
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     server.stop();
-    ss.request_stop();
+    ss.store(true);
     t.join();
     assert(done);
 }
@@ -104,10 +105,10 @@ static void test_server_stop_terminates_accept() {
 static void test_disconnect_reuses_instance() {
     PipeConfig cfg; cfg.name = "icmg-test-warm-t5c"; cfg.max_instances = 1;
     PipeServer server(cfg);
-    std::stop_source ss;
+    std::atomic<bool> ss{false};
     std::thread srv([&]{
         for (int i = 0; i < 2; ++i) {
-            auto conn = server.accept(ss.get_token());
+            auto conn = server.accept(ss);
             if (!conn) return;
             (void)server.readMessage(**conn);
             server.writeMessage(**conn, std::string(R"({"ok":true,"n":)") + std::to_string(i) + "}");
@@ -122,7 +123,7 @@ static void test_disconnect_reuses_instance() {
         assert(resp.find("\"n\":") != std::string::npos);
     }
     server.stop();
-    ss.request_stop();
+    ss.store(true);
     srv.join();
 }
 
