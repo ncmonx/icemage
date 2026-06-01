@@ -49,7 +49,7 @@ jobs:
         if: startsWith(matrix.runner, 'macos')
         run: |
           brew update
-          brew install cmake ninja zlib openssl@3 molten-vk shaderc vulkan-headers vulkan-loader spirv-headers spirv-tools
+          brew install cmake ninja zlib openssl@3 libomp molten-vk shaderc vulkan-headers vulkan-loader spirv-headers spirv-tools
 
       - name: Install deps (Windows / MSYS2)
         if: startsWith(matrix.runner, 'windows')
@@ -99,15 +99,15 @@ jobs:
       - name: Configure (macOS)
         if: startsWith(matrix.runner, 'macos')
         run: |
-          # v0.59.0: ORT extract now uses tar + cp -RP (preserves dylib symlink
-          # chain) instead of CMake file(ARCHIVE_EXTRACT). Full feature parity.
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DICMG_USE_ONNX=ON \
             -DICMG_USE_TREESITTER=ON \
             -DICMG_USE_ENCRYPTION=ON \
             -DICMG_USE_LLAMA=ON \
-            -DICMG_LLAMA_VULKAN=ON
+            -DICMG_LLAMA_VULKAN=ON \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+            -DOpenMP_ROOT="$(brew --prefix libomp)" 
 
       - name: Build (Windows)
         if: startsWith(matrix.runner, 'windows')

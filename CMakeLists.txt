@@ -162,7 +162,10 @@ if(ICMG_USE_ENCRYPTION)
             target_link_libraries(sqlite3 PUBLIC crypto ws2_32 crypt32)
         endif()
     else()
-        target_link_libraries(sqlite3 PUBLIC crypto)
+        # Linux/macOS: find OpenSSL properly (macOS brew puts it in a non-standard
+        # prefix; bare -lcrypto misses the headers).
+        find_package(OpenSSL REQUIRED)
+        target_link_libraries(sqlite3 PUBLIC OpenSSL::Crypto)
     endif()
     message(STATUS "icmg: SQLCipher encryption-at-rest ENABLED (OpenSSL provider)")
 else()
