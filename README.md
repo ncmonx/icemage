@@ -136,7 +136,7 @@ For the full menu run `icmg --help`.
 - **No telemetry.** Icemage doesn't phone home.
 - **Open source.** [Elastic License 2.0](LICENSE) - **source-available**. Free to use, copy, modify,
 and self-host. The one limitation: you may not offer icmg to third parties as a
-hosted or managed service. Everything else is fair game. Audit the binary, the release notes, and the file structure freely. Source code is held privately to keep the bug surface manageable for a solo maintainer — public reports + private fixes is the operating model.
+hosted or managed service. Everything else is fair game. Audit the binary, the release notes, and the **full public source** freely. Security issues go through private disclosure ([SECURITY.md](SECURITY.md)) so a fix can ship before exploitable details are public.
 - **Tamper-evident.** Every release ships with a `sha256` sidecar so you can verify the binary you downloaded.
 
 ---
