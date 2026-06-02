@@ -763,6 +763,17 @@ CREATE TRIGGER IF NOT EXISTS graph_fts_au AFTER UPDATE ON graph_nodes BEGIN
         VALUES (new.id, new.path, new.symbol_name, new.context, new.symbols);
 END;
 )SQL"},
+        {40, R"SQL(
+-- 0040_working_set_snapshot (v2.0.0 C4)
+CREATE TABLE IF NOT EXISTS working_set_snapshot (
+    session_id    TEXT    NOT NULL,
+    ts            INTEGER NOT NULL,
+    manifest_json TEXT    NOT NULL,
+    pinned_json   TEXT    NOT NULL,
+    PRIMARY KEY (session_id, ts)
+);
+CREATE INDEX IF NOT EXISTS idx_wss_session ON working_set_snapshot(session_id);
+)SQL"},
     };
 }
 
