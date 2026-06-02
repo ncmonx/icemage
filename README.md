@@ -43,51 +43,13 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 |---|---|---|---|
 | File-read savings | 70 – 85 % fewer tokens | up to 92 % | v0.5 |
 | Test / build output | 60 – 80 % shorter | up to 90 % | v0.5 |
-| **Multi-file UI propagation** (style-clone) | **30 – 50× cheaper** | up to 98 % | v1.22.0 |
-| **Cross-project bundle** (port) | **8 – 12× cheaper** | up to 95 % | v1.24.0 |
-| **Compressed-Write** (AI emit diff) | **70 – 95% fewer tokens** | up to 98 % | v1.25.0 |
 | Web-fetch reduction | 70 – 90 % smaller | up to 95 % | v0.4 |
-| Repeat-context recall | near-zero, **< 5 ms cached** | — | v1.21.8 |
-| Past-chat full-text search | **< 10 ms** across months | — | v1.21.7 |
-| Graph symbol lookup | **256-slot in-RAM cache** | — | v1.21.8 |
-| First-prompt warmup | < 1 s | — | v1.18 |
-| **Cold build time** (icmg itself) | **~50 % faster** (20 min → 9-10 min) | — | v1.26.0 |
-| **MCP response filter** (verbose plugins) | **50 – 80 % smaller** | up to 90 % | v1.30.0 |
-| **Auto-thinking suppress** (trivial prompts) | **~1500 tok / call saved** | — | v1.30.0 |
-| **Sayless-auto** (long-prose replies) | **60 – 75 % compress** | up to 85 % | v1.30.0 |
-| **Service auto-start** (UserPromptSubmit) | **0-touch warm-up** | — | v1.30.0 |
-| **Path ambiguity warning** (icmg context) | wrong-file lookups → loud | — | v1.29.0 |
-| **rg-wrapper + brace glob** (icmg grep/files) | flag-mirror, **{a,b}** expand | — | v1.29.0 |
-| **Local AI model** (built-in, opt-in) | **0 cloud calls** | privacy-first | v1.31.0 |
-| **Smart router** (REGEX vs LLM_LOCAL vs CACHE) | **<100 us p99** | hot-path forced regex | v1.31.0 |
-| **HTTP streaming download** (model fetch + SHA256) | **400 MB - 2 GB** safe-verify | tamper-detect | v1.31.0 |
-| **icmg git** wrapper (single ergonomic entry) | **Tkil-filtered** + safety-gated | enforces icmg-FIRST | v1.31.0 |
-| **Python-free core** (PRECOMPACT_PY dropped) | **-200-500 ms** boot saved | single-binary | v1.31.0 |
-| **pack --rerank** (LLM-reorder memory hits) | **opt-in** warm-path | router-gated | v1.32.0 |
-| **PreCompact LLM summary** (warm-pool Qwen 0.5B) | **<15 s** cold | regex fallback always | v1.32.0 |
-| **icmg compact-bg** (proactive memory worker) | **<3 s** warm | manual + future hook | v1.32.0 |
-| **Smarter local AI memory** | **multi-prompt safe** | no overflow | v1.32.0 |
-| **Code graph viz + report** (`icmg graph viz`) | **interactive D3 + god-nodes** | — | v1.71.0 |
-| **Secret scanner** (`icmg scan`) | **21 detectors, CI-gate** | redact-by-default | v1.68.0 |
-| **MCP server hardening** (token + rate-limit + path-guard) | **abuse / RCE-safe** | — | v1.72.0 |
-| **Post-compact memory re-anchor** | **rules survive compaction** | auto on `init` | v1.73.0 |
-| **Scripted-safe `icmg run`** (non-interactive guard) | **no hang on destructive** | `--yes`/env opt-in | v1.74.0 |
-| **Clean self-upgrade** (idempotent Defender step) | **no phantom B: drive popup** | `--no-defender` opt-out | v1.75.0 |
-| **Encryption-at-rest** (`icmg encrypt`, SQLCipher AES-256) | **opt-in full-DB encrypt** | BM25 recall intact | v1.76.0 |
-| **Hot recall cache** (RAM, daemon-shared) | **< 5 ms repeat recall** | self-governing RAM | v1.77.0 |
-| **Graph prune** (`icmg graph prune`) | **drops dead-file nodes** | clears scan-pollution | v1.89.0 |
-| **Multimodal graph nodes** (`icmg ingest`) | **image/PDF → graph node** | kind=multimodal | v1.89.0 |
-| **Multi-agent leases** (`icmg session claim --scope`) | **conflict-free, 1 DB** | ICMG_AGENT_ID identity | v1.89.0 |
-| **DB-key hardening** (`PRAGMA` hex-guard) | **injection-safe key** | CodeQL-clean | v1.90.0 |
-| **Confidence-gated summary** (`icmg gist`) | **rejects lossy LLM summary** | hallucination guard | v1.91.0 |
-| **Salience compression** (`shrink --kind salience`) | **keep most-informative lines** | pluggable scorer | v1.91.0 |
-| **Runtime dep edges** (`graph runtime`) | **stack-trace -> call edges** | dynamic, not static | v1.91.0 |
-| **B:/ popup auto-kill** (SessionStart daemon) | **no more hung hooks** | single-instance | v1.92.0 |
-| **Code search MCP** (`icmg_code_search`) | **find code, skip grep/Read** | graph-backed | v1.93.0 |
-| **Repo skeleton** (`graph skeleton`) | **whole repo in 1 view** | centrality-ranked | v1.94.0 |
-| **Tiered memory** (`memory list --tier`) | **surface only live memory** | hot/warm/cold | v1.95.0 |
-| **Turn-1 rule injection** (SessionStart) | **AI uses icmg unprompted** | no reminders | v1.96.0 |
-| Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
+| **Multi-file UI propagation** (style-clone) | **30 – 50× cheaper** | up to 98 % | v1.22 |
+| **Cross-project bundle** (port) | **8 – 12× cheaper** | up to 95 % | v1.24 |
+| **Compressed-Write** (AI emit diff) | **70 – 95 % fewer tokens** | up to 98 % | v1.25 |
+| Repeat-context recall | **< 5 ms** cached | near-zero | v1.21 |
+| Cold build time (icmg itself) | **~50 % faster** | 20 min → 9-10 min | v1.26 |
+| **Cost per AI session** | **down 70 – 90 %** | up to 95 % | — |
 
 ## ✨ What's new
 
