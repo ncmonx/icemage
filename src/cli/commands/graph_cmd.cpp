@@ -5,6 +5,7 @@
 #include "../../graph/graph_store.hpp"
 #include "../../graph/graph_report.hpp"   // v1.71 Graphify
 #include "../../graph/graph_prune.hpp"    // v2.0.0 Phase 0b (prune missing-file nodes)
+#include "../../core/trace_parse.hpp"     // v2.0.0 TE3 (runtime edges)
 #include <fstream>
 #include "../../graph/scanner.hpp"
 #include "../../graph/daemon.hpp"
@@ -508,6 +509,47 @@ public:
             }
             std::cout << "  " << p << "\n";
         }
+        return 0;
+    }
+};
+
+// ---- graph runtime (TE3) ----
+class GraphRuntimeCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-runtime"; }
+    std::string description() const override { return "Add runtime_call edges from a stack trace / log"; }
+
+    int run(const std::vector<std::string>& args) override {
+        if (args.empty() || hasFlag(args, "--help")) {
+            std::cout << "Usage: icmg graph runtime <trace-file> [--dry-run]\n";
+            return args.empty() ? 2 : 0;
+        }
+        bool dry = hasFlag(args, "--dry-run");
+        std::ifstream tf(args[0], std::ios::binary);
+        if (!tf) { std::cerr << "graph runtime: cannot open " << args[0] << "\n"; return 1; }
+        std::ostringstream ss; ss << tf.rdbuf();
+        auto frames = core::parseStackFrames(ss.str());
+        auto edges  = core::buildRuntimeEdges(frames);
+        if (edges.empty()) { std::cout << "No stack frames found.\n"; return 0; }
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        int ins = 0, skip = 0;
+        for (auto& e : edges) {
+            auto a = store.getNode(e.from_file);
+            auto b = store.getNode(e.to_file);
+            if (!a || !b) { ++skip; continue; }
+            if (!dry) {
+                graph::GraphEdge ge;
+                ge.src = a->id; ge.dst = b->id; ge.edge_type = "runtime_call";
+                store.upsertEdge(ge);
+            }
+            ++ins;
+        }
+        std::cout << (dry ? "Would add " : "Added ") << ins << " runtime_call edge(s), "
+                  << skip << " skipped (file not in graph), from " << frames.size()
+                  << " frame(s).\n";
         return 0;
     }
 };
@@ -1412,6 +1454,7 @@ ICMG_REGISTER_COMMAND("graph-stats",        GraphStatsCommand);
 ICMG_REGISTER_COMMAND("graph-impact",       GraphImpactCommand);
 ICMG_REGISTER_COMMAND("graph-orphans",      GraphOrphansCommand);
 ICMG_REGISTER_COMMAND("graph-prune",        GraphPruneCommand);
+ICMG_REGISTER_COMMAND("graph-runtime",      GraphRuntimeCommand);
 ICMG_REGISTER_COMMAND("graph-cycles",       GraphCyclesCommand);
 ICMG_REGISTER_COMMAND("graph-hot",          GraphHotCommand);
 ICMG_REGISTER_COMMAND("graph-search",       GraphSearchCommand);

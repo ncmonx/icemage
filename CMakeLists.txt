@@ -716,6 +716,7 @@ add_icmg_test(test_agent_lease  tests/core/test_agent_lease.cpp)    # v2.0.0 Pha
 add_icmg_test(test_db_key_hex   tests/core/test_db_key_hex.cpp)     # v1.90.0 sec (CodeQL sql-inj: hex key guard)
 add_icmg_test(test_summary_confidence tests/core/test_summary_confidence.cpp)  # v2.0.0 TE1
 add_icmg_test(test_compress_select tests/core/test_compress_select.cpp)  # v2.0.0 TE2
+add_icmg_test(test_trace_parse tests/core/test_trace_parse.cpp)  # v2.0.0 TE3
 add_icmg_test(test_bfs_expand  tests/graph/test_bfs_expand.cpp)
 add_icmg_test(test_mcp_resources tests/mcp/test_mcp_resources.cpp)
 add_icmg_test(test_lazy_tool_schema tests/mcp/test_lazy_tool_schema.cpp)
