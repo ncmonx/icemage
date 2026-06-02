@@ -49,6 +49,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 | **Compressed-Write** (AI emit diff) | **70 – 95 % fewer tokens** | up to 98 % | v1.25 |
 | Repeat-context recall | **< 5 ms** cached | near-zero | v1.21 |
 | Cold build time (icmg itself) | **~50 % faster** | 20 min → 9-10 min | v1.26 |
+| **Code / graph search** (FTS5 snapshot) | **full-scan → sub-millisecond** | ~220× on a 19K-node graph | v1.100 |
 | **Cost per AI session** | **down 70 – 90 %** | up to 95 % | — |
 
 ## ✨ What's new
