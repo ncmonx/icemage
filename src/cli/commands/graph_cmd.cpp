@@ -7,6 +7,8 @@
 #include "../../graph/graph_prune.hpp"    // v2.0.0 Phase 0b (prune missing-file nodes)
 #include "../../core/trace_parse.hpp"     // v2.0.0 TE3 (runtime edges)
 #include "../../graph/repo_skeleton.hpp"  // v2.0.0 externals (repo-compact)
+#include "../../graph/temporal.hpp"       // v2.0.0 externals (temporal KG)
+#include <ctime>
 #include <fstream>
 #include "../../graph/scanner.hpp"
 #include "../../graph/daemon.hpp"
@@ -578,6 +580,38 @@ public:
         }
         auto deg = graph::degreeCentrality(nodes, edges);
         std::cout << graph::buildRepoSkeleton(nodes, deg, budget);
+        return 0;
+    }
+};
+
+// ---- graph recent (Temporal KG) ----
+class GraphRecentCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-recent"; }
+    std::string description() const override { return "Files ranked by recency-decayed centrality (temporal)"; }
+
+    int run(const std::vector<std::string>& args) override {
+        int limit = 20; int halflife_days = 14;
+        try { auto v = flagValue(args, "--limit"); if (!v.empty()) limit = std::stoi(v); } catch (...) {}
+        try { auto v = flagValue(args, "--halflife-days"); if (!v.empty()) halflife_days = std::stoi(v); } catch (...) {}
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        auto nodes = store.all();
+        if (nodes.empty()) { std::cout << "graph recent: empty graph.\n"; return 0; }
+        std::vector<graph::GraphEdge> edges;
+        for (const auto& n : nodes) { auto ef = store.edgesFrom(n.id); edges.insert(edges.end(), ef.begin(), ef.end()); }
+        auto deg = graph::degreeCentrality(nodes, edges);
+        auto ranked = graph::rankByTemporal(nodes, deg, (int64_t)std::time(nullptr),
+                                            (int64_t)halflife_days * 86400);
+        std::map<int64_t,std::string> path;
+        for (const auto& n : nodes) path[n.id] = n.path;
+        int shown = 0;
+        for (const auto& r : ranked) {
+            if (shown++ >= limit) break;
+            std::cout << path[r.id] << "\n";
+        }
         return 0;
     }
 };
@@ -1484,6 +1518,7 @@ ICMG_REGISTER_COMMAND("graph-orphans",      GraphOrphansCommand);
 ICMG_REGISTER_COMMAND("graph-prune",        GraphPruneCommand);
 ICMG_REGISTER_COMMAND("graph-runtime",      GraphRuntimeCommand);
 ICMG_REGISTER_COMMAND("graph-skeleton",     GraphSkeletonCommand);
+ICMG_REGISTER_COMMAND("graph-recent",       GraphRecentCommand);
 ICMG_REGISTER_COMMAND("graph-cycles",       GraphCyclesCommand);
 ICMG_REGISTER_COMMAND("graph-hot",          GraphHotCommand);
 ICMG_REGISTER_COMMAND("graph-search",       GraphSearchCommand);

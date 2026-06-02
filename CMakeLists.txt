@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.98.0 LANGUAGES CXX C)
+project(icmg VERSION 1.99.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -720,6 +720,8 @@ add_icmg_test(test_summary_confidence tests/core/test_summary_confidence.cpp)  #
 add_icmg_test(test_compress_select tests/core/test_compress_select.cpp)  # v2.0.0 TE2
 add_icmg_test(test_trace_parse tests/core/test_trace_parse.cpp)  # v2.0.0 TE3
 add_icmg_test(test_repo_skeleton tests/graph/test_repo_skeleton.cpp)  # v2.0.0 externals (repo-compact)
+add_icmg_test(test_temporal     tests/graph/test_temporal.cpp)      # v2.0.0 externals (temporal KG)
+add_icmg_test(test_api_spec     tests/core/test_api_spec.cpp)       # v2.0.0 externals (API spec)
 add_icmg_test(test_memory_tier tests/core/test_memory_tier.cpp)  # v2.0.0 externals (tiered memory)
 add_icmg_test(test_bfs_expand  tests/graph/test_bfs_expand.cpp)
 add_icmg_test(test_mcp_resources tests/mcp/test_mcp_resources.cpp)
