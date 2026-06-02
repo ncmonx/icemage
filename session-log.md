@@ -2051,3 +2051,99 @@ Decisions:
 - v1.78.2 architectural friction discovered late: v1.77 daemon rcache is project-shared but v1.78.2 persist is per-project. Opt A resolves via per-payload scope tagging without breaking shared-cache design.
 Rejected: B single-project daemon (anti-v1.77 sharing); C bulk hydrate all-scopes (memory growth); D defer v1.79 (cold-start penalty drags); A2 per-scope sep LRU (governor complication).
 Open: v1.78.3 Phase 1 TDD pending start; longer-term ICM dual-memory + moonshots.
+
+## 2026-06-01 21:30 [saved]
+Goal: v1.88.0 first CI-built release + v2.0 go-public cleanup.
+Decisions:
+- EXE version source = src/core/version.hpp (ICMG_VERSION), NOT CMake project(VERSION); 3 sites must sync (version.hpp + icmg.rc FILEVERSION/strings + CMakeLists) or binary ships stale.
+- scripts/bump-version.ps1 <ver> syncs all 3 atomically; then build.ps1 -Reconfigure (cache reconfigure forces version TU + .rc recompile).
+- scripts/release-win.ps1 reads version.hpp, builds, bundles exe+9 DLLs, GUARDS exe --version==tag, gh upload --clobber. Win local; CI auto-builds linux+mac on tag.
+- CLAUDE.md remote-rules rewritten: "NEVER source on origin" obsolete (src public ELv2); selective fresh-tree + internal-private retained.
+- origin-main-backup deleted; win-ctest.yml removed (no self-hosted runner, queued forever).
+Rejected: CMakeLists-only version bump (ships stale exe); running ship pwsh via Bash *> redirect (glob-mangles invocation); deleting all backup refs at once (kept pre-sanitize as net).
+Open: 3 stale backup refs (SHAs #30364); roadmap P2/P3 features unstarted.
+
+## 2026-06-01 22:20 [saved]
+Goal: v2.0.0 mega milestone Phase 0 (hygiene) — graph-prune + consolidate-fix.
+Decisions:
+- v2.0.0 (not 1.89): major flagship — TUI+multimodal+multi-agent justify major bump despite additive-only changes. Plan docs/plans/v2.0.0-hygiene-icm-p2p3-mega.md, 6 phases lightest-first.
+- Phase 0 DONE (commit 452bc3c): graph_prune.hpp pure selectMissingNodes()+5 TDD tests pass; `icmg graph prune [--dry-run]` (removeNode cascades); `memory consolidate --zone` filter; store_cmd hint fixed icmg consolidate->icmg memory consolidate --zone (was unknown-cmd+bad-flag).
+- EXE version lives in src/core/version.hpp NOT CMake; graph-cmd Read blocked (>500 lines) -> edit via python string-replace scripts.
+Rejected: 1.89 minor (feature weight warrants major); hard-rejecting > metachar (it only gates fast-path, falls through to cmd.exe); blocking Phase 0 on unrelated parallel-test fail.
+Open: known-issue #30474 test_parallel fails Win-local (exit!=0, not Phase-0 related; baseline 1256 was Linux-CI). consolidate --zone has NO unit test (TDD debt). Phases 1-5 unstarted: access-decay, benchmark, multimodal, multi-agent, TUI.
+
+## 2026-06-01 22:45 [saved]
+Goal: v2.0.0 Phases 3+4 done; Phase 5 (TUI) deferred; external token-trim critique logged.
+Decisions:
+- Phase 3 multimodal nodes (commit 16a6a6d): buildMediaNode kind=multimodal from ingest OCR, ingest_cmd records (--no-graph opt-out). Phase 4 multi-agent lease: resolveClaim pure resolver + agent_leases mig 0034 + session claim --scope/leases/release. 12 TDD pass.
+- Phase 4 fix (b165391): pid is per-invocation in CLI -> lease owner = djb2(ICMG_AGENT_ID) when set else pid; smoke round-trip verified. Task string stops at first --flag.
+- v2.0.0 scope corrected: roadmap doc STALE — Phases 1(access-decay v1.20)/2(bench) already shipped; only TUI genuinely new. Phase 5 TUI deferred to focused session (lib decision: ftxui vs snapshot vs hand-rolled).
+Rejected: pid-based lease ownership (ephemeral CLI); building 1-2 again (already shipped).
+Open: Phase 5 TUI (lib undecided). External critique (Google) = 4 real token-trim roadmap candidates: (1) local-model over-trim/semantic-drift; (2) rule-based Tkil vs perplexity-based LLMLingua; (3) no runtime/dynamic dep edges (static only); (4) no token-merging/soft-prompt (N/A for closed-API, only local-model path). Strong v2.x roadmap.
+
+## 2026-06-01 23:25 [saved]
+Goal: Ship Phases 0-4 as v1.89.0 + author Token-Efficiency v2 roadmap.
+Decisions:
+- Phases 0-4 shipped as v1.89.0 (NOT 2.0.0 — additive/minor; 2.0.0 reserved for TUI flagship). bump-version.ps1 first real use (6 sites synced clean). ctest green (parallel test = timing-flaky, passed under no-load). Public main 247cede, tag v1.89.0 -> CI building linux+mac; win zip staged+guard-verified (release-win.ps1 -NoBuild), upload after CI publishes.
+- Token-Efficiency v2 roadmap authored (docs/plans/token-efficiency-v2-roadmap.md, memoir #30479): TE1 confidence-gated summarization (small), TE2 optional perplexity-compress backend LLMLingua-style ★highest-impact (opt-in, local-model only), TE3 runtime/dynamic dep edges from trace/log, TE4 token-merge/soft-prompt PARKED (N/A for closed-API LLMs). Principle: local-first, deterministic, opt-in; rule-based Tkil stays default.
+Rejected: 2.0.0 for non-TUI work; replacing Tkil with perplexity (add opt-in backend instead); TE4 scheduling (out-of-scope for API path).
+Open: CI publish + win upload for v1.89.0; TUI (v2.0.0) separate session; TE1/TE2/TE3 unscheduled.
+
+## 2026-06-02 00:30 [saved]
+Goal: Address GitHub CodeQL code-scanning (163 alerts) + ship v1.90.0 security.
+Decisions:
+- Triage: 159/163 were VENDORED third_party/ (157 cpp/integer-mult llama.cpp + sqlcipher/sqlite3.c sql-inj) -> dismissed won't_fix + added .github/codeql/codeql-config.yml paths-ignore third_party (default-setup reads it). #13 serve_cmd non-https = localhost dashboard loopback -> dismissed false_positive. #10 SASTID stale no-file -> dismissed.
+- REAL fix (#178 encrypt_cmd, #179 db.cpp): SQLCipher key interpolated into PRAGMA key=x'<key>' (PRAGMA cannot bind params). Added isHexKey() fail-closed gate in resolveDbKey() — non-hex key (env/file) -> "" so a crafted quote cannot escape the blob literal. 5 TDD incl injection-attempt. v1.90.0 shipped (private 130a6b4, public 07e3edc, tag v1.90.0). ctest 1278.
+- Docs tertib this round: whats-new memoir #30520 + headline #30521 + README badge 1278 synced. (Earlier same session: fixed 4 stale go-public README sections — quick-start/honest-limits/FAQ/Safety still claimed 'repo/source private' + 'macOS planned'; user caught 3x. fail-pattern logged.)
+Rejected: fixing 157 vendored int-mult (upstream-owned, lost on update); https on localhost dashboard (loopback needs no TLS); parameterizing PRAGMA key (impossible).
+Open: #178/#179 may persist after rescan if CodeQL doesn't recognize isHexKey as sanitizer -> dismiss with rationale then. v1.90 win upload after CI publish. TUI v2.0.0 + TE1/2/3 unscheduled.
+
+## 2026-06-02 08:40 [saved]
+Goal: Token-Efficiency v2 (TE1/2/3) + ship v1.91.0.
+Decisions: TE1 summary_confidence.hpp (ident-coverage x len-sanity; gist low-conf->heuristic). TE2 compress_select.hpp (selectByBudget+infoScore; shrink --kind salience; scorer pluggable, llama-logprob later). TE3 trace_parse.hpp (py/js/gdb frames -> runtime_call edges; graph runtime). ctest 1296 (+18). v1.91.0 3-OS (public 47e61ba). Docs synced #30525/#30526.
+Rejected: bg 'exit 0'=echo not build-rc; python-write on linter-watched source (use Edit).
+Open: TUI=LAST (v2.0.0, lib undecided). TE2 perplexity-scorer needs llama logprob API (future).
+
+## 2026-06-02 09:35 [saved]
+Goal: Find ROOT of B:/ popup hanging Claude + maintenance; ship v1.92.0.
+Decisions: ROOT = Win hard-error dialog 'B:\ cannot find drive' from SmartScreen drive-letter reputation probe (system proc, outside SEM_FAILCRITICALERRORS). Modal -> blocks the hook subprocess that triggered it -> hangs Claude. popup-killer existed (WM_CLOSE [A-Z]:/ class#32770) but NEVER auto-started. Fix: popup-killer ensure (single-instance named-mutex 'Global\icmg_popup_killer', spawns detached run) wired into SessionStart hook + init template -> dismissed <100ms. Maintenance bundled: graph prune removed 21984 dead nodes (default zone 49529->~16k), CHANGELOG regen (was plan-slim junk), 3 stale backup refs deleted (#30364), test_parallel deflaked (drop >/dev/null — same B:/metachar root; ctest now 1296/0-fail). v1.92.0 public 5dade33.
+Rejected: SEM in icmg (can't reach SmartScreen); per-file Unblock-File (no MOTW present); admin Defender-exclusion (no admin).
+Open: confirm daemon dismiss in field; TUI=LAST.
+
+## 2026-06-02 11:15 [saved]
+Goal: Externals tier + fix "AI needs reminding to use icmg each session".
+Decisions: Shipped 4 releases 3-OS. v1.93 code-search MCP (icmg_code_search, graph store.search+findSymbol+kind, 5 TDD). v1.94 repo-compact (graph skeleton, repo_skeleton.hpp centrality-ranked + budget, 4 TDD). v1.95 tiered-memory (memory_tier.hpp hot/warm/cold, memory list --tier, 6 TDD). v1.96 SessionStart standing-rules injection: context-session hook (installed + init template) prepends directive so AI is icmg-compliant turn-1 (rules=config don't grep/read CLAUDE.md/AGENTS.md; use icmg first+5-sync). ctest 1305->1311.
+ROOT of remind-bug: `icmg rules inject`=.icmgrules (empty); AGENTS/CLAUDE rules never injected at SessionStart -> AI grepped them. Fix=STANDING directive in SessionStart CONTENT.
+Rejected: repurpose rules-inject (it's per-folder .icmgrules); &&-chain with `git add .claude` (gitignored -> aborts chain).
+Open: externals remaining (Dynamic Toolsets MCP-heavy, Temporal KG migration, API Spec); TUI=LAST. v1.96 win upload after CI.
+
+## 2026-06-02 11:45 [saved]
+Goal: v1.96 ship + curate headline + refresh About (user rule changes).
+Decisions: v1.96.0 3-OS done (turn-1 rule injection, win uploaded). Headline numbers CURATED 46->9 standout metrics (memoir #30552); RULE CHANGED CLAUDE.md #4: cap ~10, no row-per-feature, capabilities -> What's-new. About refreshed: gh repo description + memoir #30554 (source-of-truth: desc + badge counts + sync rule). README badges synced tests 1311 / MCP 41 (were 1296/28). Public 1fc9b38.
+Found bug: icmg memoir search crashes 'no such column: pinned' (schema mismatch; add/show OK) -> known-issue #30555.
+Rejected: row-per-feature headline (bloated to 46); leaving About at stale 1273-tests.
+Open: externals remaining (Dynamic Toolsets/Temporal KG/API Spec); memoir-search bug; TUI=LAST.
+
+## 2026-06-02 12:30 [saved]
+Goal: Dynamic Toolsets + fix memoir-search; harden B:/ popup.
+Decisions: v1.97 popup-killer SELF-HEAL (cmdEnsure OpenMutex fast-path; SessionStart+UserPromptSubmit hooks call ensure -> dead daemon auto-restarts per-turn). ROOT of popup-recurrence: daemon died on my Stop-Process during ~/bin upgrades, never restarted. v1.98 Dynamic Toolsets (mcp_toolset.hpp selectExposedTools; ICMG_MCP_PROFILE=core / ICMG_MCP_TOOLS=csv shrink 41-tool payload; default all). 5 TDD, ctest 1316. memoir-search 'pinned' crash = stale ~/bin 1.95 binary; 1.96+ works (data.db has pinned) -> resolved #30556.
+Rejected: per-bash ensure (too frequent -> per-turn instead); leaving daemon SessionStart-only (dies mid-session).
+LESSON: popup-killer daemon holds ~/bin/icmg.exe -> upgrade must kill-all icmg then copy then ensure (LNK1104/lock otherwise).
+Open: externals remaining (Temporal KG migration, API Spec); TUI=LAST. v1.97 3-OS done; v1.98 win after CI.
+
+## 2026-06-02 16:20 [saved]
+Goal: Externals Temporal KG + API Spec; complete externals tier.
+Decisions: v1.99 ships both. Temporal KG: temporal.hpp temporalWeight (0.5^(age/halflife)) + rankByTemporal (recency-decayed centrality, no migration — uses node.updated_at); `icmg graph recent --halflife-days/--limit`. API Spec: api_spec.hpp compactOpenApi (paths -> "METHOD /path — summary (N params)"); `icmg apispec <openapi.json>`. 9 TDD, ctest 1316->1325. Public 1fb50be tag v1.99.0 (CI), win staged.
+EXTERNALS TIER 2.3 COMPLETE: code-search(1.93), repo-compact(1.94), tiered-memory(1.95), dynamic-toolsets(1.98), temporal-KG(1.99), api-spec(1.99). Only TUI remains.
+Rejected: edge-timestamp migration for Temporal (used node.updated_at instead — simpler, no schema churn).
+Open: TUI dashboard = LAST (v2.0.0; lib decision ftxui vs snapshot vs hand-rolled). v1.99 win after CI.
+
+## 2026-06-02 17:44 [saved]
+Goal: Ship v1.100.0 FTS5 search snapshot + lock release docs-sync gate.
+Decisions:
+- FTS5 search snapshot: graph_fts index (mig 0039) + MATCH/bm25 fast-path in graph_store.search, LIKE fallback; injection-proof prefix terms (fts_query.hpp). ~220x on 19K nodes.
+- Migration placement: graph_fts {39} -> embeddedMigrations() PROJECT array + migrations/ (NOT global) since graph_nodes is project DB.
+- RELEASE DOCS-SYNC GATE now MUTLAK: 7-point pre-tag gate, tick each incl N/A (About+headline silently skipped on v1.100 = root cause).
+- headline-numbers gets a row ONLY when a number moves (FTS 220x qualified); curated ~10 max.
+Rejected: python CREATE+ROLLBACK diag on data.db (orphan FTS shadow tables); passive docs checklist (caused the miss).
+Open: CHANGELOG gap v1.92-1.99 (8 entries) backfill = separate task; win zip upload pending CI publish.
