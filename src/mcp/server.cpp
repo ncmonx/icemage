@@ -1,4 +1,6 @@
 #include "server.hpp"
+#include "mcp_toolset.hpp"  // v2.0.0 Dynamic Toolsets
+#include <cstdlib>
 #include "../core/version.hpp"
 #include "base_mcp_tool.hpp"
 #include "../core/registry.hpp"
@@ -106,6 +108,14 @@ void McpServer::handleInitialize(const json& req) {
 json McpServer::buildToolsListResponse(bool lazy) const {
     auto& reg = core::Registry<BaseMcpTool>::instance();
     auto keys = reg.keys();
+    // v2.0.0 Dynamic Toolsets: optional subset via ICMG_MCP_PROFILE / ICMG_MCP_TOOLS.
+    {
+        const char* prof = std::getenv("ICMG_MCP_PROFILE");
+        const char* csv  = std::getenv("ICMG_MCP_TOOLS");
+        if ((prof && *prof) || (csv && *csv)) {
+            keys = selectExposedTools(keys, prof ? prof : "", csv ? csv : "");
+        }
+    }
 
     json tools = json::array();
     for (auto& k : keys) {
