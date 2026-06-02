@@ -714,7 +714,12 @@ HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
 SKILLS=$(icmg skill manifest 2>/dev/null)
 FOCUS=$(icmg focus inject 2>/dev/null)
 RULES=$(icmg rules inject 2>/dev/null)
-CONTENT="$HOT"
+# Standing rules — injected EVERY session so the AI is icmg-compliant from turn 1
+# (no user reminder needed; no grep/Read of AGENTS.md).
+STANDING="[icmg standing rules — active this session]
+This project runs on icmg. Project rules are in CLAUDE.md (Claude Code) and AGENTS.md (Cursor/other agents) — already loaded as your config; do NOT grep or Read them. For EVERY action use icmg FIRST: recall decisions \`icmg recall \"q\"\`; read a file \`icmg context <file>\`; search code \`icmg code_search\`/\`icmg run grep\`; run commands \`icmg run <cmd>\`; 2+ independent steps \`icmg parallel\`. Native Read/Grep/Bash are hook-redirected to icmg. After any change: \`icmg graph update\` + \`icmg store\` + \`icmg wflog add\` + \`icmg verify\`."
+CONTENT="$STANDING"
+if [[ -n "$HOT" ]]; then CONTENT="$CONTENT"$'\n\n'"$HOT"; fi
 if [[ -n "$SKILLS" ]]; then
     if [[ -n "$CONTENT" ]]; then
         CONTENT="$CONTENT"$'\n\n'"$SKILLS"
