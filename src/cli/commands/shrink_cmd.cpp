@@ -12,6 +12,7 @@
 //   - default                                     → head + tail with byte count
 
 #include "../base_command.hpp"
+#include "../../core/compress_select.hpp"  // v2.0.0 TE2 salience
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -211,17 +212,17 @@ public:
     void usage() const override {
         std::cout <<
             "Usage: icmg shrink [<file>]\n"
-            "       <command> | icmg shrink\n\n"
-            "Detects content type and applies the best shrink strategy:\n"
-            "  - grep/find output → group by file, cap matches\n"
-            "  - build/test logs  → keep errors+warnings with context\n"
-            "  - SQL/table dumps  → first 20 + last 5 rows\n"
-            "  - JSON             → cap long string values\n"
-            "  - generic text     → head + tail + byte count\n\n"
-            "Options:\n"
-            "  --kind <K>         Force kind (grep|build|sql|json|generic|compress)\n"
-            "  --threshold N      Skip if input < N bytes (default 8192)\n"
-            "  --json             Emit JSON metadata wrapper\n";
+"       <command> | icmg shrink\n\n"
+"Detects content type and applies the best shrink strategy:\n"
+"  - grep/find output → group by file, cap matches\n"
+"  - build/test logs  → keep errors+warnings with context\n"
+"  - SQL/table dumps  → first 20 + last 5 rows\n"
+"  - JSON             → cap long string values\n"
+"  - generic text     → head + tail + byte count\n\n"
+"Options:\n"
+"  --kind <K>         Force kind (grep|build|sql|json|generic|compress)\n"
+"  --threshold N      Skip if input < N bytes (default 8192)\n"
+"  --json             Emit JSON metadata wrapper\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -261,6 +262,20 @@ public:
         else if (forced == "sql")      k = Kind::SqlTable;
         else if (forced == "json")     k = Kind::Json;
         else if (forced == "generic")  k = Kind::Generic;
+        else if (forced == "salience") {
+            // v2.0.0 TE2: salience backend — keep the most informative lines within
+            // the byte budget (threshold). Pluggable score (heuristic infoScore now;
+            // llama-logprob perplexity later). Opt-in via --kind salience.
+            auto lines = splitLines(input);
+            std::vector<double> scores; scores.reserve(lines.size());
+            for (auto& ln : lines) scores.push_back(core::infoScore(ln));
+            std::string out = core::selectByBudget(lines, scores, (size_t)threshold, "\n");
+            std::cout << out << "\n";
+            std::cerr << "[icmg shrink: salience] " << input.size() << "->" << out.size()
+                      << " bytes (" << (input.size() > 0 ? 100 - 100 * out.size() / input.size() : 0)
+                      << "% saved)\n";
+            return 0;
+        }
         else if (forced == "compress") {
             // Route through semantic compressor.
             compress::CompressOptions opts;
