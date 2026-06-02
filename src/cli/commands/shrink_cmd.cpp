@@ -12,6 +12,7 @@
 //   - default                                     → head + tail with byte count
 
 #include "../base_command.hpp"
+#include "../../core/compress_select.hpp"  // v2.0.0 TE2 salience
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -261,6 +262,23 @@ public:
         else if (forced == "sql")      k = Kind::SqlTable;
         else if (forced == "json")     k = Kind::Json;
         else if (forced == "generic")  k = Kind::Generic;
+        else if (forced == "salience") {
+            // v2.0.0 TE2: salience backend — keep the most informative lines within
+            // the byte budget (threshold). Pluggable score (heuristic infoScore now;
+            // llama-logprob perplexity later). Opt-in via --kind salience.
+            auto lines = splitLines(input);
+            std::vector<double> scores; scores.reserve(lines.size());
+            for (auto& ln : lines) scores.push_back(core::infoScore(ln));
+            std::string out = core::selectByBudget(lines, scores, (size_t)threshold, "
+");
+            std::cout << out << "
+";
+            std::cerr << "[icmg shrink: salience] " << input.size() << "->" << out.size()
+                      << " bytes (" << (input.size() > 0 ? 100 - 100 * out.size() / input.size() : 0)
+                      << "% saved)
+";
+            return 0;
+        }
         else if (forced == "compress") {
             // Route through semantic compressor.
             compress::CompressOptions opts;
