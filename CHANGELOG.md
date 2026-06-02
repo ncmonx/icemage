@@ -4,6 +4,10 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v1.100.0
+
+**FTS5 search snapshot: code/graph search is an indexed MATCH, not a full-table scan.** `icmg graph search` / `icmg_code_search` previously ran an O(n) `LIKE '%q%'` scan over every graph node. v1.100 adds a `graph_fts` FTS5 index (migration 0039, external-content over `graph_nodes`, trigger-synced) and routes search through `MATCH` + `bm25()`, falling back to `LIKE` if the index is absent (old DB / FTS5 not compiled). Query input becomes safe prefix terms (injection-proof). ~220x faster on a 19K-node graph (full-scan -> sub-millisecond). Full automated suite passes (1331 checks).
+
 ## v1.91.0
 
 **Token-Efficiency v2: confidence-gated summaries, salience compression, and runtime dependency edges.** Three opt-in, local-first additions answering an external token-trimming critique: (1) **confidence-gated summarization** — `icmg gist` now scores each LLM summary (identifier-retention x length-sanity) and falls back to the deterministic heuristic when the summary is over-trimmed, off-topic, or hallucinated, so a lossy summary never reaches the main model; (2) **salience compression backend** — `icmg shrink --kind salience` keeps the most information-dense lines within a byte budget (pluggable scorer: heuristic now, llama-logprob perplexity later) as an LLMLingua-style alternative to the rule-based Tkil filters; (3) **runtime dependency edges** — `icmg graph runtime <trace>` parses python/node/gdb stack traces into `runtime_call` graph edges (dynamic execution flow, distinct from static `calls`). All additive; rule-based defaults unchanged. Full automated suite passes (1296 checks, +18).
