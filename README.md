@@ -115,7 +115,12 @@ hosted or managed service. Everything else is fair game. Audit the binary, the r
 
 - **Prebuilt binaries: Windows (x64), Linux (x64), and macOS (Apple Silicon)** — all three built and published automatically by CI on every release. macOS Intel (x86_64) isn't prebuilt yet; build from source (one command) if you need it.
 - **First-time install on Windows with strict antivirus** can be slow until you let Icemage run once. After that it's fast.
-- **Not a replacement for the AI.** Icemage is a token-trimming layer — it doesn't write code for you and it doesn't make a bad AI smart.
+- **Not a replacement for the AI.** Icemage is a token-trimming + memory layer — it doesn't write code for you and it won't make a bad model smart.
+- **Semantic recall (ONNX embeddings) and the local LLM (llama) are optional and off by default** — they need a one-time model download. Without them, recall falls back to fast BM25 + recency ranking, which is enough for most work.
+- **Graph-extraction depth varies by language.** Full AST parsing uses the tree-sitter backend (build flag); otherwise import/symbol extraction is regex-level — accurate for dependencies, lighter on fine-grained detail.
+- **Local-first only.** No cloud sync, no telemetry. Team sharing is via git-committed JSONL (`icmg sync`) — deliberate and reviewable, not automatic background sync.
+- **Encryption at rest (SQLCipher) is opt-in**, not the default — enable it if your `.icmg` database holds sensitive context.
+- **Windows is the most battle-tested platform.** The Linux and macOS builds are CI-verified but see less daily use.
 
 ---
 
