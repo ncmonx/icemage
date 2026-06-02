@@ -704,6 +704,9 @@ static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Pre-warms binary, clears session-reads dedup, injects hot context_nodes
 # plus skill discovery manifest (v1.2.0+).
 command -v icmg >/dev/null 2>&1 || exit 0
+# Start B:/ drive-not-found popup-killer daemon (single-instance). A blocked modal
+# dialog hangs a hook subprocess => hangs Claude; auto-dismiss it within ~100ms.
+icmg popup-killer ensure >/dev/null 2>&1 || true
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
