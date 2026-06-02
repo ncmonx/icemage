@@ -6,6 +6,7 @@
 #include "../../graph/graph_report.hpp"   // v1.71 Graphify
 #include "../../graph/graph_prune.hpp"    // v2.0.0 Phase 0b (prune missing-file nodes)
 #include "../../core/trace_parse.hpp"     // v2.0.0 TE3 (runtime edges)
+#include "../../graph/repo_skeleton.hpp"  // v2.0.0 externals (repo-compact)
 #include <fstream>
 #include "../../graph/scanner.hpp"
 #include "../../graph/daemon.hpp"
@@ -550,6 +551,33 @@ public:
         std::cout << (dry ? "Would add " : "Added ") << ins << " runtime_call edge(s), "
                   << skip << " skipped (file not in graph), from " << frames.size()
                   << " frame(s).\n";
+        return 0;
+    }
+};
+
+// ---- graph skeleton (repo-compact / Ultra Compression) ----
+class GraphSkeletonCommand : public BaseCommand {
+public:
+    std::string name()        const override { return "graph-skeleton"; }
+    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols)"; }
+
+    int run(const std::vector<std::string>& args) override {
+        size_t budget = 8000;
+        try { auto v = flagValue(args, "--budget"); if (!v.empty()) budget = (size_t)std::stoul(v); } catch (...) {}
+
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        graph::GraphStore store(db);
+        auto nodes = store.all();
+        if (nodes.empty()) { std::cout << "graph skeleton: empty graph (run `icmg graph update`).\n"; return 0; }
+
+        std::vector<graph::GraphEdge> edges;
+        for (const auto& n : nodes) {
+            auto ef = store.edgesFrom(n.id);
+            edges.insert(edges.end(), ef.begin(), ef.end());
+        }
+        auto deg = graph::degreeCentrality(nodes, edges);
+        std::cout << graph::buildRepoSkeleton(nodes, deg, budget);
         return 0;
     }
 };
@@ -1455,6 +1483,7 @@ ICMG_REGISTER_COMMAND("graph-impact",       GraphImpactCommand);
 ICMG_REGISTER_COMMAND("graph-orphans",      GraphOrphansCommand);
 ICMG_REGISTER_COMMAND("graph-prune",        GraphPruneCommand);
 ICMG_REGISTER_COMMAND("graph-runtime",      GraphRuntimeCommand);
+ICMG_REGISTER_COMMAND("graph-skeleton",     GraphSkeletonCommand);
 ICMG_REGISTER_COMMAND("graph-cycles",       GraphCyclesCommand);
 ICMG_REGISTER_COMMAND("graph-hot",          GraphHotCommand);
 ICMG_REGISTER_COMMAND("graph-search",       GraphSearchCommand);
