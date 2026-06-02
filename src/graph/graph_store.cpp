@@ -1,4 +1,5 @@
 #include "graph_store.hpp"
+#include "../core/fts_query.hpp"  // v2.0.0 search snapshot (FTS)
 #include <chrono>
 #include <algorithm>
 #include <stack>
@@ -735,6 +736,26 @@ std::vector<GraphNode> GraphStore::related(const std::string& path, int limit) {
 std::vector<GraphNode> GraphStore::search(const std::string& query, int limit) {
     std::string pat = "%" + query + "%";
     std::vector<GraphNode> result;
+    // v2.0.0 search snapshot: FTS5 fast-path (graph_fts) when present — O(matches)
+    // via MATCH instead of an O(n) LIKE scan. Falls back to LIKE below if the
+    // graph_fts virtual table is absent (old DB / FTS5 not compiled) or empty.
+    {
+        bool hasFts = false;
+        db_.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='graph_fts'",
+                  {}, [&](const core::Row&){ hasFts = true; });
+        std::string fts = core::ftsQuery(query);
+        if (hasFts && !fts.empty()) {
+            db_.query(
+                "SELECT g.id,g.path,g.lang,g.context,g.symbols,g.size_bytes,g.file_hash,"
+                "g.updated_at,g.access_count,g.zone,g.parent_id,g.kind,g.symbol_name,"
+                "g.signature,g.line_start,g.line_end,g.body_hash"
+                " FROM graph_fts f JOIN graph_nodes g ON g.id = f.rowid"
+                " WHERE graph_fts MATCH ? ORDER BY bm25(graph_fts) LIMIT ?",
+                {fts, std::to_string(limit)},
+                [&](const core::Row& r) { result.push_back(rowToNode(r)); });
+            if (!result.empty()) return result;
+        }
+    }
     // Phase 60: include symbol_name in search columns. Two-tier graph
     // (file + child symbols) means searching content alone misses symbol-
     // level matches that live in their own row with empty context.
