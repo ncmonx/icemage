@@ -13,6 +13,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/summary_confidence.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -151,6 +152,13 @@ public:
                     got = true;
                 }
             }
+        }
+        // TE1: reject a low-confidence LLM summary (over-trimmed / off-topic /
+        // hallucinated) and fall back to the deterministic heuristic. 0.12 = catch
+        // catastrophic identifier loss without penalising legitimately dense gists.
+        if (got && !core::acceptSummary(body, gist, 0.12)) {
+            gist = heuristicGist(body, file);
+            got  = false;
         }
         if (!got) gist = heuristicGist(body, file);   // LLM unavailable
 #else
