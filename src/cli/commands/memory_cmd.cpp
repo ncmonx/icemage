@@ -3,6 +3,8 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../imem/memory_tier.hpp"  // v2.0.0 externals (tiered memory)
+#include <ctime>
 #include "../../core/recall_cache.hpp"
 #include "../../core/recall_cache_persist.hpp"
 #include "../../core/cache_metrics.hpp"
@@ -56,12 +58,15 @@ public:
     int run(const std::vector<std::string>& args) override {
         int limit = 50;
         std::string topic_filter;
+        std::string tier_filter;
         bool json_out = false;
         for (size_t i = 0; i < args.size(); ++i) {
             if (args[i] == "--limit" && i + 1 < args.size()) {
                 try { limit = std::stoi(args[++i]); } catch (...) {}
             } else if (args[i] == "--topic" && i + 1 < args.size()) {
                 topic_filter = args[++i];
+            } else if (args[i] == "--tier" && i + 1 < args.size()) {
+                tier_filter = args[++i];
             } else if (args[i] == "--json") {
                 json_out = true;
             }
@@ -77,6 +82,16 @@ public:
             nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
                 [&](const imem::MemoryNode& n){
                     return n.topic.rfind(topic_filter, 0) != 0;
+                }), nodes.end());
+        }
+
+        // v2.0.0 tiered memory: optional hot/warm/cold filter.
+        if (!tier_filter.empty()) {
+            int64_t now = (int64_t)std::time(nullptr);
+            nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                [&](const imem::MemoryNode& n){
+                    return imem::memTierName(imem::memoryTier(
+                        n.last_used, n.frequency, n.importance, now)) != tier_filter;
                 }), nodes.end());
         }
 
