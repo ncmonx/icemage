@@ -181,6 +181,10 @@ private:
     // so the B:/ drive-not-found dialog is auto-dismissed within ~100ms — before it
     // can block a hook subprocess (a blocked hook hangs Claude Code).
     int cmdEnsure() {
+        // Cheap fast-path: if the daemon already holds the mutex, do nothing.
+        // Lets every hook call `ensure` (self-heal) at ~zero cost when alive.
+        HANDLE existing = OpenMutexA(SYNCHRONIZE, FALSE, "Global\\icmg_popup_killer");
+        if (existing) { CloseHandle(existing); return 0; }
         char self[MAX_PATH];
         if (!GetModuleFileNameA(nullptr, self, MAX_PATH)) return 1;
         std::string cmd = std::string("\"") + self + "\" popup-killer run";

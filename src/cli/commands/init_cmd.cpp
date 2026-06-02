@@ -782,6 +782,9 @@ static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Injects relevant cold context_nodes + skill suggestions via BM25 match.
 [[ "${ICMG_NO_CONTEXT_HOOK:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
+# Self-heal: keep the B:/ drive-popup killer daemon alive (idempotent, ~0 cost when
+# already running — a dead daemon lets a modal drive dialog hang the agent).
+icmg popup-killer ensure >/dev/null 2>&1 || true
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | icmg hookio get message // .prompt 2>/dev/null)
 [[ -z "$PROMPT" ]] && exit 0
