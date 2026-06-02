@@ -29,7 +29,7 @@ TEST("parallel: 4 tasks finish faster than serial sleep sum") {
     for (int i = 0; i < 4; ++i) {
         ParallelTask t;
 #ifdef _WIN32
-        t.command = "ping -n 1 127.0.0.1 >NUL";  // ~ms-scale wait
+        t.command = "ping -n 1 127.0.0.1";  // ~ms wait; no >NUL — the exec fast-path splits on '>' (flaky exit)
 #else
         t.command = "sleep 0.5";
 #endif

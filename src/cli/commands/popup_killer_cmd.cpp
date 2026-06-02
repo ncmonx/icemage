@@ -137,6 +137,7 @@ public:
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         const std::string& sub = args[0];
         if (sub == "run")        return cmdRun();
+        if (sub == "ensure")     return cmdEnsure();
         if (sub == "scan-once")  return cmdScanOnce();
         if (sub == "status")     return cmdStatus();
         std::cerr << "icmg popup-killer: unknown action '" << sub << "'\n";
@@ -157,6 +158,10 @@ private:
     }
 
     int cmdRun() {
+        // Single-instance: a global named mutex prevents piling up daemons (the
+        // SessionStart hook calls `ensure` every session). A second instance exits.
+        HANDLE mtx = CreateMutexA(nullptr, TRUE, "Global\\icmg_popup_killer");
+        if (mtx && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
         std::cerr << "icmg popup-killer: scanning every 100ms (Ctrl+C to stop)\n";
         int last_log = 0;
         while (!g_stop.load()) {
@@ -169,6 +174,25 @@ private:
             }
         }
         return 0;
+    }
+
+    // Start the blocking daemon detached if not already running. Idempotent (the
+    // daemon self-guards via the named mutex). Called by the SessionStart hook + init
+    // so the B:/ drive-not-found dialog is auto-dismissed within ~100ms — before it
+    // can block a hook subprocess (a blocked hook hangs Claude Code).
+    int cmdEnsure() {
+        char self[MAX_PATH];
+        if (!GetModuleFileNameA(nullptr, self, MAX_PATH)) return 1;
+        std::string cmd = std::string("\"") + self + "\" popup-killer run";
+        std::vector<char> buf(cmd.begin(), cmd.end()); buf.push_back('\0');
+        STARTUPINFOA si{}; si.cb = sizeof(si);
+        PROCESS_INFORMATION pi{};
+        if (CreateProcessA(nullptr, buf.data(), nullptr, nullptr, FALSE,
+                           DETACHED_PROCESS | CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+        return 0;  // best-effort; daemon dedups via mutex
     }
 
     int cmdStatus() {
