@@ -720,6 +720,8 @@ add_icmg_test(test_summary_confidence tests/core/test_summary_confidence.cpp)  #
 add_icmg_test(test_compress_select tests/core/test_compress_select.cpp)  # v2.0.0 TE2
 add_icmg_test(test_trace_parse tests/core/test_trace_parse.cpp)  # v2.0.0 TE3
 add_icmg_test(test_repo_skeleton tests/graph/test_repo_skeleton.cpp)  # v2.0.0 externals (repo-compact)
+add_icmg_test(test_temporal     tests/graph/test_temporal.cpp)      # v2.0.0 externals (temporal KG)
+add_icmg_test(test_api_spec     tests/core/test_api_spec.cpp)       # v2.0.0 externals (API spec)
 add_icmg_test(test_memory_tier tests/core/test_memory_tier.cpp)  # v2.0.0 externals (tiered memory)
 add_icmg_test(test_bfs_expand  tests/graph/test_bfs_expand.cpp)
 add_icmg_test(test_mcp_resources tests/mcp/test_mcp_resources.cpp)
