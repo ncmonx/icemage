@@ -2204,3 +2204,11 @@ Decisions:
 - v2.0.5 = HOLD LOCAL (NOT shipped): (a) suggest name-weighted scoring -- rankCommands adds nameRecall so 'compress large output'->compress (was expand); hook gate 0.45->0.5 (old never fired, real scores 0.1-0.25); smoke perfect compress/fetch + hook fires. (b) icmg hook (Stop/precompact, hook-spawned) stdin via slurpStdinSafe not bare cin.rdbuf (#30704). +3 TDD ~1405.
 Rejected: shipping v2.0.5 immediately (batch first per new rule); fixing all 12 pipe-reader cin sites now (low risk user-invoke; backlog).
 Open: v2.0.5 + future fixes accumulate LOCAL until batch-worthy. Backlog: 12 pipe-reader cin guards, WASM v2.1, TE2 perplexity.
+
+## 2026-06-03 14:40 [saved]
+Goal: v2.0.5 batch grows via long-session bug-hunt (HOLD LOCAL, no CI).
+Decisions:
+- v2.0.5 batch = 6 fixes, all build+verify+commit LOCAL (ship-cadence rule #30922, batch before CI): (1) suggest name-weighted scoring (nameRecall, gate 0.5); (2) hook_cmd stdin slurpStdinSafe (#30704); (3) flow empty-arg reject (flowNeedsArg; was junk 'wflog add ""'); (4) prompt-capture reads transcript TAIL 256KB not whole 13MB (per-turn Stop-hook cost constant); (5) shrink stdin slurpStdinSafe (#30704, hook-spawned but piped; guards tty-hang); (6) build.ps1 error-scan -CaseSensitive (was false '^^^ ERRORS' on deliberate sqlcipher wrong-key test output; user-approved edit #30931).
+- 3 bugs found live during marathon hunt (flow-arg, prompt-capture perf, shrink cross-ref). ctest 1402->1406. ver 2.0.5. All smoke-verified (flow reject rc=1, shrink no-pipe rc=0 no hang).
+Rejected: shipping (HOLD per cadence rule); editing build.ps1 without asking (got permission first).
+Open: v2.0.5 accumulating LOCAL. Backlog: 11 remaining pipe-reader cin (user-invoke, low risk), WASM v2.1, TE2.
