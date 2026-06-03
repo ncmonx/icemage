@@ -11,6 +11,7 @@
 #include "../../core/global_db.hpp"
 #include "../../core/profile_store.hpp"
 #include "../../core/prompt_history.hpp"
+#include "../../core/profile_key.hpp"   // normalizeZone for consistent display (#9)
 #include "../../core/user_identity.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -52,18 +53,33 @@ public:
             if (prompt.empty() || response.empty()) { std::cerr << "need --prompt and --response\n"; return 1; }
             core::PromptHistory ph(db);
             ph.record(user, zone, prompt, response);
-            std::cout << "[profile qa-add] " << (zone.empty() ? "default" : zone)
+            std::cout << "[profile qa-add] " << core::normalizeZone(zone)
                       << ": prompt recorded.\n";
             return 0;
         }
         if (sub == "qa-find") {
+            bool js = false;
+            for (const auto& a : args) if (a == "--json") js = true;
             core::PromptHistory ph(db);
             std::string exact;
             if (ph.recallExact(user, zone, query, exact)) {
-                std::cout << "[exact] " << exact << "\n";
+                if (js) {
+                    nlohmann::json o = {{"match", "exact"}, {"response", exact}};
+                    std::cout << o.dump(2) << "\n";
+                } else {
+                    std::cout << "[exact] " << exact << "\n";
+                }
                 return 0;
             }
             auto hits = ph.findSimilar(user, query, 5);
+            if (js) {
+                nlohmann::json arr = nlohmann::json::array();
+                for (const auto& h : hits)
+                    arr.push_back({{"match", "similar"}, {"prompt", h.prompt},
+                                   {"response", h.response}});
+                std::cout << arr.dump(2) << "\n";
+                return 0;
+            }
             if (hits.empty()) { std::cout << "(no similar prompt in history)\n"; return 0; }
             for (auto& h : hits)
                 std::cout << "  ~ " << h.prompt.substr(0, 60) << " => "
@@ -108,8 +124,8 @@ public:
         if (sub == "add") {
             if (key.empty() || content.empty()) { std::cerr << "need --key and --content\n"; return 1; }
             ps.put(user, zone, key, kind, content);
-            std::cout << "[profile add] " << (zone.empty() ? "default" : zone) << "/" << key
-                      << " (" << kind << ") saved.\n";
+            std::cout << "[profile add] " << core::normalizeZone(zone) << "/"
+                      << core::normalizeKey(key) << " (" << core::validKind(kind) << ") saved.\n";
             return 0;
         }
         if (sub == "get") {

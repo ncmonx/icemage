@@ -113,6 +113,8 @@ public:
             int fill = 0;
             for (size_t i = 1; i + 1 < args.size(); ++i)
                 if (args[i] == "--fill") fill = std::atoi(args[i + 1].c_str());
+            if (fill < 0) fill = 0;
+            if (fill > 100) fill = 100;   // #11: clamp nonsense fill (e.g. 999) to valid range
             int lastBand = -1;
             { std::ifstream f(bandFilePath()); if (f) f >> lastBand; }
             auto n = core::idleCompactAdvice(fill, lastBand, 75);
