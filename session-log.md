@@ -2195,3 +2195,12 @@ Decisions:
 - prompt-capture E2E verified: synthetic transcript -> record -> qa-suggest reuse 0.8.
 Rejected: adding a 227th silo command for unused-cmd problem (chose discoverability+interlink of existing); mode in project DB.
 Open: CI publish + win upload (auto-watcher). ~/bin self-upgrade pending (activates suggest/prompt-capture hooks live). Backlog: cin.rdbuf #30704, WASM v2.1, TE2 perplexity.
+
+## 2026-06-03 14:05 [saved]
+Goal: v2.0.4 ship complete; v2.0.5 hotfix (held local); ship-cadence rule.
+Decisions:
+- SHIP-CADENCE RULE (user, MUTLAK #30922): do NOT tag->CI often. CI linux+mac = user resource; batch many fixes/features into ONE release. Per-version: build+verify+commit LOCAL; tag->CI only when batch is worth it AND user oks.
+- v2.0.4 SHIPPED COMPLETE 3-OS (6 assets linux+macos+win uploaded; CI publish + win watcher done). ~/bin self-upgraded 2.0.4 + re-init -> suggest/prompt-capture/mode hooks LIVE (mode-inject confirmed firing in context).
+- v2.0.5 = HOLD LOCAL (NOT shipped): (a) suggest name-weighted scoring -- rankCommands adds nameRecall so 'compress large output'->compress (was expand); hook gate 0.45->0.5 (old never fired, real scores 0.1-0.25); smoke perfect compress/fetch + hook fires. (b) icmg hook (Stop/precompact, hook-spawned) stdin via slurpStdinSafe not bare cin.rdbuf (#30704). +3 TDD ~1405.
+Rejected: shipping v2.0.5 immediately (batch first per new rule); fixing all 12 pipe-reader cin sites now (low risk user-invoke; backlog).
+Open: v2.0.5 + future fixes accumulate LOCAL until batch-worthy. Backlog: 12 pipe-reader cin guards, WASM v2.1, TE2 perplexity.
