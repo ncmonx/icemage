@@ -1890,7 +1890,10 @@ private:
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"timeout", 5},
-                     {"command", "bash -c '[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0'"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0'"}},
+                     {{"type", "command"},
+                      {"timeout", 5},
+                      {"command", "command -v icmg >/dev/null 2>&1 || exit 0; M=$(icmg mode get 2>/dev/null); [ -z \"$M\" ] && exit 0; printf 'MODE: %s' \"$M\" | icmg hookio emit UserPromptSubmit --ctx-stdin"}}
                 })}
             },
             {
