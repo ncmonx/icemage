@@ -1890,7 +1890,13 @@ private:
                 {"hooks", json::array({
                     {{"type", "command"},
                      {"timeout", 5},
-                     {"command", "bash -c '[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0'"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-prompt-recall.sh ] && bash .claude/hooks/icmg-prompt-recall.sh || exit 0'"}},
+                     {{"type", "command"},
+                      {"timeout", 5},
+                      {"command", "command -v icmg >/dev/null 2>&1 || exit 0; M=$(icmg mode get 2>/dev/null); [ -z \"$M\" ] && exit 0; printf 'MODE: %s' \"$M\" | icmg hookio emit UserPromptSubmit --ctx-stdin"}},
+                     {{"type", "command"},
+                      {"timeout", 5},
+                      {"command", "command -v icmg >/dev/null 2>&1 || exit 0; H=$(icmg suggest --hook 2>/dev/null); [ -z \"$H\" ] && exit 0; printf '%s' \"$H\" | icmg hookio emit UserPromptSubmit --ctx-stdin"}}
                 })}
             },
             {
@@ -1950,7 +1956,10 @@ private:
                      {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook stop"}},
                     {{"type", "command"},
                      {"timeout", 10},
-                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; [ -n \"$ICMG_NO_COMPACT_ADVISE\" ] && exit 0; FILL=$(icmg context-budget --percent 2>/dev/null | tr -dc '0-9' | head -c 3); [ -z \"$FILL\" ] && exit 0; MSG=$(icmg govern advise --fill \"$FILL\" 2>/dev/null); [ -z \"$MSG\" ] && exit 0; printf '%s' \"$MSG\" | icmg hookio emit Stop --ctx-stdin"}}
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; [ -n \"$ICMG_NO_COMPACT_ADVISE\" ] && exit 0; FILL=$(icmg context-budget --percent 2>/dev/null | tr -dc '0-9' | head -c 3); [ -z \"$FILL\" ] && exit 0; MSG=$(icmg govern advise --fill \"$FILL\" 2>/dev/null); [ -z \"$MSG\" ] && exit 0; printf '%s' \"$MSG\" | icmg hookio emit Stop --ctx-stdin"}},
+                    {{"type", "command"},
+                     {"timeout", 10},
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; icmg prompt-capture 2>/dev/null || exit 0"}}
                 })}
             }
         });

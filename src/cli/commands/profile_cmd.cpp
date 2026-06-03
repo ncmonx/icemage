@@ -39,6 +39,7 @@ public:
         core::ProfileStore ps(db);
 
         std::string zone, key, kind = "profile", content, query, prompt, response;
+        double minScore = 0.4;  // qa-suggest reuse gate
         for (size_t i = 1; i < args.size(); ++i) {
             if (args[i] == "--zone" && i + 1 < args.size()) zone = args[++i];
             else if (args[i] == "--key" && i + 1 < args.size()) key = args[++i];
@@ -46,8 +47,11 @@ public:
             else if (args[i] == "--content" && i + 1 < args.size()) content = args[++i];
             else if (args[i] == "--prompt" && i + 1 < args.size()) prompt = args[++i];
             else if (args[i] == "--response" && i + 1 < args.size()) response = args[++i];
-            else if ((sub == "search" || sub == "qa-find") && !args[i].empty() && args[i][0] != '-') query = args[i];
+            else if (args[i] == "--min" && i + 1 < args.size()) { try { minScore = std::stod(args[++i]); } catch (...) {} }
+            else if ((sub == "search" || sub == "qa-find" || sub == "qa-suggest") && !args[i].empty() && args[i][0] != '-') query = args[i];
         }
+        if (minScore < 0.0) minScore = 0.0;
+        if (minScore > 1.0) minScore = 1.0;
 
         // ---- prompt->response history (T6) ----
         if (sub == "qa-add") {
@@ -85,6 +89,23 @@ public:
             for (auto& h : hits)
                 std::cout << "  ~ " << h.prompt.substr(0, 60) << " => "
                           << h.response.substr(0, 80) << "\n";
+            return 0;
+        }
+        if (sub == "qa-suggest") {
+            bool js = false;
+            for (const auto& a : args) if (a == "--json") js = true;
+            if (query.empty()) { std::cerr << "need a prompt: icmg profile qa-suggest \"<prompt>\" [--min N]\n"; return 1; }
+            core::PromptHistory ph(db);
+            auto s = ph.suggest(user, query, minScore, 25);
+            if (js) {
+                nlohmann::json o = {{"found", s.found}, {"score", s.score}};
+                if (s.found) { o["response"] = s.row.response; o["prompt"] = s.row.prompt; o["zone"] = s.row.zone; }
+                std::cout << o.dump(2) << "\n";
+                return 0;
+            }
+            if (!s.found) { std::cout << "(no confident reuse; best score "
+                                      << s.score << " < " << minScore << ")\n"; return 0; }
+            std::cout << "[reuse " << s.score << "] " << s.row.response << "\n";
             return 0;
         }
         if (sub == "qa-list") {

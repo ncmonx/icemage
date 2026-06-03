@@ -1,5 +1,6 @@
 #include "prompt_history.hpp"
 #include "profile_key.hpp"   // reuse slugify for the normalized prompt key
+#include <set>
 
 namespace icmg::core {
 
@@ -60,6 +61,43 @@ std::vector<QARow> PromptHistory::findSimilar(const std::string& user, const std
         if (r.size() >= 4) out.push_back({r[0], r[1], r[2], std::stoll(r[3])});
     });
     return out;
+}
+
+// --- active reuse: pure scorer + gated suggest ---------------------------------
+static std::set<std::string> sigTokens(const std::string& s) {
+    std::set<std::string> toks;
+    const std::string slug = slugify(s);
+    size_t pos = 0;
+    while (pos <= slug.size()) {
+        size_t dash = slug.find('-', pos);
+        std::string tok = slug.substr(pos, dash == std::string::npos ? std::string::npos : dash - pos);
+        if (tok.size() >= 3) toks.insert(tok);
+        if (dash == std::string::npos) break;
+        pos = dash + 1;
+    }
+    return toks;
+}
+
+double promptJaccard(const std::string& a, const std::string& b) {
+    std::set<std::string> A = sigTokens(a), B = sigTokens(b);
+    if (A.empty() && B.empty()) return 1.0;
+    if (A.empty() || B.empty()) return 0.0;
+    size_t inter = 0;
+    for (const auto& t : A) if (B.count(t)) ++inter;
+    size_t uni = A.size() + B.size() - inter;
+    return uni == 0 ? 0.0 : static_cast<double>(inter) / static_cast<double>(uni);
+}
+
+Suggestion PromptHistory::suggest(const std::string& user, const std::string& prompt,
+                                  double minScore, int scan) {
+    Suggestion best;
+    auto cands = findSimilar(user, prompt, scan);
+    for (const auto& c : cands) {
+        double s = promptJaccard(prompt, c.prompt);
+        if (s > best.score) { best.score = s; best.row = c; }
+    }
+    best.found = best.score >= minScore && !best.row.response.empty();
+    return best;
 }
 
 std::vector<QARow> PromptHistory::listZone(const std::string& user, const std::string& zone,
