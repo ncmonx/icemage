@@ -34,6 +34,24 @@ TEST("rankCommands: topN caps the result count") {
     ASSERT_TRUE(hits.size() <= 2);
 }
 
+TEST("rankCommands: a command named in the intent beats a desc-only match") {
+    std::vector<CmdDoc> docs = {
+        {"expand",   "Expand compressed output back to full text"},  // desc has 'compressed/output'
+        {"compress", "Shrink large output into a glossary"},
+    };
+    auto hits = rankCommands("compress large output", docs, 2);
+    ASSERT_TRUE(!hits.empty());
+    ASSERT_EQ(hits[0].name, std::string("compress"));   // name match wins over desc overlap
+}
+
+TEST("rankCommands: nameRecall is 1.0 when the full name appears in the intent") {
+    ASSERT_TRUE(nameRecall("please fetch a url now", "fetch") > 0.999);
+}
+
+TEST("rankCommands: nameRecall is 0 when the name is absent") {
+    ASSERT_TRUE(nameRecall("trace the dependencies", "fetch") < 0.001);
+}
+
 TEST("rankCommands: zero-overlap intent yields no hits") {
     auto hits = rankCommands("xyzzy quux frobnicate", sampleDocs(), 5);
     ASSERT_TRUE(hits.empty());

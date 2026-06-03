@@ -11,6 +11,7 @@
 #include "../../core/global_db.hpp"
 #include "../../core/profile_store.hpp"
 #include "../../core/prompt_history.hpp"
+#include "../../core/prompt_cluster.hpp"   // qa-frequent: cluster recurring prompts
 #include "../../core/profile_key.hpp"   // normalizeZone for consistent display (#9)
 #include "../../core/user_identity.hpp"
 #include <nlohmann/json.hpp>
@@ -89,6 +90,49 @@ public:
             for (auto& h : hits)
                 std::cout << "  ~ " << h.prompt.substr(0, 60) << " => "
                           << h.response.substr(0, 80) << "\n";
+            return 0;
+        }
+        if (sub == "qa-frequent") {
+            bool js = false; int minCount = 2;
+            for (size_t i = 1; i < args.size(); ++i) {
+                if (args[i] == "--json") js = true;
+                else if (args[i] == "--count" && i + 1 < args.size()) {
+                    try { minCount = std::stoi(args[++i]); } catch (...) {}
+                }
+            }
+            if (minCount < 2) minCount = 2;
+            core::PromptHistory ph(db);
+            auto rows = ph.listZone(user, zone, 500);  // empty zone = all zones
+            std::vector<std::string> prompts;
+            prompts.reserve(rows.size());
+            for (const auto& r : rows) {
+                // Skip internal/system zones (_mode, _passphrase, _style, ...) -- those
+                // are machinery, not user prompts to promote into a skill.
+                if (!r.zone.empty() && r.zone[0] == '_') continue;
+                prompts.push_back(r.prompt);
+            }
+            auto clusters = core::clusterSimilar(prompts, 0.5);
+            if (js) {
+                nlohmann::json arr = nlohmann::json::array();
+                for (const auto& c : clusters)
+                    if (static_cast<int>(c.members.size()) >= minCount)
+                        arr.push_back({{"count", c.members.size()},
+                                       {"representative", c.representative}});
+                std::cout << arr.dump(2) << "\n";
+                return 0;
+            }
+            int shown = 0;
+            for (const auto& c : clusters) {
+                if (static_cast<int>(c.members.size()) < minCount) continue;
+                std::cout << "[" << c.members.size() << "x] " << c.representative << "\n";
+                ++shown;
+            }
+            if (!shown)
+                std::cout << "(no recurring prompt pattern (>=" << minCount
+                          << ") yet -- keep working; auto-record builds it up)\n";
+            else
+                std::cout << "-> promote a pattern to a skill: icmg profile add --zone skills "
+                             "--key <name> --kind skill --content \"...\"\n";
             return 0;
         }
         if (sub == "qa-suggest") {

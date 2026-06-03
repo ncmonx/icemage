@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.0.4 LANGUAGES CXX C)
+project(icmg VERSION 2.0.5 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -725,6 +725,7 @@ add_icmg_test(test_profile_key tests/core/test_profile_key.cpp)  # profile-store
 add_icmg_test(test_profile_store tests/core/test_profile_store.cpp)  # profile-store CRUD
 add_icmg_test(test_prompt_history tests/core/test_prompt_history.cpp)  # prompt->response recall
 add_icmg_test(test_prompt_suggest tests/core/test_prompt_suggest.cpp)  # v2.0.4 active reuse: Jaccard scorer + gated suggest
+add_icmg_test(test_prompt_cluster tests/core/test_prompt_cluster.cpp)  # v2 pillar4: frequent-prompt clustering
 add_icmg_test(test_command_suggest tests/core/test_command_suggest.cpp)  # v2.0.4 A: command recommender
 add_icmg_test(test_flow_registry tests/core/test_flow_registry.cpp)  # v2.0.4 B: composite flows
 add_icmg_test(test_transcript_extract tests/core/test_transcript_extract.cpp)  # v2.0.4 auto-record prompt-history

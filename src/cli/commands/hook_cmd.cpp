@@ -1,4 +1,4 @@
-﻿// Phase 79: `icmg hook <event>` â€” in-process hook event handler.
+// Phase 79: `icmg hook <event>` â€” in-process hook event handler.
 //
 // Consolidates the 4-5 separate icmg subprocess calls that
 // .claude/hooks/icmg-prompt-recall.sh used to make per UserPromptSubmit
@@ -21,6 +21,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/path_utils.hpp"
@@ -280,9 +281,9 @@ private:
     }
 
     static std::string readStdinAll() {
-        std::ostringstream ss;
-        ss << std::cin.rdbuf();
-        return ss.str();
+        // isatty-guarded: a hook-spawned `icmg hook ...` without piped input returns
+        // immediately instead of blocking on cin.rdbuf() (#30704 proc-accumulation).
+        return core::slurpStdinSafe();
     }
 
     static uint32_t fnv1a32(const std::string& s) {

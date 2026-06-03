@@ -41,6 +41,12 @@ public:
             return 1;
         }
 
+        if (core::flowNeedsArg(*f) && arg.empty()) {
+            std::cerr << "flow '" << flowName << "' needs an argument: "
+                      << "icmg flow " << flowName << " \"<text>\"\n";
+            return 1;
+        }
+
         auto steps = core::substituteArg(f->steps, arg);
         auto& reg = core::Registry<BaseCommand>::instance();
 
