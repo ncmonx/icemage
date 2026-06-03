@@ -10,6 +10,8 @@
 #include <functional>
 #include <sstream>
 #include <stdexcept>
+#include <filesystem>
+#include <system_error>
 
 namespace icmg::test {
 
@@ -41,6 +43,21 @@ inline void betweenTests() { /* no-op in per-exe mode */ }
 // TEST() cases whose name CONTAINS the filter substring. Single mono test
 // binary (`icmg_test`) dispatches via ctest with --filter <suite-prefix>.
 inline int run_all(const std::string& filter = "") {
+    // Reproducibility: delete stale per-run temp DBs left by a PRIOR invocation.
+    // Tests share fixed "*_test.db" filenames in the cwd; SQLite WAL/SHM sidecars
+    // (-wal/-shm) carry committed rows across separate runs, which caused false
+    // failures on a second back-to-back run (#30952). Clearing once per run keeps
+    // mono-test results deterministic; within-run isolation stays via distinct
+    // user_ids per TEST.
+    {
+        std::error_code ec;
+        for (auto it = std::filesystem::directory_iterator(".", ec);
+             !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+            const std::string fn = it->path().filename().string();
+            if (fn.find("_test.db") != std::string::npos)  // matches .db, -wal, -shm
+                std::filesystem::remove(it->path(), ec);
+        }
+    }
     int passed = 0, failed = 0, skipped = 0;
     for (auto& tc : registry()) {
         if (!filter.empty() && tc.name.find(filter) == std::string::npos) {
