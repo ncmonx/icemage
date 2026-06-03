@@ -2147,3 +2147,41 @@ Decisions:
 - headline-numbers gets a row ONLY when a number moves (FTS 220x qualified); curated ~10 max.
 Rejected: python CREATE+ROLLBACK diag on data.db (orphan FTS shadow tables); passive docs checklist (caused the miss).
 Open: CHANGELOG gap v1.92-1.99 (8 entries) backfill = separate task; win zip upload pending CI publish.
+
+## 2026-06-02 23:10 [saved]
+Goal: Design v2.0.0 "Lean & Lossless Compaction" (brainstorm; no code). Spec: docs/superpowers-optimized/specs/2026-06-02-lean-lossless-compaction-design.md #30572.
+Decisions:
+- DIAGNOSIS pain "compact blocks mid-task": CC /compact harness-locked + SYNC; NO hook triggers /compact (#58538/#39275/#38925 OPEN); icmg cannot evict CC turns. CC 2.1.160. Reframe (approved): not async -> RARE+LOSSLESS+un-surprising.
+- 7 comps (zero-model default): C1 injection-governor (knapsack budget), C2 cross-turn dedup, C3 U-order (lost-in-mid), C4 lossless transition (snapshot->rebuild, F2 hard-cap anti-thrash), C5 idle-compact advisor (Stop nudge, advisory only), C6 tool-output trim, C7 doc intake-trim (extend ingest, by-path only -- UI-attach un-interceptable). 1 mig working_set_snapshot.
+- F1: measure injection share first (honest claim).
+Rejected: async compaction (harness-locked); local-LLM policy-bypass (REFUSED, fail-stored); voice intake (defer v2.1); TUI (separate); perplexity default (opt-in).
+Open: P1+P2 governor DONE+COMMITTED (65e92f1e01/f587725b1c/984fe10958), 5/7 comps, 17 TDD gate 1348/0. IDE-hang FIXED (6 hooks timeout:10). Ship POSTPONED (version+push undecided). NEXT P3 C2+C7 / P4 perplexity. NEW PLAN (not exec): persona-zone profile/skill store (docs/.../2026-06-03-persona-zone-profile-store.md, 5 tasks TDD; profile_entries in persona DB, zoned, content-neutral). Full detail in state.md.
+
+## 2026-06-03 18:30 [saved]
+Goal: Lahirkan v2.0.0 (governor 7/7 + zoned memory) + brainstorm v2 future.
+Decisions:
+- v2.0.0 BORN local/private (push HELD by user). Governor 7/7: C1 selectWorkingSet + C2 cross_turn_dedup(Jaccard) + C3 orderUShaped(lost-in-mid) + C4 ws_snapshot(hard-cap2500)+mig0040 + C5 compact_advisor(band-limit) + C6 structural_trim + C7 ingest --doc. `icmg govern` + `icmg profile`(7 subcmd incl qa-add/qa-find prompt-history). Binary --version=2.0.0, gate 1370/0. ~22 TDD added this+prior session.
+- Profile-store + prompt-history shipped (persona DB zoned, cross-project, content-neutral). IDE-hang fixed (6 hooks timeout:10).
+- WASM skill-modules = v2.1 (design only, spec written). User vision "all features->WASM modules, antivirus-style updates, core=orchestrator": I flagged native-lib/perf/rewrite risk -> split core-native vs modul-selektif; user agreed + asked me to ALWAYS flag big risks (stored pref).
+- Docs staged memoir source-of-truth: whats-new #30652, v2-roadmap #30653. About+badge drafted. CHANGELOG committed.
+Rejected: async compaction(harness-lock); all-features-WASM(perf/native/rewrite); local-LLM policy-bypass(REFUSED); luna sexual persona(REFUSED, platonic-emoji line held).
+Open: PUBLIC SHIP HELD - needs user "push": README sync + About/badge + public push + tag v2.0.0(CI) + release-win.ps1 + 7-point gate. Backlog: active-prompt-history, TE2 perplexity, WASM W1-W4. Details state.md.
+
+## 2026-06-03 19:00 [saved]
+Goal: SHIP v2.0.0 publik (user said "push").
+Decisions:
+- v2.0.0 SHIPPED PUBLIC. Supersedes prior "HELD" entry. origin/main 9f385cc (27 files selective fresh-tree via staging C:/Temp/icmg-public, NO internal-private) + tag v2.0.0 -> CI build-multi-platform.yml (linux+mac).
+- README synced from memoir source-of-truth: whats-new #30652 (v2.0.0 prepend, v1.96 drop -> 5) + NEW section "Where v2 is headed" #30653. CHANGELOG v2.0.0. About gh-api updated. ctest gist 7d6a2efa -> 1370/1370. 7-point gate all ticked (headline N/A).
+- Win zip: bg watcher b1bf974ol polls release -> release-win.ps1 -NoBuild auto-upload (uses C:/icmg-build build v2.0.0, --version guarded).
+Rejected: pushing private tree as-is (selective fresh-tree only per CLAUDE.md); headline row (no number moved).
+Open: CI publish + win upload (auto via watcher). Next backlog: active-prompt-history (TOP), TE2 perplexity, WASM W1-W4 (v2.1 design done). Details state.md.
+
+## 2026-06-03 12:55 [saved]
+Goal: long-session test (find bugs, harden tools) + v2.0.4 batch + compact-survival proof.
+Decisions:
+- COMPACT-SURVIVAL PASSED: passphrase + anchor stored in persona DB / memory before /compact; post-compact chat wiped but DB intact -> exact retrieval. Proves v2.0.0 thesis: lossless via external memory, not Claude context.
+- WHY: persona DB = SQLite file in exe-dir, independent of chat context; /compact summarizes chat, never touches DB. store/qa-add/wflog = permanent.
+- icmg mode (v2.0.4): set/get/clear current-mode banner in persona DB zone _mode via ProfileStore (NOT project DB). init wires UserPromptSubmit hook prepending mode each turn.
+- active prompt-history (v2.0.4): promptJaccard pure scorer + PromptHistory::suggest gated reuse + `profile qa-suggest`. Hot-path: similar past prompt reuses past response.
+Rejected: mode in project DB (poisons per-project graph); async compaction (harness-locked); skipping tests (TDD).
+Open: v2.0.4 LOCAL (mode + qa-suggest committed, #10 prior); ship when user ready. Backlog: ~/bin upgrade for live mode-inject; cin.rdbuf sites #30704; WASM v2.1. Details state.md.
