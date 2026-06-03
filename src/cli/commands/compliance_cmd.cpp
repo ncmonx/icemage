@@ -11,6 +11,7 @@
 // sayless directive, escalating language if pattern persists.
 
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include <cstdlib>
 #include <ctime>
@@ -59,7 +60,7 @@ public:
             if (!fs::exists(flagPath())) return 0;
             // Read JSON from stdin.
             std::ostringstream buf;
-            buf << std::cin.rdbuf();
+            buf.str(core::slurpStdinSafe());
             std::string raw = buf.str();
             int word_count = countThinkingWords(raw);
             if (word_count > max_words) {

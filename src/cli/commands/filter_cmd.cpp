@@ -11,6 +11,7 @@
 // per-filter chunk-aware logic; deferred.
 
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include "../../tkil/base_filter.hpp"
 #include "../../tkil/detector.hpp"
@@ -86,7 +87,7 @@ public:
 
         // Slurp stdin
         std::ostringstream buf;
-        buf << std::cin.rdbuf();
+        buf.str(core::slurpStdinSafe());
         std::string raw = buf.str();
         if (raw.empty()) return 0;
 

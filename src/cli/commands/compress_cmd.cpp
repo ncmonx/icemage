@@ -4,6 +4,7 @@
 // Default lossless (round-trip exact). --aggressive adds filler-strip.
 
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -180,7 +181,7 @@ private:
         }
         // Stdin
         std::ostringstream ss;
-        ss << std::cin.rdbuf();
+        ss.str(core::slurpStdinSafe());
         return ss.str();
     }
 

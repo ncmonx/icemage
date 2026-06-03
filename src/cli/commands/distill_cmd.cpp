@@ -6,6 +6,7 @@
 // can prune separately via `icmg memory prune --topic 'auto:%'`.
 
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -69,7 +70,7 @@ public:
 
         // Read stdin
         std::ostringstream buf;
-        buf << std::cin.rdbuf();
+        buf.str(core::slurpStdinSafe());
         std::string text = buf.str();
 
         size_t min_len = 200;

@@ -12,6 +12,7 @@
 
 #include "../../core/registry.hpp"
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -111,7 +112,7 @@ public:
             raw = ss.str();
         } else {
             std::stringstream ss;
-            ss << std::cin.rdbuf();
+            ss.str(core::slurpStdinSafe());
             raw = ss.str();
         }
 

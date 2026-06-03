@@ -11,6 +11,7 @@
 //   double articles, repeated whitespace, parenthetical hedges.
 
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include <iostream>
 #include <regex>
@@ -42,7 +43,7 @@ public:
         bool aggressive  = hasFlag(args, "--aggressive");
 
         std::ostringstream buf;
-        buf << std::cin.rdbuf();
+        buf.str(core::slurpStdinSafe());
         std::string in = buf.str();
         std::string out = shorten(in, aggressive);
 
