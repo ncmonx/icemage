@@ -105,7 +105,12 @@ public:
             auto rows = ph.listZone(user, zone, 500);  // empty zone = all zones
             std::vector<std::string> prompts;
             prompts.reserve(rows.size());
-            for (const auto& r : rows) prompts.push_back(r.prompt);
+            for (const auto& r : rows) {
+                // Skip internal/system zones (_mode, _passphrase, _style, ...) -- those
+                // are machinery, not user prompts to promote into a skill.
+                if (!r.zone.empty() && r.zone[0] == '_') continue;
+                prompts.push_back(r.prompt);
+            }
             auto clusters = core::clusterSimilar(prompts, 0.5);
             if (js) {
                 nlohmann::json arr = nlohmann::json::array();
