@@ -182,7 +182,7 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
 # summary
 logline ''
 logline '===== SUMMARY ====='
-$errs = Select-String $LogFile -Pattern ': error |: fatal error|LNK' -ErrorAction SilentlyContinue
+$errs = Select-String $LogFile -Pattern ': error |: fatal error|LNK[0-9]' -CaseSensitive -ErrorAction SilentlyContinue
 if ($errs) { $errs | ForEach-Object { logline "  $($_.Line.Trim())" }; logline '  ^^^ ERRORS' }
 else        { logline '  no errors' }
 logline "rc: icmg=$RC1  icmg_test=$RC2  ctest=$RCT"
