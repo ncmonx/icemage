@@ -725,6 +725,7 @@ add_icmg_test(test_profile_key tests/core/test_profile_key.cpp)  # profile-store
 add_icmg_test(test_profile_store tests/core/test_profile_store.cpp)  # profile-store CRUD
 add_icmg_test(test_prompt_history tests/core/test_prompt_history.cpp)  # prompt->response recall
 add_icmg_test(test_prompt_suggest tests/core/test_prompt_suggest.cpp)  # v2.0.4 active reuse: Jaccard scorer + gated suggest
+add_icmg_test(test_prompt_cluster tests/core/test_prompt_cluster.cpp)  # v2 pillar4: frequent-prompt clustering
 add_icmg_test(test_command_suggest tests/core/test_command_suggest.cpp)  # v2.0.4 A: command recommender
 add_icmg_test(test_flow_registry tests/core/test_flow_registry.cpp)  # v2.0.4 B: composite flows
 add_icmg_test(test_transcript_extract tests/core/test_transcript_extract.cpp)  # v2.0.4 auto-record prompt-history
