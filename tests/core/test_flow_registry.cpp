@@ -42,6 +42,15 @@ TEST("flow: substituteArg replaces {ARG} with the trailing argument") {
     ASSERT_TRUE(found);
 }
 
+TEST("flow: flowNeedsArg is true for a flow with {ARG}, false otherwise") {
+    const Flow* needsArg = findFlow("change-done");   // has wflog add {ARG}
+    const Flow* noArg = findFlow("sanity");           // doctor + health, no {ARG}
+    ASSERT_TRUE(needsArg != nullptr);
+    ASSERT_TRUE(noArg != nullptr);
+    ASSERT_TRUE(flowNeedsArg(*needsArg));
+    ASSERT_TRUE(!flowNeedsArg(*noArg));
+}
+
 TEST("flow: substituteArg leaves arg-free flows unchanged") {
     const Flow* f = findFlow("sanity");
     ASSERT_TRUE(f != nullptr);

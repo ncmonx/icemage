@@ -40,6 +40,16 @@ inline const Flow* findFlow(const std::string& name) {
     return nullptr;
 }
 
+// True if any step contains the "{ARG}" placeholder, i.e. the flow needs a trailing
+// argument. Running such a flow without one would inject an empty token (e.g.
+// `wflog add ""` -> a junk empty entry), so the CLI must require the arg.
+inline bool flowNeedsArg(const Flow& f) {
+    for (const auto& step : f.steps)
+        for (const auto& tok : step)
+            if (tok == "{ARG}") return true;
+    return false;
+}
+
 // Return a copy of `steps` with every "{ARG}" token replaced by `arg`.
 inline std::vector<std::vector<std::string>>
 substituteArg(const std::vector<std::vector<std::string>>& steps, const std::string& arg) {
