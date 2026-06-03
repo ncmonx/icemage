@@ -2212,3 +2212,12 @@ Decisions:
 - 3 bugs found live during marathon hunt (flow-arg, prompt-capture perf, shrink cross-ref). ctest 1402->1406. ver 2.0.5. All smoke-verified (flow reject rc=1, shrink no-pipe rc=0 no hang).
 Rejected: shipping (HOLD per cadence rule); editing build.ps1 without asking (got permission first).
 Open: v2.0.5 accumulating LOCAL. Backlog: 11 remaining pipe-reader cin (user-invoke, low risk), WASM v2.1, TE2.
+
+## 2026-06-03 15:10 [saved]
+Goal: add v2-roadmap feature to v2.0.5 batch (HOLD LOCAL).
+Decisions:
+- qa-frequent (v2 roadmap pillar 4): clusterSimilar() greedy word-set-Jaccard clustering (pure, read-only) + `icmg profile qa-frequent [--count N] [--json]` surfaces recurring prompts from auto-recorded prompt_history as skill candidates. Closes loop: prompt-capture records -> qa-suggest reuses -> qa-frequent detects -> profile add promotes. +5 TDD, ctest 1406->1411. Smoke OK (3x cluster detected + promote hint).
+- v2.0.5 batch now = 6 fixes + 1 feature, ALL build+verify+commit LOCAL (ship-cadence #30922, no CI yet).
+- LESSON (#fail): adding a test source does NOT need build.ps1 -Reconfigure (nukes cache -> 10min vulkan rebuild); incremental suffices. Reconfigure only for version bump / CMake option change.
+Rejected: persona-FTS Task4 (low value at small scale + trigger/rowid subtlety risky under fatigue -> deferred); shipping (HOLD per cadence).
+Open: v2.0.5 accumulating. Backlog: 11 pipe-reader cin, WASM v2.1, TE2, profile-FTS.
