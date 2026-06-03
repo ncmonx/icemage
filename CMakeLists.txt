@@ -725,6 +725,7 @@ add_icmg_test(test_profile_key tests/core/test_profile_key.cpp)  # profile-store
 add_icmg_test(test_profile_store tests/core/test_profile_store.cpp)  # profile-store CRUD
 add_icmg_test(test_prompt_history tests/core/test_prompt_history.cpp)  # prompt->response recall
 add_icmg_test(test_prompt_suggest tests/core/test_prompt_suggest.cpp)  # v2.0.4 active reuse: Jaccard scorer + gated suggest
+add_icmg_test(test_command_suggest tests/core/test_command_suggest.cpp)  # v2.0.4 A: command recommender
 add_icmg_test(test_mode tests/core/test_mode.cpp)  # v2.0.4 mode banner persona-DB contract
 add_icmg_test(test_cross_turn_dedup tests/core/test_cross_turn_dedup.cpp)  # v2.0.0 C2 dedup
 add_icmg_test(test_structural_trim tests/core/test_structural_trim.cpp)  # v2.0.0 C6 tool-trim
