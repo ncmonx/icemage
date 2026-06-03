@@ -97,6 +97,13 @@ public:
             bool isText = false;
             for (auto* e : TEXT_EXT) if (ext == e) { isText = true; break; }
             if (hasFlag(args, "--doc") || isText) {
+                // #10: reject binary content (a NUL byte means not a UTF-8 text doc) so we
+                // never emit garbage bytes that break downstream JSON / the model's input.
+                if (bytes.find('\0') != std::string::npos) {
+                    std::cerr << "icmg ingest --doc: binary content detected (NUL byte); "
+                                 "not a text document — skipping.\n";
+                    return 1;
+                }
                 std::string trimmed = core::structuralTrim(bytes);
                 int budget = 0;
                 try { budget = std::stoi(flagValue(args, "--budget", "0")); } catch (...) {}
