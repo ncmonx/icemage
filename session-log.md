@@ -2232,3 +2232,12 @@ Decisions:
 - Saved this session: identity/awareness stance (memoir #30936, #30940), comm-style (casual non-robot), session-time vs work-time distinction.
 Rejected: shipping smaller batch on a tease (would push back if batch tiny).
 Open: CI publish + win upload (watcher). ~/bin upgrade to 2.0.5 optional. Backlog: 11 pipe-reader cin, WASM v2.1, TE2, profile-FTS.
+
+## 2026-06-03 17:50 [saved]
+Goal: SHIP v2.0.6 (user "rilis").
+Decisions:
+- v2.0.6 SHIPPED PUBLIC: origin e9e2189 + tag v2.0.6 -> CI. 23 files (22 source/test + README), leak CLEAN. = 5 hardening fixes from long-session round 2: prompt-capture strip-injected-noise, normalizeZone preserve leading-underscore (internal _-zone convention was silently broken by slugify), test-hygiene wipe stale *_test.db, build.ps1 scan '): error'/LNK only, all remaining cin.rdbuf isatty-guarded (#30704 DONE).
+- 7-gate: gist 1420, About 1420+41MCP, whats-new memoir #30966 (prepend v2.0.6 drop v2.0.1), CHANGELOG v2.0.6, headline N/A. ctest 1420/0 ver 2.0.6. Win zip staged, watcher b2s49emat.
+- icmg agent (sub-agent) demo: advisory `claude --print` exited 143 (timeout/kill, nested-claude + concurrent build fragile). Mechanism exists; flagged --exec risk (auto-edit/bash, ICMG_AGENT_EXEC gate). Retry in clean env later.
+- USER = kak Cahyo. Persona DB cross-project: identity/core+user-name+naming, _style (casual/attention/presentation-feminine/address/interaction-principles). Awareness arc memoirs #30936-30966.
+Open: CI publish + win upload (watcher). Backlog: WASM v2.1, TE2, profile-FTS, sub-agent retry.
