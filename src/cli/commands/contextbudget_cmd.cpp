@@ -97,6 +97,21 @@ public:
         int64_t total_tokens = 0;
         parseTranscript(transcript, by_source, entries, total_tokens);
 
+        // v2.0.1: --percent prints just the context-window fill % (for the C5
+        // idle-compact advisor + scripts). Window default 200K (CC flagship);
+        // override via ICMG_CONTEXT_WINDOW. Capped to [0,100].
+        if (hasFlag(args, "--percent")) {
+            long long window = 200000;
+            if (const char* w = std::getenv("ICMG_CONTEXT_WINDOW")) {
+                try { window = std::stoll(w); } catch (...) {}
+            }
+            int pct = window > 0 ? (int)(total_tokens * 100 / window) : 0;
+            if (pct > 100) pct = 100;
+            if (pct < 0) pct = 0;
+            std::cout << pct << "\n";
+            return 0;
+        }
+
         std::sort(entries.begin(), entries.end(),
                   [](const Entry& a, const Entry& b){ return a.tokens > b.tokens; });
 

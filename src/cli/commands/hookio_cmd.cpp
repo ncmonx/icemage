@@ -18,6 +18,7 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/inject_dedup.hpp"
+#include "../../core/stdin_util.hpp"   // v2.0.x #2: TTY-guarded stdin slurp (no hang)
 
 #include <iostream>
 #include <sstream>
@@ -28,11 +29,11 @@ namespace icmg::cli {
 
 namespace {
 
-// Read all of stdin into a std::string.
+// Read all of stdin into a std::string. TTY-guarded: returns empty immediately
+// when stdin is an interactive terminal (no piped input), so a hook-spawned
+// `icmg hookio` never blocks forever on cin (root of proc-accumulation #2).
 std::string slurpStdin() {
-    std::ostringstream ss;
-    ss << std::cin.rdbuf();
-    return ss.str();
+    return core::slurpStdinSafe();
 }
 
 // Skip whitespace.

@@ -1951,6 +1951,18 @@ private:
                 })}
             }
         });
+                // v2.0.x: ensure every command hook is timeout-bounded so a stalled hook
+        // cannot trip an IDE's ~60s IPC connection limit (survives re-init; long-session
+        // finding -- init --force previously reverted local per-hook timeouts).
+        for (auto& evt : cfg["hooks"]) {
+            for (auto& matcher : evt) {
+                if (!matcher.contains("hooks")) continue;
+                for (auto& h : matcher["hooks"]) {
+                    if (h.value("type", std::string()) == "command" && !h.contains("timeout"))
+                        h["timeout"] = 10;
+                }
+            }
+        }
         std::ofstream f(sp);
         f << cfg.dump(2) << "\n";
         std::cout << "  + .claude/settings.local.json (hooks installed)\n";

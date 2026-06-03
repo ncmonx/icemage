@@ -9,6 +9,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/stdin_util.hpp"   // v2.0.x #2: TTY-guarded stdin slurp (no hang)
 #include "../../imem/memory_store.hpp"
 #include <fstream>
 #include <iostream>
@@ -43,9 +44,7 @@ public:
         imem::MemoryStore mem(db);
 
         if (action == "capture") {
-            std::ostringstream buf;
-            buf << std::cin.rdbuf();
-            std::string raw = buf.str();
+            std::string raw = core::slurpStdinSafe();
             return capture(mem, raw);
         }
         if (action == "recall") {
