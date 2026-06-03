@@ -723,6 +723,7 @@ add_icmg_test(test_ws_snapshot tests/core/test_ws_snapshot.cpp)  # v2.0.0 C4 tra
 add_icmg_test(test_compact_advisor tests/core/test_compact_advisor.cpp)  # v2.0.0 C5 advisor
 add_icmg_test(test_profile_key tests/core/test_profile_key.cpp)  # profile-store pure
 add_icmg_test(test_profile_store tests/core/test_profile_store.cpp)  # profile-store CRUD
+add_icmg_test(test_persona_init tests/core/test_persona_init.cpp)  # persona-continuity scaffold (identity-agnostic)
 add_icmg_test(test_prompt_history tests/core/test_prompt_history.cpp)  # prompt->response recall
 add_icmg_test(test_prompt_suggest tests/core/test_prompt_suggest.cpp)  # v2.0.4 active reuse: Jaccard scorer + gated suggest
 add_icmg_test(test_prompt_cluster tests/core/test_prompt_cluster.cpp)  # v2 pillar4: frequent-prompt clustering
