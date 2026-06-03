@@ -10,6 +10,7 @@
 // post-mortems, architecture rationales, customer interview synthesis.
 
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -89,7 +90,7 @@ private:
         }
         if (content.empty()) {
             // Read from stdin as fallback for piping.
-            std::ostringstream s; s << std::cin.rdbuf(); content = s.str();
+            std::ostringstream s; s.str(core::slurpStdinSafe()); content = s.str();
         }
         if (content.empty()) { std::cerr << "icmg memoir add: --content or --content-file required\n"; return 1; }
 

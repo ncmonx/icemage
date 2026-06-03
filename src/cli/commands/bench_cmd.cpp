@@ -9,6 +9,7 @@
 // Output: human table by default; `--json` emits machine-parseable record.
 
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -225,7 +226,7 @@ public:
 
         if (action == "compress") {
             std::ostringstream buf;
-            buf << std::cin.rdbuf();
+            buf.str(core::slurpStdinSafe());
             std::string in = buf.str();
             auto cb = bench_compress(in, n);
             if (json_out) {

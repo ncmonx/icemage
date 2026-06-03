@@ -54,8 +54,11 @@ std::vector<QARow> PromptHistory::findSimilar(const std::string& user, const std
         pos = dash + 1;
     }
     if (where.empty()) return out;  // no usable terms
+    // Exclude internal/system zones (_mode, _passphrase, _style, ...) so reuse
+    // (qa-suggest) and qa-find similar never surface machinery as a "similar prompt".
     std::string sql = "SELECT zone,prompt,response,created_at FROM prompt_history "
-                      "WHERE user_id=? AND (" + where + ") ORDER BY created_at DESC LIMIT " +
+                      "WHERE user_id=? AND zone NOT LIKE '\\_%' ESCAPE '\\' AND (" + where +
+                      ") ORDER BY created_at DESC LIMIT " +
                       std::to_string(limit);
     db_.query(sql, params, [&](const Row& r) {
         if (r.size() >= 4) out.push_back({r[0], r[1], r[2], std::stoll(r[3])});

@@ -11,6 +11,7 @@
 //   icmg tokens --help
 
 #include "../base_command.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/token_counter.hpp"
 #include <filesystem>
@@ -65,7 +66,7 @@ public:
         // No path: read stdin
         if (positional.empty()) {
             std::ostringstream ss;
-            ss << std::cin.rdbuf();
+            ss.str(core::slurpStdinSafe());
             std::string text = ss.str();
             size_t tokens = core::estimateTokens(text);
             size_t bytes  = text.size();
