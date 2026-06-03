@@ -4,6 +4,7 @@
 // Content-neutral: stores whatever text the user supplies (work profiles, skills, notes).
 #include "db.hpp"
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace icmg::core {
@@ -23,6 +24,8 @@ public:
     std::vector<ProfileRow> listZone(const std::string& user, const std::string& zone);
     std::vector<ProfileRow> search(const std::string& user, const std::string& query); // LIKE fallback
     void forget(const std::string& user, const std::string& zone, const std::string& key);
+    // Distinct zones with entry counts for a user, busiest first.
+    std::vector<std::pair<std::string,int>> zoneCounts(const std::string& user);
 private:
     Db& db_;
     void ensure();

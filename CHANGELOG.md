@@ -4,6 +4,10 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.0.3
+
+**Governor focus mode, prompt-history pagination, and unified zone browsing.** `icmg govern --focus <task>` biases the injected working-set toward what you're working on (the recall query is overridden), so the budget is spent on the task at hand. `icmg profile qa-list --limit N` paginates the prompt history, and `--json` pairs with both `qa-list` and `qa-find` for scripting. `icmg profile zones` now lists both profile/skill zones AND prompt-history zones with their entry counts, so the whole cross-project persona store is navigable at a glance. Plus two fixes from continued long-session testing: `govern advise --fill` clamps nonsense values to `[0,100]`, and `qa-add` / `profile add` print the normalized (slugified) zone so what you see matches what is stored. Full automated suite passes (1374 checks).
+
 ## v2.0.2
 
 **Prompt-history CRUD, an active idle-compact advisor, and zone browsing.** Building on v2.0.0's prompt→response history, this round completes its lifecycle and activates a governor piece. `icmg profile qa-list` browses stored prompts (`--json` for scripts), `qa-forget` deletes one, and `profile zones` shows each zone with its prompt count — so the cross-project prompt corpus is navigable, not just searchable. The **idle-compact advisor (C5)** is now wired into the installed Stop hook: at the end of a turn, when context fill is high, it nudges you to `/compact` at a natural break instead of waiting for the mid-task wall (reads `icmg context-budget --percent`; opt out with `ICMG_NO_COMPACT_ADVISE=1`). Full automated suite passes (1373 checks).
