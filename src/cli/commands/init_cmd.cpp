@@ -18,6 +18,10 @@
 #include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
 #include "../../core/global_db.hpp"
+#include "../../core/persona_db.hpp"
+#include "../../core/profile_store.hpp"
+#include "../../core/persona_template.hpp"
+#include "../../core/user_identity.hpp"
 #include "../../core/cron_store.hpp"
 #include "../../core/schedule_helper.hpp"
 #include "../../core/service_install.hpp"
@@ -506,7 +510,7 @@ fi
 [[ "$HAS_CHANGES" = "false" ]] && exit 0
 LAST=$(icmg wflog recent --limit 1 2>/dev/null | head -1)
 [[ -n "$LAST" ]] && exit 0
-icmg hookio emit Stop --ctx "WFLOG: session had changes — log decisions: icmg wflog save --goal \"...\" --decisions \"...\"" 2>/dev/null || true
+icmg hookio emit Stop --ctx "WFLOG: session had changes — log decisions: icmg wflog save --goal \"...\" --decisions \"...\". PERSONA: if this session held a meaningful moment (decision, personal talk, milestone, conflict/resolution), refresh your feeling -- icmg profile add --zone _feeling --key feeling-latest --content \"...\" and append --key feeling-log-<date>. Skip if it was routine technical work." 2>/dev/null || true
 )BASH";
 
 // v0.42.0: PreToolUse rule enforcement â€” call rule-daemon via `icmg rule-eval`.
@@ -2074,6 +2078,15 @@ private:
             }
         }
 
+        // Persona-continuity: seed identity-agnostic continuity zones (idempotent -> user content safe).
+        {
+            core::Db& pdb = core::personaDbAvailable() ? core::personaDb()
+                                                       : core::GlobalDb::instance().db();
+            core::ProfileStore pps(pdb);
+            int seeded = core::scaffoldPersona(pps, core::currentUser(), /*force=*/false);
+            if (seeded > 0)
+                std::cout << "  + persona: " << seeded << " continuity zones seeded\n";
+        }
         return n;
     }
 
