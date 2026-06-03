@@ -81,4 +81,15 @@ void PromptHistory::forget(const std::string& user, const std::string& zone,
             {user, normalizeZone(zone), slugify(prompt)});
 }
 
+std::vector<std::pair<std::string,int>> PromptHistory::zoneCounts(const std::string& user) {
+    std::vector<std::pair<std::string,int>> out;
+    db_.query("SELECT zone, COUNT(*) FROM prompt_history WHERE user_id=? "
+              "GROUP BY zone ORDER BY COUNT(*) DESC",
+              {user},
+              [&](const Row& r) {
+                  if (r.size() >= 2) out.emplace_back(r[0], std::stoi(r[1]));
+              });
+    return out;
+}
+
 }  // namespace icmg::core

@@ -4,6 +4,7 @@
 // Lets a repeated/similar prompt reuse the past solution instead of re-deriving it.
 #include "db.hpp"
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace icmg::core {
@@ -22,6 +23,8 @@ public:
     std::vector<QARow> listZone(const std::string& user, const std::string& zone, int limit = 100);
     // Delete a stored prompt (matched by normalized prompt key within a zone).
     void forget(const std::string& user, const std::string& zone, const std::string& prompt);
+    // Distinct zones with prompt counts for a user, busiest first.
+    std::vector<std::pair<std::string,int>> zoneCounts(const std::string& user);
 private:
     Db& db_;
     void ensure();

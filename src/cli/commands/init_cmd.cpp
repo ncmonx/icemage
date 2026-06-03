@@ -1947,7 +1947,10 @@ private:
             {
                 {"hooks", json::array({
                     {{"type", "command"},
-                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook stop"}}
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; exec icmg hook stop"}},
+                    {{"type", "command"},
+                     {"timeout", 10},
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; [ -n \"$ICMG_NO_COMPACT_ADVISE\" ] && exit 0; FILL=$(icmg context-budget --percent 2>/dev/null | tr -dc '0-9' | head -c 3); [ -z \"$FILL\" ] && exit 0; MSG=$(icmg govern advise --fill \"$FILL\" 2>/dev/null); [ -z \"$MSG\" ] && exit 0; printf '%s' \"$MSG\" | icmg hookio emit Stop --ctx-stdin"}}
                 })}
             }
         });

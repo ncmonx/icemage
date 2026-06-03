@@ -66,6 +66,18 @@ TEST("prompt_history: forget removes a stored prompt") {
     ASSERT_TRUE(!ph.recallExact("u_fg", "z", "delete me prompt", r));
 }
 
+TEST("prompt_history: zoneCounts groups by zone busiest-first") {
+    Db db(phDb());
+    PromptHistory ph(db);
+    ph.record("u_zc", "big",   "p1", "r");
+    ph.record("u_zc", "big",   "p2", "r");
+    ph.record("u_zc", "small", "p3", "r");
+    auto zc = ph.zoneCounts("u_zc");
+    ASSERT_TRUE(zc.size() >= (size_t)2);
+    ASSERT_EQ(zc[0].first, std::string("big"));   // busiest first
+    ASSERT_EQ(zc[0].second, 2);
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
