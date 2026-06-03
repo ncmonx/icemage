@@ -12,6 +12,7 @@
 #include "../../core/profile_store.hpp"
 #include "../../core/prompt_history.hpp"
 #include "../../core/user_identity.hpp"
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -67,6 +68,40 @@ public:
             for (auto& h : hits)
                 std::cout << "  ~ " << h.prompt.substr(0, 60) << " => "
                           << h.response.substr(0, 80) << "\n";
+            return 0;
+        }
+        if (sub == "qa-list") {
+            bool js = false;
+            for (const auto& a : args) if (a == "--json") js = true;
+            core::PromptHistory ph(db);
+            auto rows = ph.listZone(user, zone, 200);  // empty zone = all zones
+            if (js) {
+                nlohmann::json arr = nlohmann::json::array();
+                for (const auto& r : rows)
+                    arr.push_back({{"zone", r.zone}, {"prompt", r.prompt},
+                                   {"response", r.response}, {"created_at", r.created_at}});
+                std::cout << arr.dump(2) << "\n";
+                return 0;
+            }
+            std::cout << "[qa-list] " << rows.size() << " prompt(s)"
+                      << (zone.empty() ? "" : " in zone " + zone) << ":\n";
+            for (const auto& r : rows)
+                std::cout << "  [" << r.zone << "] " << r.prompt.substr(0, 70) << "\n";
+            return 0;
+        }
+        if (sub == "qa-forget") {
+            if (prompt.empty()) { std::cerr << "need --prompt\n"; return 1; }
+            core::PromptHistory ph(db);
+            ph.forget(user, zone, prompt);
+            std::cout << "[qa-forget] done.\n";
+            return 0;
+        }
+        if (sub == "zones") {
+            core::PromptHistory ph(db);
+            auto zc = ph.zoneCounts(user);
+            std::cout << "[zones] " << zc.size() << " prompt-history zone(s):\n";
+            for (auto& z : zc)
+                std::cout << "  " << z.first << "  (" << z.second << ")\n";
             return 0;
         }
 

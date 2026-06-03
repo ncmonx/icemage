@@ -4,6 +4,10 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.0.2
+
+**Prompt-history CRUD, an active idle-compact advisor, and zone browsing.** Building on v2.0.0's prompt→response history, this round completes its lifecycle and activates a governor piece. `icmg profile qa-list` browses stored prompts (`--json` for scripts), `qa-forget` deletes one, and `profile zones` shows each zone with its prompt count — so the cross-project prompt corpus is navigable, not just searchable. The **idle-compact advisor (C5)** is now wired into the installed Stop hook: at the end of a turn, when context fill is high, it nudges you to `/compact` at a natural break instead of waiting for the mid-task wall (reads `icmg context-budget --percent`; opt out with `ICMG_NO_COMPACT_ADVISE=1`). Full automated suite passes (1373 checks).
+
 ## v2.0.1
 
 **Long-session hardening: a hook can't hang the editor, and the init template bounds every hook.** Two fixes surfaced by a multi-hour stress session: (1) `icmg hookio` / `icmg correction` (via a shared `slurpStdinSafe`) now guard `std::cin` with an isatty check — a hook-spawned icmg invoked without piped input returns immediately instead of blocking forever on `cin.rdbuf()`, the root cause of process accumulation and hangs under sustained hook-spawn load; (2) `icmg init --install-hooks` now writes a `timeout` on every command hook in `settings.local.json`, so the editor-connection-timeout protection survives re-init/upgrade and ships to all users (previously a re-init silently reverted local timeout edits). Adds `icmg context-budget --percent`, which prints just the context-window fill percentage (override the window via `ICMG_CONTEXT_WINDOW`) — the signal the idle-compact advisor consumes. Full automated suite passes (1370 checks).
