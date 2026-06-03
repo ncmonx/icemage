@@ -30,7 +30,7 @@ public:
         std::string intent;
         int top = 5;
         bool js = false, hook = false;
-        double gate = 0.45;  // hook mode: only surface a hint at/above this score
+        double gate = 0.5;  // hook mode: fire only on a strong (name-level) match
         for (size_t i = 0; i < args.size(); ++i) {
             if (args[i] == "--top" && i + 1 < args.size()) {
                 try { top = std::stoi(args[++i]); } catch (...) {}
