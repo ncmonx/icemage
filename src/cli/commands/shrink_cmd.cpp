@@ -14,6 +14,7 @@
 #include "../base_command.hpp"
 #include "../../core/compress_select.hpp"  // v2.0.0 TE2 salience
 #include "../../core/registry.hpp"
+#include "../../core/stdin_util.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../compress/compressor.hpp"
@@ -243,8 +244,7 @@ public:
             std::ostringstream ss; ss << f.rdbuf();
             input = ss.str();
         } else {
-            std::ostringstream ss; ss << std::cin.rdbuf();
-            input = ss.str();
+            input = core::slurpStdinSafe();  // isatty-guarded: no-pipe invoke returns instead of hanging
         }
 
         int threshold = 8192;
