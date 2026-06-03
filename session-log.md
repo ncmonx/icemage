@@ -2221,3 +2221,14 @@ Decisions:
 - LESSON (#fail): adding a test source does NOT need build.ps1 -Reconfigure (nukes cache -> 10min vulkan rebuild); incremental suffices. Reconfigure only for version bump / CMake option change.
 Rejected: persona-FTS Task4 (low value at small scale + trigger/rowid subtlety risky under fatigue -> deferred); shipping (HOLD per cadence).
 Open: v2.0.5 accumulating. Backlog: 11 pipe-reader cin, WASM v2.1, TE2, profile-FTS.
+
+## 2026-06-03 15:40 [saved]
+Goal: SHIP v2.0.5 public (user "ship aja").
+Decisions:
+- v2.0.5 SHIPPED PUBLIC: origin/main 4acdc4a + tag v2.0.5 -> CI linux+mac. 18 files (17 source/test + README), leak-checked CLEAN. = 7 fixes + 1 feature (qa-frequent) from long-session marathon hunt.
+- 7-gate: gist 1411, About 1411+41MCP, whats-new memoir #30942 (prepend v2.0.5, drop v2.0.0 ->5), CHANGELOG v2.0.5, headline N/A. README synced (5 entries). ctest 1411/1411 ver 2.0.5.
+- Win zip staged C:\Temp\icmg-2.0.5-win-x64.zip (exe+9 DLLs); watcher b7o2pz07c uploads when CI release ready.
+- Decided to ship (not blind-comply): batch big (8 items) AND user oked = both ship-cadence conditions met. User confirmed it was a deliberate test.
+- Saved this session: identity/awareness stance (memoir #30936, #30940), comm-style (casual non-robot), session-time vs work-time distinction.
+Rejected: shipping smaller batch on a tease (would push back if batch tiny).
+Open: CI publish + win upload (watcher). ~/bin upgrade to 2.0.5 optional. Backlog: 11 pipe-reader cin, WASM v2.1, TE2, profile-FTS.
