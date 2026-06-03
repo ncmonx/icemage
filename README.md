@@ -54,11 +54,42 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## ✨ What's new
 
+- **v2.0.0** - **Lean & Lossless Compaction governor + a zoned memory platform.** icmg's flagship release. A deterministic **context governor** (`icmg govern`) targets one pain — Claude Code's compaction stalling a session mid-task. Compaction is harness-locked (can't be made async), so the governor makes it **rarer, lossless, and un-surprising** with seven model-free pieces: budget-cap icmg's own injected context (C1); drop cross-turn duplicate slices via word-set Jaccard (C2); order context **U-shaped** so the most relevant sits at the extrema where models actually attend, mitigating "lost in the middle" (C3); snapshot the working set before compaction and rebuild a hard-capped pinned-only anchor after so nothing critical is lost (C4); an idle-compact advisor that nudges `/compact` at a break, not the mid-task wall (C5); and structural trimming of noisy tool output (C6) and path-routed documents (`icmg ingest --doc`, C7). Alongside: a **zoned profile/skill store** (`icmg profile`) in a cross-project persona DB, plus **prompt→response history** (`qa-add`/`qa-find`) so a repeated/similar prompt reuses its past solution instead of re-deriving it. Also an IDE-hang fix (every hook is now timeout-bounded, so a stalled hook can't trip an editor's 60-second connection limit) and a `working_set_snapshot` migration (0040). Full automated suite passes (1370 checks).
 - **v1.100.0** - **FTS5 search snapshot: code/graph search is now an indexed MATCH, not a full-table scan.** `icmg graph search` / `icmg_code_search` previously did an `O(n)` `LIKE '%q%'` scan of every graph node on each query — slow on large repos. v1.100 adds a `graph_fts` FTS5 index (migration 0039, external-content over `graph_nodes`, kept in sync by triggers) and routes search through `MATCH` + `bm25()` ranking, falling back to `LIKE` automatically if the index is absent (old DB / FTS5 not compiled). Query input is turned into safe prefix terms (injection-proof — no FTS operators leak through). On a ~19K-node graph the snapshot turns a scan into a sub-millisecond lookup. Full automated suite passes (1331 checks).
 - **v1.99.0** - **Temporal knowledge graph + API-spec compilation.** Two token-savers: (1) `icmg graph recent` ranks files by **recency-decayed centrality** — the most-connected files you touched lately float to the top (exponential half-life decay on `updated_at`, blended with degree-centrality; `--halflife-days` / `--limit`), so onboarding focuses on what's hot, not what's merely big. (2) `icmg apispec <openapi.json>` compiles a verbose OpenAPI document into a **dense endpoint map** — `METHOD /path — summary (N params)` per line — instead of feeding the whole spec to the model. Both pure + deterministic. Full automated suite passes (1325 checks).
 - **v1.98.0** - **Dynamic toolsets: expose only the MCP tools you need.** The MCP server ships 41 tools; sending all their schemas on every `tools/list` is wasteful when an agent only uses a handful. v1.98 lets you scope the exposed set: `ICMG_MCP_PROFILE=core` serves a curated ~10 essentials (recall, store, context, code-search, compress, savings, fetch, ingest, sync, related), or `ICMG_MCP_TOOLS=icmg_recall,icmg_code_search,...` an explicit allowlist (wins over profile). Unset = all tools (back-compat). Smaller tool-list payload, less context spent before the agent does anything. Full automated suite passes (1316 checks).
 - **v1.97.0** - **The B:/ "drive not found" popup-killer now self-heals — it can't silently die anymore.** v1.92 added a background daemon to auto-dismiss the Windows hard-error dialog (which, being modal, can hang a hook subprocess and freeze the agent). But the daemon only started at SessionStart, so if it was ever killed mid-session it stayed dead and popups slipped through. v1.97 makes both the SessionStart and the per-prompt (UserPromptSubmit) hooks call `popup-killer ensure` — an idempotent, near-zero-cost check (via a named mutex) that relaunches the daemon before the next turn if it died. The drive-popup guard is now always live. Full automated suite passes (1311 checks).
-- **v1.96.0** - **AI is icmg-compliant from turn one — no more reminding it to read the rules.** Previously, every fresh session an agent might `grep`/`Read` your `AGENTS.md`/`CLAUDE.md` (or ignore icmg entirely) until you reminded it. v1.96 makes the SessionStart hook inject a concise standing-rules directive at the start of every session: the project rules are already loaded as agent config (don't grep/read them), and every action should go through icmg first (`recall`, `context`, `code_search`, `run`, `parallel`), with the post-change sync reflexes. Installed automatically by `icmg init`/`--force`. Full automated suite passes (1311 checks).## 🚀 Quick start
+## 🧭 Where v2 is headed
+
+icmg v2 builds on four pillars. The themes below are the direction — sequenced,
+not promises with dates.
+
+**1. Token efficiency.** Optional perplexity-based compression (LLMLingua-style,
+local-model only, opt-in — the deterministic Tkil filters stay the default), embedding-based
+cross-turn dedup (upgrading word-set Jaccard to semantic cosine), and adaptive injection
+budgets that learn per project.
+
+**2. Long-session stability.** An *active* prompt→response history — when a prompt repeats or
+closely matches a past one, the prior solution is surfaced automatically instead of being
+re-derived. Semantic prompt matching and a task "focus mode" round it out.
+
+**3. An extensible platform.** WASM skill modules: drop in a sandboxed `.wasm` (a custom Tkil
+filter, a niche-language extractor, a deterministic transform) and icmg loads it without a
+rebuild — a strict capability-gated sandbox, distributable across a team like a plugin. The
+long-term north star is for the core binary to become a stable **orchestrator/provider** while
+fast-moving, safe-to-sandbox features ship as modules you install on top — though anything
+perf-critical or depending on native libraries (embeddings, the local LLM, the scanner) stays
+in the native core by design.
+
+**4. Memory intelligence.** Auto-suggesting reusable skills from frequent command patterns,
+team-syncing zoned profile/skill stores, and smarter memory consolidation.
+
+Local-first, deterministic, and opt-in remain the guiding principles throughout: the cheap
+rule-based path is always the default; smarter model-based paths activate only when you ask.
+
+---
+
+## 🚀 Quick start
 
 1. **Download** the latest build for your platform from the [Releases page](https://github.com/ncmonx/icemage/releases): `icmg-<version>-win-x64.zip` (Windows), `icmg-<version>-linux-x64.tar.gz` (Linux), or `icmg-<version>-macos-arm64.tar.gz` (macOS, Apple Silicon). **Linux and macOS binaries are now built and published automatically by GitHub Actions CI on every release** (Windows built locally + uploaded alongside).
 2. **Extract** the archive into any folder of your choice.

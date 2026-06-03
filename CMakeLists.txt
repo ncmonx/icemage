@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 1.100.0 LANGUAGES CXX C)
+project(icmg VERSION 2.0.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -718,6 +718,14 @@ add_icmg_test(test_agent_lease  tests/core/test_agent_lease.cpp)    # v2.0.0 Pha
 add_icmg_test(test_db_key_hex   tests/core/test_db_key_hex.cpp)     # v1.90.0 sec (CodeQL sql-inj: hex key guard)
 add_icmg_test(test_summary_confidence tests/core/test_summary_confidence.cpp)  # v2.0.0 TE1
 add_icmg_test(test_compress_select tests/core/test_compress_select.cpp)  # v2.0.0 TE2
+add_icmg_test(test_working_set tests/core/test_working_set.cpp)  # v2.0.0 C1+C3 governor core
+add_icmg_test(test_ws_snapshot tests/core/test_ws_snapshot.cpp)  # v2.0.0 C4 transition
+add_icmg_test(test_compact_advisor tests/core/test_compact_advisor.cpp)  # v2.0.0 C5 advisor
+add_icmg_test(test_profile_key tests/core/test_profile_key.cpp)  # profile-store pure
+add_icmg_test(test_profile_store tests/core/test_profile_store.cpp)  # profile-store CRUD
+add_icmg_test(test_prompt_history tests/core/test_prompt_history.cpp)  # prompt->response recall
+add_icmg_test(test_cross_turn_dedup tests/core/test_cross_turn_dedup.cpp)  # v2.0.0 C2 dedup
+add_icmg_test(test_structural_trim tests/core/test_structural_trim.cpp)  # v2.0.0 C6 tool-trim
 add_icmg_test(test_trace_parse tests/core/test_trace_parse.cpp)  # v2.0.0 TE3
 add_icmg_test(test_repo_skeleton tests/graph/test_repo_skeleton.cpp)  # v2.0.0 externals (repo-compact)
 add_icmg_test(test_temporal     tests/graph/test_temporal.cpp)      # v2.0.0 externals (temporal KG)

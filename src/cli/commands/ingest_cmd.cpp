@@ -11,7 +11,10 @@
 #include "../../core/exec_utils.hpp"
 #include "../../graph/graph_store.hpp"   // v2.0.0 Phase 3: media -> graph node
 #include "../../graph/media_node.hpp"    // v2.0.0 Phase 3: buildMediaNode
+#include "../../core/structural_trim.hpp" // v2.0.0 C7: doc intake-trim
+#include "../../core/compress_select.hpp" // v2.0.0 C7: budget-fit salience
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -23,6 +26,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -77,6 +81,50 @@ public:
 
         std::string hash = fnv1a_hex(bytes);
         int64_t bytes_in = (int64_t)bytes.size();
+
+        // v2.0.0 C7: text-document intake-trim (path-routed; UI attachments uninterceptable).
+        // --doc forces it; otherwise auto-detect by text extension. Strips boilerplate/dup
+        // lines (structuralTrim) then optional budget-fit salience selection. No OCR/sidecar.
+        {
+            std::string ext;
+            auto dot = path.find_last_of('.');
+            if (dot != std::string::npos) {
+                ext = path.substr(dot + 1);
+                for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
+            }
+            static const char* TEXT_EXT[] = {"txt","md","markdown","log","json","yaml",
+                                             "yml","xml","csv","rst","ini","toml","cfg"};
+            bool isText = false;
+            for (auto* e : TEXT_EXT) if (ext == e) { isText = true; break; }
+            if (hasFlag(args, "--doc") || isText) {
+                std::string trimmed = core::structuralTrim(bytes);
+                int budget = 0;
+                try { budget = std::stoi(flagValue(args, "--budget", "0")); } catch (...) {}
+                if (budget > 0) {
+                    std::vector<std::string> lines; std::vector<double> scores;
+                    std::istringstream ls(trimmed); std::string ln;
+                    while (std::getline(ls, ln)) {
+                        lines.push_back(ln);
+                        scores.push_back(core::infoScore(ln));
+                    }
+                    trimmed = core::selectByBudget(lines, scores, (size_t)budget, "\n");
+                }
+                int64_t out_bytes = (int64_t)trimmed.size();
+                if (!out_path.empty()) { std::ofstream of(out_path, std::ios::binary); of << trimmed; }
+                if (json_out) {
+                    nlohmann::json j;
+                    j["kind"] = "document"; j["bytes_in"] = bytes_in;
+                    j["bytes_out"] = out_bytes; j["text"] = trimmed;
+                    std::cout << j.dump(2) << "\n";
+                } else {
+                    std::cout << trimmed << "\n";
+                    std::cerr << "[ingest --doc] " << bytes_in << "B -> " << out_bytes << "B ("
+                              << (bytes_in ? (100 - out_bytes * 100 / bytes_in) : 0)
+                              << "% trimmed)\n";
+                }
+                return 0;
+            }
+        }
 
         if (raw) {
             return emitMetadata(hash, bytes_in, json_out, out_path);
