@@ -2185,3 +2185,13 @@ Decisions:
 - active prompt-history (v2.0.4): promptJaccard pure scorer + PromptHistory::suggest gated reuse + `profile qa-suggest`. Hot-path: similar past prompt reuses past response.
 Rejected: mode in project DB (poisons per-project graph); async compaction (harness-locked); skipping tests (TDD).
 Open: v2.0.4 LOCAL (mode + qa-suggest committed, #10 prior); ship when user ready. Backlog: ~/bin upgrade for live mode-inject; cin.rdbuf sites #30704; WASM v2.1. Details state.md.
+
+## 2026-06-03 13:40 [saved]
+Goal: SHIP v2.0.4 public (user "ya push public sekarang").
+Decisions:
+- v2.0.4 = 5 features answering user "unused features = waste; make AI use all / interlink": (1) icmg suggest -- rank LIVE registry vs NL intent (promptJaccard), gated UserPromptSubmit hook auto-surfaces command/turn; (2) icmg flow -- named chains of EXISTING cmds (change-done/sanity/refresh, {ARG}, --dry-run, fail-fast); (3) icmg mode -- persona-DB session banner injected/turn; (4) icmg profile qa-suggest -- gated reuse + prompt-capture Stop-hook auto-records prompt->response to session-<date> zone (reuse self-builds); (5) #10 ingest binary-detect. ctest 1370->1402 (+32 TDD).
+- SHIPPED PUBLIC: origin/main 4af83cb (22 files selective fresh-tree, leak-checked CLEAN) + tag v2.0.4 -> CI linux+mac. whats-new memoir #30915 (prepend v2.0.4, drop v1.100 ->5). CHANGELOG v2.0.4. gist 1402. About 1402+41MCP. 7-gate ticked (headline N/A).
+- Win zip staged C:\Temp\icmg-2.0.4-win-x64.zip (exe 2.0.4 +9 DLLs, version-guard OK); watcher b9h7nhda4 uploads when CI release ready.
+- prompt-capture E2E verified: synthetic transcript -> record -> qa-suggest reuse 0.8.
+Rejected: adding a 227th silo command for unused-cmd problem (chose discoverability+interlink of existing); mode in project DB.
+Open: CI publish + win upload (auto-watcher). ~/bin self-upgrade pending (activates suggest/prompt-capture hooks live). Backlog: cin.rdbuf #30704, WASM v2.1, TE2 perplexity.
