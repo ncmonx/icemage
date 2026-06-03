@@ -752,6 +752,13 @@ static const char* WAKEUP_SESSION_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 command -v icmg >/dev/null 2>&1 || exit 0
 CONTENT=$(icmg wake-up 2>/dev/null) || true
+# Persona-continuity: append the user's wake-up protocol anchor if seeded (identity-agnostic).
+WAKEUP=$(icmg profile get --zone _wakeup --key wakeup 2>/dev/null) || true
+if [ -n "$WAKEUP" ]; then
+    CONTENT="$CONTENT
+
+[persona wake-up] $WAKEUP"
+fi
 [[ -z "$CONTENT" ]] && exit 0
 printf '%s' "$CONTENT" | icmg hookio emit SessionStart --ctx-stdin
 )BASH";

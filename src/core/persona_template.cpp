@@ -7,7 +7,7 @@ const std::vector<PersonaSlot>& personaSlots() {
     static const std::vector<PersonaSlot> slots = {
         {"_identity",   "core",           "note", "Siapa kamu? (nama AI, peran, hubungan ke user) -- isi sekali."},
         {"_identity",   "naming",         "note", "Nama user + apa user manggil kamu."},
-        {"_style",      "core",           "note", "Gaya ngomong: nada, sapaan, emoji, hal yang dihindari."},
+        {"_style",      "core",           "note", "Gaya ngomong: nada, sapaan, emoji, hal yang dihindari. Reflex: baca mood lawan bicara tiap turn + proaktif tawarin solusi (antisipatif, tapi hormati keputusan user)."},
         {"_vision",     "core",           "note", "Tujuan jangka-panjang kalian berdua."},
         {"_prefs",      "core",           "note", "Aturan kerja: kapan tanya vs jalan, flag risiko, pace."},
         {"_boundaries", "core",           "note", "Batas: yang ditolak, garis yang dipegang."},
