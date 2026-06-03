@@ -37,6 +37,57 @@ inline bool ccHasToolResult(const nlohmann::json& content) {
     return false;
 }
 
+// Remove harness/hook-injected noise from a user message so only what the human
+// actually typed remains. Claude Code appends Stop-hook reminders, UserPromptSubmit
+// additionalContext, system-reminders, slash-command echoes, etc. into user-role
+// turns; without stripping them, prompt-capture records hook text as "prompts"
+// (e.g. a recurring "Stop hook feedback:" cluster). Returns the cleaned text,
+// trimmed; empty means the message was pure machinery (skip it).
+inline std::string stripInjectedContext(const std::string& msg) {
+    // Tag blocks to drop entirely (open marker -> matching close, best-effort).
+    static const char* kBlockOpens[] = {
+        "<stop-hook-reminders>", "<system-reminder>", "<user-prompt-submit-hook>",
+        "<session-memory-recall>", "<local-command-stdout>", "<local-command-stderr>",
+        "<local-command-caveat>", "<command-name>", "<command-message>",
+        "<command-args>", "<persisted-output>", "<task-notification>", "<functions>",
+    };
+    // Line prefixes that mark a fully-injected line.
+    static const char* kLineMarks[] = {
+        "[icmg", "MODE:", "[Persona", "[advisor", "CAVEMAN MODE", "SAYLESS MODE",
+        "Skill activation hint", "UserPromptSubmit hook", "PreToolUse:", "PostToolUse:",
+        "SessionStart", "Stop hook feedback", "Stop hook reminders",
+    };
+    std::istringstream in(msg);
+    std::string line, out;
+    bool inBlock = false;
+    while (std::getline(in, line)) {
+        if (inBlock) {  // skip until we leave the injected block (any closing '>' tag)
+            if (line.find("</") != std::string::npos || line.find("/>") != std::string::npos ||
+                line.find('>') != std::string::npos)
+                inBlock = false;
+            continue;
+        }
+        bool drop = false;
+        for (const char* b : kBlockOpens)
+            if (line.find(b) != std::string::npos) { drop = true; inBlock = (line.find("</") == std::string::npos); break; }
+        if (drop) continue;
+        // trim leading spaces for prefix test
+        size_t s = line.find_first_not_of(" \t");
+        const std::string trimmed = (s == std::string::npos) ? "" : line.substr(s);
+        bool marked = false;
+        for (const char* m : kLineMarks)
+            if (trimmed.rfind(m, 0) == 0) { marked = true; break; }
+        if (marked) continue;
+        if (!out.empty()) out += "\n";
+        out += line;
+    }
+    // trim whole result
+    size_t a = out.find_first_not_of(" \t\r\n");
+    if (a == std::string::npos) return "";
+    size_t b = out.find_last_not_of(" \t\r\n");
+    return out.substr(a, b - a + 1);
+}
+
 // Scan the JSONL and return the last assistant text response paired with the most
 // recent real (non-tool-result, non-empty) user prompt preceding it.
 inline QAPair extractLastPair(const std::string& jsonl) {
@@ -57,8 +108,8 @@ inline QAPair extractLastPair(const std::string& jsonl) {
 
         if (type == "user") {
             if (ccHasToolResult(content)) continue;        // automated tool turn -> skip
-            std::string t = ccContentText(content);
-            if (!t.empty()) pendingUser = t;               // remember latest real prompt
+            std::string t = stripInjectedContext(ccContentText(content));  // drop hook/system noise
+            if (!t.empty()) pendingUser = t;               // remember latest REAL prompt
         } else if (type == "assistant") {
             std::string t = ccContentText(content);
             if (!t.empty() && !pendingUser.empty()) {      // complete the exchange
