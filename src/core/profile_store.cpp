@@ -59,4 +59,15 @@ void ProfileStore::forget(const std::string& user, const std::string& zone, cons
             {user, normalizeZone(zone), normalizeKey(key)});
 }
 
+std::vector<std::pair<std::string,int>> ProfileStore::zoneCounts(const std::string& user) {
+    std::vector<std::pair<std::string,int>> out;
+    db_.query("SELECT zone, COUNT(*) FROM profile_entries WHERE user_id=? "
+              "GROUP BY zone ORDER BY COUNT(*) DESC",
+              {user},
+              [&](const Row& r) {
+                  if (r.size() >= 2) out.emplace_back(r[0], std::stoi(r[1]));
+              });
+    return out;
+}
+
 }  // namespace icmg::core

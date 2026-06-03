@@ -48,6 +48,18 @@ TEST("profile_store: get missing -> false") {
     ASSERT_TRUE(!ps.get("u_none", "nope", "nope", c, k));
 }
 
+TEST("profile_store: zoneCounts groups by zone busiest-first") {
+    Db db(tmpDb());
+    ProfileStore ps(db);
+    ps.put("u_pzc", "alpha", "k1", "note", "x");
+    ps.put("u_pzc", "alpha", "k2", "note", "y");
+    ps.put("u_pzc", "beta",  "k3", "note", "z");
+    auto zc = ps.zoneCounts("u_pzc");
+    ASSERT_TRUE(zc.size() >= (size_t)2);
+    ASSERT_EQ(zc[0].first, std::string("alpha"));   // busiest first
+    ASSERT_EQ(zc[0].second, 2);
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

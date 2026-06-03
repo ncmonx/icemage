@@ -27,9 +27,12 @@ namespace icmg::cli {
 
 namespace {
 
-// Build icmg-injectable candidate sources from project memory.
-std::vector<core::Source> buildCandidates(imem::MemoryStore& mem) {
-    auto hits = mem.recall("decisions rules known-issue plan", 40, false);
+// Build icmg-injectable candidate sources from project memory. The recall query can be
+// focused on a task (--focus) to bias the working-set toward what you're working on.
+std::vector<core::Source> buildCandidates(
+        imem::MemoryStore& mem,
+        const std::string& query = "decisions rules known-issue plan") {
+    auto hits = mem.recall(query, 40, false);
     std::vector<core::Source> candidates;
     candidates.reserve(hits.size());
     for (const auto& h : hits) {
@@ -128,11 +131,13 @@ public:
         // ---- C1+C3+F1: report / budget ----
         bool report = false;
         int budget = 4000;
+        std::string focus = "decisions rules known-issue plan";  // --focus biases the recall
         for (size_t i = 0; i < args.size(); ++i) {
             if (args[i] == "--report") report = true;
             else if (args[i] == "--budget" && i + 1 < args.size()) budget = std::stoi(args[++i]);
+            else if (args[i] == "--focus" && i + 1 < args.size()) focus = args[++i];
         }
-        auto candidates = buildCandidates(mem);
+        auto candidates = buildCandidates(mem, focus);
 
         if (report) {
             int total = 0;

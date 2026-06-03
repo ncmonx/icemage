@@ -14,6 +14,7 @@
 #include "../../core/profile_key.hpp"   // normalizeZone for consistent display (#9)
 #include "../../core/user_identity.hpp"
 #include <nlohmann/json.hpp>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -88,9 +89,14 @@ public:
         }
         if (sub == "qa-list") {
             bool js = false;
-            for (const auto& a : args) if (a == "--json") js = true;
+            int lim = 200;
+            for (size_t i = 1; i < args.size(); ++i) {
+                if (args[i] == "--json") js = true;
+                else if (args[i] == "--limit" && i + 1 < args.size()) lim = std::atoi(args[++i].c_str());
+            }
+            if (lim < 1) lim = 1;
             core::PromptHistory ph(db);
-            auto rows = ph.listZone(user, zone, 200);  // empty zone = all zones
+            auto rows = ph.listZone(user, zone, lim);  // empty zone = all zones
             if (js) {
                 nlohmann::json arr = nlohmann::json::array();
                 for (const auto& r : rows)
@@ -113,10 +119,15 @@ public:
             return 0;
         }
         if (sub == "zones") {
+            core::ProfileStore ps(db);
+            auto pz = ps.zoneCounts(user);
+            std::cout << "[zones] profile/skill (" << pz.size() << "):\n";
+            for (auto& z : pz)
+                std::cout << "  " << z.first << "  (" << z.second << ")\n";
             core::PromptHistory ph(db);
-            auto zc = ph.zoneCounts(user);
-            std::cout << "[zones] " << zc.size() << " prompt-history zone(s):\n";
-            for (auto& z : zc)
+            auto qz = ph.zoneCounts(user);
+            std::cout << "[zones] prompt-history (" << qz.size() << "):\n";
+            for (auto& z : qz)
                 std::cout << "  " << z.first << "  (" << z.second << ")\n";
             return 0;
         }
