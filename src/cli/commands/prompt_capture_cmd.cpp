@@ -17,6 +17,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -51,11 +52,23 @@ public:
         } catch (...) { return 0; }
         if (transcriptPath.empty()) return 0;
 
-        std::ifstream f(transcriptPath, std::ios::binary);
+        // Read only the TAIL of the transcript: in a long session it grows to many
+        // MB, and re-reading + parsing all of it every turn (this is a Stop hook)
+        // would make each turn progressively slower. The last exchange is always at
+        // the end, so the last ~256 KB is plenty.
+        std::ifstream f(transcriptPath, std::ios::binary | std::ios::ate);
         if (!f) return 0;
-        std::ostringstream ss;
-        ss << f.rdbuf();
-        auto pair = core::extractLastPair(ss.str());
+        const std::streamoff TAIL = 256 * 1024;
+        std::streamoff size = f.tellg();
+        std::streamoff start = (size > TAIL) ? (size - TAIL) : 0;
+        f.seekg(start);
+        std::string content((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+        if (start > 0) {  // drop the partial first line so JSON parses cleanly
+            auto nl = content.find('\n');
+            if (nl != std::string::npos) content.erase(0, nl + 1);
+        }
+        auto pair = core::extractLastPair(content);
         if (!pair.ok || pair.prompt.size() < 6) return 0;  // skip trivial/empty
 
         // Cap stored sizes so the persona DB stays lean.
