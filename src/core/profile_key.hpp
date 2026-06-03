@@ -19,7 +19,13 @@ inline std::string slugify(const std::string& in) {
 }
 
 inline std::string normalizeZone(const std::string& zone) {
+    // Preserve a single leading underscore: it marks an INTERNAL/system zone
+    // (_mode, _passphrase, _style, ...). slugify drops leading non-alnum, which
+    // silently collapsed "_mode" -> "mode" and broke the internal-zone convention
+    // (qa-frequent / qa-suggest could not tell machinery from real prompts).
+    bool internal = !zone.empty() && zone[0] == '_';
     std::string s = slugify(zone);
+    if (internal && (s.empty() || s[0] != '_')) s = "_" + s;
     return s.empty() ? std::string("default") : s;
 }
 

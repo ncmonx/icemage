@@ -51,6 +51,26 @@ TEST("suggest: unrelated prompt returns no match (below gate)") {
     ASSERT_TRUE(!s.found);
 }
 
+TEST("suggest: internal _-prefixed zones are never surfaced as reuse") {
+    Db db(sugDb());
+    PromptHistory ph(db);
+    // a prompt stored in an internal zone (e.g. the passphrase machinery)
+    ph.record("u_sug_intz", "_passphrase", "sudah makan", "siang tadi aku sudah tidur");
+    // a closely matching query must NOT reuse the internal-zone answer
+    auto s = ph.suggest("u_sug_intz", "sudah makan belum", 0.3, 25);
+    ASSERT_TRUE(!s.found);
+}
+
+TEST("suggest: normal zones still surface alongside internal ones excluded") {
+    Db db(sugDb());
+    PromptHistory ph(db);
+    ph.record("u_sug_mix", "_mode", "current mode banner text here", "internal");
+    ph.record("u_sug_mix", "work", "how do I deploy the service", "kubectl apply");
+    auto s = ph.suggest("u_sug_mix", "how do I deploy the service now", 0.4, 25);
+    ASSERT_TRUE(s.found);
+    ASSERT_EQ(s.row.response, std::string("kubectl apply"));   // not the _mode entry
+}
+
 TEST("suggest: picks the highest-scoring of several candidates") {
     Db db(sugDb());
     PromptHistory ph(db);

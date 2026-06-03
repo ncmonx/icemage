@@ -9,6 +9,12 @@ TEST("normalizeZone: lowercases + trims + default on empty") {
     ASSERT_EQ(normalizeZone(""), std::string("default"));
 }
 
+TEST("normalizeZone: preserves a leading underscore (internal-zone marker)") {
+    ASSERT_EQ(normalizeZone("_mode"), std::string("_mode"));
+    ASSERT_EQ(normalizeZone("_passphrase"), std::string("_passphrase"));
+    ASSERT_EQ(normalizeZone("work"), std::string("work"));   // normal zone unaffected
+}
+
 TEST("normalizeKey: lowercases + collapses to [a-z0-9_-]") {
     ASSERT_EQ(normalizeKey("My Skill #1!"), std::string("my-skill-1"));
 }
