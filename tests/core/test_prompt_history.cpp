@@ -44,6 +44,28 @@ TEST("prompt_history: findSimilar empty terms -> no hits") {
     ASSERT_EQ(hits.size(), (size_t)0);
 }
 
+TEST("prompt_history: listZone returns stored prompts (zone-scoped)") {
+    Db db(phDb());
+    PromptHistory ph(db);
+    ph.record("u_lz", "alpha", "alpha prompt one", "ra");
+    ph.record("u_lz", "alpha", "alpha prompt two", "rb");
+    ph.record("u_lz", "beta",  "beta prompt", "rc");
+    auto za = ph.listZone("u_lz", "alpha", 100);
+    ASSERT_EQ(za.size(), (size_t)2);
+    auto all = ph.listZone("u_lz", "", 100);  // empty zone = all
+    ASSERT_TRUE(all.size() >= (size_t)3);
+}
+
+TEST("prompt_history: forget removes a stored prompt") {
+    Db db(phDb());
+    PromptHistory ph(db);
+    ph.record("u_fg", "z", "delete me prompt", "r");
+    std::string r;
+    ASSERT_TRUE(ph.recallExact("u_fg", "z", "delete me prompt", r));
+    ph.forget("u_fg", "z", "delete me prompt");
+    ASSERT_TRUE(!ph.recallExact("u_fg", "z", "delete me prompt", r));
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

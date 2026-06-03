@@ -69,6 +69,22 @@ public:
                           << h.response.substr(0, 80) << "\n";
             return 0;
         }
+        if (sub == "qa-list") {
+            core::PromptHistory ph(db);
+            auto rows = ph.listZone(user, zone, 200);  // empty zone = all zones
+            std::cout << "[qa-list] " << rows.size() << " prompt(s)"
+                      << (zone.empty() ? "" : " in zone " + zone) << ":\n";
+            for (auto& r : rows)
+                std::cout << "  [" << r.zone << "] " << r.prompt.substr(0, 70) << "\n";
+            return 0;
+        }
+        if (sub == "qa-forget") {
+            if (prompt.empty()) { std::cerr << "need --prompt\n"; return 1; }
+            core::PromptHistory ph(db);
+            ph.forget(user, zone, prompt);
+            std::cout << "[qa-forget] done.\n";
+            return 0;
+        }
 
         if (sub == "add") {
             if (key.empty() || content.empty()) { std::cerr << "need --key and --content\n"; return 1; }

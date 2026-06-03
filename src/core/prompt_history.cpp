@@ -62,4 +62,23 @@ std::vector<QARow> PromptHistory::findSimilar(const std::string& user, const std
     return out;
 }
 
+std::vector<QARow> PromptHistory::listZone(const std::string& user, const std::string& zone,
+                                           int limit) {
+    std::vector<QARow> out;
+    std::string sql = "SELECT zone,prompt,response,created_at FROM prompt_history WHERE user_id=?";
+    std::vector<std::string> params{user};
+    if (!zone.empty()) { sql += " AND zone=?"; params.push_back(normalizeZone(zone)); }
+    sql += " ORDER BY created_at DESC LIMIT " + std::to_string(limit);
+    db_.query(sql, params, [&](const Row& r) {
+        if (r.size() >= 4) out.push_back({r[0], r[1], r[2], std::stoll(r[3])});
+    });
+    return out;
+}
+
+void PromptHistory::forget(const std::string& user, const std::string& zone,
+                           const std::string& prompt) {
+    db_.run("DELETE FROM prompt_history WHERE user_id=? AND zone=? AND prompt_key=?",
+            {user, normalizeZone(zone), slugify(prompt)});
+}
+
 }  // namespace icmg::core

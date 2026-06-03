@@ -18,6 +18,10 @@ public:
     bool recallExact(const std::string& user, const std::string& zone,
                      const std::string& prompt, std::string& response_out);
     std::vector<QARow> findSimilar(const std::string& user, const std::string& prompt, int limit);
+    // List stored prompts for a user; empty zone = all zones. Newest first.
+    std::vector<QARow> listZone(const std::string& user, const std::string& zone, int limit = 100);
+    // Delete a stored prompt (matched by normalized prompt key within a zone).
+    void forget(const std::string& user, const std::string& zone, const std::string& prompt);
 private:
     Db& db_;
     void ensure();
