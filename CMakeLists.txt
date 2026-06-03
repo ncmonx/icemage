@@ -723,6 +723,7 @@ add_icmg_test(test_ws_snapshot tests/core/test_ws_snapshot.cpp)  # v2.0.0 C4 tra
 add_icmg_test(test_compact_advisor tests/core/test_compact_advisor.cpp)  # v2.0.0 C5 advisor
 add_icmg_test(test_profile_key tests/core/test_profile_key.cpp)  # profile-store pure
 add_icmg_test(test_profile_store tests/core/test_profile_store.cpp)  # profile-store CRUD
+add_icmg_test(test_prompt_history tests/core/test_prompt_history.cpp)  # prompt->response recall
 add_icmg_test(test_trace_parse tests/core/test_trace_parse.cpp)  # v2.0.0 TE3
 add_icmg_test(test_repo_skeleton tests/graph/test_repo_skeleton.cpp)  # v2.0.0 externals (repo-compact)
 add_icmg_test(test_temporal     tests/graph/test_temporal.cpp)      # v2.0.0 externals (temporal KG)
