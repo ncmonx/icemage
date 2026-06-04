@@ -39,13 +39,14 @@ public:
                                                   : core::GlobalDb::instance().db();
         core::ProfileStore ps(db);
 
-        std::string zone, key, kind = "profile", content, query, prompt, response;
+        std::string zone, key, kind = "profile", content, query, prompt, response, source = "unknown";
         double minScore = 0.4;  // qa-suggest reuse gate
         for (size_t i = 1; i < args.size(); ++i) {
             if (args[i] == "--zone" && i + 1 < args.size()) zone = args[++i];
             else if (args[i] == "--key" && i + 1 < args.size()) key = args[++i];
             else if (args[i] == "--kind" && i + 1 < args.size()) kind = args[++i];
             else if (args[i] == "--content" && i + 1 < args.size()) content = args[++i];
+            else if (args[i] == "--source" && i + 1 < args.size()) source = args[++i];
             else if (args[i] == "--prompt" && i + 1 < args.size()) prompt = args[++i];
             else if (args[i] == "--response" && i + 1 < args.size()) response = args[++i];
             else if (args[i] == "--min" && i + 1 < args.size()) { try { minScore = std::stod(args[++i]); } catch (...) {} }
@@ -199,19 +200,19 @@ public:
 
         if (sub == "add") {
             if (key.empty() || content.empty()) { std::cerr << "need --key and --content\n"; return 1; }
-            ps.put(user, zone, key, kind, content);
+            ps.put(user, zone, key, kind, content, source);
             std::cout << "[profile add] " << core::normalizeZone(zone) << "/"
                       << core::normalizeKey(key) << " (" << core::validKind(kind) << ") saved.\n";
             return 0;
         }
         if (sub == "get") {
-            std::string c, k;
-            if (ps.get(user, zone, key, c, k)) { std::cout << "[" << k << "] " << c << "\n"; return 0; }
+            std::string c, k, src;
+            if (ps.get(user, zone, key, c, k, src)) { std::cout << "[" << k << " | from: " << src << "] " << c << "\n"; return 0; }
             std::cerr << "not found\n"; return 1;
         }
         if (sub == "list") {
             for (auto& r : ps.listZone(user, zone))
-                std::cout << "  " << r.zone << "/" << r.key << " (" << r.kind << ")\n";
+                std::cout << "  " << r.zone << "/" << r.key << " (" << r.kind << " | from: " << r.source << ")\n";
             return 0;
         }
         if (sub == "search") {
