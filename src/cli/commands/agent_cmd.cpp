@@ -22,6 +22,7 @@
 #include "../agent_persona_policy.hpp"   // sub-agent persona policy
 #include "../agent_task.hpp"             // flag/value-aware task assembly
 #include "../agent_model.hpp"            // token routing (--light / --model)
+#include "../agent_complexity.hpp"       // auto-route mechanical tasks to cheap model
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include <iostream>
@@ -89,6 +90,12 @@ public:
 
         std::string task = assembleTask(args);
         if (task.empty()) { std::cerr << "icmg agent: requires <task>\n"; return 1; }
+
+        // Auto-route: clearly-mechanical tasks default to the cheap model (no
+        // manual --light needed). Conservative — only when confident.
+        bool auto_light = !light && model_override.empty() && isLightweightTask(task);
+        if (auto_light)
+            std::cerr << "[icmg agent] auto-routed to light model (mechanical task)\n";
 
         auto& cfg = core::Config::instance();
 
@@ -190,7 +197,7 @@ public:
                   "--allowedTools \"Edit,Write,Read,Bash,Glob,Grep\"")
             : cfg.getString("agent.command", "claude --print");
         std::string cmd = cmd_override.empty() ? default_cmd : cmd_override;
-        cmd = applyAgentModel(cmd, light, model_override);  // token routing
+        cmd = applyAgentModel(cmd, light || auto_light, model_override);  // token routing (+ auto)
 
         // v1.79 SECURITY: --exec grants the spawned CLI write + shell with
         // auto-accept (arbitrary headless command execution). Gate behind an
