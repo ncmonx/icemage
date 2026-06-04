@@ -20,6 +20,7 @@
 #include "../../core/exec_utils.hpp"
 #include "../../core/persona_loader.hpp"  // v1.42.0 persona prefix
 #include "../agent_persona_policy.hpp"   // sub-agent persona policy
+#include "../agent_task.hpp"             // flag/value-aware task assembly
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include <iostream>
@@ -78,12 +79,7 @@ public:
         int timeout   = exec ? 600 : 120;
         try { timeout = std::stoi(flagValue(args, "--timeout", std::to_string(timeout))); } catch (...) {}
 
-        std::string task;
-        for (auto& a : args) {
-            if (a.empty() || a[0] == '-') continue;
-            if (!task.empty()) task += " ";
-            task += a;
-        }
+        std::string task = assembleTask(args);
         if (task.empty()) { std::cerr << "icmg agent: requires <task>\n"; return 1; }
 
         auto& cfg = core::Config::instance();
