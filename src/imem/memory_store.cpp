@@ -90,12 +90,21 @@ MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     if (row.size() > 10 && !row[10].empty()) n.zone = row[10];
     if (row.size() > 11) try { n.pinned  = std::stoi(row[11]); } catch (...) {}
     if (row.size() > 12 && !row[12].empty()) n.git_sha = row[12];
+    if (row.size() > 13 && !row[13].empty()) n.source = row[13];
     return n;
 }
 
 // ---- MemoryStore ----
 
-MemoryStore::MemoryStore(core::Db& db) : db_(db) {}
+MemoryStore::MemoryStore(core::Db& db) : db_(db) {
+    // Provenance: ensure memory_nodes has a source column (guarded -- covers hand-created
+    // test fixtures + DBs that skipped the migrator). Only ALTERs an EXISTING table.
+    int cols = 0; bool hasSource = false;
+    db_.query("PRAGMA table_info(memory_nodes)", {},
+              [&](const core::Row& r) { ++cols; if (r.size() > 1 && r[1] == "source") hasSource = true; });
+    if (cols > 0 && !hasSource)
+        db_.run("ALTER TABLE memory_nodes ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown'");
+}
 
 void MemoryStore::syncKeywords(int64_t id, const std::string& keywords) {
     // Clear old keywords
@@ -241,12 +250,13 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     // Phase 47 T4: tag created_by from user_identity (env / git config / anonymous).
     db_.run(
         "INSERT INTO memory_nodes(topic,content,keywords,importance,frequency,"
-        "last_used,created_at,expires_at,zone,created_by,git_sha) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "last_used,created_at,expires_at,zone,created_by,git_sha,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         {effective.topic, effective.content, effective.keywords,
          std::to_string(effective.importance),
          std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
-         expires, zone, core::currentUser(), git_sha});
+         expires, zone, core::currentUser(), git_sha,
+         effective.source.empty() ? std::string("unknown") : effective.source});
     // Phase 48: initial row_version=1 for sync tracking.
     int64_t new_id = db_.lastInsertId();
     try { db_.run("UPDATE memory_nodes SET row_version=1 WHERE id=?", {std::to_string(new_id)}); } catch(...) {}
@@ -314,7 +324,7 @@ int MemoryStore::purge(int days_old) {
 MemoryNode MemoryStore::get(int64_t id) const {
     MemoryNode node;
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone,pinned "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
               "FROM memory_nodes WHERE id=?",
               {std::to_string(id)},
               [&](const core::Row& r) { node = rowToNode(r); });
@@ -327,7 +337,7 @@ std::vector<MemoryNode> MemoryStore::all() const {
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone,pinned "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
               "FROM memory_nodes "
               "WHERE deleted_at IS NULL "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
@@ -485,7 +495,7 @@ std::vector<MemoryNode> MemoryStore::recallByTopic(const std::string& topic, int
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone,pinned "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
               "FROM memory_nodes "
               "WHERE topic LIKE ? AND deleted_at IS NULL "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?) "

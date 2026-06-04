@@ -947,6 +947,9 @@ CREATE TABLE IF NOT EXISTS agent_leases (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_leases_scope ON agent_leases(scope);
 )SQL"},
+        {41, R"SQL(
+ALTER TABLE memory_nodes ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown';
+)SQL"},
     };
 }
 
