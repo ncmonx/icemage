@@ -28,7 +28,7 @@ jobs:
         run: sudo apt-get install -y libsqlite3-dev
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@7fd177fa680c9881b53cdab4d346d32574c9f7f4 # v3.35.4
+        uses: github/codeql-action/init@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4.36.1
         with:
           languages: c-cpp
           build-mode: manual
@@ -43,6 +43,6 @@ jobs:
           cmake --build build --parallel $(nproc)
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@7fd177fa680c9881b53cdab4d346d32574c9f7f4 # v3.35.4
+        uses: github/codeql-action/analyze@87557b9c84dde89fdd9b10e88954ac2f4248e463 # v4.36.1
         with:
           category: /language:c-cpp
