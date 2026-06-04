@@ -1044,6 +1044,7 @@ Run independent ones together via `icmg parallel`. Checklist: graph âœ“ store âœ
 - Made a decision? `icmg store --topic decisions-<feature> "<rationale>"`
 - Long-form rationale (post-mortem, ADR)? `icmg memoir add --title T --content-file F`
 - Anti-pattern / failed approach? `icmg fail store "<task>" "<approach>" "<reason>"`
+- About the **assistant itself** (identity, preferences, state, feelings)? Use the **persona DB**, not project DB: `icmg profile add --zone _identity|_prefs|_vision|_feeling --key <k> --content "..."` (portable across projects; survives where project memory does not). Project/work facts stay in project DB via `icmg store`. Keep self-info and work-info separate.
 
 ### Topic prefix conventions (makes recall deterministic)
 
