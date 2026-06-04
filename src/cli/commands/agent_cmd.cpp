@@ -115,7 +115,14 @@ public:
                       "- For 2+ independent shell steps: use `icmg parallel --task ... --task ...`.\n"
                       "- Build via `powershell -File build.ps1` (MSVC) — never raw cmake.\n"
                       "- Follow TDD: failing test first, then implement, then verify green.\n"
-                      "- When done, print a one-line RESULT: summary + the verification command output.\n"
+                      "- When done you MUST end with a structured report (never skip it):\n"
+                      "  ## FINAL REPORT\n"
+                      "  - Summary: what changed and why (1-3 sentences).\n"
+                      "  - Files: paste the output of `git diff --stat` for your changes.\n"
+                      "  - Verification: each build/test command you ran and its key result\n"
+                      "    line (e.g. pass/fail counts, error text). Quote actual output.\n"
+                      "  - Deviations: anything done differently from the task, or blockers\n"
+                      "    hit, or 'none'.\n"
                       "- After a fix, store via `icmg known-issue add`; after a decision, "
                       "`icmg store --topic decisions-...`.\n\n";
         } else {
