@@ -18,6 +18,7 @@ struct MemoryNode {
     std::string zone        = "default";  // Phase 17: subsystem partitioning
     int         pinned      = 0;  // Phase 75: 1 = decision-anchor; 10× recall boost
     std::string git_sha;          // Phase 15: git commit SHA at store time (short, may be empty)
+    std::string source      = "unknown";  // provenance: who/what supplied this info
 
     // Computed at query time — not stored in DB
     double      score       = 0.0;

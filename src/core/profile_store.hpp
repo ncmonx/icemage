@@ -12,15 +12,20 @@ namespace icmg::core {
 struct ProfileRow {
     std::string zone, key, kind, content;
     long long updated_at = 0;
+    std::string source = "unknown";   // provenance: who/what supplied this entry
 };
 
 class ProfileStore {
 public:
     explicit ProfileStore(Db& db);
     void put(const std::string& user, const std::string& zone, const std::string& key,
-             const std::string& kind, const std::string& content);
+             const std::string& kind, const std::string& content,
+             const std::string& source = "unknown");
     bool get(const std::string& user, const std::string& zone, const std::string& key,
              std::string& content_out, std::string& kind_out);
+    // Provenance overload: also returns source.
+    bool get(const std::string& user, const std::string& zone, const std::string& key,
+             std::string& content_out, std::string& kind_out, std::string& source_out);
     std::vector<ProfileRow> listZone(const std::string& user, const std::string& zone);
     std::vector<ProfileRow> search(const std::string& user, const std::string& query); // LIKE fallback
     void forget(const std::string& user, const std::string& zone, const std::string& key);

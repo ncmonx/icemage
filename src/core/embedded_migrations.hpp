@@ -774,6 +774,10 @@ CREATE TABLE IF NOT EXISTS working_set_snapshot (
 );
 CREATE INDEX IF NOT EXISTS idx_wss_session ON working_set_snapshot(session_id);
 )SQL"},
+        {41, R"SQL(
+ALTER TABLE memory_nodes ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown';
+)SQL"},
+
     };
 }
 
@@ -946,8 +950,7 @@ CREATE TABLE IF NOT EXISTS agent_leases (
     heartbeat_at INTEGER NOT NULL DEFAULT (strftime('''%s''','''now'''))
 );
 CREATE INDEX IF NOT EXISTS idx_agent_leases_scope ON agent_leases(scope);
-)SQL"},
-    };
+)SQL"},    };
 }
 
 } // namespace icmg::core

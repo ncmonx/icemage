@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() — harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.0.6 LANGUAGES CXX C)
+project(icmg VERSION 2.0.7 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 — enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -663,6 +663,7 @@ add_icmg_test(test_scorer       tests/imem/test_scorer.cpp)
 add_icmg_test(test_semantic_dedup tests/imem/test_semantic_dedup.cpp)
 add_icmg_test(test_importance_decay tests/imem/test_importance_decay.cpp)  # v1.23.0 (TDD: M2)
 add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomize T1
+add_icmg_test(test_memory_source tests/imem/test_memory_source.cpp)  # provenance: memory source (ctor guarded-ALTER)
 add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
 add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 smart-bisect
 add_icmg_test(test_atomize_cmd  tests/cli/test_atomize_cmd.cpp)   # v1.80 atomize T7
@@ -723,6 +724,8 @@ add_icmg_test(test_ws_snapshot tests/core/test_ws_snapshot.cpp)  # v2.0.0 C4 tra
 add_icmg_test(test_compact_advisor tests/core/test_compact_advisor.cpp)  # v2.0.0 C5 advisor
 add_icmg_test(test_profile_key tests/core/test_profile_key.cpp)  # profile-store pure
 add_icmg_test(test_profile_store tests/core/test_profile_store.cpp)  # profile-store CRUD
+add_icmg_test(test_persona_init tests/core/test_persona_init.cpp)  # persona-continuity scaffold (identity-agnostic)
+add_icmg_test(test_profile_source tests/core/test_profile_source.cpp)  # provenance: persona source column
 add_icmg_test(test_prompt_history tests/core/test_prompt_history.cpp)  # prompt->response recall
 add_icmg_test(test_prompt_suggest tests/core/test_prompt_suggest.cpp)  # v2.0.4 active reuse: Jaccard scorer + gated suggest
 add_icmg_test(test_prompt_cluster tests/core/test_prompt_cluster.cpp)  # v2 pillar4: frequent-prompt clustering
@@ -754,6 +757,7 @@ add_icmg_test(test_init_hook  tests/cli/test_init_hook.cpp)
 add_icmg_test(test_zone_config tests/cli/test_zone_config.cpp)
 add_icmg_test(test_review tests/cli/test_review.cpp)
 add_icmg_test(test_audit tests/cli/test_audit.cpp)
+add_icmg_test(test_drive_dialog_match tests/cli/test_drive_dialog_match.cpp)  # popup-killer B:/ predicate (heuristic 3)
 add_icmg_test(test_index tests/cli/test_index.cpp)
 add_icmg_test(test_backend_factory tests/embed/test_backend_factory.cpp)
 add_icmg_test(test_wordpiece tests/embed/test_wordpiece.cpp)

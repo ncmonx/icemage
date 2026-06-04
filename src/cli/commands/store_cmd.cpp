@@ -51,6 +51,7 @@ public:
         node.content    = content;
         node.keywords   = kw;
         node.importance = imem::importanceFromName(imp_str);
+        node.source     = flagValue(args, "--source", "unknown");
 
         if (!ttl_str.empty()) {
             try {

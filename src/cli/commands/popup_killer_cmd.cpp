@@ -21,6 +21,8 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/path_utils.hpp"
+#include "../drive_dialog_match.hpp"
+#include <cctype>
 
 #include <atomic>
 #include <chrono>
@@ -57,21 +59,23 @@ std::atomic<int>  g_dismissed{0};
 //   3. Class is #32770 (Windows system dialog) AND title contains "drive"
 //      or "specified" or "tidak dapat menemukan" (Indonesian variant)
 bool isDriveNotFoundDialog(HWND hwnd) {
+    char cls[64] = {0};
+    GetClassNameA(hwnd, cls, sizeof(cls) - 1);
     char title[128] = {0};
-    int n = GetWindowTextA(hwnd, title, sizeof(title) - 1);
-    if (n <= 0 || n > 64) return false;
-
-    // Exact short-title patterns: "B:", "B:/", "B:\"
-    if (n >= 2 && n <= 4) {
-        char c = title[0];
-        if (c >= 'A' && c <= 'Z' && title[1] == ':') {
-            // Likely a drive-letter title.
-            char cls[64] = {0};
-            GetClassNameA(hwnd, cls, sizeof(cls) - 1);
-            if (std::strcmp(cls, "#32770") == 0) return true;
+    GetWindowTextA(hwnd, title, sizeof(title) - 1);
+    std::string body;
+    EnumChildWindows(hwnd, [](HWND child, LPARAM lp) -> BOOL {
+        char buf[256] = {0};
+        if (GetWindowTextA(child, buf, sizeof(buf) - 1) > 0) {
+            auto* b = reinterpret_cast<std::string*>(lp); *b += buf; *b += ' ';
         }
-    }
-    return false;
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&body));
+    for (char& ch : body) ch = (char)std::tolower((unsigned char)ch);
+    bool bodyHasDrive = body.find("drive") != std::string::npos
+                     || body.find("specified") != std::string::npos
+                     || body.find("tidak dapat menemukan") != std::string::npos;
+    return driveDialogMatch(std::string(title), std::string(cls), bodyHasDrive);
 }
 
 BOOL CALLBACK enumProc(HWND hwnd, LPARAM /*lparam*/) {

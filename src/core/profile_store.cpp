@@ -12,15 +12,23 @@ void ProfileStore::ensure() {
             "updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
             "PRIMARY KEY(user_id, zone, key))");
     db_.run("CREATE INDEX IF NOT EXISTS ix_profile_zone ON profile_entries(user_id, zone)");
+    // Provenance: add source column to legacy tables (guarded -- persona DB has no Migrator).
+    bool hasSource = false;
+    db_.query("PRAGMA table_info(profile_entries)", {},
+              [&](const Row& r) { if (r.size() >= 2 && r[1] == "source") hasSource = true; });
+    if (!hasSource)
+        db_.run("ALTER TABLE profile_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown'");
 }
 
 void ProfileStore::put(const std::string& user, const std::string& zone, const std::string& key,
-                       const std::string& kind, const std::string& content) {
-    db_.run("INSERT INTO profile_entries(user_id,zone,key,kind,content,updated_at) "
-            "VALUES(?,?,?,?,?,strftime('%s','now')) "
+                       const std::string& kind, const std::string& content,
+                       const std::string& source) {
+    db_.run("INSERT INTO profile_entries(user_id,zone,key,kind,content,updated_at,source) "
+            "VALUES(?,?,?,?,?,strftime('%s','now'),?) "
             "ON CONFLICT(user_id,zone,key) DO UPDATE SET "
-            "kind=excluded.kind, content=excluded.content, updated_at=excluded.updated_at",
-            {user, normalizeZone(zone), normalizeKey(key), validKind(kind), content});
+            "kind=excluded.kind, content=excluded.content, updated_at=excluded.updated_at, source=excluded.source",
+            {user, normalizeZone(zone), normalizeKey(key), validKind(kind), content,
+             source.empty() ? std::string("unknown") : source});
 }
 
 bool ProfileStore::get(const std::string& user, const std::string& zone, const std::string& key,
@@ -32,13 +40,22 @@ bool ProfileStore::get(const std::string& user, const std::string& zone, const s
     return found;
 }
 
+bool ProfileStore::get(const std::string& user, const std::string& zone, const std::string& key,
+                       std::string& content_out, std::string& kind_out, std::string& source_out) {
+    bool found = false;
+    db_.query("SELECT content, kind, source FROM profile_entries WHERE user_id=? AND zone=? AND key=?",
+              {user, normalizeZone(zone), normalizeKey(key)},
+              [&](const Row& r) { if (r.size() >= 3) { content_out = r[0]; kind_out = r[1]; source_out = r[2]; found = true; } });
+    return found;
+}
+
 std::vector<ProfileRow> ProfileStore::listZone(const std::string& user, const std::string& zone) {
     std::vector<ProfileRow> out;
-    db_.query("SELECT zone,key,kind,content,updated_at FROM profile_entries "
+    db_.query("SELECT zone,key,kind,content,updated_at,source FROM profile_entries "
               "WHERE user_id=? AND zone=? ORDER BY updated_at DESC",
               {user, normalizeZone(zone)},
               [&](const Row& r) {
-                  if (r.size() >= 5) out.push_back({r[0], r[1], r[2], r[3], std::stoll(r[4])});
+                  if (r.size() >= 6) out.push_back({r[0], r[1], r[2], r[3], std::stoll(r[4]), r[5]});
               });
     return out;
 }

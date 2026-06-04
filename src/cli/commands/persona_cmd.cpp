@@ -28,6 +28,8 @@
 #include "../../core/global_db.hpp"
 #include "../../core/persona_db.hpp"   // v1.57 S2: exe-dir persona DB
 #include "../../core/user_identity.hpp"
+#include "../../core/profile_store.hpp"      // persona-continuity: zoned profile store
+#include "../../core/persona_template.hpp"   // persona-continuity: scaffoldPersona
 #include "../../core/result.hpp"  // v1.41.0 std::expected adoption
 
 namespace icmg::cli {
@@ -56,6 +58,19 @@ public:
         auto& gdb = core::GlobalDb::instance();
         gdb.init();  // ensure migrations applied (0031 user_personas)
         const std::string user = core::currentUser();
+
+        // persona-continuity: seed identity-agnostic continuity zones into persona DB.
+        if (sub == "init") {
+            bool force = false;
+            for (size_t i = 1; i < args.size(); ++i) if (args[i] == "--force") force = true;
+            core::Db& pdb = core::personaDbAvailable() ? core::personaDb()
+                                                       : core::GlobalDb::instance().db();
+            core::ProfileStore ps(pdb);
+            int n = core::scaffoldPersona(ps, user, force);
+            std::cout << "[persona init] " << n << " continuity zones seeded"
+                      << (force ? " (force)" : "") << ". Fill via `icmg profile add`.\n";
+            return 0;
+        }
 
         if (sub == "set") {
             if (args.size() < 2) {

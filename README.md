@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icemage)](https://github.com/ncmonx/icemage/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icemage/total)](https://github.com/ncmonx/icemage/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icemage)](https://github.com/ncmonx/icemage/commits/main)
-[![tests](https://img.shields.io/badge/tests-1331%2F1331%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-1437%2F1437%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-41-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-95%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Elastic--2.0-blue.svg)](LICENSE)
@@ -43,55 +43,51 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 |---|---|---|---|
 | File-read savings | 70 – 85 % fewer tokens | up to 92 % | v0.5 |
 | Test / build output | 60 – 80 % shorter | up to 90 % | v0.5 |
+| **Multi-file UI propagation** (style-clone) | **30 – 50× cheaper** | up to 98 % | v1.22.0 |
+| **Cross-project bundle** (port) | **8 – 12× cheaper** | up to 95 % | v1.24.0 |
+| **Compressed-Write** (AI emit diff) | **70 – 95% fewer tokens** | up to 98 % | v1.25.0 |
 | Web-fetch reduction | 70 – 90 % smaller | up to 95 % | v0.4 |
-| **Multi-file UI propagation** (style-clone) | **30 – 50× cheaper** | up to 98 % | v1.22 |
-| **Cross-project bundle** (port) | **8 – 12× cheaper** | up to 95 % | v1.24 |
-| **Compressed-Write** (AI emit diff) | **70 – 95 % fewer tokens** | up to 98 % | v1.25 |
-| Repeat-context recall | **< 5 ms** cached | near-zero | v1.21 |
-| Cold build time (icmg itself) | **~50 % faster** | 20 min → 9-10 min | v1.26 |
-| **Code / graph search** (FTS5 snapshot) | **full-scan → sub-millisecond** | ~220× on a 19K-node graph | v1.100 |
-| **Cost per AI session** | **down 70 – 90 %** | up to 95 % | — |
+| Repeat-context recall | near-zero, **< 5 ms cached** | — | v1.21.8 |
+| Past-chat full-text search | **< 10 ms** across months | — | v1.21.7 |
+| Graph symbol lookup | **256-slot in-RAM cache** | — | v1.21.8 |
+| First-prompt warmup | < 1 s | — | v1.18 |
+| **Cold build time** (icmg itself) | **~50 % faster** (20 min → 9-10 min) | — | v1.26.0 |
+| **MCP response filter** (verbose plugins) | **50 – 80 % smaller** | up to 90 % | v1.30.0 |
+| **Auto-thinking suppress** (trivial prompts) | **~1500 tok / call saved** | — | v1.30.0 |
+| **Sayless-auto** (long-prose replies) | **60 – 75 % compress** | up to 85 % | v1.30.0 |
+| **Service auto-start** (UserPromptSubmit) | **0-touch warm-up** | — | v1.30.0 |
+| **Path ambiguity warning** (icmg context) | wrong-file lookups → loud | — | v1.29.0 |
+| **rg-wrapper + brace glob** (icmg grep/files) | flag-mirror, **{a,b}** expand | — | v1.29.0 |
+| **Local AI model** (built-in, opt-in) | **0 cloud calls** | privacy-first | v1.31.0 |
+| **Smart router** (REGEX vs LLM_LOCAL vs CACHE) | **<100 us p99** | hot-path forced regex | v1.31.0 |
+| **HTTP streaming download** (model fetch + SHA256) | **400 MB - 2 GB** safe-verify | tamper-detect | v1.31.0 |
+| **icmg git** wrapper (single ergonomic entry) | **Tkil-filtered** + safety-gated | enforces icmg-FIRST | v1.31.0 |
+| **Python-free core** (PRECOMPACT_PY dropped) | **-200-500 ms** boot saved | single-binary | v1.31.0 |
+| **pack --rerank** (LLM-reorder memory hits) | **opt-in** warm-path | router-gated | v1.32.0 |
+| **PreCompact LLM summary** (warm-pool Qwen 0.5B) | **<15 s** cold | regex fallback always | v1.32.0 |
+| **icmg compact-bg** (proactive memory worker) | **<3 s** warm | manual + future hook | v1.32.0 |
+| **Smarter local AI memory** | **multi-prompt safe** | no overflow | v1.32.0 |
+| **Code graph viz + report** (`icmg graph viz`) | **interactive D3 + god-nodes** | — | v1.71.0 |
+| **Secret scanner** (`icmg scan`) | **21 detectors, CI-gate** | redact-by-default | v1.68.0 |
+| **MCP server hardening** (token + rate-limit + path-guard) | **abuse / RCE-safe** | — | v1.72.0 |
+| **Post-compact memory re-anchor** | **rules survive compaction** | auto on `init` | v1.73.0 |
+| **Scripted-safe `icmg run`** (non-interactive guard) | **no hang on destructive** | `--yes`/env opt-in | v1.74.0 |
+| **Clean self-upgrade** (idempotent Defender step) | **no phantom B: drive popup** | `--no-defender` opt-out | v1.75.0 |
+| **Encryption-at-rest** (`icmg encrypt`, SQLCipher AES-256) | **opt-in full-DB encrypt** | BM25 recall intact | v1.76.0 |
+| **Hot recall cache** (RAM, daemon-shared) | **< 5 ms repeat recall** | self-governing RAM | v1.77.0 |
+| Cost per AI session | **down 70 – 90 %** vs. raw | up to 95 % | — |
 
 ## ✨ What's new
 
+- **v2.0.7** - **Persona continuity, source provenance, and a cluster of correctness fixes.** Two identity-agnostic capabilities plus long-session fixes. `icmg persona init` seeds a set of neutral continuity zones in the per-install persona DB; a SessionStart hook surfaces a user-defined wake-up protocol and a Stop hook nudges a notes-refresh on a meaningful turn, so an assistant's persisted context survives a fresh session or a context compaction — nothing is hardcoded, every zone is a template you fill. `icmg store --source "<who>"` and `icmg profile add --source "<who>"` tag where a piece of information came from; `recall` and `profile get`/`list` display it as `[from: <source>]` (free-text, defaults to `unknown`, metadata-only — it never affects BM25 ranking). Fixes: a corrupt global DB is recovered cleanly on startup instead of crashing every global command; the `persona` command no longer collides with its continuity `init` subcommand; the drive-not-found popup dismisser now matches by the dialog's body text, catching dialogs whose caption is empty rather than a bare `X:`; and a misplaced schema migration was moved to the correct per-DB array. Full automated suite passes (1437 checks).
 - **v2.0.6** - **Long-session hardening round 2: cleaner prompt history, fixed internal-zone convention, deterministic tests.** Continued marathon testing surfaced a tight cluster of correctness fixes. `icmg prompt-capture` strips harness/hook-injected noise (`<stop-hook-reminders>`, `[icmg]`/`MODE:` markers, slash-command echoes) before recording, so the auto-built history holds what you actually typed — not machinery. The internal `_`-zone convention was silently broken (`slugify` dropped the leading underscore, so `_mode` collapsed to `mode`); `normalizeZone` now preserves it, and `qa-suggest`/`qa-frequent` correctly exclude internal zones (passphrase/mode/style) from reuse. The mono test suite deletes stale `*_test.db` at startup so back-to-back runs are deterministic. `build.ps1`'s error scan matches only real MSVC `): error`/`LNK` lines. And every remaining `std::cin.rdbuf()` stdin reader is now isatty-guarded, completing the hook-hang hardening (#30704). Full automated suite passes (1420 checks).
 - **v2.0.5** - **Long-session hardening + a self-improving prompt loop.** A multi-hour stress session of v2.0.4 surfaced a cluster of fixes plus one v2-roadmap feature. Fixes: `icmg suggest` scores by command **name** (not just description overlap), so "compress large output" maps to `compress` not `expand`, and the gated `suggest --hook` fires only on a strong name-level match (it previously never fired). `icmg hook` and `icmg shrink` read stdin via the isatty-guarded `slurpStdinSafe`, so a hook without piped input can't block (#30704). `icmg flow` rejects a flow that needs an argument when none is given (no junk `wflog add ""`). `icmg prompt-capture` reads only the transcript **tail**, so its per-turn cost stays constant as a session grows. And `build.ps1`'s error scan no longer false-trips on deliberate runtime test-log lines. Feature: `icmg profile qa-frequent` clusters recurring prompts from the auto-recorded history and surfaces them as candidates to promote into a saved skill — closing the loop capture → reuse → detect → promote. Full automated suite passes (1411 checks).
 - **v2.0.4** - **Use what you built: command discovery, interlinked workflows, a persistent mode banner, and auto-recorded prompt reuse.** v2.0.0 added a lot of surface; this round makes it findable and self-driving. `icmg suggest "<intent>"` ranks the live command registry against a natural-language intent (model-free) so the long tail is discoverable — and as a gated UserPromptSubmit hook it auto-surfaces the most relevant command each turn. `icmg flow <name>` runs a named chain of existing commands in one shot (`change-done`/`sanity`/`refresh`, `{ARG}` substitution, `--dry-run`, fail-fast) so features interlink. `icmg mode set/get/clear` keeps a cross-project session-mode banner in the persona DB and injects it every turn, so the agent stays oriented across compaction. `icmg profile qa-suggest` reuses a past answer for a similar prompt (confidence-gated), and a new Stop hook (`icmg prompt-capture`) auto-records each turn's prompt→response into a per-day session zone — reuse builds itself, no manual `qa-add`. Plus `icmg ingest --doc` rejects binary content in text-extension files. Full automated suite passes (1402 checks).
 - **v2.0.3** - **Governor focus mode, prompt-history pagination, and unified zone browsing.** `icmg govern --focus <task>` biases the injected working-set toward what you're working on (the recall query is overridden), so the budget is spent on the task at hand. `icmg profile qa-list --limit N` paginates the prompt history, and `--json` pairs with both `qa-list` and `qa-find` for scripting. `icmg profile zones` now lists both profile/skill zones AND prompt-history zones with their entry counts, so the whole cross-project persona store is navigable at a glance. Plus two fixes from continued long-session testing: `govern advise --fill` clamps nonsense values to `[0,100]`, and `qa-add` / `profile add` print the normalized zone so what you see matches what is stored. Full automated suite passes (1374 checks).
-- **v2.0.2** - **Prompt-history CRUD, an active idle-compact advisor, and zone browsing.** Building on v2.0.0's prompt→response history, this round completes its lifecycle and activates a governor piece. `icmg profile qa-list` browses stored prompts (`--json` for scripts), `qa-forget` deletes one, and `profile zones` shows each zone with its prompt count. The **idle-compact advisor (C5)** is now wired into the installed Stop hook: at the end of a turn, when context fill is high, it nudges you to `/compact` at a natural break instead of the mid-task wall (reads `icmg context-budget --percent`; opt out with `ICMG_NO_COMPACT_ADVISE=1`). Full automated suite passes (1373 checks).
-## 🧭 Where v2 is headed
-
-icmg v2 builds on four pillars. The themes below are the direction — sequenced,
-not promises with dates.
-
-**1. Token efficiency.** Optional perplexity-based compression (LLMLingua-style,
-local-model only, opt-in — the deterministic Tkil filters stay the default), embedding-based
-cross-turn dedup (upgrading word-set Jaccard to semantic cosine), and adaptive injection
-budgets that learn per project.
-
-**2. Long-session stability.** An *active* prompt→response history — when a prompt repeats or
-closely matches a past one, the prior solution is surfaced automatically instead of being
-re-derived. Semantic prompt matching and a task "focus mode" round it out.
-
-**3. An extensible platform.** WASM skill modules: drop in a sandboxed `.wasm` (a custom Tkil
-filter, a niche-language extractor, a deterministic transform) and icmg loads it without a
-rebuild — a strict capability-gated sandbox, distributable across a team like a plugin. The
-long-term north star is for the core binary to become a stable **orchestrator/provider** while
-fast-moving, safe-to-sandbox features ship as modules you install on top — though anything
-perf-critical or depending on native libraries (embeddings, the local LLM, the scanner) stays
-in the native core by design.
-
-**4. Memory intelligence.** Auto-suggesting reusable skills from frequent command patterns,
-team-syncing zoned profile/skill stores, and smarter memory consolidation.
-
-Local-first, deterministic, and opt-in remain the guiding principles throughout: the cheap
-rule-based path is always the default; smarter model-based paths activate only when you ask.
-
----
 
 ## 🚀 Quick start
 
-1. **Download** the latest build for your platform from the [Releases page](https://github.com/ncmonx/icemage/releases): `icmg-<version>-win-x64.zip` (Windows), `icmg-<version>-linux-x64.tar.gz` (Linux), or `icmg-<version>-macos-arm64.tar.gz` (macOS, Apple Silicon). **Linux and macOS binaries are now built and published automatically by GitHub Actions CI on every release** (Windows built locally + uploaded alongside).
+1. **Download** the latest installer from the [Releases page](https://github.com/ncmonx/icemage/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux.
 2. **Extract** the archive into any folder of your choice.
 3. **Add the folder to your `PATH`** so the `icmg` command is available everywhere.
 4. **Open your project** in a terminal and run:
@@ -137,21 +133,16 @@ For the full menu run `icmg --help`.
 - **No telemetry.** Icemage doesn't phone home.
 - **Open source.** [Elastic License 2.0](LICENSE) - **source-available**. Free to use, copy, modify,
 and self-host. The one limitation: you may not offer icmg to third parties as a
-hosted or managed service. Everything else is fair game. Audit the binary, the release notes, and the **full public source** freely. Security issues go through private disclosure ([SECURITY.md](SECURITY.md)) so a fix can ship before exploitable details are public.
+hosted or managed service. Everything else is fair game. Audit the binary, the release notes, and the file structure freely. Source code is held privately to keep the bug surface manageable for a solo maintainer — public reports + private fixes is the operating model.
 - **Tamper-evident.** Every release ships with a `sha256` sidecar so you can verify the binary you downloaded.
 
 ---
 
 ## 🩹 Honest limits
 
-- **Prebuilt binaries: Windows (x64), Linux (x64), and macOS (Apple Silicon)** — all three built and published automatically by CI on every release. macOS Intel (x86_64) isn't prebuilt yet; build from source (one command) if you need it.
+- **Windows + Linux only** for prebuilt binaries today. macOS users currently need to wait for a self-hosted runner build (planned).
 - **First-time install on Windows with strict antivirus** can be slow until you let Icemage run once. After that it's fast.
-- **Not a replacement for the AI.** Icemage is a token-trimming + memory layer — it doesn't write code for you and it won't make a bad model smart.
-- **Semantic recall (ONNX embeddings) and the local LLM (llama) are optional and off by default** — they need a one-time model download. Without them, recall falls back to fast BM25 + recency ranking, which is enough for most work.
-- **Graph-extraction depth varies by language.** Full AST parsing uses the tree-sitter backend (build flag); otherwise import/symbol extraction is regex-level — accurate for dependencies, lighter on fine-grained detail.
-- **Local-first only.** No cloud sync, no telemetry. Team sharing is via git-committed JSONL (`icmg sync`) — deliberate and reviewable, not automatic background sync.
-- **Encryption at rest (SQLCipher) is opt-in**, not the default — enable it if your `.icmg` database holds sensitive context.
-- **Windows is the most battle-tested platform.** The Linux and macOS builds are CI-verified but see less daily use.
+- **Not a replacement for the AI.** Icemage is a token-trimming layer — it doesn't write code for you and it doesn't make a bad AI smart.
 
 ---
 
@@ -174,8 +165,8 @@ No. Everything is local. The only network call is when you ask Icemage to update
 **Can my company use it?**
 Yes - [Elastic License 2.0](LICENSE): source-available, free for any use including commercial, self-hosting, and modification. The only limit is reselling icmg itself as a hosted/managed service. Want a private support arrangement or custom build? [Open a sponsorship](https://github.com/sponsors/ncmonx).
 
-**Is the source open?**
-Yes — the full source is public under [Elastic License 2.0](LICENSE) (source-available): free to read, build, modify, and self-host. The only limit is reselling icmg itself as a hosted/managed service. For **security issues**, please report privately per [SECURITY.md](SECURITY.md) instead of a public issue, so a fix can ship before exploitable details are public.
+**Why is the source code repo private?**
+One maintainer, no security team. Public bug reports + private fixes lets me ship hotfixes the same day without telegraphing exploitable details. The release binaries and reproducible build hash are still public.
 
 **Does it slow my AI down?**
 No. Trimming happens *before* the AI reads anything, so the AI sees a smaller, cleaner version of the same context. End-to-end interactions get faster, not slower.

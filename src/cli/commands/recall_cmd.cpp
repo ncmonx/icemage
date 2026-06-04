@@ -253,6 +253,7 @@ private:
             std::cout << "  Used: " << n.frequency << "x"
                       << ", last: " << timeAgo(n.last_used);
             if (!n.git_sha.empty()) std::cout << "  @" << n.git_sha;
+            if (n.source != "unknown" && !n.source.empty()) std::cout << "  [from: " << n.source << "]";
             std::cout << "\n\n";
         }
     }
