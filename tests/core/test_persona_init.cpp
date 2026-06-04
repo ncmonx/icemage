@@ -44,11 +44,11 @@ TEST("persona: --force overwrites back to template") {
     ASSERT_TRUE(c != std::string("MIMPI ASLI USER")); // back to template
 }
 
-TEST("persona: templates are identity-agnostic (no Claudy/Cahyo)") {
+TEST("persona: templates are identity-agnostic (no hardcoded proper names)") {
     for (const auto& s : personaSlots()) {
         std::string p = lower(s.placeholder);
-        ASSERT_TRUE(p.find("claudy") == std::string::npos);
-        ASSERT_TRUE(p.find("cahyo") == std::string::npos);
+        ASSERT_TRUE(p.find("alice") == std::string::npos);
+        ASSERT_TRUE(p.find("bob") == std::string::npos);
     }
 }
 

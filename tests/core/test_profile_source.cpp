@@ -11,10 +11,10 @@ static std::string tmpDb() { return std::string("profile_source_test.db"); }
 
 TEST("profile: put with source round-trips via get") {
     Db db(tmpDb()); ProfileStore ps(db);
-    ps.put("u_src", "_vision", "core", "note", "MIMPI", "kak Cahyo");
+    ps.put("u_src", "_vision", "core", "note", "MIMPI", "test-user");
     std::string c, k, src;
     ASSERT_TRUE(ps.get("u_src", "_vision", "core", c, k, src));
-    ASSERT_EQ(src, std::string("kak Cahyo"));
+    ASSERT_EQ(src, std::string("test-user"));
 }
 
 TEST("profile: put without source defaults to unknown") {
@@ -35,8 +35,8 @@ TEST("profile: bootstrap ALTER is idempotent across constructs") {
 
 TEST("profile: listZone populates source") {
     Db db(tmpDb()); ProfileStore ps(db);
-    ps.put("u_l", "_z", "k1", "note", "v1", "kak Cahyo");
+    ps.put("u_l", "_z", "k1", "note", "v1", "test-user");
     auto rows = ps.listZone("u_l", "_z");
     ASSERT_TRUE(rows.size() >= 1);
-    ASSERT_EQ(rows[0].source, std::string("kak Cahyo"));
+    ASSERT_EQ(rows[0].source, std::string("test-user"));
 }

@@ -28,11 +28,11 @@ TEST("memory: store with source round-trips (ctor adds column)") {
     icmg::core::Db db(":memory:"); baseSchema(db);
     MemoryStore ms(db);   // ctor guarded-ALTER adds source
     MemoryNode n;
-    n.topic = "decisions-x"; n.content = "use approach B"; n.source = "kak Cahyo";
+    n.topic = "decisions-x"; n.content = "use approach B"; n.source = "test-user";
     int64_t id = ms.store(n, /*force=*/true);
     ASSERT_TRUE(id > 0);
     MemoryNode got = ms.get(id);
-    ASSERT_EQ(got.source, std::string("kak Cahyo"));
+    ASSERT_EQ(got.source, std::string("test-user"));
 }
 
 TEST("memory: store without source defaults to unknown") {

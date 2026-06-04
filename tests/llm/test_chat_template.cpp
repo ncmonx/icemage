@@ -13,9 +13,9 @@
 namespace llm = icmg::llm;
 
 TEST("chat_template: system+user wraps in 3-turn ChatML") {
-    std::string p = llm::buildChatMLPrompt("you are claudy", "halo");
+    std::string p = llm::buildChatMLPrompt("you are an assistant", "halo");
     // System turn present
-    ASSERT_TRUE(p.find("<|im_start|>system\nyou are claudy<|im_end|>\n")
+    ASSERT_TRUE(p.find("<|im_start|>system\nyou are an assistant<|im_end|>\n")
                 != std::string::npos);
     // User turn present
     ASSERT_TRUE(p.find("<|im_start|>user\nhalo<|im_end|>\n")
