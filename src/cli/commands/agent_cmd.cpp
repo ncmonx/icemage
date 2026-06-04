@@ -21,6 +21,7 @@
 #include "../../core/persona_loader.hpp"  // v1.42.0 persona prefix
 #include "../agent_persona_policy.hpp"   // sub-agent persona policy
 #include "../agent_task.hpp"             // flag/value-aware task assembly
+#include "../agent_model.hpp"            // token routing (--light / --model)
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include <iostream>
@@ -56,6 +57,8 @@ public:
             "  --no-store      Do not auto-store decision\n"
             "  --no-pack       Skip pack step (smaller prompt; for terse tasks)\n"
             "  --command CMD   Override the command (default: from config)\n"
+            "  --light         Token-saving: cheap model + skip pack/persona\n"
+            "  --model NAME    Override the model (e.g. claude-haiku-4-5)\n"
             "  --timeout SEC   Hard timeout (default 120; 600 with --exec)\n\n"
             "Config (~/.icmg/config.json):\n"
             "  agent.command           advisory CLI (default: \"claude --print\")\n"
@@ -75,6 +78,11 @@ public:
         // gets write/edit/bash tools + auto-accept so it executes the task
         // (edits files, runs build/tests) instead of just printing advice.
         bool exec     = hasFlag(args, "--exec");
+        // Token routing: --light -> cheap model + lean prompt (skip pack/persona);
+        // --model X overrides the model explicitly. See agent_model.hpp.
+        bool light    = hasFlag(args, "--light");
+        std::string model_override = flagValue(args, "--model", "");
+        if (light) no_pack = true;
         // agentic runs take longer than one-shot Q&A; default 600s in exec mode.
         int timeout   = exec ? 600 : 120;
         try { timeout = std::stoi(flagValue(args, "--timeout", std::to_string(timeout))); } catch (...) {}
@@ -88,7 +96,7 @@ public:
         std::ostringstream prompt;
         // Persona policy: coding sub-agents (--exec) stay clean engineers (never persona);
         // advisory is opt-in (agent.use_persona, default off); ICMG_NO_PERSONA=1 forces off.
-        bool no_persona_env = std::getenv("ICMG_NO_PERSONA") != nullptr;
+        bool no_persona_env = std::getenv("ICMG_NO_PERSONA") != nullptr || light;
         if (agentUsePersona(exec, no_persona_env, cfg.getBool("agent.use_persona", false))) {
             std::string persona_prefix = icmg::core::buildPersonaPrefix();
             if (!persona_prefix.empty()) {
@@ -182,6 +190,7 @@ public:
                   "--allowedTools \"Edit,Write,Read,Bash,Glob,Grep\"")
             : cfg.getString("agent.command", "claude --print");
         std::string cmd = cmd_override.empty() ? default_cmd : cmd_override;
+        cmd = applyAgentModel(cmd, light, model_override);  // token routing
 
         // v1.79 SECURITY: --exec grants the spawned CLI write + shell with
         // auto-accept (arbitrary headless command execution). Gate behind an
