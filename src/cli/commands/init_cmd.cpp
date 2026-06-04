@@ -1048,6 +1048,7 @@ Run independent ones together via `icmg parallel`. Checklist: graph âœ“ store âœ
 
 ### Sub-agent discipline (`icmg agent`)
 - Delegate to a sub-agent ONLY via `icmg agent` (never the host AI's own agent tooling).
+- Decide per task who does it: delegate bounded, well-specified, parallelizable work on DISJOINT files to a sub-agent (then stay responsive to the user); keep work needing judgment, cross-file coherence, or risky/irreversible decisions in-process. When in doubt, do it yourself.
 - Use `--light` (cheap model) for bounded/mechanical tasks; the default model only for genuinely complex work. Sub-agent calls are expensive (full context reload per call) -- do not dispatch trivial work.
 - `--exec` grants autonomous edit/shell: require `ICMG_AGENT_EXEC=1`, a tightly-scoped task with file pointers, and a git-tracked branch. After it finishes you MUST verify independently (review the diff + build + run tests) -- never accept the sub-agent's self-report as proof.
 - Capture the sub-agent's full output (its `## FINAL REPORT`); do not truncate it.
