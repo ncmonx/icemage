@@ -853,6 +853,7 @@ add_icmg_test(test_agent_task            tests/cli/test_agent_task.cpp)
 add_icmg_test(test_self_info_detect      tests/cli/test_self_info_detect.cpp)
 add_icmg_test(test_agent_model           tests/cli/test_agent_model.cpp)
 add_icmg_test(test_agent_complexity      tests/cli/test_agent_complexity.cpp)
+add_icmg_test(test_persona_surface       tests/cli/test_persona_surface.cpp)
 add_icmg_test(test_chat_template        tests/llm/test_chat_template.cpp)
 add_icmg_test(test_auto_rule           tests/cli/test_auto_rule.cpp)         # v1.51.0 TDD
 add_icmg_test(test_skill_crud          tests/cli/test_skill_crud.cpp)        # v1.51.0 TDD
