@@ -850,6 +850,7 @@ add_icmg_test(test_inject_dedup         tests/core/test_inject_dedup.cpp)
 add_icmg_test(test_session_inject       tests/cli/test_session_inject.cpp)
 add_icmg_test(test_session_greeting      tests/cli/test_session_greeting.cpp)
 add_icmg_test(test_agent_task            tests/cli/test_agent_task.cpp)
+add_icmg_test(test_self_info_detect      tests/cli/test_self_info_detect.cpp)
 add_icmg_test(test_chat_template        tests/llm/test_chat_template.cpp)
 add_icmg_test(test_auto_rule           tests/cli/test_auto_rule.cpp)         # v1.51.0 TDD
 add_icmg_test(test_skill_crud          tests/cli/test_skill_crud.cpp)        # v1.51.0 TDD
