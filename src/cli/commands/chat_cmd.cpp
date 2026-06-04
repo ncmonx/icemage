@@ -556,7 +556,7 @@ public:
                         // turns regardless of which session_id produced them.
                         // v1.52.0: default 0 turns (no cross-session seeding).
                         // Greeting bias from past sessions was confusing the model
-                        // (replies opened "Halo, Cahyo!" instead of answering).
+                        // (replies opened with a hardcoded greeting instead of answering).
                         // Override via env ICMG_CHAT_SEED_TURNS=N.
                         int seed_turns = 0;
                         if (const char* e = std::getenv("ICMG_CHAT_SEED_TURNS"))
