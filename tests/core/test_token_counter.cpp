@@ -41,3 +41,47 @@ TEST("estimateTokens: prose lands in a sane chars/4 ballpark") {
 TEST("estimateTokens: any non-whitespace content yields at least 1 token") {
     ASSERT_TRUE(estimateTokens("x") >= (size_t)1);
 }
+
+// --- Step 2: backend selection (ICMG_TOKENIZER) -------------------------------
+#include "../../src/core/bpe_tokenizer.hpp"
+using icmg::core::TokBackend;
+using icmg::core::tokBackendFromEnv;
+using icmg::core::countTokensWith;
+using icmg::core::BpeTokenizer;
+
+TEST("tokBackendFromEnv: null/unknown -> Heuristic") {
+    ASSERT_TRUE(tokBackendFromEnv(nullptr) == TokBackend::Heuristic);
+    ASSERT_TRUE(tokBackendFromEnv("") == TokBackend::Heuristic);
+    ASSERT_TRUE(tokBackendFromEnv("garbage") == TokBackend::Heuristic);
+    ASSERT_TRUE(tokBackendFromEnv("heuristic") == TokBackend::Heuristic);
+}
+
+TEST("tokBackendFromEnv: recognises bpe + api values") {
+    ASSERT_TRUE(tokBackendFromEnv("bpe-cl100k") == TokBackend::BpeCl100k);
+    ASSERT_TRUE(tokBackendFromEnv("bpe-o200k") == TokBackend::BpeO200k);
+    ASSERT_TRUE(tokBackendFromEnv("anthropic-api") == TokBackend::AnthropicApi);
+}
+
+TEST("countTokensWith: Heuristic == estimateTokens") {
+    std::string s = "the quick brown fox jumps";
+    ASSERT_EQ(countTokensWith(s, TokBackend::Heuristic, nullptr), estimateTokens(s));
+}
+
+TEST("countTokensWith: bpe backend with no vocab falls back to heuristic") {
+    std::string s = "fallback when vocab missing";
+    ASSERT_EQ(countTokensWith(s, TokBackend::BpeCl100k, nullptr), estimateTokens(s));
+}
+
+TEST("countTokensWith: AnthropicApi (unwired) falls back to heuristic") {
+    std::string s = "api not wired yet";
+    ASSERT_EQ(countTokensWith(s, TokBackend::AnthropicApi, nullptr), estimateTokens(s));
+}
+
+TEST("countTokensWith: ready bpe backend is used over heuristic") {
+    BpeTokenizer bpe;
+    bpe.addRankForTest("he", 0);   // make "he" merge so a known chunk has a known count
+    // "hello" pretok -> one chunk "hello"; with only "he" rank: [he][l][l][o] = 4 tokens.
+    // estimateTokens("hello") (5 letters /4 -> ceil = 2) differs, proving bpe path is used.
+    size_t viaBpe = countTokensWith("hello", TokBackend::BpeCl100k, &bpe);
+    ASSERT_EQ(viaBpe, (size_t)4);
+}

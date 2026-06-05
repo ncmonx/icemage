@@ -7,8 +7,11 @@
 // so code (punct-heavy) costs more tokens per byte than prose. Whitespace is
 // absorbed (it rarely forms standalone tokens at this granularity).
 #include "token_counter.hpp"
+#include "bpe_tokenizer.hpp"
+#include "path_utils.hpp"   // icmgGlobalDir
 #include <cctype>
 #include <cmath>
+#include <cstdlib>          // getenv
 
 namespace icmg::core {
 
@@ -34,6 +37,47 @@ size_t estimateTokens(const std::string& text) {
     // Any non-whitespace content is at least one token.
     if (result == 0 && (letters + digits + punct + other) > 0) result = 1;
     return result;
+}
+
+TokBackend tokBackendFromEnv(const char* env) {
+    if (!env) return TokBackend::Heuristic;
+    std::string v(env);
+    if (v == "bpe-cl100k")    return TokBackend::BpeCl100k;
+    if (v == "bpe-o200k")     return TokBackend::BpeO200k;
+    if (v == "anthropic-api") return TokBackend::AnthropicApi;
+    return TokBackend::Heuristic;   // "heuristic", empty, or unknown -> safe default
+}
+
+size_t countTokensWith(const std::string& text, TokBackend backend, const BpeTokenizer* bpe) {
+    switch (backend) {
+        case TokBackend::BpeCl100k:
+        case TokBackend::BpeO200k:
+            if (bpe && bpe->ready()) return bpe->countTokens(text);
+            return estimateTokens(text);            // vocab missing -> heuristic fallback
+        case TokBackend::AnthropicApi:               // network backend not wired here yet
+        case TokBackend::Heuristic:
+        default:
+            return estimateTokens(text);
+    }
+}
+
+size_t countTokens(const std::string& text) {
+    TokBackend backend = tokBackendFromEnv(std::getenv("ICMG_TOKENIZER"));
+    if (backend == TokBackend::Heuristic || backend == TokBackend::AnthropicApi)
+        return estimateTokens(text);
+
+    // bpe-*: lazily load + cache the vocab once per process (1.7MB file).
+    static BpeTokenizer* g_bpe = nullptr;
+    static bool tried = false;
+    if (!tried) {
+        tried = true;
+        std::string fname = (backend == TokBackend::BpeO200k)
+                              ? "o200k_base.tiktoken" : "cl100k_base.tiktoken";
+        std::string path = icmgGlobalDir() + "/tokenizer/" + fname;
+        auto* t = new BpeTokenizer();
+        if (t->loadRanks(path)) g_bpe = t; else delete t;
+    }
+    return countTokensWith(text, backend, g_bpe);
 }
 
 } // namespace icmg::core
