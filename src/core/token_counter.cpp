@@ -1,4 +1,11 @@
-// token_counter.cpp — heuristic token estimator implementation.
+// token_counter.cpp — char-class weighted heuristic token estimator.
+//
+// Exact Claude token counts are impossible offline (Anthropic does not publish
+// its tokenizer). This is an *estimate*. It improves on a uniform bytes/4 rule
+// by weighting character classes the way BPE tokenizers actually behave:
+// punctuation/symbols and digits pack into tokens more densely than letters,
+// so code (punct-heavy) costs more tokens per byte than prose. Whitespace is
+// absorbed (it rarely forms standalone tokens at this granularity).
 #include "token_counter.hpp"
 #include <cctype>
 #include <cmath>
@@ -8,29 +15,24 @@ namespace icmg::core {
 size_t estimateTokens(const std::string& text) {
     if (text.empty()) return 0;
 
-    size_t non_ws = 0;
-    size_t transitions = 0;  // punct/space boundary count
-
-    bool prev_ws = true;  // treat start-of-string as whitespace boundary
+    // Per-class char counts. Divisors = approximate chars-per-token for each
+    // class, calibrated toward GPT-family BPE density (letters ~4/tok subword
+    // merges; digits ~2.5; punct ~2; non-ASCII UTF-8 bytes ~2 -> CJK chars,
+    // 3 bytes, land near 1.5 tokens each).
+    double letters = 0, digits = 0, punct = 0, other = 0;
     for (unsigned char c : text) {
-        bool is_ws = (c == ' ' || c == '\t' || c == '\n' || c == '\r');
-        if (!is_ws) ++non_ws;
-        // Count transitions: whitespace<->non-whitespace or alphanum<->punct
-        if (is_ws != prev_ws) ++transitions;
-        prev_ws = is_ws;
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') continue;  // whitespace absorbed
+        if (c < 128 && std::isalpha(c))      letters += 1.0;
+        else if (c < 128 && std::isdigit(c)) digits  += 1.0;
+        else if (c < 128 && std::ispunct(c)) punct   += 1.0;
+        else                                 other   += 1.0;            // non-ASCII (UTF-8 multibyte)
     }
 
-    // Baseline: non-whitespace chars / 4 (matches GPT tokenizer empirically)
-    double base = std::ceil(static_cast<double>(non_ws) / 4.0);
+    double tokens = letters / 4.0 + digits / 2.5 + punct / 2.0 + other / 2.0;
+    size_t result = static_cast<size_t>(std::ceil(tokens));
 
-    // Small bonus per word boundary (punct/space transitions)
-    double bonus = static_cast<double>(transitions) / 8.0;
-
-    size_t result = static_cast<size_t>(base + bonus);
-
-    // Clamp: if there are bytes, return at least 1
-    if (result == 0 && !text.empty() && non_ws > 0) result = 1;
-
+    // Any non-whitespace content is at least one token.
+    if (result == 0 && (letters + digits + punct + other) > 0) result = 1;
     return result;
 }
 

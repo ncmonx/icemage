@@ -1,11 +1,8 @@
 #pragma once
 // token_counter.hpp — heuristic token estimator (no network, no external deps).
-// Target: match tiktoken cl100k_base within ±20% for typical English/code content.
-//
-// Heuristic:
-//   tokens ≈ ceil(non-whitespace chars / 4.0)
-//           + punct/space transitions / 8   (word-boundary bonus)
-//   clamp lower bound: max(1, tokens) when bytes > 0
+// Estimate only — Claude's tokenizer is not public. Char-class weighted:
+// letters ~4 chars/tok, digits ~2.5, punct ~2, non-ASCII ~2; whitespace absorbed.
+// Beats uniform bytes/4 by accounting for code (punct-heavy) density.
 
 #include <string>
 #include <cstddef>
