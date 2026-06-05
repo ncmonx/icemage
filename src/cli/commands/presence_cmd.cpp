@@ -95,6 +95,35 @@ public:
             return 0;
         }
 
+        if (sub == "sync") {
+            // One-shot for the heartbeat hook: beat THIS session, then print a
+            // one-line summary of the OTHER live sessions (empty if alone). The
+            // hook wraps the line via `icmg hookio emit` so the agent sees who
+            // else is working each turn — presence, always prioritized.
+            std::string focus;
+            for (size_t i = 1; i + 1 < args.size(); ++i)
+                if (args[i] == "--focus") focus = args[i + 1];
+            core::PresenceEntry e;
+            e.session_id = mySession(); e.pid = (int64_t)ICMG_GETPID();
+            e.focus = focus; e.heartbeat_at = now;
+            std::error_code ec; fs::create_directories(core::icmgGlobalDir(), ec);
+            { std::ofstream f(file(), std::ios::app); f << core::presenceToLine(e) << "\n"; }
+
+            auto live = core::livePresence(core::latestPerSession(readAll()), now, 90);
+            std::string me = mySession();
+            std::string others;
+            int n = 0;
+            for (const auto& x : live) {
+                if (x.session_id == me) continue;
+                if (n++) others += "; ";
+                others += x.session_id;
+                if (!x.focus.empty()) others += " (" + x.focus + ")";
+            }
+            if (n > 0)
+                std::cout << "[me-everywhere] " << n << " other live session(s): " << others << "\n";
+            return 0;
+        }
+
         usage();
         return sub.empty() ? 0 : 1;
     }
