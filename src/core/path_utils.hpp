@@ -7,6 +7,13 @@ namespace icmg::core {
 // and require_exists=true.
 std::string canonicalize(const std::string& path, bool require_exists = false);
 
+// Make a path absolute WITHOUT resolving symlinks (fs::absolute semantics).
+// Never throws: the throwing std::filesystem::absolute reaches PathCch on some
+// Windows Server SKUs and raises filesystem_error err126 ("specified module
+// could not be found"), crashing path-arg commands. Falls back to a purely-
+// lexical absolute on failure. Empty input -> empty output.
+std::string absolutePath(const std::string& path);
+
 // True if 'path' is inside 'root' (both canonicalized).
 bool isWithinRoot(const std::string& path, const std::string& root);
 

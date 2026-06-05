@@ -14,6 +14,7 @@
 //   export — alias for import.
 
 #include "../base_command.hpp"
+#include "../../core/path_utils.hpp"   // absolutePath: no-throw (err126-safe)
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -145,9 +146,9 @@ static int doImport(ContextNodeStore& store, const std::vector<std::string>& arg
             std::string g = home + "/.claude/CLAUDE.md";
             if (fs::exists(g)) files.push_back(g);
         }
-        if (fs::exists("CLAUDE.md")) files.push_back(fs::absolute("CLAUDE.md").string());
+        if (fs::exists("CLAUDE.md")) files.push_back(core::absolutePath("CLAUDE.md"));
         if (fs::exists(".claude/CLAUDE.md"))
-            files.push_back(fs::absolute(".claude/CLAUDE.md").string());
+            files.push_back(core::absolutePath(".claude/CLAUDE.md"));
     }
 
     if (files.empty()) {
@@ -317,7 +318,7 @@ static int doDiff(ContextNodeStore& store, const std::vector<std::string>& args)
 
     // Check for removed sections
     auto all_stored = store.list("", true);
-    std::string fabs = fs::absolute(fpath).string();
+    std::string fabs = core::absolutePath(fpath);
     for (auto& n : all_stored) {
         if (n.source_file != fabs) continue;
         bool found = false;

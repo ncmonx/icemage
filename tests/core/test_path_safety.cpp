@@ -3,8 +3,10 @@
 
 #include "../test_main.hpp"
 #include "../../src/core/path_utils.hpp"
+#include <filesystem>
 
 using icmg::core::isSafeToolPath;
+using icmg::core::absolutePath;
 
 TEST("safepath: legit relative + absolute paths allowed") {
     ASSERT_TRUE(isSafeToolPath("src/foo.cpp"));
@@ -48,4 +50,25 @@ TEST("safepath: dotfile + dot-in-name allowed (not traversal)") {
     ASSERT_TRUE(isSafeToolPath(".icmg/data.db"));
     ASSERT_TRUE(isSafeToolPath("my.file.name.png"));
     ASSERT_TRUE(isSafeToolPath("a..b.png"));   // '..' inside a name, no separator
+}
+
+// v2.0.9 (#err126-hardening): absolutePath must never throw — the throwing
+// std::filesystem::absolute reaches PathCch on some Windows Server SKUs and
+// raises filesystem_error err126, crashing path-arg commands (context/graph).
+TEST("absolutePath: relative resolves to absolute, no throw") {
+    std::string a = absolutePath("somedir/file.txt");
+    ASSERT_TRUE(std::filesystem::path(a).is_absolute());
+}
+
+TEST("absolutePath: already-absolute stays absolute") {
+#ifdef _WIN32
+    std::string a = absolutePath("C:/foo/bar");
+#else
+    std::string a = absolutePath("/foo/bar");
+#endif
+    ASSERT_TRUE(std::filesystem::path(a).is_absolute());
+}
+
+TEST("absolutePath: empty input -> empty, no throw") {
+    ASSERT_EQ(absolutePath(std::string("")), std::string(""));
 }
