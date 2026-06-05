@@ -58,3 +58,33 @@ TEST("lease: boundary — exactly stale_after is still live") {
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
+
+// --- lock #3: lease serialize + last-per-scope (for `icmg lock` shared file) ---
+TEST("lease: line round-trips (scope path with spaces)") {
+    AgentLease l; l.pid = 42; l.host = "box1"; l.heartbeat_at = 1717; l.scope = "src/my file.cpp";
+    AgentLease got;
+    ASSERT_TRUE(leaseFromLine(leaseToLine(l), got));
+    ASSERT_EQ(got.pid, (int64_t)42);
+    ASSERT_EQ(got.host, std::string("box1"));
+    ASSERT_EQ(got.heartbeat_at, (int64_t)1717);
+    ASSERT_EQ(got.scope, std::string("src/my file.cpp"));
+}
+
+TEST("lease: malformed line -> false") {
+    AgentLease got;
+    ASSERT_TRUE(!leaseFromLine("", got));
+    ASSERT_TRUE(!leaseFromLine("1\thost\t10", got));        // missing scope field
+    ASSERT_TRUE(!leaseFromLine("x\thost\t10\ts", got));     // non-numeric pid
+    ASSERT_TRUE(!leaseFromLine("1\thost\t10\t", got));      // empty scope
+}
+
+TEST("lease: lastPerScope - release tombstone supersedes earlier claim") {
+    std::vector<AgentLease> log;
+    AgentLease claim;  claim.pid = 1; claim.host = "h"; claim.heartbeat_at = 100; claim.scope = "a.cpp";
+    AgentLease other;  other.pid = 2; other.host = "h"; other.heartbeat_at = 100; other.scope = "b.cpp";
+    AgentLease release; release.pid = 1; release.host = "h"; release.heartbeat_at = 0; release.scope = "a.cpp"; // tombstone
+    log = {claim, other, release};
+    auto last = lastPerScope(log);
+    ASSERT_EQ(last.size(), (size_t)2);
+    for (auto& l : last) if (l.scope == "a.cpp") ASSERT_EQ(l.heartbeat_at, (int64_t)0);  // tombstone won
+}
