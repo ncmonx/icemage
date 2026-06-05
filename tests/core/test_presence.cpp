@@ -55,3 +55,14 @@ TEST("presence: malformed line -> false") {
     ASSERT_TRUE(!presenceFromLine("only-one-field", got));
     ASSERT_TRUE(!presenceFromLine("id\tnotanumber\t10\tfocus", got));
 }
+
+TEST("presence: latestPerSession keeps newest beat per session") {
+    std::vector<PresenceEntry> log = {
+        mk("a", 1, "first", 10),
+        mk("b", 2, "bee",   12),
+        mk("a", 1, "second", 25),    // newer beat for a
+    };
+    auto l = latestPerSession(log);
+    ASSERT_EQ(l.size(), (size_t)2);
+    for (auto& e : l) if (e.session_id == "a") ASSERT_EQ(e.focus, std::string("second"));
+}

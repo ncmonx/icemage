@@ -41,6 +41,20 @@ inline std::vector<PresenceEntry> upsertPresence(std::vector<PresenceEntry> all,
     return all;
 }
 
+// Collapse an append-only beat log to one entry per session (the latest
+// heartbeat wins). Order-preserving by first appearance. Lets writers just
+// append their beat line (no read-modify-write race); readers dedup here.
+inline std::vector<PresenceEntry> latestPerSession(const std::vector<PresenceEntry>& all) {
+    std::vector<PresenceEntry> out;
+    for (const auto& e : all) {
+        bool found = false;
+        for (auto& x : out)
+            if (x.session_id == e.session_id) { if (e.heartbeat_at >= x.heartbeat_at) x = e; found = true; break; }
+        if (!found) out.push_back(e);
+    }
+    return out;
+}
+
 // Serialize to one TSV line: id \t pid \t heartbeat_at \t focus(escaped).
 // focus may contain tabs/newlines -> escaped so the line round-trips.
 inline std::string presenceToLine(const PresenceEntry& e) {
