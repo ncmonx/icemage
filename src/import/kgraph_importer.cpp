@@ -1,3 +1,4 @@
+#include "../core/path_utils.hpp"   // absolutePath: no-throw (err126-safe)
 #include "base_importer.hpp"
 #include "../core/registry.hpp"
 #include <fstream>
@@ -43,7 +44,7 @@ protected:
             std::chrono::system_clock::now().time_since_epoch()).count();
 
         // A2: compute project root for path validation
-        std::string root = fs::absolute(fs::path(mdPath).parent_path()).string();
+        std::string root = core::absolutePath(fs::path(mdPath).parent_path().string());
         if (!project_name.empty()) {
             // if caller specified project root, use it
         }
