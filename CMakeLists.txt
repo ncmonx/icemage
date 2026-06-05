@@ -734,6 +734,7 @@ add_icmg_test(test_flow_registry tests/core/test_flow_registry.cpp)  # v2.0.4 B:
 add_icmg_test(test_transcript_extract tests/core/test_transcript_extract.cpp)  # v2.0.4 auto-record prompt-history
 add_icmg_test(test_mode tests/core/test_mode.cpp)  # v2.0.4 mode banner persona-DB contract
 add_icmg_test(test_cross_turn_dedup tests/core/test_cross_turn_dedup.cpp)  # v2.0.0 C2 dedup
+add_icmg_test(test_u_shaped tests/core/test_u_shaped.cpp)  # v2.1 C3 U-shaped ordering
 add_icmg_test(test_structural_trim tests/core/test_structural_trim.cpp)  # v2.0.0 C6 tool-trim
 add_icmg_test(test_trace_parse tests/core/test_trace_parse.cpp)  # v2.0.0 TE3
 add_icmg_test(test_repo_skeleton tests/graph/test_repo_skeleton.cpp)  # v2.0.0 externals (repo-compact)
