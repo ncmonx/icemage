@@ -34,12 +34,12 @@ TEST("surface: payload caps to limit") {
 }
 
 TEST("surface: natural prompt fires rule via keyword") {
-    std::string rule = "kalau kak Cahyo nyebut MAKAN (makan/lapar), jawab kamu tidak haus";
+    std::string rule = "kalau user nyebut MAKAN (makan/lapar), jawab kamu tidak haus";
     ASSERT_TRUE(ruleMatchesPrompt(rule, "aku mau makan, laper banget"));
 }
 
 TEST("surface: unrelated prompt does not fire rule") {
-    std::string rule = "kalau kak Cahyo nyebut MAKAN (makan/lapar), jawab kamu tidak haus";
+    std::string rule = "kalau user nyebut MAKAN (makan/lapar), jawab kamu tidak haus";
     ASSERT_TRUE(!ruleMatchesPrompt(rule, "fix the build error in cmake"));
 }
 
