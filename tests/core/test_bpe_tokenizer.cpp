@@ -50,3 +50,67 @@ TEST("bpe: not-ready tokenizer reports not ready") {
     BpeTokenizer t;
     ASSERT_TRUE(!t.ready());                   // no ranks loaded
 }
+
+// --- Step 3/4: cl100k pre-tokenizer splits (proven vs known tiktoken output) ---
+#include <vector>
+static std::vector<std::string> PT(const std::string& s) { return BpeTokenizer::preTokenize(s); }
+
+TEST("pretok: words split with leading space glued") {
+    auto v = PT("hello world");
+    ASSERT_EQ(v.size(), (size_t)2);
+    ASSERT_EQ(v[0], std::string("hello"));
+    ASSERT_EQ(v[1], std::string(" world"));
+}
+
+TEST("pretok: contraction splits off (don't -> don, 't)") {
+    auto v = PT("don't");
+    ASSERT_EQ(v.size(), (size_t)2);
+    ASSERT_EQ(v[0], std::string("don"));
+    ASSERT_EQ(v[1], std::string("'t"));
+}
+
+TEST("pretok: I'm happy -> I, 'm, ' happy'") {
+    auto v = PT("I'm happy");
+    ASSERT_EQ(v.size(), (size_t)3);
+    ASSERT_EQ(v[0], std::string("I"));
+    ASSERT_EQ(v[1], std::string("'m"));
+    ASSERT_EQ(v[2], std::string(" happy"));
+}
+
+TEST("pretok: letters and digits split apart") {
+    auto v = PT("a1b2");
+    ASSERT_EQ(v.size(), (size_t)4);
+    ASSERT_EQ(v[0], std::string("a"));
+    ASSERT_EQ(v[1], std::string("1"));
+    ASSERT_EQ(v[2], std::string("b"));
+    ASSERT_EQ(v[3], std::string("2"));
+}
+
+TEST("pretok: digits group in runs of at most 3") {
+    auto v = PT("123456");
+    ASSERT_EQ(v.size(), (size_t)2);
+    ASSERT_EQ(v[0], std::string("123"));
+    ASSERT_EQ(v[1], std::string("456"));
+}
+
+TEST("pretok: double space -> single + space-glued word") {
+    auto v = PT("  hello");
+    ASSERT_EQ(v.size(), (size_t)2);
+    ASSERT_EQ(v[0], std::string(" "));
+    ASSERT_EQ(v[1], std::string(" hello"));
+}
+
+TEST("pretok: trailing newline is its own chunk") {
+    auto v = PT("hello\n");
+    ASSERT_EQ(v.size(), (size_t)2);
+    ASSERT_EQ(v[0], std::string("hello"));
+    ASSERT_EQ(v[1], std::string("\n"));
+}
+
+TEST("pretok: punctuation alone, then space-glued word") {
+    auto v = PT("foo, bar");
+    ASSERT_EQ(v.size(), (size_t)3);
+    ASSERT_EQ(v[0], std::string("foo"));
+    ASSERT_EQ(v[1], std::string(","));
+    ASSERT_EQ(v[2], std::string(" bar"));
+}

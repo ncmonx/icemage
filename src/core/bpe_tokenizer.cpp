@@ -54,42 +54,69 @@ std::string b64decode(const std::string& in) {
     return out;
 }
 
-// Coarse pre-tokenizer (step 1): split into runs of one char-class, and attach a
-// single leading space to the following run (tiktoken encodes " word" as a unit).
-// Not the full cl100k regex yet — refined when the real vocab lands.
-std::vector<std::string> preTokenize(const std::string& text) {
+}  // namespace
+
+// cl100k-style pre-tokenizer (ASCII-faithful). Replicates the tiktoken regex
+// alternation in order at each position: contractions | optional-lead+letters |
+// 1-3 digits | optional-space+punct+newlines | whitespace (with the (?!\S)
+// "leave the last space for the next word" rule). Unicode letters/digits beyond
+// ASCII are treated as "other"; full Unicode parity would need a \p{}-capable
+// engine. Proven against known tiktoken splits in test_bpe_tokenizer.cpp.
+std::vector<std::string> BpeTokenizer::preTokenize(const std::string& s) {
     std::vector<std::string> out;
-    size_t i = 0, n = text.size();
-    auto cls = [](unsigned char c) -> int {
-        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') return 0; // ws
-        if (c < 128 && std::isalpha(c)) return 1;                       // letters
-        if (c < 128 && std::isdigit(c)) return 2;                       // digits
-        return 3;                                                       // punct/other
-    };
+    const size_t n = s.size();
+    auto L  = [&](size_t k){ return k < n && (unsigned char)s[k] < 128 && std::isalpha((unsigned char)s[k]); };
+    auto D  = [&](size_t k){ return k < n && (unsigned char)s[k] < 128 && std::isdigit((unsigned char)s[k]); };
+    auto WS = [&](size_t k){ if (k >= n) return false; char c = s[k];
+                             return c==' '||c=='\t'||c=='\n'||c=='\r'||c=='\f'||c=='\v'; };
+    auto NL = [&](size_t k){ return k < n && (s[k]=='\r' || s[k]=='\n'); };
+    auto P  = [&](size_t k){ return k < n && !L(k) && !D(k) && !WS(k); };  // punct/symbol
+    auto lc = [&](size_t k)->int{ return k < n ? std::tolower((unsigned char)s[k]) : 0; };
+
+    size_t i = 0;
     while (i < n) {
-        // optional single leading space glued to the next non-space run
-        std::string chunk;
-        if (text[i] == ' ') { chunk.push_back(' '); ++i; }
-        if (i < n && text[i] != ' ') {
-            int k = cls((unsigned char)text[i]);
-            while (i < n && (unsigned char)text[i] != ' ' && cls((unsigned char)text[i]) == k)
-                chunk.push_back(text[i++]);
+        // 1) contractions: '  (s|t|m|d|ll|ve|re), case-insensitive
+        if (s[i] == '\'') {
+            int a = lc(i+1), b = lc(i+2);
+            if ((a=='l'&&b=='l') || (a=='v'&&b=='e') || (a=='r'&&b=='e')) { out.push_back(s.substr(i,3)); i+=3; continue; }
+            if (a=='s'||a=='t'||a=='m'||a=='d')                            { out.push_back(s.substr(i,2)); i+=2; continue; }
         }
-        if (!chunk.empty()) out.push_back(chunk);
-        // consume any remaining whitespace run as its own chunk
-        while (i < n && (text[i] == '\t' || text[i] == '\n' || text[i] == '\r')) {
-            out.emplace_back(1, text[i++]);
+        // 2) word: [^\r\n letter digit]? letter+   (optional 1 lead char iff a letter follows)
+        {
+            size_t j = i;
+            if (!L(j) && !D(j) && s[j] != '\r' && s[j] != '\n' && L(j+1)) j++;
+            if (L(j)) {
+                size_t w = j; while (L(w)) w++;
+                out.push_back(s.substr(i, w - i)); i = w; continue;
+            }
         }
-        if (i < n && text[i] == ' ' && (i + 1 >= n || text[i + 1] == ' ')) {
-            // runs of spaces beyond the single glued one -> own chunk
-            std::string sp;
-            while (i < n && text[i] == ' ') sp.push_back(text[i++]);
-            out.push_back(sp);
+        // 3) number: 1-3 digits
+        if (D(i)) {
+            size_t w = i, c = 0; while (D(w) && c < 3) { ++w; ++c; }
+            out.push_back(s.substr(i, w - i)); i = w; continue;
+        }
+        // 4) punct: ' '? punct+ [\r\n]*
+        {
+            size_t j = i;
+            if (s[j] == ' ' && P(j+1)) j++;
+            if (P(j)) {
+                size_t w = j; while (P(w)) ++w; while (NL(w)) ++w;
+                out.push_back(s.substr(i, w - i)); i = w; continue;
+            }
+        }
+        // 5) whitespace: \s*[\r\n] | \s+(?!\S) | \s+
+        {
+            size_t w = i; while (WS(w) && !NL(w)) ++w;
+            if (NL(w)) { ++w; out.push_back(s.substr(i, w - i)); i = w; continue; }
+            size_t e = i; while (WS(e)) ++e;
+            if (e < n && !WS(e) && (e - 1) > i) {            // (?!\S): leave last space for next word
+                out.push_back(s.substr(i, (e - 1) - i)); i = e - 1; continue;
+            }
+            out.push_back(s.substr(i, e - i)); i = e; continue;
         }
     }
     return out;
 }
-}  // namespace
 
 size_t BpeTokenizer::countTokens(const std::string& text) const {
     if (!ready() || text.empty()) return 0;

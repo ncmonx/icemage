@@ -8,12 +8,19 @@
 // need COUNTS (not token ids) for savings, so this never builds an id vector.
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include <cstddef>
 
 namespace icmg::core {
 
 class BpeTokenizer {
 public:
+    // cl100k-style pre-tokenizer (ASCII-faithful; Unicode approximated). Splits
+    // text into chunks BEFORE byte-pair merge, replicating the tiktoken regex:
+    //   contractions | optional-lead + letters | 1-3 digits | space?+punct+nl* | ws
+    // Exposed as a pure static so it can be unit-tested against known splits.
+    static std::vector<std::string> preTokenize(const std::string& text);
+
     // Load mergeable ranks from a tiktoken file: each line "<base64-bytes> <rank>".
     // Returns true on success (>=1 rank parsed).
     bool loadRanks(const std::string& path);
