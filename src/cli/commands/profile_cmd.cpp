@@ -217,7 +217,7 @@ public:
             return 0;
         }
         if (sub == "search") {
-            for (auto& r : ps.search(user, query))
+            for (auto& r : ps.searchFts(user, query))   // FTS5 ranked; LIKE fallback if FTS5 absent
                 std::cout << "  " << r.zone << "/" << r.key << ": " << r.content.substr(0, 80) << "\n";
             return 0;
         }
