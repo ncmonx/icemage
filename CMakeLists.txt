@@ -644,6 +644,7 @@ add_icmg_test(test_path_safety   tests/core/test_path_safety.cpp)
 add_icmg_test(test_token_counter tests/core/test_token_counter.cpp)
 add_icmg_test(test_bpe_tokenizer tests/core/test_bpe_tokenizer.cpp)
 add_icmg_test(test_presence tests/core/test_presence.cpp)
+add_icmg_test(test_event_bus tests/core/test_event_bus.cpp)
 add_icmg_test(test_canonicalize_noexcept tests/core/test_canonicalize_noexcept.cpp) # v1.78 #174
 add_icmg_test(test_migration_idempotent tests/core/test_migration_idempotent.cpp)
 add_icmg_test(test_server_auth   tests/core/test_server_auth.cpp)            # v1.68 S2
