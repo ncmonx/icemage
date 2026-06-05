@@ -348,14 +348,15 @@ public:
         // v1.5.0: real session total (aggregated across all project sessions).
         RealSessionData rsd = fetchRealSessionData();
         if (rsd.total_tokens > 0) {
-            int coverage_pct = rsd.total_tokens > 0
-                                ? (int)(100 * total.raw_tokens / rsd.total_tokens) : 0;
-            if (coverage_pct > 100) coverage_pct = 100;
+            // Honest: transcript session tokens and icmg-filtered output (bytes/4
+            // est, all runs in window) are DIFFERENT measures/scopes. Show both
+            // plainly -- never a fabricated "coverage %" or "outside" subtraction
+            // (the filtered total can exceed a single session, which is not a bug).
             std::cout << "\nReal session tokens (sum of " << rsd.session_count
-                      << " sessions): " << rsd.total_tokens
-                      << "  (icmg-covered " << total.raw_tokens
-                      << " = " << coverage_pct << "%, outside "
-                      << (rsd.total_tokens - total.raw_tokens) << ")\n";
+                      << " sessions): " << rsd.total_tokens << "\n"
+                      << "icmg-filtered output (all runs in window, est. tokens): "
+                      << total.actual_tokens
+                      << "  (separate measure -- not a session-coverage %)\n";
 
             std::map<std::string, int64_t, std::greater<std::string>> by_day;
             for (auto& r : rsd.sessions) {
