@@ -714,6 +714,8 @@ icmg popup-killer ensure >/dev/null 2>&1 || true
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
+# C2: reset cross-turn near-dup window so a fresh session starts un-suppressed.
+[[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-injected-slices.txt" 2>/dev/null || true
 HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
 SKILLS=$(icmg skill manifest 2>/dev/null)
 FOCUS=$(icmg focus inject 2>/dev/null)
