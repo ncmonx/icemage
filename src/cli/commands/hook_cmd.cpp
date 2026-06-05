@@ -33,6 +33,7 @@
 #include "../../daemon/rule_daemon_client.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../compress/write_expander.hpp"   // v1.25.0 (W3)
+#include "../../core/cross_turn_dedup.hpp"      // v2.0.0 C2: cross-turn near-dup gate
 
 #ifdef _WIN32
 #  include <process.h>
@@ -364,6 +365,12 @@ private:
     static std::string sessionInjectedIdsPath() {
         return std::string(core::icmgGlobalDir()) + "/session-injected-ids.txt";
     }
+    // C2: cross-turn near-dup window of injected recall slices (topic strings).
+    // ID gate above catches exact same-node re-injection; this file-backed
+    // Jaccard window catches different-id near-identical topics across turns.
+    static std::string sessionInjectedSlicesPath() {
+        return std::string(core::icmgGlobalDir()) + "/session-injected-slices.txt";
+    }
     static bool isNodeInjected(const std::string& id) {
         std::ifstream f(sessionInjectedIdsPath());
         if (!f) return false;
@@ -537,6 +544,10 @@ private:
                 if (m.score < RECALL_MIN_SCORE) continue;           // T3: threshold
                 std::string nid = std::to_string(m.id);
                 if (isNodeInjected(nid)) continue;                   // T1: dedup
+                // C2: cross-turn near-dup gate — different node id but near-identical
+                // topic already surfaced this session -> skip (ID gate can't catch it).
+                if (core::dedupAgainstWindowFile(m.topic, sessionInjectedSlicesPath(), 0.85))
+                    continue;
                 markNodeInjected(nid);
                 std::string topic = m.topic;
                 if (topic.size() > 80) topic = topic.substr(0, 77) + "...";
@@ -576,6 +587,8 @@ private:
                             if (m.score < RECALL_MIN_SCORE) continue;     // T3
                             std::string xid = "x:" + pname + ":" + std::to_string(m.id);
                             if (isNodeInjected(xid)) continue;             // T1
+                            if (core::dedupAgainstWindowFile(m.topic, sessionInjectedSlicesPath(), 0.85))
+                                continue;                                  // C2: cross-turn near-dup
                             markNodeInjected(xid);
                             std::string topic = m.topic;
                             if (topic.size() > 70) topic = topic.substr(0, 67) + "...";

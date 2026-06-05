@@ -714,6 +714,8 @@ icmg popup-killer ensure >/dev/null 2>&1 || true
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
+# C2: reset cross-turn near-dup window so a fresh session starts un-suppressed.
+[[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-injected-slices.txt" 2>/dev/null || true
 HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
 SKILLS=$(icmg skill manifest 2>/dev/null)
 FOCUS=$(icmg focus inject 2>/dev/null)
@@ -1044,6 +1046,15 @@ Run independent ones together via `icmg parallel`. Checklist: graph ✓ store �
 - Made a decision? `icmg store --topic decisions-<feature> "<rationale>"`
 - Long-form rationale (post-mortem, ADR)? `icmg memoir add --title T --content-file F`
 - Anti-pattern / failed approach? `icmg fail store "<task>" "<approach>" "<reason>"`
+- About the **assistant itself** (identity, preferences, state, feelings)? Use the **persona DB**, not project DB: `icmg profile add --zone _identity|_prefs|_vision|_feeling --key <k> --content "..."` (portable across projects; survives where project memory does not). Project/work facts stay in project DB via `icmg store`. Keep self-info and work-info separate.
+
+### Sub-agent discipline (`icmg agent`)
+- Delegate to a sub-agent ONLY via `icmg agent` (never the host AI's own agent tooling).
+- Decide per task who does it: delegate bounded, well-specified, parallelizable work on DISJOINT files to a sub-agent (then stay responsive to the user); keep work needing judgment, cross-file coherence, or risky/irreversible decisions in-process. When in doubt, do it yourself.
+- Use `--light` (cheap model) for bounded/mechanical tasks; the default model only for genuinely complex work. Sub-agent calls are expensive (full context reload per call) -- do not dispatch trivial work.
+- `--exec` grants autonomous edit/shell: require `ICMG_AGENT_EXEC=1`, a tightly-scoped task with file pointers, and a git-tracked branch. After it finishes you MUST verify independently (review the diff + build + run tests) -- never accept the sub-agent's self-report as proof.
+- Capture the sub-agent's full output (its `## FINAL REPORT`); do not truncate it.
+- Verify a mono test binary with plain `ctest` (no `--parallel`, no other icmg process holding the DB) to avoid false failures.
 
 ### Topic prefix conventions (makes recall deterministic)
 

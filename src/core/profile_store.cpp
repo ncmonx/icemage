@@ -18,6 +18,28 @@ void ProfileStore::ensure() {
               [&](const Row& r) { if (r.size() >= 2 && r[1] == "source") hasSource = true; });
     if (!hasSource)
         db_.run("ALTER TABLE profile_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown'");
+
+    // FTS5 ranked search over content. External-content table keyed on profile_entries.rowid,
+    // kept in sync by triggers. Guarded: persona DB has no Migrator, and SQLite may lack FTS5.
+    try {
+        bool ftsExisted = false;
+        db_.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='profile_fts'", {},
+                  [&](const Row&) { ftsExisted = true; });
+        db_.run("CREATE VIRTUAL TABLE IF NOT EXISTS profile_fts USING fts5("
+                "content, content='profile_entries', content_rowid='rowid')");
+        db_.run("CREATE TRIGGER IF NOT EXISTS profile_fts_ai AFTER INSERT ON profile_entries BEGIN "
+                "INSERT INTO profile_fts(rowid, content) VALUES(new.rowid, new.content); END");
+        db_.run("CREATE TRIGGER IF NOT EXISTS profile_fts_ad AFTER DELETE ON profile_entries BEGIN "
+                "INSERT INTO profile_fts(profile_fts, rowid, content) VALUES('delete', old.rowid, old.content); END");
+        db_.run("CREATE TRIGGER IF NOT EXISTS profile_fts_au AFTER UPDATE ON profile_entries BEGIN "
+                "INSERT INTO profile_fts(profile_fts, rowid, content) VALUES('delete', old.rowid, old.content); "
+                "INSERT INTO profile_fts(rowid, content) VALUES(new.rowid, new.content); END");
+        if (!ftsExisted)   // backfill rows written before the FTS table existed
+            db_.run("INSERT INTO profile_fts(profile_fts) VALUES('rebuild')");
+        ftsAvailable_ = true;
+    } catch (const DbError&) {
+        ftsAvailable_ = false;   // SQLite without FTS5 -> searchFts() degrades to LIKE
+    }
 }
 
 void ProfileStore::put(const std::string& user, const std::string& zone, const std::string& key,
@@ -68,6 +90,28 @@ std::vector<ProfileRow> ProfileStore::search(const std::string& user, const std:
               [&](const Row& r) {
                   if (r.size() >= 5) out.push_back({r[0], r[1], r[2], r[3], std::stoll(r[4])});
               });
+    return out;
+}
+
+std::vector<ProfileRow> ProfileStore::searchFts(const std::string& user, const std::string& query, int limit) {
+    if (!ftsAvailable_ || query.empty()) return search(user, query);
+    // Quote the whole query as an FTS5 phrase so operator chars (- " *) can't trigger a syntax error.
+    std::string phrase = "\"";
+    for (char c : query) { if (c == '"') phrase += '"'; phrase += c; }
+    phrase += "\"";
+    std::vector<ProfileRow> out;
+    try {
+        db_.query("SELECT e.zone,e.key,e.kind,e.content,e.updated_at,e.source "
+                  "FROM profile_fts f JOIN profile_entries e ON e.rowid=f.rowid "
+                  "WHERE profile_fts MATCH ? AND e.user_id=? "
+                  "ORDER BY bm25(profile_fts) LIMIT ?",
+                  {phrase, user, std::to_string(limit)},
+                  [&](const Row& r) {
+                      if (r.size() >= 6) out.push_back({r[0], r[1], r[2], r[3], std::stoll(r[4]), r[5]});
+                  });
+    } catch (const DbError&) {
+        return search(user, query);   // malformed MATCH or runtime FTS error -> LIKE fallback
+    }
     return out;
 }
 

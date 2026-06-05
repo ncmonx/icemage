@@ -4,6 +4,8 @@
 // pure + deterministic -> unit-testable. Pinned content should bypass this (caller's choice).
 #include <algorithm>
 #include <cctype>
+#include <deque>
+#include <fstream>
 #include <set>
 #include <string>
 #include <vector>
@@ -55,6 +57,38 @@ inline std::vector<std::string> dedupeAgainstWindow(const std::vector<std::strin
         kept.push_back(s);
     }
     return kept;
+}
+
+// Cross-turn variant: window is a newline-delimited file of recently-injected
+// slices that survives across UserPromptSubmit turns (and process restarts).
+// Returns true if `slice` is a near-duplicate of a window entry (caller SKIPS it).
+// On a non-dup, appends `slice` to the window file (capped to last `maxWindow`
+// lines, FIFO) and returns false (caller EMITS it). Empty/whitespace slices are
+// never dups and never recorded. The ID-based per-node dedup (session-injected-ids)
+// catches exact same-node re-injection; this catches different-id near-identical
+// content that the ID gate misses.
+inline bool dedupAgainstWindowFile(const std::string& slice,
+                                   const std::string& windowPath,
+                                   double threshold,
+                                   size_t maxWindow = 64) {
+    if (wordSet(slice).empty()) return false;
+    std::deque<std::string> window;
+    {
+        std::ifstream in(windowPath);
+        std::string line;
+        while (std::getline(in, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (!line.empty()) window.push_back(line);
+        }
+    }
+    std::vector<std::string> win(window.begin(), window.end());
+    if (isDuplicateInWindow(slice, win, threshold)) return true;
+    // record: append, FIFO-cap, rewrite (window is small -> cheap).
+    window.push_back(slice);
+    while (window.size() > maxWindow) window.pop_front();
+    std::ofstream out(windowPath, std::ios::trunc);
+    for (const auto& w : window) out << w << "\n";
+    return false;
 }
 
 }  // namespace icmg::core

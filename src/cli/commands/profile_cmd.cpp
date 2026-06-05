@@ -14,6 +14,7 @@
 #include "../../core/prompt_cluster.hpp"   // qa-frequent: cluster recurring prompts
 #include "../../core/profile_key.hpp"   // normalizeZone for consistent display (#9)
 #include "../../core/user_identity.hpp"
+#include "../persona_surface.hpp"   // per-prompt cross-project rule surfacing
 #include <nlohmann/json.hpp>
 #include <cstdlib>
 #include <iostream>
@@ -50,7 +51,7 @@ public:
             else if (args[i] == "--prompt" && i + 1 < args.size()) prompt = args[++i];
             else if (args[i] == "--response" && i + 1 < args.size()) response = args[++i];
             else if (args[i] == "--min" && i + 1 < args.size()) { try { minScore = std::stod(args[++i]); } catch (...) {} }
-            else if ((sub == "search" || sub == "qa-find" || sub == "qa-suggest") && !args[i].empty() && args[i][0] != '-') query = args[i];
+            else if ((sub == "search" || sub == "qa-find" || sub == "qa-suggest" || sub == "surface") && !args[i].empty() && args[i][0] != '-') query = args[i];
         }
         if (minScore < 0.0) minScore = 0.0;
         if (minScore > 1.0) minScore = 1.0;
@@ -216,8 +217,27 @@ public:
             return 0;
         }
         if (sub == "search") {
-            for (auto& r : ps.search(user, query))
+            for (auto& r : ps.searchFts(user, query))   // FTS5 ranked; LIKE fallback if FTS5 absent
                 std::cout << "  " << r.zone << "/" << r.key << ": " << r.content.substr(0, 80) << "\n";
+            return 0;
+        }
+        if (sub == "surface") {
+            // Per-prompt cross-project rule injection: match _rules entries
+            // against the prompt and emit a UserPromptSubmit additionalContext.
+            std::vector<std::string> rules;
+            for (auto& r : ps.listZone(user, kRuleZone))
+                if (ruleMatchesPrompt(r.content, query)) rules.push_back(r.content);
+            std::string ctx = buildSurfaceContext(rules);
+            if (ctx.empty()) return 0;  // nothing relevant to inject
+            std::string esc;
+            for (char c : ctx) {
+                if      (c == '"')  esc += "\\\"";
+                else if (c == '\n') esc += "\\n";
+                else if (c == '\\') esc += "\\\\";
+                else                esc.push_back(c);
+            }
+            std::cout << "{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\","
+                         "\"additionalContext\":\"" << esc << "\"}}\n";
             return 0;
         }
         if (sub == "forget") {

@@ -60,6 +60,47 @@ TEST("profile_store: zoneCounts groups by zone busiest-first") {
     ASSERT_EQ(zc[0].second, 2);
 }
 
+TEST("profile_store: searchFts finds content matches") {
+    Db db(tmpDb());
+    ProfileStore ps(db);
+    ps.put("u_fts1", "infra", "deploy", "note", "deploy the release artifact to the staging server rollout");
+    ps.put("u_fts1", "infra", "rollback", "note", "rollback the staging deploy when smoke tests fail");
+    ps.put("u_fts1", "work", "lint", "note", "use clang-tidy with fix flag");
+    auto hits = ps.searchFts("u_fts1", "staging", 10);
+    ASSERT_TRUE(hits.size() >= (size_t)2);   // both staging entries
+    for (const auto& h : hits) ASSERT_TRUE(h.content.find("staging") != std::string::npos);
+}
+
+TEST("profile_store: searchFts scoped to user") {
+    Db db(tmpDb());
+    ProfileStore ps(db);
+    ps.put("u_fts_a", "z", "k", "note", "zonklewashere alpha entry");
+    ps.put("u_fts_b", "z", "k", "note", "zonklewashere beta entry");
+    auto hits = ps.searchFts("u_fts_a", "zonklewashere", 10);
+    ASSERT_EQ(hits.size(), (size_t)1);
+    ASSERT_EQ(hits[0].content, std::string("zonklewashere alpha entry"));
+}
+
+TEST("profile_store: searchFts reflects upsert (stale content gone)") {
+    Db db(tmpDb());
+    ProfileStore ps(db);
+    ps.put("u_fts_up", "z", "k", "note", "originalwordzz here");
+    ps.put("u_fts_up", "z", "k", "note", "replacedwordzz here");
+    auto stale = ps.searchFts("u_fts_up", "originalwordzz", 10);
+    ASSERT_EQ(stale.size(), (size_t)0);   // old content no longer indexed
+    auto fresh = ps.searchFts("u_fts_up", "replacedwordzz", 10);
+    ASSERT_EQ(fresh.size(), (size_t)1);
+}
+
+TEST("profile_store: searchFts after forget removes from index") {
+    Db db(tmpDb());
+    ProfileStore ps(db);
+    ps.put("u_fts_fg", "z", "k", "note", "deletemezz token here");
+    ps.forget("u_fts_fg", "z", "k");
+    auto hits = ps.searchFts("u_fts_fg", "deletemezz", 10);
+    ASSERT_EQ(hits.size(), (size_t)0);
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

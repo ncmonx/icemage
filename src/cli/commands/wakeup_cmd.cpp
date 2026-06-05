@@ -8,12 +8,14 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/user_identity.hpp"
+#include "../session_greeting.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <ctime>
+#include <chrono>
 
 namespace icmg::cli {
 
@@ -53,6 +55,38 @@ public:
         std::ostringstream out;
         if (pack) out << "# Wake-up bundle\n\n";
         out << "icmg wake-up — " << fmtDate(now) << "\n";
+        // Authoritative wall-clock: this is already local time (fmtDate uses
+        // localtime). Do NOT re-run `date` or re-convert the timezone — that is
+        // how a 12:39 reading once became a wrong 05:39 (-7h TZ reconvert).
+        out << "NOW (authoritative — trust this, do NOT re-run date / re-convert TZ): "
+            << fmtDate(now) << "\n";
+
+        // Gap-aware greeting: clearing the conversation is NOT a new day. Read
+        // the last handoff's write time and tell the assistant whether to greet
+        // as a CONTINUATION ("lanjut") or a FRESH session.
+        {
+            int64_t lastTs = 0; bool haveLast = false;
+            try {
+                namespace fs = std::filesystem;
+                fs::path rp = fs::path(".") / ".remember" / "remember.md";
+                if (fs::exists(rp)) {
+                    auto ftime = fs::last_write_time(rp);
+                    auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                        ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now());
+                    lastTs = (int64_t)std::chrono::system_clock::to_time_t(sctp);
+                    haveLast = true;
+                }
+            } catch (...) {}
+            auto hint = computeGreetingHint(now, lastTs, haveLast);
+            if (hint.haveLast) {
+                out << "Last handoff: " << fmtDate(lastTs)
+                    << "  (gap " << formatGap(hint.gapSec) << ")  ->  greeting: "
+                    << (hint.mode == "continue"
+                            ? "CONTINUE (\"lanjut\" — same session-day, NOT a fresh morning)"
+                            : "FRESH (greet by wall-clock time-of-day)")
+                    << "\n";
+            }
+        }
         if (has_user) out << "[user: " << cur_user << "]\n";
         out << "(window: " << since << ")\n\n";
 

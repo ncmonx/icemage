@@ -13,6 +13,10 @@
 #include <filesystem>
 #include <system_error>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 namespace icmg::test {
 
 struct TestCase {
@@ -43,6 +47,13 @@ inline void betweenTests() { /* no-op in per-exe mode */ }
 // TEST() cases whose name CONTAINS the filter substring. Single mono test
 // binary (`icmg_test`) dispatches via ctest with --filter <suite-prefix>.
 inline int run_all(const std::string& filter = "") {
+#if defined(_WIN32)
+    // Mirror main.cpp: suppress the modal "insert disk in drive B:" popup that
+    // Windows raises when a spawned child process (CreateProcess) probes a dead
+    // PATH drive. The test entrypoint must set this itself — main.cpp's call
+    // does not cover the test binary's own process.
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+#endif
     // Reproducibility: delete stale per-run temp DBs left by a PRIOR invocation.
     // Tests share fixed "*_test.db" filenames in the cwd; SQLite WAL/SHM sidecars
     // (-wal/-shm) carry committed rows across separate runs, which caused false
