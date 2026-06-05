@@ -68,6 +68,15 @@ std::string canonicalize(const std::string& path, bool require_exists) {
     return out.string();
 }
 
+std::string absolutePath(const std::string& path) {
+    if (path.empty()) return path;
+    std::error_code ec;
+    fs::path abs = fs::absolute(path, ec);   // #174-class: no-throw overload
+    if (ec || abs.empty())
+        return fs::path(path).lexically_normal().string();   // PathCch err126 -> lexical
+    return abs.string();
+}
+
 bool isWithinRoot(const std::string& path, const std::string& root) {
     std::error_code ec1, ec2;
     fs::path p = fs::weakly_canonical(path, ec1);   // #174: no-throw overloads

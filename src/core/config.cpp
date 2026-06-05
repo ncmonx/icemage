@@ -86,7 +86,7 @@ std::string Config::globalDbPath() const {
 
 std::string Config::projectDbPath(const std::string& root) const {
     if (!project_db_override_.empty()) return project_db_override_;
-    fs::path r = fs::weakly_canonical(root);
+    fs::path r = canonicalize(root);  // #174-class: no-throw (err126-safe)
     return (r / ".icmg" / "data.db").string();
 }
 

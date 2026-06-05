@@ -2,6 +2,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/path_utils.hpp"   // absolutePath: no-throw (err126-safe)
 #include "../../graph/graph_store.hpp"
 #include "../../graph/graph_report.hpp"   // v1.71 Graphify
 #include "../../graph/graph_prune.hpp"    // v2.0.0 Phase 0b (prune missing-file nodes)
@@ -739,7 +740,7 @@ public:
         for (auto& a : args) { if (!a.empty() && a[0] != '-') { path = a; break; } }
 
         namespace fs = std::filesystem;
-        std::string root   = fs::absolute(path).string();
+        std::string root   = core::absolutePath(path);
         auto& cfg = core::Config::instance();
         std::string dbPath  = cfg.projectDbPath(root);
         std::string pidPath = root + "/.icmg/watcher.pid";
@@ -775,7 +776,7 @@ public:
         for (auto& a : args) { if (!a.empty() && a[0] != '-') { path = a; break; } }
 
         namespace fs = std::filesystem;
-        std::string root    = fs::absolute(path).string();
+        std::string root    = core::absolutePath(path);
         std::string pidPath = root + "/.icmg/watcher.pid";
 
         if (!graph::Daemon::isRunning(pidPath)) {
@@ -806,7 +807,7 @@ public:
         bool json_out = hasFlag(args, "--json");
 
         namespace fs = std::filesystem;
-        std::string root    = fs::absolute(path).string();
+        std::string root    = core::absolutePath(path);
         std::string pidPath = root + "/.icmg/watcher.pid";
 
         bool running = graph::Daemon::isRunning(pidPath);

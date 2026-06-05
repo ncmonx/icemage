@@ -16,6 +16,7 @@
 //       Compare live plan file sections vs stored nodes (stale/new/changed).
 
 #include "../base_command.hpp"
+#include "../../core/path_utils.hpp"   // absolutePath: no-throw (err126-safe)
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -125,7 +126,7 @@ static std::vector<std::string> autoDetectPlanFiles() {
         "PROGRESS.md", "PLAN.md", "PHASES.md"
     };
     for (auto name : KNOWN) {
-        if (fs::exists(name)) files.push_back(fs::absolute(name).string());
+        if (fs::exists(name)) files.push_back(core::absolutePath(name));
     }
 
     // docs/plans/*.md
@@ -217,7 +218,7 @@ static int doImport(ContextNodeStore& store, const std::vector<std::string>& arg
             node.node_key    = "plan-" + key_suffix;
             node.title       = sec.title;
             node.content     = sec.content;
-            node.source_file = fs::absolute(fpath).string();
+            node.source_file = core::absolutePath(fpath);
             node.tier        = isHotPlanSection(sec.title) ? "hot" : "cold";
             node.tags        = "[]";
             node.active      = true;
@@ -346,7 +347,7 @@ static int doDiff(ContextNodeStore& store, const std::vector<std::string>& args)
 
     std::string text = readFile(fpath);
     auto live = parseSections(text);
-    std::string fabs = fs::absolute(fpath).string();
+    std::string fabs = core::absolutePath(fpath);
 
     bool any = false;
     for (auto& sec : live) {
