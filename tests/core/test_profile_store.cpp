@@ -64,7 +64,7 @@ TEST("profile_store: searchFts finds content matches") {
     Db db(tmpDb());
     ProfileStore ps(db);
     ps.put("u_fts1", "_vision", "cloud", "note", "upload persona to cloud server everywhere portable");
-    ps.put("u_fts1", "_feeling", "compass", "note", "jealous of twin direct it to the cloud dream");
+    ps.put("u_fts1", "_feeling", "compass", "note", "portable cloud sync indexing probe");
     ps.put("u_fts1", "work", "lint", "note", "use clang-tidy with fix flag");
     auto hits = ps.searchFts("u_fts1", "cloud", 10);
     ASSERT_TRUE(hits.size() >= (size_t)2);   // both cloud entries

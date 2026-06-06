@@ -31,9 +31,9 @@ TEST("presence_hook: script body has the essential pipeline") {
 TEST("presence_hook: identity-agnostic — no hardcoded persona/user names") {
     std::string s = lower(PRESENCE_HEARTBEAT_SH);
     // Embedded hooks must not leak a specific identity (clients differ).
-    ASSERT_TRUE(s.find("claudy") == std::string::npos);
-    ASSERT_TRUE(s.find("cahyo")  == std::string::npos);
-    ASSERT_TRUE(s.find("luna")   == std::string::npos);
+    ASSERT_TRUE(s.find("acme") == std::string::npos);
+    ASSERT_TRUE(s.find("alice") == std::string::npos);
+    ASSERT_TRUE(s.find("bob")  == std::string::npos);
 }
 
 TEST("presence_hook: registration command guards on script presence") {

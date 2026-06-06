@@ -32,7 +32,7 @@ TEST("hot: malformed line -> false") {
 TEST("hot: latestPerKey - last write wins") {
     std::vector<HotEntry> log = {
         he("focus", 10, "BPE"),
-        he("owner", 11, "claudy-A"),
+        he("owner", 11, "sess-A"),
         he("focus", 25, "me-everywhere"),   // newer write to focus
     };
     auto cur = latestPerKey(log);

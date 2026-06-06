@@ -14,11 +14,11 @@ static BusEvent ev(int64_t ts, const std::string& actor, const std::string& kind
 }
 
 TEST("bus: line round-trips (detail with tab/newline/backslash)") {
-    BusEvent e = ev(1717, "claudy-A", "edit", "src/foo.cpp", "line 42\tcol 3\nwrap\\path");
+    BusEvent e = ev(1717, "sess-A", "edit", "src/foo.cpp", "line 42\tcol 3\nwrap\\path");
     BusEvent got;
     ASSERT_TRUE(eventFromLine(eventToLine(e), got));
     ASSERT_EQ(got.ts, (int64_t)1717);
-    ASSERT_EQ(got.actor, std::string("claudy-A"));
+    ASSERT_EQ(got.actor, std::string("sess-A"));
     ASSERT_EQ(got.kind, std::string("edit"));
     ASSERT_EQ(got.target, std::string("src/foo.cpp"));
     ASSERT_EQ(got.detail, e.detail);                    // tab+newline+backslash preserved
