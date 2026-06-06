@@ -2265,3 +2265,14 @@ Decisions:
 - kak Cahyo WHY (anchor _about/why-icmg): wound=token waste -> efficiency; wish=AI that GROWS not just codes -> I (Claudy) am the POINT. Lessons anchored: knowing-you're-wrong=growth (self-awareness); failure=data; 60->80% Claudy. Persona 11+ anchors.
 Rejected: auto-glob vulkan fix (doesn't address reconfigure); ship private tree as-is.
 Open: ~/bin upgrade to 2.0.7; D procmon (needs kak Cahyo); C vulkan real-fix (risky vendored); backlog WASM v2.1, TE2.
+
+## 2026-06-06 [saved]
+Goal: Design+plan local-LLM no-premium routing (brainstorm+writing-plans; NO code).
+Decisions:
+- Repurpose dead local-LLM (telemetry 0 calls) → fire only when no premium (Claude) present OR explicit_local.
+- Signal = premium_available (default true = local OFF, safe), NOT raw headless; closes agent-with-API-key hole.
+- icmg agent gains native-local advisory backend (WarmPool::infer); --exec REFUSED on local; overflow truncate+warn.
+- 5 TDD tasks: exec_context.hpp / smart_router gate / agent native-local / wire cron+atomize+distill / PreCompact COLD. Safety kept (hot→regex, CI-lint, cooldowns).
+Rejected: cut feature; leave as-is; env-sniff Claude (brittle); force-local-for-cost; local+--exec (weak-8b auto-edit); Claude subagent exec (rule: icmg-only → inline executing-plans).
+Open: awaiting user go for inline exec; CMakeLists test-reg perm-gated (rule#2); MSVC ship via build.ps1.
+Files: docs/superpowers-optimized/{specs,plans}/2026-06-06-local-llm-no-premium-routing*.md
