@@ -2276,3 +2276,30 @@ Decisions:
 Rejected: cut feature; leave as-is; env-sniff Claude (brittle); force-local-for-cost; local+--exec (weak-8b auto-edit); Claude subagent exec (rule: icmg-only → inline executing-plans).
 Open: awaiting user go for inline exec; CMakeLists test-reg perm-gated (rule#2); MSVC ship via build.ps1.
 Files: docs/superpowers-optimized/{specs,plans}/2026-06-06-local-llm-no-premium-routing*.md
+
+## 2026-06-06 [saved]
+Goal: Execute local-LLM no-premium routing plan (inline TDD).
+Decisions:
+- SHIPPED LOCAL (not pushed): 5 src commits df128472da/feda487025/e07002877e/3d3c1aabd2 + docs 5b8a2627f0. Local LLM (was 0 calls) now fires only no-premium OR explicit_local.
+- Signal premium_available default true (local OFF, safe); routeFor gate premium&&!explicit->REGEX; icmg agent native-local advisory (--exec refused, overflow truncate); compact-bg COLD premium=!isHeadless.
+- Task 4 SKIPPED: no real router integration (cron=hygiene/distill=heuristic/atomize bypasses router). Task 5 real file = compact_bg_cmd (not runners.cpp).
+- Gate 1553 pass / 7 hookio-fail (pre-existing console-artifact). 24 TDD added.
+Rejected: wiring cron/atomize/distill (no integration point); merge-to-main (icmg = selective fresh-tree); ship singleton (cadence #30922 = batch).
+Open: branch outcome = keep local/batch (recommended) vs ship. Cross-instance: luna-chat-side has token-eff plan (1-instance-at-a-time to avoid repo race).
+
+## 2026-06-06 [saved]
+Goal: Brainstorm feature #6 auto-consolidate memory zones (luna idea).
+Decisions:
+- DESIGN APPROVED (spec written, awaiting review). Opt-in default-OFF, background-detached after store, threshold 1000, cooldown 24h, fix hint-spam (store_cmd >7 fires every store).
+- Arch: pure helper imem/auto_consolidate.hpp + per-zone file marker (.icmg/consolidate-<zone>.ts, NO migration) + rewire store_cmd hint block (auto-run XOR rate-limited-hint).
+- consolidate = soft-delete near-dupe (reversible, safe). luna=idea-source only (no repo edit). Claudy sole owner per kak Cahyo.
+Rejected: default-ON (surprise); cron-integration (install dep); hard-delete; LLM-merge.
+Open: user spec-review -> writing-plans -> TDD impl (~4-5 tasks).
+
+## 2026-06-06 [saved]
+Goal: Execute + live-verify auto-consolidate #6.
+Decisions:
+- SHIPPED LOCAL + LIVE-VERIFIED: 3 commits (10faadcb59, b187770cdd). Smoke GREEN (trigger+marker+cooldown). Unit 6/6, gate 1559/7-preexisting. Default OFF safe.
+- Feature: store crossing memory.auto_consolidate_threshold (1000) + 24h cooldown -> detached `icmg memory consolidate --zone X`; else rate-limited hint (replaces >7 spam).
+Rejected: claiming verified on STALE exe (caught it via mtime + >7-hint binary-freshness test).
+Open (known-issues #31709/#31710): config-set !persist memory.* keys (toJson drops flat custom); LNK1104 zombie-proc lock -> kill C:/icmg-build icmg procs before rebuild + verify exe mtime fresh before smoke.
