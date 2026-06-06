@@ -8,6 +8,10 @@
 #include "../../imem/atom_store.hpp"
 #include "../../imem/scorer.hpp"
 #include "../ref_registry.hpp"
+#include "../../core/persona_db.hpp"        // #moments: merge persona _moments
+#include "../../core/profile_store.hpp"
+#include "../../core/user_identity.hpp"
+#include "../../imem/moment_helpers.hpp"
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -149,6 +153,25 @@ public:
             results = store.recallUnseen(query, session_id, limit, fuzzy);
         } else {
             results = store.recall(query, limit, fuzzy);
+        }
+
+        // 2026-06-06 (#moments): auto-merge persona _moments on the DEFAULT query path
+        // (cross-project, fail-open). Skipped for topic/zone/semantic/all-projects/unseen/
+        // atom/at-commit special modes to avoid double-counting. De-dup by content.
+        {
+            bool mergeMoments = !query.empty() && topic.empty() && zone.empty()
+                && !semantic && !all_projects && !unseen && !atoms && at_commit.empty();
+            if (mergeMoments && core::personaDbAvailable()) {
+                try {
+                    core::ProfileStore ps(core::personaDb());
+                    for (auto& r : ps.searchFts(core::currentUser(), query, limit)) {
+                        if (r.zone != "_moments") continue;
+                        bool dup = false;
+                        for (auto& n : results) if (n.content == r.content) { dup = true; break; }
+                        if (!dup) results.push_back(imem::profileRowToNode(r));
+                    }
+                } catch (...) {}
+            }
         }
 
         // Phase 82 T4: in-session recall dedup — suppress nodes already returned
