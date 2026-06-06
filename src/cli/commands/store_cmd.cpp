@@ -4,9 +4,13 @@
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
+#include "../../imem/auto_consolidate.hpp"   // #6 auto-consolidate decision + marker
+#include "../../core/spawn_detached.hpp"     // #6 background consolidate launch
+#include "../../core/path_utils.hpp"         // selfExePath
 #include <iostream>
 #include <string>
 #include <chrono>
+#include <filesystem>
 
 namespace icmg::cli {
 
@@ -85,12 +89,36 @@ public:
                         }
                     });
             } catch (...) {}
-            bool show_hint = zone_count > 7;
+            // 2026-06-06 (#6): threshold + cooldown gated. Auto-run consolidate
+            // when opted in; otherwise a rate-limited hint. Replaces the old
+            // unconditional `zone_count > 7` nudge that spammed every store.
+            std::string z = node.zone.empty() ? std::string("default") : node.zone;
+            int threshold = cfg.getInt("memory.auto_consolidate_threshold", 1000);
+            long long cooldown = cfg.getInt("memory.auto_consolidate_cooldown_s", 86400);
+            long long now_s = (long long)std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            std::string marker = (std::filesystem::path(cfg.projectDbPath("."))
+                                      .parent_path() / imem::zoneMarkerName(z)).string();
+            long long last_ts = imem::readMarkerTs(marker);
+
+            bool show_hint = false;
             std::string hint;
-            if (show_hint) {
-                std::string z = node.zone.empty() ? std::string("default") : node.zone;
-                hint = "zone '" + z + "' has " + std::to_string(zone_count)
-                     + " entries; consider 'icmg memory consolidate --zone " + z + "'";
+            if (cfg.getBool("memory.auto_consolidate", false)) {
+                if (imem::shouldAutoConsolidate(zone_count, threshold, last_ts, now_s, cooldown)) {
+                    imem::writeMarkerTs(marker, now_s);   // before spawn (herd guard)
+                    core::spawnDetached({ core::selfExePath(), "memory", "consolidate",
+                                          "--zone", z });
+                    show_hint = true;
+                    hint = "[auto-consolidate] zone '" + z + "' (" + std::to_string(zone_count)
+                         + ") -> background consolidate started";
+                }
+            } else {
+                if (imem::shouldShowHint(zone_count, threshold, last_ts, now_s, cooldown)) {
+                    imem::writeMarkerTs(marker, now_s);   // rate-limit the hint
+                    show_hint = true;
+                    hint = "zone '" + z + "' has " + std::to_string(zone_count)
+                         + " entries; consider 'icmg memory consolidate --zone " + z + "'";
+                }
             }
 
             if (json_out) {
