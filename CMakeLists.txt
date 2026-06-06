@@ -634,6 +634,7 @@ add_icmg_test(test_lang_filters tests/tkil/test_lang_filters.cpp)  # v1.21.5
 add_icmg_test(test_dedup_pass   tests/tkil/test_dedup_pass.cpp)
 add_icmg_test(test_db_mmap      tests/core/test_db_mmap.cpp)
 add_icmg_test(test_exec_context tests/core/test_exec_context.cpp)
+add_icmg_test(test_smart_router tests/llm/test_smart_router.cpp)
 add_icmg_test(test_write_queue   tests/core/test_write_queue.cpp)
 add_icmg_test(test_node_bloom   tests/graph/test_node_bloom.cpp)
 add_icmg_test(test_getnode_bloom tests/graph/test_getnode_bloom.cpp)

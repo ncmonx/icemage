@@ -49,6 +49,10 @@ struct CallContext {
     bool        llm_loaded        = false;   // warm-pool has model in RAM
     bool        user_disabled     = false;   // ~/.icmg/llm/disabled present
     bool        build_has_llama   = false;   // LlamaRunner::available()
+    // 2026-06-06 no-premium routing: local LLM is reserved for executions with
+    // no premium LLM (Claude) present, or when the caller explicitly asks local.
+    bool        premium_available = true;    // Claude/premium present this execution
+    bool        explicit_local    = false;   // user chose local (ask --backend=local, chat)
 };
 
 struct RouteDecision {
