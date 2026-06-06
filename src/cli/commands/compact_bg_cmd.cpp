@@ -17,6 +17,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/db.hpp"
 #include "../../core/config.hpp"
+#include "../../core/exec_context.hpp"   // premiumAvailable() / isHeadless()
 #include "../../imem/memory_store.hpp"
 #include "../../imem/atom_store.hpp"
 #include "../../llm/warm_pool.hpp"
@@ -114,6 +115,10 @@ public:
             rctx.llm_loaded       = llm::WarmPool::instance().isLoaded();
             const char* dis = std::getenv("ICMG_LLM_USER_DISABLED");
             rctx.user_disabled = (dis && *dis == '1');
+            // 2026-06-06 no-premium gate: COLD compact uses local LLM only when
+            // running headless (daemon/cron). In an interactive Claude session a
+            // premium LLM is present -> route REGEX (Claude summarizes instead).
+            rctx.premium_available = !icmg::core::isHeadless();
             auto rd = llm::routeFor(rctx);
             if (rd.route == llm::Route::LLM_LOCAL) {
                 std::string err;
