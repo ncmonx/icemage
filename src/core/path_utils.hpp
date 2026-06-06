@@ -36,6 +36,18 @@ std::string homeDir();
 // Get icmg global config dir (~/.icmg or %APPDATA%\icmg).
 std::string icmgGlobalDir();
 
+// me-everywhere wire dir: where the cross-session wire files live
+// (presence/bus/lock/msg/hot .tsv). Defaults to icmgGlobalDir() for
+// back-compat, but ICMG_WIRE_DIR overrides it so parallel sessions whose
+// %APPDATA% is NOT shared (e.g. a sandboxed agent vs the real machine) can
+// still rendezvous on a commonly-visible folder (e.g. C:/Temp/icmg-wire).
+// Pure resolver split out so it is unit-testable without mutating env.
+inline std::string resolveWireDir(const char* envVal, const std::string& fallback) {
+    if (envVal && *envVal) return std::string(envVal);
+    return fallback;
+}
+std::string wireDir();
+
 // Cross-platform self executable path.
 // Windows: GetModuleFileNameA. Linux: /proc/self/exe via canonical.
 // macOS: _NSGetExecutablePath + canonical. Returns "" on failure.

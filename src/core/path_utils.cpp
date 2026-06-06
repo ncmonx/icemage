@@ -43,6 +43,10 @@ std::string icmgGlobalDir() {
 #endif
 }
 
+std::string wireDir() {
+    return resolveWireDir(std::getenv("ICMG_WIRE_DIR"), icmgGlobalDir());
+}
+
 std::string expandTilde(const std::string& path) {
     if (path.empty() || path[0] != '~') return path;
     return homeDir() + path.substr(1);

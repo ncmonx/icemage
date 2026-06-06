@@ -26,7 +26,7 @@ namespace icmg::cli {
 namespace fs = std::filesystem;
 
 class MsgCommand : public BaseCommand {
-    static std::string file() { return core::icmgGlobalDir() + "/msg.tsv"; }
+    static std::string file() { return core::wireDir() + "/msg.tsv"; }
     static std::string mySession() {
         const char* s = std::getenv("ICMG_SESSION_ID");
         if (s && *s) return s;
@@ -60,7 +60,7 @@ public:
             std::string body;
             for (size_t i = 2; i < args.size(); ++i) { if (i > 2) body += ' '; body += args[i]; }
             core::Message m; m.ts = now; m.from = me; m.to = to; m.body = body;
-            std::error_code ec; fs::create_directories(core::icmgGlobalDir(), ec);
+            std::error_code ec; fs::create_directories(core::wireDir(), ec);
             { std::ofstream f(file(), std::ios::app); f << core::msgToLine(m) << "\n"; }
             auto all = readAll();
             if (all.size() > 1000) {   // opportunistic compaction: keep last 500

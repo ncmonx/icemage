@@ -28,7 +28,7 @@ namespace icmg::cli {
 namespace fs = std::filesystem;
 
 class BusCommand : public BaseCommand {
-    static std::string file() { return core::icmgGlobalDir() + "/bus.tsv"; }
+    static std::string file() { return core::wireDir() + "/bus.tsv"; }
     static std::string mySession() {
         const char* s = std::getenv("ICMG_SESSION_ID");
         if (s && *s) return s;
@@ -66,7 +66,7 @@ public:
             e.ts = now; e.actor = mySession(); e.kind = kind;
             e.target = opt(args, "--target");
             e.detail = opt(args, "--detail");
-            std::error_code ec; fs::create_directories(core::icmgGlobalDir(), ec);
+            std::error_code ec; fs::create_directories(core::wireDir(), ec);
             { std::ofstream f(file(), std::ios::app); f << core::eventToLine(e) << "\n"; }
             // Opportunistic compaction: keep only the last ~500 events.
             auto all = readAll();

@@ -30,7 +30,7 @@ namespace fs = std::filesystem;
 
 class LockCommand : public BaseCommand {
     static constexpr int64_t TTL = 300;   // a claim is live if beaten within 5 min
-    static std::string file() { return core::icmgGlobalDir() + "/locks.tsv"; }
+    static std::string file() { return core::wireDir() + "/locks.tsv"; }
     static std::string mySession() {
         const char* s = std::getenv("ICMG_SESSION_ID");
         if (s && *s) return s;
@@ -44,7 +44,7 @@ class LockCommand : public BaseCommand {
         return v;
     }
     static void append(const core::AgentLease& l) {
-        std::error_code ec; fs::create_directories(core::icmgGlobalDir(), ec);
+        std::error_code ec; fs::create_directories(core::wireDir(), ec);
         std::ofstream f(file(), std::ios::app); f << core::leaseToLine(l) << "\n";
     }
 

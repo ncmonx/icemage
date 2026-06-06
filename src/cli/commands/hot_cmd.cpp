@@ -19,7 +19,7 @@ namespace icmg::cli {
 namespace fs = std::filesystem;
 
 class HotCommand : public BaseCommand {
-    static std::string file() { return core::icmgGlobalDir() + "/hot.tsv"; }
+    static std::string file() { return core::wireDir() + "/hot.tsv"; }
     static std::vector<core::HotEntry> readAll() {
         std::vector<core::HotEntry> v;
         std::ifstream f(file());
@@ -45,7 +45,7 @@ public:
             std::string key = args[1], val;
             for (size_t i = 2; i < args.size(); ++i) { if (i > 2) val += ' '; val += args[i]; }
             core::HotEntry e; e.key = key; e.ts = now; e.value = val;
-            std::error_code ec; fs::create_directories(core::icmgGlobalDir(), ec);
+            std::error_code ec; fs::create_directories(core::wireDir(), ec);
             { std::ofstream f(file(), std::ios::app); f << core::hotToLine(e) << "\n"; }
             auto all = readAll();
             if (all.size() > 500) {   // compact to current board

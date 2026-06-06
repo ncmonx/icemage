@@ -28,7 +28,7 @@ namespace icmg::cli {
 namespace fs = std::filesystem;
 
 class PresenceCommand : public BaseCommand {
-    static std::string file()   { return core::icmgGlobalDir() + "/presence.tsv"; }
+    static std::string file()   { return core::wireDir() + "/presence.tsv"; }
     static std::string mySession() {
         const char* s = std::getenv("ICMG_SESSION_ID");
         if (s && *s) return s;
@@ -68,7 +68,7 @@ public:
             e.focus = focus;
             e.heartbeat_at = now;
 
-            std::error_code ec; fs::create_directories(core::icmgGlobalDir(), ec);
+            std::error_code ec; fs::create_directories(core::wireDir(), ec);
             { std::ofstream f(file(), std::ios::app); f << core::presenceToLine(e) << "\n"; }
 
             // Opportunistic compaction once the append log grows: keep only the
@@ -106,7 +106,7 @@ public:
             core::PresenceEntry e;
             e.session_id = mySession(); e.pid = (int64_t)ICMG_GETPID();
             e.focus = focus; e.heartbeat_at = now;
-            std::error_code ec; fs::create_directories(core::icmgGlobalDir(), ec);
+            std::error_code ec; fs::create_directories(core::wireDir(), ec);
             { std::ofstream f(file(), std::ios::app); f << core::presenceToLine(e) << "\n"; }
 
             auto live = core::livePresence(core::latestPerSession(readAll()), now, 90);
