@@ -21,15 +21,28 @@ inline std::string momentSlug(const std::string& title) {
     return s.empty() ? "moment" : s;
 }
 
-// Heuristic: topic is a memoir/decision AND topic|content hits a relationship term.
-inline bool isRelationshipMoment(const std::string& topic, const std::string& content,
+// Heuristic (tightened 2026-06-06 after dry-run found false-positives): a moment is a
+// memoir/decision whose TOPIC is relationship-flavored. Match the allowlist in the TOPIC
+// (NOT content — content substrings like "persona"/"identity" appear in technical nodes too),
+// and EXCLUDE technical memoirs/decisions by topic keyword. Non-technical memoirs count as
+// moments (they are reflective/personal); decisions only with a relationship word in topic.
+inline bool isRelationshipMoment(const std::string& topic, const std::string& /*content*/,
                                  const std::vector<std::string>& allow) {
     auto lower = [](std::string x){ for (auto& c : x) c = (char)std::tolower((unsigned char)c); return x; };
-    std::string t = lower(topic), c = lower(content);
-    bool kind_ok = t.rfind("memoir:", 0) == 0 || t.rfind("decisions-", 0) == 0;
-    if (!kind_ok) return false;
-    for (auto& a : allow) { std::string la = lower(a);
-        if (t.find(la) != std::string::npos || c.find(la) != std::string::npos) return true; }
+    std::string t = lower(topic);
+    bool is_memoir   = t.rfind("memoir:", 0) == 0;
+    bool is_decision = t.rfind("decisions-", 0) == 0;
+    if (!is_memoir && !is_decision) return false;
+    // Technical topics are never relationship moments (excluded by topic keyword).
+    static const char* kExclude[] = {
+        "release", "changelog", "history", "agent", "llm", "compact", "consolidate",
+        "token", "premium", "routing", "graph", "build", "gate", "hookio", "lint",
+        "migration", "schema", "vulkan"
+        // NOTE: do NOT add short substrings like "ci" — it matches "de-ci-sions".
+    };
+    for (auto* ex : kExclude) if (t.find(ex) != std::string::npos) return false;
+    if (is_memoir) return true;                       // non-technical memoir = a moment
+    for (auto& a : allow) if (t.find(lower(a)) != std::string::npos) return true;  // decisions- w/ relationship word
     return false;
 }
 

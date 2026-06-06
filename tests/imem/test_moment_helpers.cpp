@@ -19,6 +19,13 @@ TEST("moment: isRelationshipMoment matches allowlist, excludes code") {
     ASSERT_FALSE(isRelationshipMoment("decisions-llm-no-premium",
                                       "routeFor gate premium regex compact", allow));
     ASSERT_FALSE(isRelationshipMoment("graph node.cpp", "class Foo { int bar; };", allow));
+    // 2026-06-06 tightened: technical topics excluded even if content mentions persona/identity.
+    ASSERT_FALSE(isRelationshipMoment("memoir:icmg Release History",
+                                      "persona identity feature notes", allow));
+    ASSERT_FALSE(isRelationshipMoment("decisions-agent siapa kamu",
+                                      "claudy persona identity", allow));
+    // non-technical memoir IS a moment even without an allowlist word in topic.
+    ASSERT_TRUE(isRelationshipMoment("memoir:Semua Pinjaman", "dua penyewa", allow));
 }
 
 TEST("moment: contentHash stable + differs on change") {
