@@ -43,4 +43,36 @@ inline ClaimResult resolveClaim(const std::vector<AgentLease>& existing,
     return ClaimResult{true, "", 0};
 }
 
+// --- shared-file serialization + dedup (for the `icmg lock` command) ---------
+// One TSV line: pid \t host \t heartbeat_at \t scope (scope last -> may contain
+// any char but newline; no escaping needed).
+inline std::string leaseToLine(const AgentLease& l) {
+    return std::to_string(l.pid) + "\t" + l.host + "\t" +
+           std::to_string(l.heartbeat_at) + "\t" + l.scope;
+}
+inline bool leaseFromLine(const std::string& line, AgentLease& out) {
+    size_t t1 = line.find('\t'); if (t1 == std::string::npos) return false;
+    size_t t2 = line.find('\t', t1 + 1); if (t2 == std::string::npos) return false;
+    size_t t3 = line.find('\t', t2 + 1); if (t3 == std::string::npos) return false;
+    try {
+        out.pid          = std::stoll(line.substr(0, t1));
+        out.heartbeat_at = std::stoll(line.substr(t2 + 1, t3 - t2 - 1));
+    } catch (...) { return false; }
+    out.host  = line.substr(t1 + 1, t2 - t1 - 1);
+    out.scope = line.substr(t3 + 1);
+    if (out.scope.empty()) return false;
+    return true;
+}
+// Last appended lease per scope wins (a release tombstone with heartbeat_at=0,
+// appended last, supersedes an earlier claim). Order-preserving by first scope.
+inline std::vector<AgentLease> lastPerScope(const std::vector<AgentLease>& all) {
+    std::vector<AgentLease> out;
+    for (const auto& l : all) {
+        bool found = false;
+        for (auto& x : out) if (x.scope == l.scope) { x = l; found = true; break; }
+        if (!found) out.push_back(l);
+    }
+    return out;
+}
+
 }  // namespace icmg::core

@@ -63,12 +63,12 @@ TEST("profile_store: zoneCounts groups by zone busiest-first") {
 TEST("profile_store: searchFts finds content matches") {
     Db db(tmpDb());
     ProfileStore ps(db);
-    ps.put("u_fts1", "infra", "deploy", "note", "deploy the release artifact to the staging server rollout");
-    ps.put("u_fts1", "infra", "rollback", "note", "rollback the staging deploy when smoke tests fail");
+    ps.put("u_fts1", "_vision", "cloud", "note", "upload persona to cloud server everywhere portable");
+    ps.put("u_fts1", "_feeling", "compass", "note", "portable cloud sync indexing probe");
     ps.put("u_fts1", "work", "lint", "note", "use clang-tidy with fix flag");
-    auto hits = ps.searchFts("u_fts1", "staging", 10);
-    ASSERT_TRUE(hits.size() >= (size_t)2);   // both staging entries
-    for (const auto& h : hits) ASSERT_TRUE(h.content.find("staging") != std::string::npos);
+    auto hits = ps.searchFts("u_fts1", "cloud", 10);
+    ASSERT_TRUE(hits.size() >= (size_t)2);   // both cloud entries
+    for (const auto& h : hits) ASSERT_TRUE(h.content.find("cloud") != std::string::npos);
 }
 
 TEST("profile_store: searchFts scoped to user") {

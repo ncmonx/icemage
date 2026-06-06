@@ -14,6 +14,7 @@
 // keys in settings.local.json.
 
 #include "../base_command.hpp"
+#include "../presence_hook.hpp"   // me-everywhere heartbeat hook template
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
@@ -1644,6 +1645,7 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-postcompact-memory.sh", POSTCOMPACT_MEMORY_SH, true);
         // v0.42.0: rule enforcement hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-rule-enforce.sh", RULE_ENFORCE_SH, true);
+        n += writeFile(root / ".claude" / "hooks" / "icmg-presence-heartbeat.sh", PRESENCE_HEARTBEAT_SH, true);  // me-everywhere
         // v1.19.2: git-leash + graph-update shim. settings.local.json wires both.
         n += writeFile(root / ".claude" / "hooks" / "icmg-git-leash.sh",    GIT_LEASH_SH,    true);
         // v1.25.0 (W1): compressed-write rule injector — zero-cost when flag absent.
@@ -1942,6 +1944,15 @@ private:
                     {{"type", "command"},
                      {"timeout", 30},  // LLM cold-load can take seconds.
                      {"command", "bash -c '[ -f .claude/hooks/icmg-local-route.sh ] && bash .claude/hooks/icmg-local-route.sh || exit 0'"}}
+                })}
+            },
+            {
+                // me-everywhere: heartbeat this session's presence each prompt so
+                // parallel sessions on this machine see each other (live wire).
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"timeout", 5},
+                     {"command", presenceHeartbeatHookCmd()}}
                 })}
             }
         });

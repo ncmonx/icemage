@@ -1,3 +1,4 @@
+#include "../core/token_counter.hpp"
 #include "tkil.hpp"
 #include "runner.hpp"
 #include "filters/filter_utils.hpp"
@@ -263,8 +264,8 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
     try {
         int64_t raw_b  = (int64_t)combined.size();
         int64_t filt_b = (int64_t)fr.output.size();
-        int64_t in_t   = (raw_b + 3) / 4;
-        int64_t out_t  = (filt_b + 3) / 4;
+        int64_t in_t   = (int64_t)core::countTokens(combined);
+        int64_t out_t  = (int64_t)core::countTokens(fr.output);
         int64_t saved  = in_t > out_t ? (in_t - out_t) : 0;
         db_.run(
             "INSERT INTO tool_invocations(tool_name,command,raw_bytes,filtered_bytes,"

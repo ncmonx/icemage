@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.0.9 LANGUAGES CXX C)
+project(icmg VERSION 2.0.10 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -641,6 +641,13 @@ add_icmg_test(test_persona_db    tests/core/test_persona_db.cpp)
 add_icmg_test(test_daemon_glossary tests/server/test_daemon_glossary.cpp)
 add_icmg_test(test_relax_acl    tests/core/test_relax_acl.cpp)
 add_icmg_test(test_path_safety   tests/core/test_path_safety.cpp)
+add_icmg_test(test_token_counter tests/core/test_token_counter.cpp)
+add_icmg_test(test_bpe_tokenizer tests/core/test_bpe_tokenizer.cpp)
+add_icmg_test(test_presence tests/core/test_presence.cpp)
+add_icmg_test(test_event_bus tests/core/test_event_bus.cpp)
+add_icmg_test(test_msg tests/core/test_msg.cpp)
+add_icmg_test(test_hot tests/core/test_hot.cpp)
+add_icmg_test(test_wire_dir tests/core/test_wire_dir.cpp)
 add_icmg_test(test_canonicalize_noexcept tests/core/test_canonicalize_noexcept.cpp) # v1.78 #174
 add_icmg_test(test_migration_idempotent tests/core/test_migration_idempotent.cpp)
 add_icmg_test(test_server_auth   tests/core/test_server_auth.cpp)            # v1.68 S2
@@ -754,6 +761,7 @@ add_icmg_test(test_lint_style tests/cli/test_lint_style.cpp)
 add_icmg_test(test_known_issue_auto tests/cli/test_known_issue_auto.cpp)
 add_icmg_test(test_config     tests/cli/test_config.cpp)
 add_icmg_test(test_init_hook  tests/cli/test_init_hook.cpp)
+add_icmg_test(test_presence_hook  tests/cli/test_presence_hook.cpp)
 add_icmg_test(test_zone_config tests/cli/test_zone_config.cpp)
 add_icmg_test(test_review tests/cli/test_review.cpp)
 add_icmg_test(test_audit tests/cli/test_audit.cpp)
