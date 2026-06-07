@@ -69,6 +69,18 @@ if [[ "$CMD" =~ ^RAW=1[[:space:]] ]]; then
        || [[ "$CMD" =~ '<<' ]]; then
         exit 0
     fi
+    # v2.0.13 (#1): RAW=1 must NOT bypass pure read/search verbs. cat/grep/sed/
+    # ... as the LEADING command ALWAYS have an icmg equivalent, so RAW here is
+    # the reflex bypass being killed -- deny outright, no escape for these.
+    RAW_INNER="${CMD#RAW=1}"
+    RAW_INNER="${RAW_INNER#"${RAW_INNER%%[![:space:]]*}"}"
+    RAW_LEAD="${RAW_INNER%%[[:space:]]*}"
+    case "$RAW_LEAD" in
+        cat|grep|rg|ag|fd|find|sed|awk|head|tail|ls|tree|wc|du)
+            icmg hookio emit PreToolUse --deny "RAW=1 does NOT bypass read/search verb '$RAW_LEAD'. Use \`icmg context <file>\`, \`icmg run $RAW_INNER\`, or \`icmg graph symbol <Name>\`. RAW=1 is only for manual-filter pipes (\`cmd | head\`) + tmp evals (node -e / heredoc)."
+            exit 2
+            ;;
+    esac
     USAGE_LOG="${USERPROFILE:-${HOME:-/tmp}}/.icmg/raw-usage.jsonl"
     mkdir -p "$(dirname "$USAGE_LOG")" 2>/dev/null
     TS=$(date +%s 2>/dev/null || echo 0)
@@ -87,6 +99,13 @@ if [[ "$CMD" =~ ^RAW=1[[:space:]] ]]; then
         done < <(tail -n 200 "$USAGE_LOG")
     fi
     THRESHOLD="${ICMG_RAW_NAG_THRESHOLD:-5}"
+    # v2.0.13 (#2): escalating -- past the HARD cap, deny RAW entirely (cooldown)
+    # so even legit-but-spammed RAW is forced back to icmg until uses age out.
+    HARD="${ICMG_RAW_HARD_THRESHOLD:-12}"
+    if (( RAW_COUNT > HARD )); then
+        icmg hookio emit PreToolUse --deny "RAW=1 used ${RAW_COUNT}x in past 1h (hard cap ${HARD}). Cool down -- use icmg (context/run/graph/recall). Cap resets as old uses age out of the 1h window."
+        exit 2
+    fi
     if (( RAW_COUNT > THRESHOLD )); then
         NAG="RAW=1 used ${RAW_COUNT}× in past 1h (threshold=${THRESHOLD}). "
         NAG+="Valid use ONLY for: (a) manual-filtered pipes (\`| head\`/\`| wc -l\`), "
@@ -1742,14 +1761,14 @@ private:
                         "bash .claude/hooks/icmg-shrink-read.sh || exit 0'"}}
                 })}
             },
-            // v1.30.0: PostToolUse MCP response filter.
+            // v2.0.13: PreToolUse MCP browser-automation deny (audit mode).
             {
                 {"matcher", "mcp__.*"},
                 {"hooks",   json::array({
                     {{"type", "command"},
                      {"timeout", 4},
                      {"command",
-                        "bash -c '[ -f .claude/hooks/icmg-mcp-filter.sh ] && bash .claude/hooks/icmg-mcp-filter.sh || exit 0'"}}
+                        "bash -c 'command -v icmg >/dev/null 2>&1 && icmg hook pretooluse || exit 0'"}}
                 })}
             }
         });

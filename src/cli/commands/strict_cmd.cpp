@@ -35,7 +35,8 @@ public:
             "  on        Enable strict mode globally (writes ~/.icmg/strict.flag)\n"
             "  off       Disable (removes flag)\n"
             "  status    Show current state + check active hooks in CWD\n"
-            "  report    Show recent native-tool denials (~/.icmg/strict-denials.jsonl)\n\n"
+            "  report    Show recent native-tool denials (~/.icmg/strict-denials.jsonl)\n"
+            "  audit <on|off|status>  Read-only deny mode for audits\n\n"
             "When ON, `icmg init` and `icmg update --apply` auto-install\n"
             "PreToolUse:Read hook in HARD-DENY mode for non-source files >20KB.\n"
             "Claude is forced to use `icmg context <file>` instead of raw Read.\n"
@@ -63,6 +64,31 @@ public:
             fs::remove(flag, ec);
             std::cout << "icmg strict: OFF — flag removed.\n"
                       << "  Existing strict hooks remain until reinstalled without --strict-read.\n";
+            return 0;
+        }
+        if (action == "audit") {
+            fs::path af = flag.parent_path() / "strict-audit.flag";
+            std::string sub = args.size() > 1 ? args[1] : "status";
+            if (sub == "on") {
+                std::error_code ec; fs::create_directories(af.parent_path(), ec);
+                std::ofstream f(af); f << "1\n";
+                std::cout << "icmg strict audit: ON -- flag at " << af.string() << "\n"
+                          << "  Read-only deny mode: native Read + browser-MCP denied,\n"
+                          << "  forced through `icmg context` (~80% token cut). Safe for\n"
+                          << "  read-only audits ONLY (hard-deny Read breaks Edit).\n"
+                          << "  Per-session alt: ICMG_STRICT_AUDIT=1.\n";
+                return 0;
+            }
+            if (sub == "off") {
+                std::error_code ec; fs::remove(af, ec);
+                std::cout << "icmg strict audit: OFF -- flag removed.\n";
+                return 0;
+            }
+            bool aon = fs::exists(af);
+            std::cout << "icmg strict audit: " << (aon ? "ON" : "OFF") << "\n"
+                      << "  flag: " << af.string() << (aon ? " (present)" : " (absent)") << "\n"
+                      << "  env ICMG_STRICT_AUDIT=1 also forces ON per-session.\n";
+            if (!aon) std::cout << "  Enable: icmg strict audit on\n";
             return 0;
         }
         if (action == "status") {
