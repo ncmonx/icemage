@@ -51,6 +51,10 @@ struct WasmtimeApi {
     // error
     decltype(&wasmtime_error_message) error_message = nullptr;
     decltype(&wasmtime_error_delete)  error_delete = nullptr;
+    // wat -> wasm (lets skills ship readable .wat; also used by fixtures)
+    decltype(&wasmtime_wat2wasm) wat2wasm = nullptr;
+    // byte-vec lifetime (for wat2wasm / error output buffers)
+    decltype(&wasm_byte_vec_delete) byte_vec_delete = nullptr;
 };
 
 // Resolve every symbol from the bundled wasmtime.dll. Any miss -> ok=false
@@ -88,6 +92,8 @@ inline WasmtimeApi loadWasmtime(std::string& err) {
     ICMG_WASM_BIND(memory_data_size,    "wasmtime_memory_data_size")
     ICMG_WASM_BIND(error_message,       "wasmtime_error_message")
     ICMG_WASM_BIND(error_delete,        "wasmtime_error_delete")
+    ICMG_WASM_BIND(wat2wasm,            "wasmtime_wat2wasm")
+    ICMG_WASM_BIND(byte_vec_delete,     "wasm_byte_vec_delete")
 #undef ICMG_WASM_BIND
 
     api.ok = err.empty();
