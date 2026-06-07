@@ -2,6 +2,7 @@
 // files so the test is cwd-independent (mono binary crashes from project cwd).
 #include "../test_main.hpp"
 #include "../../src/wasm/wasm_runtime.hpp"
+#include "../../src/tkil/filters/wasm_filter.hpp"
 #include <chrono>
 #include <fstream>
 #include <filesystem>
@@ -110,4 +111,21 @@ TEST("wasm_runtime: cached module 1000 calls under budget") {
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                   std::chrono::steady_clock::now()-t0).count();
     ASSERT_TRUE(ms < 2000);   // avg <2ms/call or WASM unsuitable for hot path
+}
+
+TEST("wasm_filter: adapts skill to FilterResult (uppercases)") {
+    std::string err; if (!wasmRuntimeAvailable(err)) return;
+    WasmSkill s; s.name="up"; s.abi="filter-v1"; s.wasmPath=writeTemp("icmg-up.wat", UPPER_WAT);
+    icmg::tkil::WasmFilter f(s);
+    auto r = f.filter("hello world", "acme-tool");
+    ASSERT_EQ(r.output, std::string("HELLO WORLD"));
+    ASSERT_EQ(f.name(), std::string("wasm:up"));
+}
+
+TEST("wasm_filter: fail-open passthrough on bad module") {
+    std::string err; if (!wasmRuntimeAvailable(err)) return;
+    WasmSkill s; s.name="bad"; s.abi="filter-v1"; s.wasmPath="Z:/nope.wasm";
+    icmg::tkil::WasmFilter f(s);
+    auto r = f.filter("untouched", "x");
+    ASSERT_EQ(r.output, std::string("untouched"));   // raw passes through
 }
