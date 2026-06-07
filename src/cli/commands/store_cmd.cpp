@@ -7,6 +7,7 @@
 #include "../../imem/auto_consolidate.hpp"   // #6 auto-consolidate decision + marker
 #include "../../core/spawn_detached.hpp"     // #6 background consolidate launch
 #include "../../core/path_utils.hpp"         // selfExePath
+#include "../quick_store_helpers.hpp"         // #luna-batch: store --quick
 #include <iostream>
 #include <string>
 #include <chrono>
@@ -21,7 +22,8 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg store <topic> <content> [options]\n\n"
+            "Usage: icmg store <topic> <content> [options]\n"
+            "       icmg store --quick \"<msg>\"   (no topic; auto quick:<epoch>)\n\n"
             "Options:\n"
             "  --importance low|medium|high|critical  Importance level (default: medium).\n"
             "                                  Affects decay rate: critical never\n"
@@ -37,13 +39,24 @@ public:
         if (args.empty() || args[0] == "--help" || args[0] == "-h") {
             usage(); return 0;
         }
-        if (args.size() < 2) {
-            std::cerr << "icmg store: requires <topic> <content>\n";
+        bool quick = hasFlag(args, "--quick");
+        if (!quick && args.size() < 2) {
+            std::cerr << "icmg store: requires <topic> <content>  (or: store --quick \"<msg>\")\n";
             return 1;
         }
 
-        std::string topic   = args[0];
-        std::string content = args[1];
+        std::string topic, content;
+        if (quick) {
+            // luna idea: frictionless capture, no topic. Auto-topic = quick:<epoch>.
+            content = firstPositional(args, {"--kw","--importance","--ttl","--source"});
+            if (content.empty()) { std::cerr << "icmg store --quick: need a <msg>\n"; return 1; }
+            long long now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            topic = quickTopic(now);
+        } else {
+            topic   = args[0];
+            content = args[1];
+        }
         std::string kw      = flagValue(args, "--kw");
         std::string imp_str = flagValue(args, "--importance", "med");
         std::string ttl_str = flagValue(args, "--ttl");
