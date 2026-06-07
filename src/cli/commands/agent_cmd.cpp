@@ -23,6 +23,11 @@
 #include "../agent_task.hpp"             // flag/value-aware task assembly
 #include "../agent_model.hpp"            // token routing (--light / --model)
 #include "../agent_complexity.hpp"       // auto-route mechanical tasks to cheap model
+#include "../agent_local.hpp"            // 2026-06-06 native-local advisory backend
+#include "../../core/exec_context.hpp"   // premiumAvailable() no-premium signal
+#include "../../llm/smart_router.hpp"    // routeFor gate
+#include "../../llm/warm_pool.hpp"       // in-process local inference
+#include "../../llm/llama_runner.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include <iostream>
@@ -184,6 +189,48 @@ public:
         if (dry_run) {
             std::cout << assembled;
             return 0;
+        }
+
+        // 2026-06-06: native-local advisory backend. When no premium LLM is
+        // present (cron/daemon/offline) or --local is given, run the prompt
+        // through the in-process WarmPool instead of an external CLI. Advisory
+        // only — --exec is refused on the local route (weak model never edits).
+        {
+            bool explicit_local = hasFlag(args, "--local");
+            bool premium = core::premiumAvailable();
+            auto ld = agentLocalDecision(premium, explicit_local, exec);
+            if (ld.refuse_exec) {
+                std::cerr << "icmg agent: " << ld.reason << "\n";
+                return 2;
+            }
+            if (ld.use_local && llm::LlamaRunner::available()) {
+                llm::CallContext rc;
+                rc.tier             = llm::PathTier::WARM;
+                rc.kind             = "agent";
+                rc.input_tokens_est = assembled.size() / 4;
+                rc.build_has_llama  = true;
+                rc.llm_loaded       = llm::WarmPool::instance().isLoaded();
+                rc.premium_available = premium;
+                rc.explicit_local    = explicit_local;
+                if (llm::routeFor(rc).route == llm::Route::LLM_LOCAL) {
+                    bool warned = false;
+                    std::string p = truncatePromptToWindow(assembled, 8000, warned);
+                    if (warned)
+                        std::cerr << "icmg agent: local context truncated to ~8000 tokens\n";
+                    std::string err;
+                    if (auto* run = llm::WarmPool::instance().acquire(err)) {
+                        llm::InferParams ip; ip.max_tokens = 1024; ip.temperature = 0.3f;
+                        auto ires = run->infer(p, ip);
+                        if (ires.ok) {
+                            std::cout << ires.text << "\n";
+                            return 0;
+                        }
+                    }
+                    std::cerr << "icmg agent: local inference unavailable ("
+                              << err << "); falling back to external CLI\n";
+                    // fall through to external CLI path
+                }
+            }
         }
 
         // Resolve command.

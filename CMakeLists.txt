@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.0.10 LANGUAGES CXX C)
+project(icmg VERSION 2.0.11 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -633,6 +633,13 @@ add_icmg_test(test_filters      tests/tkil/test_filters.cpp)
 add_icmg_test(test_lang_filters tests/tkil/test_lang_filters.cpp)  # v1.21.5
 add_icmg_test(test_dedup_pass   tests/tkil/test_dedup_pass.cpp)
 add_icmg_test(test_db_mmap      tests/core/test_db_mmap.cpp)
+add_icmg_test(test_exec_context tests/core/test_exec_context.cpp)
+add_icmg_test(test_smart_router tests/llm/test_smart_router.cpp)
+add_icmg_test(test_agent_local  tests/cli/test_agent_local.cpp)
+add_icmg_test(test_auto_consolidate tests/imem/test_auto_consolidate.cpp)
+add_icmg_test(test_moment_helpers tests/imem/test_moment_helpers.cpp)
+add_icmg_test(test_comms_archive  tests/core/test_comms_archive.cpp)
+add_icmg_test(test_persona_local_only tests/core/test_persona_local_only.cpp)
 add_icmg_test(test_write_queue   tests/core/test_write_queue.cpp)
 add_icmg_test(test_node_bloom   tests/graph/test_node_bloom.cpp)
 add_icmg_test(test_getnode_bloom tests/graph/test_getnode_bloom.cpp)

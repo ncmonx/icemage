@@ -775,6 +775,9 @@ public:
             rctx.llm_loaded       = llm::WarmPool::instance().isLoaded();
             const char* dis = std::getenv("ICMG_LLM_USER_DISABLED");
             rctx.user_disabled = (dis && *dis == '1');
+            // --rerank is an explicit user opt-in for local LLM: bypass the
+            // no-premium gate (2026-06-06) so it still works in Claude sessions.
+            rctx.explicit_local = true;
             auto rd = llm::routeFor(rctx);
             if (rd.route == llm::Route::LLM_LOCAL) {
                 std::string err;

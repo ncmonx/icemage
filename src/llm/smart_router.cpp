@@ -45,6 +45,11 @@ RouteDecision routeFor(const CallContext& ctx) {
     if (ctx.user_disabled)
         return { Route::REGEX, "user opt-out (~/.icmg/llm/disabled)" };
 
+    // No-premium gate (2026-06-06): reserve local LLM for executions without a
+    // premium LLM, or an explicit local request. Claude wins when present.
+    if (ctx.premium_available && !ctx.explicit_local)
+        return { Route::REGEX, "premium (Claude) present — local reserved for no-premium/explicit" };
+
     // ----- Layer 3a: session-disable (sticky) -----
     if (g_session_disabled)
         return { Route::REGEX, "session-disabled (cold-load fail x2)" };
