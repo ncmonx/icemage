@@ -1,6 +1,7 @@
 // 2026-06-07: WASM skill manifest + capability model (pure helpers).
 #include "../test_main.hpp"
 #include "../../src/wasm/wasm_skill.hpp"
+#include "../../src/wasm/wasm_registry.hpp"
 using namespace icmg::wasm;
 
 TEST("wasm_skill: parse valid manifest") {
@@ -40,4 +41,11 @@ TEST("wasm_skill: grantedCaps = declared INTERSECT allowlist") {
     ASSERT_EQ(grantedCaps({"read_memory"}, {}).size(), (size_t)0);            // empty allowlist denies all
     ASSERT_EQ(grantedCaps({"evil_cap"}, {"read_memory"}).size(), (size_t)0);  // unknown dropped
     ASSERT_EQ(grantedCaps({}, {"read_memory"}).size(), (size_t)0);
+}
+
+TEST("wasm_registry: matchesCommand substring") {
+    ASSERT_TRUE(matchesCommand("acme", "acme-tool --x"));
+    ASSERT_TRUE(matchesCommand("acme-tool", "run acme-tool now"));
+    ASSERT_FALSE(matchesCommand("acme", "other-tool"));
+    ASSERT_FALSE(matchesCommand("", "anything"));
 }

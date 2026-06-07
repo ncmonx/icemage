@@ -15,6 +15,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../wasm/wasm_runtime.hpp"
 #ifdef _WIN32
   #include <windows.h>
 #endif
@@ -192,6 +193,17 @@ public:
             }
         }
 #endif
+
+        // 5b. WASM runtime (dynamic-loaded wasmtime; optional, graceful-degrade)
+        {
+            std::string werr;
+            if (icmg::wasm::wasmRuntimeAvailable(werr)) {
+                if (verb) std::cout << "  [ok] [wasm] runtime available (skill modules enabled)\n";
+            } else {
+                std::cout << "  [info] [wasm] runtime unavailable: " << werr
+                          << " (WASM skill filters disabled)\n";
+            }
+        }
 
         // 6. DB integrity (read-only)
         try {

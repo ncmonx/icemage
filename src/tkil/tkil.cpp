@@ -3,6 +3,8 @@
 #include "runner.hpp"
 #include "filters/filter_utils.hpp"
 #include "ultra_pipeline.hpp"   // v1.56 T1
+#include "filters/wasm_filter.hpp"   // v2.x WASM skill filter
+#include "../wasm/wasm_registry.hpp"
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
 #include "../core/posix_compat.hpp"  // v1.41.x MSVC popen/pclose shim
@@ -201,6 +203,22 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
         }
     }
 
+
+    // v2.x (WASM): apply a registered WASM skill filter whose match fits this
+    // command (persona DB zone "wasm"). Fail-open -- any error leaves output
+    // unchanged (WasmFilter passes through); must never break `icmg run`.
+    if (!raw) {
+        try {
+            if (auto skill = icmg::wasm::matchWasmSkill(command)) {
+                icmg::tkil::WasmFilter wf(*skill);
+                auto wr = wf.filter(fr.output, command);
+                if (wr.output != fr.output) {
+                    fr.output = wr.output;
+                    fr.filtered_lines = (int)splitLines(wr.output).size();
+                }
+            }
+        } catch (...) { /* wasm must never break icmg run */ }
+    }
 
     // v1.21.1 (S2): turn_cache wiring for idempotent read-only commands.
     // Wired only for `grep`, `rg`, `git status`, `git diff` (no fs side
