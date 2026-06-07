@@ -5,13 +5,14 @@ on:
     - cron: '0 0 * * 1'
   push:
     branches: [main]
+  workflow_dispatch:   # allow manual re-scan
 
 permissions: read-all
 
 jobs:
   analysis:
     name: Scorecard analysis
-    runs-on: self-hosted
+    runs-on: ubuntu-latest   # was self-hosted (no registered runner -> runs hung -> stale scorecard)
     permissions:
       security-events: write
       id-token: write
