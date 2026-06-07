@@ -1742,14 +1742,14 @@ private:
                         "bash .claude/hooks/icmg-shrink-read.sh || exit 0'"}}
                 })}
             },
-            // v1.30.0: PostToolUse MCP response filter.
+            // v2.0.13: PreToolUse MCP browser-automation deny (audit mode).
             {
                 {"matcher", "mcp__.*"},
                 {"hooks",   json::array({
                     {{"type", "command"},
                      {"timeout", 4},
                      {"command",
-                        "bash -c '[ -f .claude/hooks/icmg-mcp-filter.sh ] && bash .claude/hooks/icmg-mcp-filter.sh || exit 0'"}}
+                        "bash -c 'command -v icmg >/dev/null 2>&1 && icmg hook pretooluse || exit 0'"}}
                 })}
             }
         });

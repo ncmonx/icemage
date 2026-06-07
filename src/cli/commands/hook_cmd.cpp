@@ -33,7 +33,8 @@
 #include "../../daemon/rule_daemon_client.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../compress/write_expander.hpp"   // v1.25.0 (W3)
-#include "../../core/cross_turn_dedup.hpp"      // v2.0.0 C2: cross-turn near-dup gate
+#include "../../core/cross_turn_dedup.hpp"
+#include "../strict_audit.hpp"            // v2.0.13: strict audit read/MCP deny      // v2.0.0 C2: cross-turn near-dup gate
 
 #ifdef _WIN32
 #  include <process.h>
@@ -139,6 +140,20 @@ public:
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         const std::string& event = args[0];
+
+        // v2.0.13: input-dependent hook events (per-file / per-tool decisions)
+        // MUST bypass the event-name injection cache. That cache is keyed by
+        // event name only (30s window + stale-on-timeout fallback) -- replaying
+        // a prior decision for a DIFFERENT file/tool is wrong (latent bug for
+        // the cap-allow path: a 2nd file within 30s got the 1st file's
+        // updatedInput.file_path; with `strict audit` it replays a HARD deny).
+        // Only userprompt is input-stable enough to cache. Direct dispatch =
+        // fresh stdin -> fresh output, no cache read/write, no stale serve.
+        if (event == "pretooluse-read" || event == "pretooluse" ||
+            event == "pretooluse-write" || event == "posttooluse-read" ||
+            event == "posttooluse-bash") {
+            return dispatch(event);
+        }
 
         // v1.6.2: wrap dispatch with timeout. Default 500ms (override via
         // ICMG_HOOK_TIMEOUT_MS). On timeout, v1.21.8 serves the cached
@@ -811,6 +826,32 @@ private:
         } catch (...) { return 0; }
         if (file_path.empty() || !fs::exists(file_path)) return 0;
 
+        // v2.0.13: `icmg strict audit` -- read-only deny mode. An audit session
+        // is read-only, so denying full-file native Read is safe here (hard-deny
+        // Read breaks Edit otherwise -- logged failure v0.33.4) and forces
+        // `icmg context` (~80% token cut). Gated behind the audit flag, never the
+        // global default. Targeted slices (offset/limit set) stay allowed.
+        {
+            const char* ahome = std::getenv("USERPROFILE");
+            if (!ahome) ahome = std::getenv("HOME");
+            fs::path audit_flag = fs::path(ahome ? ahome : ".") / ".icmg" / "strict-audit.flag";
+            bool audit_on = strict_audit::flagActive(audit_flag, std::getenv("ICMG_STRICT_AUDIT"));
+            bool targeted = (orig_offset > 0 || orig_limit > 0);
+            if (strict_audit::readShouldDeny(audit_on, targeted)) {
+                json out;
+                out["hookSpecificOutput"]["hookEventName"] = "PreToolUse";
+                out["hookSpecificOutput"]["permissionDecision"] = "deny";
+                out["hookSpecificOutput"]["permissionDecisionReason"] =
+                    "AUDIT mode (read-only): native Read denied. Use `icmg context "
+                    + file_path + "` (graph+symbols, ~80% fewer tokens), "
+                    "`icmg graph symbol <Name>` for a function body, or `icmg context "
+                    + file_path + " --lines A-B` for a targeted slice. "
+                    "Bypass: `icmg strict audit off` or ICMG_STRICT_AUDIT=0.";
+                std::cout << icmg::core::safeDump(out) << "\n";
+                return 0;
+            }
+        }
+
         // Session dedup â€” emit reminder if file already read this session.
         bool already_read = isFileRead(file_path);
         markFileRead(file_path);
@@ -987,6 +1028,33 @@ int HookCommand::cmdPostToolUseRead() {
 int HookCommand::cmdPreToolUseEnforce() {
     std::string raw = readStdinAll();
     // v1.4.0 Task 2: check git guard first (file-path forms of git checkout/restore/reset).
+    // v2.0.13: `icmg strict audit` -- deny heavy browser-automation MCP tools
+    // (puppeteer/playwright). Their DOM/screenshot payloads bypass the bash
+    // filter entirely (MCP calls never go through Bash). Gated behind audit flag.
+    {
+        const char* ahome = std::getenv("USERPROFILE");
+        if (!ahome) ahome = std::getenv("HOME");
+        fs::path audit_flag = fs::path(ahome ? ahome : ".") / ".icmg" / "strict-audit.flag";
+        bool audit_on = strict_audit::flagActive(audit_flag, std::getenv("ICMG_STRICT_AUDIT"));
+        if (audit_on) {
+            try {
+                json j = json::parse(raw);
+                std::string tool = j.value("tool_name", "");
+                if (strict_audit::mcpShouldDeny(audit_on, tool)) {
+                    json out;
+                    out["hookSpecificOutput"]["hookEventName"] = "PreToolUse";
+                    out["hookSpecificOutput"]["permissionDecision"] = "deny";
+                    out["hookSpecificOutput"]["permissionDecisionReason"] =
+                        "AUDIT mode: browser-automation MCP `" + tool + "` denied -- its "
+                        "DOM/screenshot payload bypasses token filtering. Drive the page via "
+                        "`icmg run node <puppeteer-script.js>` (filtered) and screenshot only "
+                        "on failure. Bypass: `icmg strict audit off` or ICMG_STRICT_AUDIT=0.";
+                    std::cout << icmg::core::safeDump(out) << "\n";
+                    return 0;
+                }
+            } catch (...) {}
+        }
+    }
     std::string git_guard = icmg::core::hooks::runPreToolUseBashGitGuard(raw);
     if (git_guard.find("\"deny\"") != std::string::npos) {
         std::cout << git_guard << "\n";
