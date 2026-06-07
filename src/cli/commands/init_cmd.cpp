@@ -1369,9 +1369,13 @@ public:
             STARTUPINFOA si{}; si.cb = sizeof(si);
             PROCESS_INFORMATION pi{};
             // bInheritHandles=FALSE: grandchildren get no inherited pipe handles.
-            // DETACHED_PROCESS: no console window allocated.
+            // v2.0.14: CREATE_NO_WINDOW ALONE (was DETACHED_PROCESS|CREATE_NO_WINDOW).
+            // Combining the two left cmd.exe with NO console, so each grandchild
+            // (icmg skill index / claudemd / plan -- console apps) allocated a FRESH
+            // console window => visible popup flash on `init --force`. With
+            // CREATE_NO_WINDOW alone cmd.exe gets a HIDDEN console the children inherit.
             if (CreateProcessA(nullptr, cmdBuf.data(), nullptr, nullptr,
-                               FALSE, DETACHED_PROCESS | CREATE_NO_WINDOW,
+                               FALSE, CREATE_NO_WINDOW,
                                nullptr, nullptr, &si, &pi)) {
                 CloseHandle(pi.hProcess);
                 CloseHandle(pi.hThread);
