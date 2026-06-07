@@ -1,0 +1,9 @@
+{
+  "name": "uppercase",
+  "kind": "tkil-filter",
+  "match": "acme-tool",
+  "wasm": "examples/wasm-skills/uppercase.wat",
+  "abi": "filter-v1",
+  "capabilities": [],
+  "sha256": ""
+}

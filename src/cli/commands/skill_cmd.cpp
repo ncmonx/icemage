@@ -1052,7 +1052,12 @@ public:
             "      --top N      Return top N results (default 5, max 50).\n"
             "      --alpha F    Blend weight: 0.0=pure BM25, 1.0=pure cosine (default 0.5).\n"
             "      --json       JSON output: [{path, heading, skill, score, content_excerpt}].\n"
-            "      --skill KEY  Restrict search to chunks of a single skill.\n";
+            "      --skill KEY  Restrict search to chunks of a single skill.\n"
+            "  wasm <add <manifest.json> | list | remove <name> | run <name>>\n"
+            "      Sandboxed WASM filter skills (persona DB). add validates +\n"
+            "      registers a manifest; run pipes stdin through the module.\n"
+            "      A registered skill whose `match` fits a command auto-applies\n"
+            "      in `icmg run` (fail-open). Requires bundled wasmtime runtime.\n";
     }
 
     int run(const std::vector<std::string>& args) override {
