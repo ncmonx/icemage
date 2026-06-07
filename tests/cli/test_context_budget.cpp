@@ -1,6 +1,8 @@
 // 2026-06-07: context-budget gauge (pure helpers).
 #include "../test_main.hpp"
 #include "../../src/cli/context_budget.hpp"
+#include <fstream>
+#include <filesystem>
 using namespace icmg::cli;
 
 static const std::string USAGE =
@@ -28,4 +30,15 @@ TEST("context_budget: contextTokens sums 3 inputs (excludes output)") {
 TEST("context_budget: format string") {
     ASSERT_CONTAINS(formatBudget(computeBudget(566604, 1000000)), "56% used");
     ASSERT_CONTAINS(formatBudget(computeBudget(566604, 1000000)), "44% left");
+}
+
+TEST("context_budget: lastContextTokensFromTranscript reads LAST usage") {
+    auto p = std::filesystem::temp_directory_path() / "icmg-ctxbud-test.jsonl";
+    { std::ofstream f(p);
+      f << "{\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":20}}\n";
+      f << "{\"unrelated\":1}\n";
+      f << "{\"usage\":{\"input_tokens\":100,\"cache_creation_input_tokens\":5,\"cache_read_input_tokens\":900}}\n"; }
+    ASSERT_EQ(lastContextTokensFromTranscript(p.string()), 1005LL);  // last line wins: 100+5+900
+    std::filesystem::remove(p);
+    ASSERT_EQ(lastContextTokensFromTranscript("Z:/nope/none.jsonl"), 0LL);  // missing -> 0
 }
