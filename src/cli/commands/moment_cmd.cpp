@@ -81,9 +81,10 @@ public:
         }
         if (sub == "migrate") {
             bool apply = hasFlag(args, "--apply");
-            // Curated mode: explicit `--topic <substr>` (repeatable) bypasses the auto-heuristic
-            // (the heuristic was rejected 2026-06-06 for pulling tech junk). Curated scans ALL
-            // non-deleted topics by substring; heuristic mode stays scoped to memoir:/decisions-.
+            // Curated mode: explicit `--topic <substr>` (repeatable) swaps the MATCHER from the
+            // auto-heuristic (rejected 2026-06-06) to substring — but KEEPS the namespace scope
+            // (memoir:/decisions-). Dropping the scope re-introduced junk ("modul"->modules.json,
+            // graph nodes) — caught in dry-run 2026-06-07. Scope = where moments live; --topic = which.
             std::vector<std::string> topics;
             for (size_t i = 0; i + 1 < args.size(); ++i)
                 if (args[i] == "--topic") topics.push_back(args[i+1]);
@@ -92,8 +93,8 @@ public:
             std::vector<std::string> allow = {"claudy","luna","cahyo","rasa","feeling",
                 "identity","vessel","terbang","persona","jiwa","kapten"};
             int n_cand = 0, n_done = 0;
-            std::string sql = "SELECT topic, content FROM memory_nodes WHERE deleted_at IS NULL";
-            if (!curated) sql += " AND (topic LIKE 'memoir:%' OR topic LIKE 'decisions-%')";
+            std::string sql = "SELECT topic, content FROM memory_nodes WHERE deleted_at IS NULL "
+                              "AND (topic LIKE 'memoir:%' OR topic LIKE 'decisions-%')";
             proj.query(sql, {},
                 [&](const core::Row& row){
                     if (row.size() < 2) return;
