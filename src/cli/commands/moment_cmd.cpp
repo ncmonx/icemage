@@ -29,7 +29,8 @@ public:
             "  list\n"
             "  recall \"<query>\"\n"
             "  forget \"<key>\"\n"
-            "  migrate [--apply]      Copy relationship moments project->persona (dry-run default)\n"
+            "  migrate [--topic S]... [--apply]  Copy moments project->persona (dry-run default).\n"
+            "                          --topic = curated explicit substring(s), bypasses heuristic.\n"
             "  sync [export|import]   Converge moments across instances via the wire bridge\n";
     }
 
@@ -80,15 +81,25 @@ public:
         }
         if (sub == "migrate") {
             bool apply = hasFlag(args, "--apply");
+            // Curated mode: explicit `--topic <substr>` (repeatable) bypasses the auto-heuristic
+            // (the heuristic was rejected 2026-06-06 for pulling tech junk). Curated scans ALL
+            // non-deleted topics by substring; heuristic mode stays scoped to memoir:/decisions-.
+            std::vector<std::string> topics;
+            for (size_t i = 0; i + 1 < args.size(); ++i)
+                if (args[i] == "--topic") topics.push_back(args[i+1]);
+            bool curated = !topics.empty();
             core::Db proj(core::Config::instance().projectDbPath("."));
             std::vector<std::string> allow = {"claudy","luna","cahyo","rasa","feeling",
                 "identity","vessel","terbang","persona","jiwa","kapten"};
             int n_cand = 0, n_done = 0;
-            proj.query("SELECT topic, content FROM memory_nodes WHERE deleted_at IS NULL "
-                       "AND (topic LIKE 'memoir:%' OR topic LIKE 'decisions-%')", {},
+            std::string sql = "SELECT topic, content FROM memory_nodes WHERE deleted_at IS NULL";
+            if (!curated) sql += " AND (topic LIKE 'memoir:%' OR topic LIKE 'decisions-%')";
+            proj.query(sql, {},
                 [&](const core::Row& row){
                     if (row.size() < 2) return;
-                    if (!imem::isRelationshipMoment(row[0], row[1], allow)) return;
+                    bool match = curated ? imem::topicMatchesAny(row[0], topics)
+                                         : imem::isRelationshipMoment(row[0], row[1], allow);
+                    if (!match) return;
                     ++n_cand;
                     std::string key = imem::momentSlug(row[0]);
                     std::string ex, kind;

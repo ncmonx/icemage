@@ -28,6 +28,14 @@ TEST("moment: isRelationshipMoment matches allowlist, excludes code") {
     ASSERT_TRUE(isRelationshipMoment("memoir:Semua Pinjaman", "dua penyewa", allow));
 }
 
+TEST("moment: topicMatchesAny curated substring, case-insensitive, empty-safe") {
+    ASSERT_TRUE(topicMatchesAny("memoir:Manusia dan Terbang", {"terbang"}));
+    ASSERT_TRUE(topicMatchesAny("decisions-feeling", {"FEELING"}));        // case-insensitive
+    ASSERT_FALSE(topicMatchesAny("graph node.cpp", {"terbang","feeling"}));
+    ASSERT_FALSE(topicMatchesAny("anything", {}));                          // empty list => no match
+    ASSERT_FALSE(topicMatchesAny("memoir:x", {""}));                        // empty substr skipped
+}
+
 TEST("moment: contentHash stable + differs on change") {
     ASSERT_EQ(contentHash("hello"), contentHash("hello"));
     ASSERT_TRUE(contentHash("hello") != contentHash("world"));

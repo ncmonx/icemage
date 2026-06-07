@@ -46,6 +46,17 @@ inline bool isRelationshipMoment(const std::string& topic, const std::string& /*
     return false;
 }
 
+// Curated migration matcher: explicit topic substrings, case-insensitive. Empty list => no
+// match (safe: a `migrate --topic` with no topics migrates nothing). Empty substrings skipped.
+// Used by `icmg moment migrate --topic <s>` to bypass the (rejected) auto-heuristic.
+inline bool topicMatchesAny(const std::string& topic, const std::vector<std::string>& subs) {
+    if (subs.empty()) return false;
+    auto lower = [](std::string x){ for (auto& c : x) c = (char)std::tolower((unsigned char)c); return x; };
+    std::string t = lower(topic);
+    for (auto& s : subs) { if (!s.empty() && t.find(lower(s)) != std::string::npos) return true; }
+    return false;
+}
+
 // FNV-1a 64-bit hex — stable content fingerprint for idempotent sync.
 inline std::string contentHash(const std::string& s) {
     std::uint64_t h = 1469598103934665603ULL;
