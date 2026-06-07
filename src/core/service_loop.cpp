@@ -1,4 +1,5 @@
 #include "service_loop.hpp"
+#include "service_singleton.hpp"
 #include "path_utils.hpp"
 #include "cron_store.hpp"
 #include "exec_utils.hpp"
@@ -243,7 +244,7 @@ int ServiceLoop::run() {
     {
         char user[256] = {0}; DWORD len = sizeof(user);
         GetUserNameA(user, &len);
-        std::string mtx_name = std::string("Global\\icmg-service-") + user;
+        std::string mtx_name = icmg::core::serviceMutexName(user);
         HANDLE mtx = CreateMutexA(nullptr, FALSE, mtx_name.c_str());
         if (mtx == nullptr) {
             std::cerr << "icmg service: mutex create failed (err="
