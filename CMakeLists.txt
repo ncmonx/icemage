@@ -192,7 +192,7 @@ file(GLOB_RECURSE ALL_SOURCES "src/*.cpp")
 list(FILTER ALL_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
 
 add_library(icmg_lib STATIC ${ALL_SOURCES})
-target_include_directories(icmg_lib PUBLIC src third_party)
+target_include_directories(icmg_lib PUBLIC src third_party third_party/wasmtime/include)
 target_link_libraries(icmg_lib PUBLIC sqlite3 nlohmann_json)
 if(ICMG_USE_MODULES)
     # v1.41.0: per-target Modules opt-in (avoids breaking C-only sqlite3).
