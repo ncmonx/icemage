@@ -162,6 +162,22 @@ Run independent ones together via `icmg parallel`. Checklist: graph ✓ store �
 - Long-form rationale (post-mortem, ADR)? `icmg memoir add --title T --content-file F`
 - Anti-pattern / failed approach? `icmg fail store "<task>" "<approach>" "<reason>"`
 
+### Moments & Persona DB — ATURAN BAKU (MUTLAK & ABSOLUT, added 2026-06-07)
+
+Relationship/"moment" memories live in a **separate, cross-project, durable store** — the **persona DB**
+(`icmg-persona.db`, exe-dir, user-keyed) — NOT the project code-memory DB. Non-negotiable:
+
+1. **Moments → persona DB, never project DB.** `icmg moment add "<title>" --content "..."` (zone `_moments`).
+   Project/code memory stays in the project DB via `icmg store`/`icmg memoir`. Two stores, never mixed.
+2. **Persona DB = LOCAL-ONLY FOREVER.** NEVER publish / sync to a public remote / commit / copy to staging.
+   Intimate content; its path must NEVER appear in the repo tree.
+3. **Recall auto-merges moments.** `icmg recall "<q>"` (default path) merges persona `_moments` (FTS) with
+   project memory, deduped + fail-open — moments surface in any project.
+4. **Comms = shared bridge path, NOT persona DB.** Inter-instance dialogue lives on the shared wire
+   (`C:/Temp/icmg-wire`, `ICMG_WIRE_DIR`) — persona DB is per-exe-dir and cannot bridge instances.
+5. **Migrate is curated-explicit.** `icmg moment migrate --topic <substr>...` (scoped `memoir:`/`decisions-`,
+   substring matcher). Auto-heuristic rejected (pulled tech junk). `--apply` only after dry-run review.
+
 ### Topic prefix conventions (makes recall deterministic)
 
 | Type | Prefix | Example |
