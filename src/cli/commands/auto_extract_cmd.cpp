@@ -10,6 +10,7 @@
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include "../../imem/layer0_extract.hpp"
+#include "../../imem/entity_extract.hpp"   // #luna-batch: Layer-0 entity enrichment
 #include <iostream>
 #include <string>
 
@@ -48,6 +49,9 @@ public:
         }
         n.content = r.content;
         n.source  = "layer0";
+        // Enrich keywords with rule-based entities (URL/IP/env/mention) from the full output,
+        // so an auto-captured event is searchable by the things it references. Zero-LLM.
+        for (const auto& ent : imem::extractEntities(output)) n.keywords += " " + ent;
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
