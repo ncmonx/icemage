@@ -7,6 +7,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/msg.hpp"
 #include "../../core/path_utils.hpp"   // icmgGlobalDir
+#include "../../core/wire_check_helpers.hpp"  // #luna-batch: msg check (unread cursor)
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -44,9 +45,10 @@ public:
     std::string name()        const override { return "msg"; }
     std::string description() const override { return "Cross-session messaging between live sessions (send/inbox)"; }
     void usage() const override {
-        std::cout << "Usage: icmg msg send <to|*> \"<body>\" | inbox [--since <ts>]\n"
+        std::cout << "Usage: icmg msg send <to|*> \"<body>\" | inbox [--since <ts>] | check\n"
                   << "  send    send to a session id, or * to broadcast\n"
-                  << "  inbox   read messages addressed to you (or *) newer than --since\n";
+                  << "  inbox   read messages addressed to you (or *) newer than --since\n"
+                  << "  check   peek unread since last check (auto-advancing cursor; no --since)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -84,6 +86,24 @@ public:
             }
             if (inbox.empty()) std::cout << "(no new messages)\n";
             std::cout << "cursor: " << newest << "\n";
+            return 0;
+        }
+
+        if (sub == "check") {
+            // luna idea ("wire --check"): peek unread since a persisted cursor, then advance it.
+            // No manual --since; the marker remembers where you left off, per identity.
+            std::string mk = core::wireDir() + "/" + core::seenMarkerName(me);
+            int64_t since = 0;
+            { std::ifstream mf(mk); std::string s; if (std::getline(mf, s)) since = core::parseSeenTs(s); }
+            auto inbox = core::inboxSince(readAll(), me, since);
+            int64_t newest = since;
+            for (const auto& m : inbox) {
+                if (m.ts > newest) newest = m.ts;
+                std::cout << "  [" << (now - m.ts) << "s] " << m.from
+                          << (m.to == "*" ? " (all)" : "") << ": " << m.body << "\n";
+            }
+            std::cout << inbox.size() << " new\n";
+            { std::ofstream mf(mk, std::ios::trunc); mf << newest << "\n"; }  // advance cursor
             return 0;
         }
 

@@ -8,6 +8,9 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/user_identity.hpp"
+#include "../../core/persona_db.hpp"          // #luna-batch: wake-up --resume
+#include "../../core/profile_store.hpp"
+#include "../resume_helpers.hpp"
 #include "../session_greeting.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
@@ -26,8 +29,9 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg wake-up [--since 7d] [--json] [--pack]\n\n"
-            "Briefing of recent decisions, fixes, in-progress phases.\n";
+            "Usage: icmg wake-up [--since 7d] [--json] [--pack] [--resume]\n\n"
+            "Briefing of recent decisions, fixes, in-progress phases.\n"
+            "  --resume   also append persona identity + recent moments (continuity).\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -195,6 +199,21 @@ public:
         std::string s = out.str();
         if (s.size() > 2048) {
             s = s.substr(0, 2040) + "...\n";
+        }
+
+        // luna idea ("context --resume"): append persona identity + recent moments so a
+        // fresh session re-hydrates continuity in one command. Appended AFTER the 2KB cap
+        // so the persona block is never truncated. Fail-open (persona DB optional).
+        if (hasFlag(args, "--resume") && core::personaDbAvailable()) {
+            try {
+                core::ProfileStore ps(core::personaDb());
+                const std::string& u = core::currentUser();
+                std::vector<std::pair<std::string,std::string>> identity;
+                for (auto& r : ps.listZone(u, "_identity")) identity.emplace_back(r.key, r.content);
+                std::vector<std::string> moments;
+                for (auto& r : ps.listZone(u, "_moments")) moments.push_back(r.key);
+                s += resumeSection(identity, moments);
+            } catch (...) { /* fail-open: briefing still prints */ }
         }
 
         if (json_out) {
