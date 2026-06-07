@@ -20,6 +20,7 @@
 // Design: every step here uses in-process Db/MemoryStore/etc â€” no subprocess.
 
 #include "../base_command.hpp"
+#include "../context_budget.hpp"   // v2.x: passive context-budget meter
 #include "../../core/registry.hpp"
 #include "../../core/stdin_util.hpp"
 #include "../../core/config.hpp"
@@ -426,7 +427,7 @@ private:
     // v1.1.0 Task 6.6: prepend sayless re-inject block when sayless.flag is
     // ON and violations >0. Empty block on healthy sessions â†’ no overhead.
     // v1.3.0 Task 7: prepend skill chunk hint when top score â‰¥ 0.20.
-    static void emitContext(const std::string& msg, const std::string& prompt = "") {
+    static void emitContext(const std::string& msg, const std::string& prompt = "", const std::string& ctxbudget_hint = "") {
         std::string sayless = icmg::core::hooks::runUserPromptSaylessInject();
         std::string skill_hint = prompt.empty()
             ? ""
@@ -447,7 +448,7 @@ private:
         std::string escalated_hint= icmg::core::hooks::runUserPromptEscalatedRulesInject();
         std::string amnesia_hint  = icmg::core::hooks::runUserPromptAmnesiaInject();
         std::string budget_hint   = (icmg::core::hooks::runPreToolUseTokenBudget(prompt) > 0) ? std::string("TOKEN BUDGET WARN. ICMG_TOKEN_BUDGET_OFF=1 to disable. ") : std::string("");
-        out["hookSpecificOutput"]["additionalContext"] = budget_hint + amnesia_hint + escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + sayless + msg;
+        out["hookSpecificOutput"]["additionalContext"] = ctxbudget_hint + budget_hint + amnesia_hint + escalated_hint + drift_hint + rules_hint + projects_hint + known_hint + fail_hint + decisions_hint + ship_hint + approach_hint + skill_hint + sayless + msg;
         std::cout << icmg::core::safeDump(out) << "\n";
     }
 
@@ -797,7 +798,25 @@ private:
         }
 
         if (msg.tellp() == 0) return 0;
-        emitContext(msg.str(), prompt);
+        // v2.x: passive context-budget meter -- parse transcript_path from the
+        // event + read its last API usage; inject "[context: ~N% used...]" so the
+        // (context-blind) model sees its budget every turn. Fail-open.
+        std::string ctxbudget_hint;
+        if (!std::getenv("ICMG_NO_CONTEXT_BUDGET")) {
+            try {
+                json je = json::parse(raw);
+                std::string tp = je.value("transcript_path", "");
+                if (!tp.empty()) {
+                    long long used = lastContextTokensFromTranscript(tp);
+                    if (used > 0) {
+                        long long limit = 1000000;
+                        if (const char* e = std::getenv("ICMG_CONTEXT_LIMIT")) { try { limit = std::stoll(e); } catch (...) {} }
+                        ctxbudget_hint = formatBudget(computeBudget(used, limit)) + " ";
+                    }
+                }
+            } catch (...) {}
+        }
+        emitContext(msg.str(), prompt, ctxbudget_hint);
         return 0;
     }
 

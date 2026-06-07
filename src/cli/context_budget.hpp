@@ -8,6 +8,8 @@
 // of the LAST usage line (these are the real API numbers, not an estimate).
 #include <string>
 
+#include <fstream>
+#include <iterator>
 namespace icmg::cli {
 
 struct BudgetInfo { long long used = 0, limit = 0; int pctUsed = 0, pctLeft = 100; };
@@ -46,6 +48,31 @@ inline long long contextTokensFromUsageLine(const std::string& line) {
     return extractLL(line, "input_tokens")
          + extractLL(line, "cache_creation_input_tokens")
          + extractLL(line, "cache_read_input_tokens");
+}
+
+// Tail-scan a transcript .jsonl (last ~512 KB) and return the LAST usage line's
+// context-token sum. 0 if no usage / unreadable. Bounded so it stays cheap.
+inline long long lastContextTokensFromTranscript(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return 0;
+    f.seekg(0, std::ios::end);
+    std::streamoff sz = f.tellg();
+    std::streamoff start = sz > (512 * 1024) ? sz - (512 * 1024) : 0;
+    f.seekg(start);
+    std::string chunk((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    long long used = 0;
+    size_t pos = 0;
+    while (pos <= chunk.size()) {
+        size_t nl = chunk.find('\n', pos);
+        std::string line = chunk.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+        if (line.find("input_tokens") != std::string::npos) {
+            long long t = contextTokensFromUsageLine(line);
+            if (t > 0) used = t;   // keep last
+        }
+        if (nl == std::string::npos) break;
+        pos = nl + 1;
+    }
+    return used;
 }
 
 } // namespace icmg::cli
