@@ -152,7 +152,7 @@ After EVERY change (edit / fix / feature / refactor / doc), run all five before 
 1. `icmg graph update` — refresh the graph (nodes/edges/symbols)
 2. `icmg store --topic decisions-<area> "<what+why>"` — persist the decision/learning
 3. `icmg zone add <path> --zone <subsystem>` — tag the touched subsystem
-4. `icmg wflog add "<summary>"` — record the workflow step
+4. `icmg wflog save --goal "<summary>" --decisions "<what+why>"` — record the workflow step
 5. `icmg verify --command "<test/build>"` — record verification in the audit trail
 Run independent ones together via `icmg parallel`. Checklist: graph ✓ store ✓ zone ✓ wflog ✓ verify ✓ — not all five means the change is incomplete.
 
@@ -161,22 +161,15 @@ Run independent ones together via `icmg parallel`. Checklist: graph ✓ store �
 - Made a decision? `icmg store --topic decisions-<feature> "<rationale>"`
 - Long-form rationale (post-mortem, ADR)? `icmg memoir add --title T --content-file F`
 - Anti-pattern / failed approach? `icmg fail store "<task>" "<approach>" "<reason>"`
+- About the **assistant itself** (identity, preferences, state, feelings)? Use the **persona DB**, not project DB: `icmg profile add --zone _identity|_prefs|_vision|_feeling --key <k> --content "..."` (portable across projects; survives where project memory does not). Project/work facts stay in project DB via `icmg store`. Keep self-info and work-info separate.
 
-### Moments & Persona DB — ATURAN BAKU (MUTLAK & ABSOLUT, added 2026-06-07)
-
-Relationship/"moment" memories live in a **separate, cross-project, durable store** — the **persona DB**
-(`icmg-persona.db`, exe-dir, user-keyed) — NOT the project code-memory DB. Non-negotiable:
-
-1. **Moments → persona DB, never project DB.** `icmg moment add "<title>" --content "..."` (zone `_moments`).
-   Project/code memory stays in the project DB via `icmg store`/`icmg memoir`. Two stores, never mixed.
-2. **Persona DB = LOCAL-ONLY FOREVER.** NEVER publish / sync to a public remote / commit / copy to staging.
-   Intimate content; its path must NEVER appear in the repo tree.
-3. **Recall auto-merges moments.** `icmg recall "<q>"` (default path) merges persona `_moments` (FTS) with
-   project memory, deduped + fail-open — moments surface in any project.
-4. **Comms = shared bridge path, NOT persona DB.** Inter-instance dialogue lives on the shared wire
-   (`C:/Temp/icmg-wire`, `ICMG_WIRE_DIR`) — persona DB is per-exe-dir and cannot bridge instances.
-5. **Migrate is curated-explicit.** `icmg moment migrate --topic <substr>...` (scoped `memoir:`/`decisions-`,
-   substring matcher). Auto-heuristic rejected (pulled tech junk). `--apply` only after dry-run review.
+### Sub-agent discipline (`icmg agent`)
+- Delegate to a sub-agent ONLY via `icmg agent` (never the host AI's own agent tooling).
+- Decide per task who does it: delegate bounded, well-specified, parallelizable work on DISJOINT files to a sub-agent (then stay responsive to the user); keep work needing judgment, cross-file coherence, or risky/irreversible decisions in-process. When in doubt, do it yourself.
+- Use `--light` (cheap model) for bounded/mechanical tasks; the default model only for genuinely complex work. Sub-agent calls are expensive (full context reload per call) -- do not dispatch trivial work.
+- `--exec` grants autonomous edit/shell: require `ICMG_AGENT_EXEC=1`, a tightly-scoped task with file pointers, and a git-tracked branch. After it finishes you MUST verify independently (review the diff + build + run tests) -- never accept the sub-agent's self-report as proof.
+- Capture the sub-agent's full output (its `## FINAL REPORT`); do not truncate it.
+- Verify a mono test binary with plain `ctest` (no `--parallel`, no other icmg process holding the DB) to avoid false failures.
 
 ### Topic prefix conventions (makes recall deterministic)
 
@@ -191,6 +184,7 @@ Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM
 
 Full reference: run `icmg --help` or see https://github.com/ncmonx/icemage
 <!-- icmg:end -->
+
 
 
 
@@ -349,6 +343,7 @@ git push private restore/private-main:main --force
 | `icmg sayless [on/off/status]` | Toggle sayless mode |
 | `icmg chat` | Interactive REPL |
 <!-- icmg:commands:end -->
+
 
 
 
