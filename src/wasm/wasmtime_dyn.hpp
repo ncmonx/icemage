@@ -17,6 +17,8 @@
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
+#else
+#  include <dlfcn.h>
 #endif
 
 #include <wasmtime.h>   // vendored: third_party/wasmtime/include
@@ -99,7 +101,40 @@ inline WasmtimeApi loadWasmtime(std::string& err) {
     api.ok = err.empty();
     if (!api.ok && api.dll) { FreeLibrary((HMODULE)api.dll); api.dll = nullptr; }
 #else
-    err = "wasm runtime: non-Windows unsupported (W3.5)";
+    // POSIX: same dynamic-load via dlopen (W3.5). The .so/.dylib must be bundled
+    // alongside the binary (CI step) for this to resolve; absent -> unavailable.
+    void* h = dlopen("libwasmtime.so", RTLD_NOW | RTLD_LOCAL);
+    if (!h) h = dlopen("libwasmtime.dylib", RTLD_NOW | RTLD_LOCAL);
+    if (!h) { err = "libwasmtime.{so,dylib} not found"; return api; }
+    api.dll = h;
+#define ICMG_WASM_BIND(field, sym)                                              \
+    api.field = reinterpret_cast<decltype(api.field)>(dlsym(h, sym));           \
+    if (!api.field && err.empty()) err = std::string("missing symbol: ") + sym;
+    ICMG_WASM_BIND(config_new,          "wasm_config_new")
+    ICMG_WASM_BIND(config_fuel,         "wasmtime_config_consume_fuel_set")
+    ICMG_WASM_BIND(config_epoch,        "wasmtime_config_epoch_interruption_set")
+    ICMG_WASM_BIND(engine_new,          "wasm_engine_new_with_config")
+    ICMG_WASM_BIND(engine_delete,       "wasm_engine_delete")
+    ICMG_WASM_BIND(engine_inc_epoch,    "wasmtime_engine_increment_epoch")
+    ICMG_WASM_BIND(store_new,           "wasmtime_store_new")
+    ICMG_WASM_BIND(store_delete,        "wasmtime_store_delete")
+    ICMG_WASM_BIND(store_context,       "wasmtime_store_context")
+    ICMG_WASM_BIND(ctx_set_fuel,        "wasmtime_context_set_fuel")
+    ICMG_WASM_BIND(ctx_set_epoch,       "wasmtime_context_set_epoch_deadline")
+    ICMG_WASM_BIND(module_new,          "wasmtime_module_new")
+    ICMG_WASM_BIND(module_delete,       "wasmtime_module_delete")
+    ICMG_WASM_BIND(instance_new,        "wasmtime_instance_new")
+    ICMG_WASM_BIND(instance_export_get, "wasmtime_instance_export_get")
+    ICMG_WASM_BIND(func_call,           "wasmtime_func_call")
+    ICMG_WASM_BIND(memory_data,         "wasmtime_memory_data")
+    ICMG_WASM_BIND(memory_data_size,    "wasmtime_memory_data_size")
+    ICMG_WASM_BIND(error_message,       "wasmtime_error_message")
+    ICMG_WASM_BIND(error_delete,        "wasmtime_error_delete")
+    ICMG_WASM_BIND(wat2wasm,            "wasmtime_wat2wasm")
+    ICMG_WASM_BIND(byte_vec_delete,     "wasm_byte_vec_delete")
+#undef ICMG_WASM_BIND
+    api.ok = err.empty();
+    if (!api.ok && api.dll) { dlclose(api.dll); api.dll = nullptr; }
 #endif
     return api;
 }
