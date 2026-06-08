@@ -63,4 +63,24 @@ inline std::vector<CmdHit> rankCommands(const std::string& intent,
     return hits;
 }
 
+// Neighbors of a command = top-N most similar OTHER commands, derived from
+// name+desc via rankCommands (zero new data -> the map never rots). If cmdName
+// matches a known doc, rank against that doc's "name desc"; otherwise treat
+// cmdName as a free-text intent. Self is always excluded.
+inline std::vector<CmdHit> neighborsOf(const std::string& cmdName,
+                                       const std::vector<CmdDoc>& docs, int n) {
+    if (docs.empty() || n <= 0) return {};
+    std::string intent = cmdName;
+    for (const auto& d : docs)
+        if (d.name == cmdName) { intent = d.name + " " + d.desc; break; }
+    auto hits = rankCommands(intent, docs, n + 1);   // +1 to absorb self
+    std::vector<CmdHit> out;
+    for (auto& h : hits) {
+        if (h.name == cmdName) continue;             // drop self
+        out.push_back(h);
+        if (static_cast<int>(out.size()) >= n) break;
+    }
+    return out;
+}
+
 }  // namespace icmg::core
