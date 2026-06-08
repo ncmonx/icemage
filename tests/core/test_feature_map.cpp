@@ -57,3 +57,25 @@ TEST("feature_map: shouldShowFooter normal run off unless opt-in + success") {
     ASSERT_TRUE( shouldShowFooter(false, /*rcOk*/true,  false, /*optIn*/true));    // opt-in + success
     ASSERT_TRUE(!shouldShowFooter(false, /*rcOk*/false, false, /*optIn*/true));    // opt-in but failed -> off
 }
+
+TEST("feature_map: findNearDuplicateCommands flags overlapping pair") {
+    std::vector<CmdDoc> d = {
+        {"context-budget", "show context window token usage from transcript"},
+        {"ctxbudget",      "show context window token usage from transcript"}, // near-dup
+        {"graph",          "code graph symbols and edges"},
+    };
+    auto dups = findNearDuplicateCommands(d, 0.5);
+    ASSERT_TRUE(!dups.empty());
+    // the duplicated pair must be the budget twins, not graph
+    ASSERT_TRUE((dups[0].a == "context-budget" && dups[0].b == "ctxbudget") ||
+                (dups[0].a == "ctxbudget" && dups[0].b == "context-budget"));
+}
+
+TEST("feature_map: findNearDuplicateCommands clean set -> empty") {
+    std::vector<CmdDoc> d = {
+        {"graph", "code graph symbols"},
+        {"zone",  "subsystem tagging"},
+        {"fetch", "download a url with cache"},
+    };
+    ASSERT_EQ(findNearDuplicateCommands(d, 0.5).size(), (size_t)0);
+}

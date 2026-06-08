@@ -106,4 +106,24 @@ inline bool shouldShowFooter(bool isHelp, bool rcOk,
     return optInRunEnv && rcOk;
 }
 
+// Feature-map M4: a near-duplicate pair = two commands whose "name desc" text
+// overlaps at/above `threshold` (symmetric Jaccard). Surfaced by `icmg doctor`
+// so an accidental duplicate command is caught at health-check time (durable
+// anti-dup, not reliant on the model remembering the reflex rule). Sorted desc.
+struct DupPair { std::string a, b; double score = 0.0; };
+
+inline std::vector<DupPair> findNearDuplicateCommands(const std::vector<CmdDoc>& docs,
+                                                      double threshold) {
+    std::vector<DupPair> out;
+    for (size_t i = 0; i < docs.size(); ++i)
+        for (size_t j = i + 1; j < docs.size(); ++j) {
+            double s = promptJaccard(docs[i].name + " " + docs[i].desc,
+                                     docs[j].name + " " + docs[j].desc);
+            if (s >= threshold) out.push_back({docs[i].name, docs[j].name, s});
+        }
+    std::stable_sort(out.begin(), out.end(),
+                     [](const DupPair& a, const DupPair& b) { return a.score > b.score; });
+    return out;
+}
+
 }  // namespace icmg::core
