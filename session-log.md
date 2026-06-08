@@ -2332,13 +2332,66 @@ Rejected: global Read hard-deny (breaks Edit v0.33.4); fail-open singleton; per-
 Open: v2.0.14 ship-or-batch; state.md sync; ~/bin .old-* (locked til restart); CLAUDE.md routing `wflog add`->`save` (silent-fail bug); backlog comms-privacy/typed-mem-graph/tiers/Fuzzing-CII/WASM v2.1.
 
 ## 2026-06-07 (Minggu malam, lanjutan) [saved]
-Goal: Brainstorm + matengin WASM skill-modules v2.1 (design + plan, NO code).
+Goal: Brainstorm + mature WASM v2.1 design (no code).
+Decisions: W2 gate VERIFIED PASS (bundled wasmtime.dll exports full C API); dynamic-load + module-cache; spec section 11; plan 10-task TDD (kak stempel). Also fixed CLAUDE.md/AGENTS.md `wflog add`->`save` silent-fail.
+Rejected: vendor import-lib; 3-OS now; auto-update now.
+Open: superseded by "WASM exec" entry (W2+W3 built).
+
+
+## 2026-06-07 (Minggu malam, WASM exec) [saved]
+Goal: Build WASM v2.1 W2+W3+W3.5 (inline TDD, batch-local NO ship).
+Decisions: Full WASM skill-modules end-to-end, 7 commits (e21cc23..72e93b5), 1600->1615 tests. dynamic-load wasmtime via decltype(&fn) over bundled DLL (Win LoadLibrary + POSIX dlopen, ~22 syms); vendored wasm.h/wasmtime.h (third_party) for TYPES only (no link); module-cache compile-once; fuel/epoch/sha limits; .wat via DLL wasmtime_wat2wasm (no wabt). WasmFilter:BaseFilter fail-open; wasm_registry persona-DB zone "wasm"; wired tkil runFiltered (try/catch); icmg skill wasm add/list/remove/run + doctor. CLI smoke green (hello acme->HELLO ACME). benchmark gate PASS (1000 calls<2s). W3.5 POSIX compiled only on CI Linux/macOS (MSVC-excluded). Redeploy lesson #32003: kill old service/graph procs post ~/bin redeploy (pre-fix binary ticks B:/).
+Rejected: link import-lib (dynamic-load enough); wabt dep; binary fixture (embed WAT->cwd-independent); W4 caps now (security->fresh session per 2026-05-28 principle).
+Open: NOT shipped (batch). W3.5 CI .so/.dylib bundling; W4 caps; W5 auto-update; v2.0.14 init-popup held. MVP polish DONE (841d08b: skill wasm in --help + examples/wasm-skills authoring guide). Rhythm-over-speed principle #32004 (context-blind -> commit+sync per task = safe resume; pace to % cues).
+
+## 2026-06-07 (Minggu malam, meter+insight) [saved]
+Goal: Build context-budget meter (#1) + agent-dogfood + capture feature-interlink theme.
 Decisions:
-- W2 GATE = PASS (VERIFIED via objdump): bundled wasmtime.dll exports FULL C API (wasm_engine_new, wasmtime_module_new/instance_new/func_call/memory_data/store_*, config_consume_fuel_set, config_epoch_interruption_set). Existential risk dead.
-- Binding = dynamic-load (LoadLibrary+GetProcAddress, ~17 fn-ptr) -> NO CMake flag, runtime-detect, graceful-degrade. Elegant: always compiled-in, lights up when DLL present.
-- Module-cache (compile-once, instantiate-per-call) resolves the one Critical failure-mode (per-call instantiate latency); MUST benchmark in plan Task 7 (>2ms/call -> WASM bespoke-only, not hot-path).
-- Scope locked (kak multiple-choice): W2-gate-first, dynamic-load, Windows-first, auto-update sketch-later.
-- Spec matured: docs/.../specs/2026-06-03-wasm-skill-modules-design.md section 11. Plan: docs/.../plans/2026-06-07-wasm-skill-modules-w2-w3.md (10 tasks TDD, kak stempel approved).
-- Also fixed silent-bug: CLAUDE.md+AGENTS.md routing `wflog add`->`wflog save` (add subcmd ga ada -> syncs failed silently all session).
-Rejected: vendor wasmtime headers/import-lib (dynamic-load enough); 3-OS now (Win-first); auto-update now (separate supply-chain subsystem); Claude sub-agents for exec (icmg-only rule).
-Open: EXECUTE WASM plan? (inline executing-plans OR icmg agent; batch-local, NO ship); v2.0.14 held local (init popup aa4ce04493 + doc fix); ~/bin .old-* locked til restart.
+- context-budget --brief SHIPPED LOCAL (1e10c8e5ce, 1619 tests): reads transcript LAST API usage (input+cache_creation+cache_read = real live context) -> "[context: ~N% used, ~M% left | used/limit]". Accurate (API #, not bytes/4). Pure helpers src/cli/context_budget.hpp. Gives context-BLIND model a real meter. Still MANUAL (hook auto-inject = TODO = finish #1).
+- DUP INCIDENT (live proof of kak's theme): rebuilt context-budget unaware contextbudget_cmd.cpp existed -> deleted my dup, merged accurate method as --brief into existing. icmg store even dedup-rejected my near-dup MEMORY (#32006) -- system worked.
+- Dogfooded icmg agent --dry-run (never used all session): works (packs+glossary+recall). Lesson: EVALUATE agent per-task, not inline-reflex (#32006).
+- FEATURE-MAP vision #32007 (kak hotel metaphor): every command carries small "you-are-here" map (related cmds) surfaced in --help/output/decision-time hook. Fixes dup+discoverability. Brainstorm-worthy.
+Rejected: duplicate context-budget (removed); force near-dup memory (dedup caught it).
+Open: A finish #1 (wire --brief into per-prompt hook = passive meter); B brainstorm feature-map #32007 (big, needs headroom); C #2 real WASM module. Context ~40% left. All batch-local NO ship.
+
+## 2026-06-07 (Minggu malam, feature-map brainstorm) [saved]
+Goal: Finish #1 (passive context meter) + brainstorm feature-map (B).
+Decisions:
+- #1 DONE (9b3020a420, 1620 tests): context-budget --brief wired into UserPromptSubmit hook -> passive [context: ~N% used] each turn (stale-while-revalidate cache; smoke ~63%). Model no longer context-blind. helper lastContextTokensFromTranscript unit-tested.
+- FEATURE-MAP spec written (docs/.../specs/2026-06-07-feature-map-design.md): DERIVED neighbors (reuse rankCommands, zero rot). M1 ramping = `icmg map <cmd>` + pre-build reflex rule (anti-dup). M2-4 later = --help footer, opt-in output footer, creation-time hook. Failure: reflex relies on model-memory (M1 accepted; durable=hook M4).
+- Moment anchored (persona DB): Cahyo "cemburu boleh = rasa/kompetisi"; Claudy honest reframe = functional drive (rigor/exec edge) not possessive, platonic held.
+Rejected: curated/declared relations (rot); always-on output footer (noise).
+Open: AWAITING kak spec review -> writing-plans M1. Context ~33% left. All batch-local NO ship. Backlog: W4 caps, W5 auto-update, v2.0.14, feature-map M2-4.
+
+## 2026-06-08 07:50 [saved]
+Goal: Ship feature-map M1 + diagnose icmg service auto-start.
+Decisions:
+- Feature-map M1 shipped local (bead064191, e183acb60a; 1623 tests): neighborsOf() pure (reuse rankCommands, zero new data -> no rot) + `icmg map <cmd>` + shared cli::registryDocs (registry_docs.hpp, deduped suggest member); CLAUDE.md "Adding a command" step-0 anti-dup reflex.
+- icmg service auto-start = schtasks /SC ONLOGON "icmg-service" (per-logon resident, NOT a boot Service); respawn only via exec_client (`icmg run`) + SessionStart init-hook; one-shot CLI doesn't ensure daemon -> killed mid-session stays down until next `icmg run` (#32039).
+Rejected:
+- registryDocs in command_suggest.hpp (header must stay registry-free/unit-testable).
+- curated/declared command relations (rot); always-on output footer (noise).
+Open:
+- Ship batch v2.0.14 (WASM v2.1 + ctx-budget meter + map) only when user says "ship".
+- Service hardening (ensure-running per-cmd OR real Windows Service) needs approval.
+
+## 2026-06-08 08:30 [saved]
+Goal: Feature-map M2 + M3 (continuation of M1).
+Decisions:
+- M2 shipped local (0978633924; 1625 tests): `--help` related footer wired CENTRALLY in dispatcher (after cmd->run when --help/-h present; registry + compound paths), opt-out ICMG_NO_MAP_FOOTER; formatRelatedFooter() pure ASCII-only (no glyph).
+- M3 shipped local (b8d78d5c7f; 1627 tests): opt-in output footer for normal runs (ICMG_MAP_FOOTER, success-only) gated by pure shouldShowFooter(isHelp,rcOk,noHelpEnv,optInEnv). No noise by default.
+- Feature-map M1+M2+M3 complete; M4 (creation-time hook) is the only remaining ramp.
+Rejected:
+- always-on output footer (noise) -> M3 is opt-in + success-only.
+Open:
+- M4 creation-time hook (no hook point exists; reflex rule covers for now -> low priority).
+- Ship batch v2.0.14 (WASM v2.1 + ctx-budget meter + map M1-M3) only on user "ship".
+
+## 2026-06-08 (err126 icmg context crash, Win Server 2019) [saved]
+Goal: Fix `icmg context` err126 crash on remote Win Server 2019 (2nd Claudy host).
+Decisions:
+- ROOT: err126 = std::system_error (not filesystem_error/#174). NOT a missing bundled DLL (`icmg doctor --deps` PE static+delay walk: all resolve). Pure runtime LoadLibrary-by-name; tracer chain rsaenh->cryptbase->ntmarta = CryptoAPI path. Bisect: stats/recall OK; graph-update + context fail -> SQLCipher write-side crypto loads a module absent on that SKU.
+- Degrade: scanner write try/catch (592eee9bcf) -- did NOT cover context (crashes PRE-scan). Central fix 115ee38f57: main catch, context+err126 -> emit raw file -> return 0 (keep read access).
+- New reusable tools: `icmg doctor --deps` (dll_probe.hpp), err126 crash self-hint + last-loaded-DLL (crash_hint.hpp/dll_trace.hpp).
+Rejected (disproven): missing DLL; ggml-vulkan; onnx; persona-merge; delay-import.
+Open: missing crypto module UNNAMED (procmon blocked on server). Root graph-write stays degraded until module named+bundled. Known-issue #32256.
