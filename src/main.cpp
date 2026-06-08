@@ -401,6 +401,24 @@ int main(int argc, char* argv[]) {
                           << "  (the missing module is one this loads at runtime;\n"
                           << "       re-run with ICMG_TRACE_DLL=1 to see the full load order)\n";
             std::cerr << mhint;
+            // DEGRADE: if a read command (context) crashed on a host module-load
+            // err126 (e.g. SQLCipher write-side crypto on Windows Server), emit the
+            // raw file to stdout so the caller still gets content instead of losing
+            // read access. Find the first non-flag arg as the file path.
+            if (!args.empty() && (args[0] == "context" || args[0] == "context-node")) {
+                std::string fileArg;
+                for (size_t i = 1; i < args.size(); ++i)
+                    if (!args[i].empty() && args[i][0] != '-') { fileArg = args[i]; break; }
+                if (!fileArg.empty()) {
+                    std::ifstream rf(fileArg, std::ios::binary);
+                    if (rf) {
+                        std::cerr << "icmg context: degraded to raw file (host err126; "
+                                     "graph/bundle unavailable on this machine).\n";
+                        std::cout << rf.rdbuf();
+                        return 0;
+                    }
+                }
+            }
         }
         return 1;
     } catch (...) {
