@@ -62,6 +62,23 @@ inline std::vector<std::string> peImportNames(const std::string& path) {
         out.emplace_back((const char*)(base + nameOff));
         if (out.size() > 256) break;  // sanity
     }
+    // Delay-import table (dir index 13): modules loaded on FIRST CALL, not at DLL
+    // load. The static-import walk above misses these -- a delay-imported module
+    // absent on this machine is exactly the err126 that only surfaces at runtime
+    // (e.g. `icmg context`) while the DLL itself loads fine.
+    auto& ddir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT];
+    if (ddir.Size && ddir.VirtualAddress) {
+        DWORD dOff = rva2off(ddir.VirtualAddress);
+        if (dOff) {
+            auto* dd = (IMAGE_DELAYLOAD_DESCRIPTOR*)(base + dOff);
+            for (; dd->DllNameRVA; ++dd) {
+                DWORD nOff = rva2off(dd->DllNameRVA);
+                if (!nOff) break;
+                out.emplace_back((const char*)(base + nOff));
+                if (out.size() > 512) break;  // sanity
+            }
+        }
+    }
     cleanup();
     return out;
 }

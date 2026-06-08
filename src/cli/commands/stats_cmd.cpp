@@ -4,9 +4,6 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../graph/graph_store.hpp"
-#include "../../core/command_suggest.hpp"   // feature-map M4: near-dup command check
-#include "../registry_docs.hpp"
-#include "../../core/dll_probe.hpp"          // doctor --deps: name missing module (err126)
 #include <iostream>
 #include <filesystem>
 #include <map>
@@ -72,57 +69,17 @@ public:
     }
 };
 
-// ---- doctor ---------------------------------------------------------------
-class DoctorCommand : public BaseCommand {
+// ---- db-check (quick DB/schema status, JSON-friendly) ---------------------
+// Was registered as "doctor" but collided with the richer DoctorCommand in
+// doctor_cmd.cpp (diagnose + auto-fix). Renamed to "db-check" so the rich
+// doctor is canonical; this keeps the quick --json DB/schema probe available.
+class DbCheckCommand : public BaseCommand {
 public:
-    std::string name()        const override { return "doctor"; }
-    std::string description() const override { return "Health check (DB, schema, config)"; }
+    std::string name()        const override { return "db-check"; }
+    std::string description() const override { return "Quick DB existence + schema-version check (--json)"; }
 
     int run(const std::vector<std::string>& args) override {
         bool json_out = hasFlag(args, "--json");
-
-        // --deps: dependency probe. Names the module behind a Windows err126
-        // (e.g. a Vulkan ICD / system DLL absent on a headless Server) WITHOUT
-        // Process Monitor or admin -- loads each bundled DLL + walks its PE
-        // imports + reports which imported DLLs do not resolve on THIS machine.
-        if (hasFlag(args, "--deps")) {
-            std::string exeDir = ".";
-#ifdef _WIN32
-            char eb[1024]; DWORD en = GetModuleFileNameA(nullptr, eb, sizeof(eb));
-            if (en) { std::string p(eb, en); auto s = p.find_last_of("\\/");
-                      if (s != std::string::npos) exeDir = p.substr(0, s); }
-#endif
-            std::vector<std::string> cands = {
-                "ggml-vulkan.dll", "ggml-cpu.dll", "ggml-base.dll", "ggml.dll",
-                "llama.dll", "onnxruntime.dll", "onnxruntime_providers_shared.dll",
-                "vulkan-1.dll", "libcrypto-3-x64.dll",
-                "libtree-sitter-0.26.dll", "wasmtime.dll", "libzstd.dll"
-            };
-            auto probes = core::probeBundledDlls(exeDir, cands);
-            std::cout << "=== icmg doctor --deps (probe dir: " << exeDir << ") ===\n";
-            int bad = 0;
-            for (const auto& p : probes) {
-                if (!p.present) continue;  // not part of this build's bundle
-                if (p.loaded && p.missingImports.empty()) {
-                    std::cout << "  OK    " << p.dll << "\n";
-                } else {
-                    ++bad;
-                    std::cout << "  FAIL  " << p.dll;
-                    if (!p.loaded) std::cout << "  (load error " << p.err << ")";
-                    std::cout << "\n";
-                    for (const auto& m : p.missingImports)
-                        std::cout << "          -> MISSING: " << m << "\n";
-                }
-            }
-            if (probes.empty())
-                std::cout << "  (dependency probe is Windows-only)\n";
-            else if (bad == 0)
-                std::cout << "  all bundled DLLs load and their imports resolve.\n";
-            else
-                std::cout << "\n  " << bad << " DLL(s) with unresolved imports -- the MISSING\n"
-                             "  lines are the modules absent on THIS machine (the err126 cause).\n";
-            return bad == 0 ? 0 : 1;
-        }
 
         auto& cfg = core::Config::instance();
         std::string db_path = cfg.projectDbPath(".");
@@ -136,22 +93,6 @@ public:
                 schema_ver = db.userVersion();
                 schema_ok  = (schema_ver >= 4); // expect at least 4 migrations
             } catch (...) {}
-        }
-
-        // Near-duplicate command detector (feature-map M4): surface accidental
-        // dup commands (same purpose, two registrations) at health-check time.
-        if (!json_out) {
-            auto dups = core::findNearDuplicateCommands(registryDocs(), 0.72);
-            if (!dups.empty()) {
-                std::cout << "Near-dup commands (" << dups.size()
-                          << " pair(s); extend, don't duplicate):\n";
-                size_t shown = 0;
-                for (const auto& d : dups) {
-                    if (shown++ >= 5) { std::cout << "  ... (" << (dups.size()-5) << " more)\n"; break; }
-                    std::cout << "  icmg " << d.a << " ~ icmg " << d.b
-                              << " (" << (int)(d.score*100) << "%)  -> icmg map " << d.a << "\n";
-                }
-            }
         }
 
         bool all_ok = db_ok && schema_ok;
@@ -305,7 +246,7 @@ public:
 };
 
 ICMG_REGISTER_COMMAND("stats",       StatsCommand);
-ICMG_REGISTER_COMMAND("doctor",      DoctorCommand);
+ICMG_REGISTER_COMMAND("db-check",    DbCheckCommand);
 ICMG_REGISTER_COMMAND("graph-clean",  GraphCleanCommand);
 ICMG_REGISTER_COMMAND("graph-dedupe", GraphDedupeCommand);
 // grep: use `icmg run grep` instead — too many Windows/shell-quoting edge cases
