@@ -69,11 +69,14 @@ public:
     }
 };
 
-// ---- doctor ---------------------------------------------------------------
-class DoctorCommand : public BaseCommand {
+// ---- db-check (quick DB/schema status, JSON-friendly) ---------------------
+// Was registered as "doctor" but collided with the richer DoctorCommand in
+// doctor_cmd.cpp (diagnose + auto-fix). Renamed to "db-check" so the rich
+// doctor is canonical; this keeps the quick --json DB/schema probe available.
+class DbCheckCommand : public BaseCommand {
 public:
-    std::string name()        const override { return "doctor"; }
-    std::string description() const override { return "Health check (DB, schema, config)"; }
+    std::string name()        const override { return "db-check"; }
+    std::string description() const override { return "Quick DB existence + schema-version check (--json)"; }
 
     int run(const std::vector<std::string>& args) override {
         bool json_out = hasFlag(args, "--json");
@@ -243,7 +246,7 @@ public:
 };
 
 ICMG_REGISTER_COMMAND("stats",       StatsCommand);
-ICMG_REGISTER_COMMAND("doctor",      DoctorCommand);
+ICMG_REGISTER_COMMAND("db-check",    DbCheckCommand);
 ICMG_REGISTER_COMMAND("graph-clean",  GraphCleanCommand);
 ICMG_REGISTER_COMMAND("graph-dedupe", GraphDedupeCommand);
 // grep: use `icmg run grep` instead — too many Windows/shell-quoting edge cases

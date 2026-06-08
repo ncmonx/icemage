@@ -14,8 +14,11 @@
 #include "core/exec_utils.hpp"
 #include "core/path_utils.hpp"
 #include "core/version_check.hpp"
+#include "core/crash_hint.hpp"
+#include "core/dll_trace.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
+#include <system_error>
 
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
@@ -146,6 +149,11 @@ int main(int argc, char* argv[]) {
     // silently instead of showing a system dialog; SEM_NOOPENFILEERRORBOX
     // suppresses the "file not found" UI.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+
+    // Loader tracer: remember the last DLL loaded (+ ICMG_TRACE_DLL=1 streams all)
+    // so an err126 crash can name the subsystem that was initializing. Catches
+    // runtime LoadLibrary-by-name modules invisible to the PE import walk.
+    icmg::core::installDllTracer();
 
     // v1.19.0: sanitize PATH inside icmg-core too — when icmg-core is invoked
     // directly (Task Scheduler, Startup folder, schtask, user manual exec),
@@ -369,14 +377,49 @@ int main(int argc, char* argv[]) {
             icmg::cli::Dispatcher d2;
             d2.run(cap);
         } catch (...) { /* swallow — never crash twice */ }
+        int sys_code = 0;
         if (auto fse = dynamic_cast<const std::filesystem::filesystem_error*>(&e)) {
-            std::cerr << "icmg: filesystem error code " << fse->code().value()
+            sys_code = fse->code().value();
+            std::cerr << "icmg: filesystem error code " << sys_code
                       << " (" << fse->code().message() << ")\n";
             if (!fse->path1().empty()) std::cerr << "      path1: " << fse->path1().string() << "\n";
             if (!fse->path2().empty()) std::cerr << "      path2: " << fse->path2().string() << "\n";
+        } else if (auto se = dynamic_cast<const std::system_error*>(&e)) {
+            sys_code = se->code().value();
+            std::cerr << "icmg: system error code " << sys_code
+                      << " (" << se->code().message() << ")\n";
         }
         std::cerr << "icmg: uncaught error: " << e.what() << "\n"
                   << "      Crash logged. Send report: icmg bug-report --send-pending\n";
+        // err126 (module-load) self-diagnosis: tell the user how to capture the
+        // exact missing module -- the name lives in the OS loader, not e.what().
+        std::string mhint = icmg::core::moduleLoadHint(e.what(), sys_code);
+        if (!mhint.empty()) {
+            const std::string& last = icmg::core::lastLoadedDll();
+            if (!last.empty())
+                std::cerr << "      last DLL loaded before crash: " << last
+                          << "  (the missing module is one this loads at runtime;\n"
+                          << "       re-run with ICMG_TRACE_DLL=1 to see the full load order)\n";
+            std::cerr << mhint;
+            // DEGRADE: if a read command (context) crashed on a host module-load
+            // err126 (e.g. SQLCipher write-side crypto on Windows Server), emit the
+            // raw file to stdout so the caller still gets content instead of losing
+            // read access. Find the first non-flag arg as the file path.
+            if (!args.empty() && (args[0] == "context" || args[0] == "context-node")) {
+                std::string fileArg;
+                for (size_t i = 1; i < args.size(); ++i)
+                    if (!args[i].empty() && args[i][0] != '-') { fileArg = args[i]; break; }
+                if (!fileArg.empty()) {
+                    std::ifstream rf(fileArg, std::ios::binary);
+                    if (rf) {
+                        std::cerr << "icmg context: degraded to raw file (host err126; "
+                                     "graph/bundle unavailable on this machine).\n";
+                        std::cout << rf.rdbuf();
+                        return 0;
+                    }
+                }
+            }
+        }
         return 1;
     } catch (...) {
         std::vector<std::string> cap = {

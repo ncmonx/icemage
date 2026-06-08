@@ -1,6 +1,8 @@
 #include "dispatcher.hpp"
 #include "core/version.hpp"
 #include "base_command.hpp"
+#include "registry_docs.hpp"            // feature-map M2: --help related footer
+#include "../core/command_suggest.hpp" // neighborsOf + formatRelatedFooter
 #include "../core/registry.hpp"
 #include "../core/config.hpp"
 #include "../core/global_db.hpp"
@@ -229,6 +231,21 @@ static void applyPendingUpgrade() {
     std::cerr << "[icmg] pending upgrade applied: " << tag << "\n";
 }
 
+// Feature-map M2+M3: append a one-line "related commands" footer (derived
+// neighbors) so the hallway map shows up at decision-time.
+//   M2: on --help/-h (ON by default; suppress with ICMG_NO_MAP_FOOTER).
+//   M3: after a normal successful run (OFF by default; opt in ICMG_MAP_FOOTER).
+static void printRelatedFooter(const std::string& cmd,
+                               const std::vector<std::string>& rest, int rc) {
+    bool isHelp = false;
+    for (const auto& a : rest) if (a == "--help" || a == "-h") { isHelp = true; break; }
+    bool noHelp = std::getenv("ICMG_NO_MAP_FOOTER") != nullptr;
+    bool optIn  = std::getenv("ICMG_MAP_FOOTER") != nullptr;
+    if (!core::shouldShowFooter(isHelp, rc == 0, noHelp, optIn)) return;
+    auto nb = core::neighborsOf(cmd, registryDocs(), 5);
+    std::cout << core::formatRelatedFooter(cmd, nb);
+}
+
 int Dispatcher::run(const std::vector<std::string>& args) {
     applyPendingUpgrade();
     sweepStaleOldFiles();  // v1.21.9: clean up `.old-<PID>` from prior updates
@@ -320,7 +337,9 @@ int Dispatcher::run(const std::vector<std::string>& args) {
     auto& reg = icmg::core::Registry<icmg::cli::BaseCommand>::instance();
     if (reg.has(cmd)) {
         auto handler = reg.create(cmd);
-        return handler->run(rest);
+        int rc = handler->run(rest);
+        printRelatedFooter(cmd, rest, rc);
+        return rc;
     }
 
     // Try compound command: "graph scan" → look up "graph-scan" in registry
@@ -328,7 +347,10 @@ int Dispatcher::run(const std::vector<std::string>& args) {
         std::string compound = cmd + "-" + rest[0];
         if (reg.has(compound)) {
             auto handler = reg.create(compound);
-            return handler->run(std::vector<std::string>(rest.begin() + 1, rest.end()));
+            std::vector<std::string> crest(rest.begin() + 1, rest.end());
+            int rc = handler->run(crest);
+            printRelatedFooter(compound, crest, rc);
+            return rc;
         }
     }
 

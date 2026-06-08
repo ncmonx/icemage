@@ -1,4 +1,4 @@
-﻿// icmg skill — skill index management.
+// icmg skill — skill index management.
 //
 // Subcommands:
 //   index [--dir PATH] [--force]
@@ -24,6 +24,13 @@
 #include "../../imem/skill_chunker.hpp"
 #include "../../embed/embedder.hpp"
 #include "skill_recall.hpp"
+#include "../../wasm/wasm_skill.hpp"
+#include "../../wasm/wasm_runtime.hpp"
+#include "../../wasm/wasm_registry.hpp"
+#include "../../core/persona_db.hpp"
+#include "../../core/profile_store.hpp"
+#include "../../core/user_identity.hpp"
+#include "../../core/http_stream.hpp"
 #include <sqlite3.h>
 #include <iostream>
 #include <fstream>
@@ -864,6 +871,71 @@ static int doSearch(ContextNodeStore& store, const std::vector<std::string>& arg
 // ---- add -------------------------------------------------------------------
 
 // v1.51.0: write a user-authored skill .md to ~/.icmg/skills/<name>.md
+// v2.x: `icmg skill wasm add/list/remove/run` -- register/run WASM filter skills
+// in the persona DB (zone "wasm"). add validates the manifest; run pipes stdin
+// through the module (test a filter without a real command).
+static int doWasm(const std::vector<std::string>& a) {
+    if (a.empty()) {
+        std::cerr << "usage: icmg skill wasm <add <manifest.json>|list|remove <name>|run <name>>\n";
+        return 1;
+    }
+    if (!icmg::core::personaDbAvailable()) { std::cerr << "wasm: persona DB unavailable\n"; return 1; }
+    const std::string op = a[0];
+    std::string user = icmg::core::currentUser();
+    icmg::core::ProfileStore ps(icmg::core::personaDb());
+
+    if (op == "add") {
+        if (a.size() < 2) { std::cerr << "usage: icmg skill wasm add <manifest.json>\n"; return 1; }
+        std::ifstream f(a[1]); if (!f) { std::cerr << "cannot open " << a[1] << "\n"; return 1; }
+        std::ostringstream ss; ss << f.rdbuf(); std::string js = ss.str();
+        std::string err; auto s = icmg::wasm::parseSkillManifest(js, err);
+        if (!s) { std::cerr << "invalid manifest: " << err << "\n"; return 1; }
+        std::string actual = icmg::core::sha256OfFile(s->wasmPath);
+        if (!s->sha256.empty() && !actual.empty() && actual != s->sha256)
+            std::cerr << "WARN: manifest sha256 != actual file (" << actual << ")\n";
+        std::cout << "skill '" << s->name << "' match='" << s->match << "' abi=" << s->abi << " caps=[";
+        for (auto& cp : s->caps) std::cout << cp << " ";
+        std::cout << "]\n";
+        ps.put(user, icmg::wasm::WASM_ZONE, s->name, "wasm", js, "wasm-cli");
+        std::cout << "registered wasm skill: " << s->name << "\n";
+        return 0;
+    }
+    if (op == "list") {
+        auto rows = ps.listZone(user, icmg::wasm::WASM_ZONE);
+        if (rows.empty()) { std::cout << "(no wasm skills registered)\n"; return 0; }
+        for (auto& r : rows) {
+            std::string e; auto s = icmg::wasm::parseSkillManifest(r.content, e);
+            std::cout << r.key << (s ? "  match=" + s->match + " abi=" + s->abi
+                                     : "  (unparseable manifest)") << "\n";
+        }
+        return 0;
+    }
+    if (op == "remove") {
+        if (a.size() < 2) { std::cerr << "usage: icmg skill wasm remove <name>\n"; return 1; }
+        ps.forget(user, icmg::wasm::WASM_ZONE, a[1]);
+        std::cout << "removed wasm skill: " << a[1] << "\n";
+        return 0;
+    }
+    if (op == "run") {
+        if (a.size() < 2) { std::cerr << "usage: icmg skill wasm run <name>  (input on stdin)\n"; return 1; }
+        std::string content, kind;
+        if (!ps.get(user, icmg::wasm::WASM_ZONE, a[1], content, kind)) {
+            std::cerr << "no such wasm skill: " << a[1] << "\n"; return 1;
+        }
+        std::string err; auto s = icmg::wasm::parseSkillManifest(content, err);
+        if (!s) { std::cerr << "bad stored manifest: " << err << "\n"; return 1; }
+        std::ostringstream in; in << std::cin.rdbuf();
+        std::string out, rerr;
+        if (!icmg::wasm::runWasmFilter(*s, in.str(), icmg::wasm::WasmLimits{}, out, rerr)) {
+            std::cerr << "run failed: " << rerr << "\n"; return 1;
+        }
+        std::cout << out;
+        return 0;
+    }
+    std::cerr << "unknown: icmg skill wasm " << op << " (add|list|remove|run)\n";
+    return 1;
+}
+
 static int doAdd(const std::vector<std::string>& args) {
     // args[0] = name, args[1] = content body
     if (args.size() < 2) {
@@ -980,7 +1052,12 @@ public:
             "      --top N      Return top N results (default 5, max 50).\n"
             "      --alpha F    Blend weight: 0.0=pure BM25, 1.0=pure cosine (default 0.5).\n"
             "      --json       JSON output: [{path, heading, skill, score, content_excerpt}].\n"
-            "      --skill KEY  Restrict search to chunks of a single skill.\n";
+            "      --skill KEY  Restrict search to chunks of a single skill.\n"
+            "  wasm <add <manifest.json> | list | remove <name> | run <name>>\n"
+            "      Sandboxed WASM filter skills (persona DB). add validates +\n"
+            "      registers a manifest; run pipes stdin through the module.\n"
+            "      A registered skill whose `match` fits a command auto-applies\n"
+            "      in `icmg run` (fail-open). Requires bundled wasmtime runtime.\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -994,6 +1071,7 @@ public:
         if (sub == "add")    return doAdd(rest);
         if (sub == "edit")   return doAdd(rest);  // alias: skill edit NAME BODY == add --update
         if (sub == "remove") return doRemove(rest);
+        if (sub == "wasm")   return doWasm(rest);
 
         // Open project DB. `manifest` and `chunk` (no DB) are invoked by the
         // SessionStart hook even before `icmg init` has materialised a project

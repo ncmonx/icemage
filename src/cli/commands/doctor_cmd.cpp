@@ -15,6 +15,10 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../wasm/wasm_runtime.hpp"
+#include "../../core/command_suggest.hpp"   // feature-map M4: near-dup command check
+#include "../registry_docs.hpp"
+#include "../../core/dll_probe.hpp"          // doctor --deps: name missing module (err126)
 #ifdef _WIN32
   #include <windows.h>
 #endif
@@ -53,6 +57,50 @@ public:
 
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help")) { usage(); return 0; }
+
+        // --deps: dependency probe. Names the module behind a Windows err126
+        // (e.g. a Vulkan ICD / system DLL absent on a headless Server) WITHOUT
+        // Process Monitor or admin -- loads each bundled DLL + walks its PE
+        // imports + reports which imported DLLs do not resolve on THIS machine.
+        if (hasFlag(args, "--deps")) {
+            std::string exeDir = ".";
+#ifdef _WIN32
+            char eb[1024]; DWORD en = GetModuleFileNameA(nullptr, eb, sizeof(eb));
+            if (en) { std::string p(eb, en); auto s = p.find_last_of("\\/");
+                      if (s != std::string::npos) exeDir = p.substr(0, s); }
+#endif
+            std::vector<std::string> cands = {
+                "ggml-vulkan.dll", "ggml-cpu.dll", "ggml-base.dll", "ggml.dll",
+                "llama.dll", "onnxruntime.dll", "onnxruntime_providers_shared.dll",
+                "vulkan-1.dll", "libcrypto-3-x64.dll",
+                "libtree-sitter-0.26.dll", "wasmtime.dll", "libzstd.dll"
+            };
+            auto probes = core::probeBundledDlls(exeDir, cands);
+            std::cout << "=== icmg doctor --deps (probe dir: " << exeDir << ") ===\n";
+            int bad = 0;
+            for (const auto& p : probes) {
+                if (!p.present) continue;  // not part of this build's bundle
+                if (p.loaded && p.missingImports.empty()) {
+                    std::cout << "  OK    " << p.dll << "\n";
+                } else {
+                    ++bad;
+                    std::cout << "  FAIL  " << p.dll;
+                    if (!p.loaded) std::cout << "  (load error " << p.err << ")";
+                    std::cout << "\n";
+                    for (const auto& m : p.missingImports)
+                        std::cout << "          -> MISSING: " << m << "\n";
+                }
+            }
+            if (probes.empty())
+                std::cout << "  (dependency probe is Windows-only)\n";
+            else if (bad == 0)
+                std::cout << "  all bundled DLLs load and their imports resolve.\n";
+            else
+                std::cout << "\n  " << bad << " DLL(s) with unresolved imports -- the MISSING\n"
+                             "  lines are the modules absent on THIS machine (the err126 cause).\n";
+            return bad == 0 ? 0 : 1;
+        }
+
         bool dry  = hasFlag(args, "--dry-run");
         bool verb = hasFlag(args, "--verbose");
 
@@ -174,24 +222,42 @@ public:
 #ifdef _WIN32
         if (!self.empty()) {
             fs::path dir = self.parent_path();
+            // MSVC ship bundle (matches release zip). NOTE: the old list named
+            // MinGW DLLs (libtree-sitter/wasmtime/libzstd) that the MSVC build
+            // static-links and does NOT ship -> false "missing" reports. These
+            // are the real runtime DLLs icmg.exe + ggml/llama need.
             const char* dlls[] = {
-                "libtree-sitter-0.26.dll", "wasmtime.dll",
-                "libzstd.dll", "libwinpthread-1.dll", nullptr
+                "ggml.dll", "ggml-base.dll", "ggml-cpu.dll", "ggml-vulkan.dll",
+                "llama.dll", "vulkan-1.dll", "onnxruntime.dll",
+                "onnxruntime_providers_shared.dll", "libwinpthread-1.dll",
+                "libcrypto-3-x64.dll", nullptr
             };
-            int dll_miss = 0;
+            int dll_miss = 0, dll_have = 0;
             for (int i = 0; dlls[i]; ++i) {
-                if (!fs::exists(dir / dlls[i])) ++dll_miss;
+                if (fs::exists(dir / dlls[i])) ++dll_have; else ++dll_miss;
             }
             if (dll_miss > 0) {
                 ++issues;
-                std::cout << "  ! [dlls] " << dll_miss << " bundled DLL(s) missing — "
-                          << "run `icmg update --apply` to refetch.\n";
-                // No auto-fix: requires network + may need user confirm.
+                std::cout << "  ! [dlls] " << dll_miss << " bundled DLL(s) missing -- "
+                          << "re-extract the release zip (update --apply does NOT refetch "
+                          << "DLLs). Run `icmg doctor --deps` to name unresolved modules.\n";
+                // No auto-fix: requires the release zip; may need user confirm.
             } else if (verb) {
-                std::cout << "  ✓ [dlls] all 4 core bundled DLLs present\n";
+                std::cout << "  [ok] [dlls] all " << dll_have << " bundled DLLs present\n";
             }
         }
 #endif
+
+        // 5b. WASM runtime (dynamic-loaded wasmtime; optional, graceful-degrade)
+        {
+            std::string werr;
+            if (icmg::wasm::wasmRuntimeAvailable(werr)) {
+                if (verb) std::cout << "  [ok] [wasm] runtime available (skill modules enabled)\n";
+            } else {
+                std::cout << "  [info] [wasm] runtime unavailable: " << werr
+                          << " (WASM skill filters disabled)\n";
+            }
+        }
 
         // 6. DB integrity (read-only)
         try {
@@ -216,6 +282,26 @@ public:
         } catch (...) {
             ++issues;
             std::cout << "  ! [db] open failed (locked or corrupt)\n";
+        }
+
+        // 7. [commands] feature-map M4: near-duplicate command detector. Catches
+        // an accidental dup command (same purpose, two registrations) -- durable
+        // anti-dup that does not rely on the build-time reflex rule.
+        {
+            auto dups = core::findNearDuplicateCommands(registryDocs(), 0.72);
+            if (dups.empty()) {
+                if (verb) std::cout << "  [ok] [commands] no near-duplicate commands\n";
+            } else {
+                ++issues;
+                std::cout << "  ! [commands] " << dups.size()
+                          << " near-duplicate pair(s) -- extend, don't duplicate:\n";
+                size_t shown = 0;
+                for (const auto& d : dups) {
+                    if (shown++ >= 5) { std::cout << "      ... (" << (dups.size()-5) << " more)\n"; break; }
+                    std::cout << "      icmg " << d.a << " ~ icmg " << d.b
+                              << " (" << (int)(d.score*100) << "%)  -> icmg map " << d.a << "\n";
+                }
+            }
         }
 
         // Summary

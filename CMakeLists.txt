@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.0.13 LANGUAGES CXX C)
+project(icmg VERSION 2.0.14 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -192,7 +192,7 @@ file(GLOB_RECURSE ALL_SOURCES "src/*.cpp")
 list(FILTER ALL_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
 
 add_library(icmg_lib STATIC ${ALL_SOURCES})
-target_include_directories(icmg_lib PUBLIC src third_party)
+target_include_directories(icmg_lib PUBLIC src third_party third_party/wasmtime/include)
 target_link_libraries(icmg_lib PUBLIC sqlite3 nlohmann_json)
 if(ICMG_USE_MODULES)
     # v1.41.0: per-target Modules opt-in (avoids breaking C-only sqlite3).
@@ -646,6 +646,9 @@ add_icmg_test(test_layer0_extract tests/imem/test_layer0_extract.cpp)
 add_icmg_test(test_entity_extract tests/imem/test_entity_extract.cpp)
 add_icmg_test(test_strict_audit   tests/cli/test_strict_audit.cpp)
 add_icmg_test(test_service_singleton tests/core/test_service_singleton.cpp)
+add_icmg_test(test_wasm_skill    tests/wasm/test_wasm_skill.cpp)
+add_icmg_test(test_wasm_runtime tests/wasm/test_wasm_runtime.cpp)
+add_icmg_test(test_context_budget tests/cli/test_context_budget.cpp)
 add_icmg_test(test_persona_local_only tests/core/test_persona_local_only.cpp)
 add_icmg_test(test_write_queue   tests/core/test_write_queue.cpp)
 add_icmg_test(test_node_bloom   tests/graph/test_node_bloom.cpp)
@@ -751,6 +754,8 @@ add_icmg_test(test_prompt_history tests/core/test_prompt_history.cpp)  # prompt-
 add_icmg_test(test_prompt_suggest tests/core/test_prompt_suggest.cpp)  # v2.0.4 active reuse: Jaccard scorer + gated suggest
 add_icmg_test(test_prompt_cluster tests/core/test_prompt_cluster.cpp)  # v2 pillar4: frequent-prompt clustering
 add_icmg_test(test_command_suggest tests/core/test_command_suggest.cpp)  # v2.0.4 A: command recommender
+add_icmg_test(test_feature_map tests/core/test_feature_map.cpp)  # feature-map M1: neighborsOf derived neighbors
+add_icmg_test(test_crash_hint tests/core/test_crash_hint.cpp)  # err126 module-load self-diagnosing hint
 add_icmg_test(test_flow_registry tests/core/test_flow_registry.cpp)  # v2.0.4 B: composite flows
 add_icmg_test(test_transcript_extract tests/core/test_transcript_extract.cpp)  # v2.0.4 auto-record prompt-history
 add_icmg_test(test_mode tests/core/test_mode.cpp)  # v2.0.4 mode banner persona-DB contract

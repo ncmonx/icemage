@@ -15,6 +15,8 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../context_budget.hpp"   // accurate API-usage % (--brief)
+#include <iterator>
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
@@ -67,6 +69,35 @@ public:
 
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help")) { usage(); return 0; }
+        // --brief: one-line ACCURATE context% from the transcript's last API
+        // usage (input+cache_creation+cache_read) -- hook-friendly, not bytes/4.
+        if (hasFlag(args, "--brief")) {
+            std::string ep = flagValue(args, "--transcript");
+            fs::path tp = ep.empty() ? findLatestTranscript() : fs::path(ep);
+            long long limit = 1000000;
+            if (const char* e = std::getenv("ICMG_CONTEXT_LIMIT")) { try { limit = std::stoll(e); } catch (...) {} }
+            long long used = 0;
+            if (!tp.empty() && fs::exists(tp)) {
+                std::ifstream bf(tp, std::ios::binary);
+                bf.seekg(0, std::ios::end); std::streamoff sz = bf.tellg();
+                std::streamoff st = sz > 524288 ? sz - 524288 : 0; bf.seekg(st);
+                std::string chunk((std::istreambuf_iterator<char>(bf)), std::istreambuf_iterator<char>());
+                size_t pos = 0;
+                while (pos <= chunk.size()) {
+                    size_t nl = chunk.find('\n', pos);
+                    std::string ln = chunk.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+                    if (ln.find("input_tokens") != std::string::npos) {
+                        long long t = contextTokensFromUsageLine(ln);
+                        if (t > 0) used = t;
+                    }
+                    if (nl == std::string::npos) break;
+                    pos = nl + 1;
+                }
+            }
+            if (used <= 0) { std::cerr << "context-budget --brief: no API usage in transcript\n"; return 1; }
+            std::cout << formatBudget(computeBudget(used, limit)) << "\n";
+            return 0;
+        }
         bool json_out     = hasFlag(args, "--json");
         bool all_sessions = hasFlag(args, "--all-sessions");
         bool all_users    = hasFlag(args, "--all-users");

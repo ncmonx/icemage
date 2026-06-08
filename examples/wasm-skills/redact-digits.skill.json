@@ -1,0 +1,9 @@
+{
+  "name": "redact-digits",
+  "kind": "tkil-filter",
+  "match": "show-secrets",
+  "wasm": "examples/wasm-skills/redact-digits.wat",
+  "abi": "filter-v1",
+  "capabilities": [],
+  "sha256": ""
+}

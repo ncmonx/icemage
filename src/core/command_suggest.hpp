@@ -63,4 +63,67 @@ inline std::vector<CmdHit> rankCommands(const std::string& intent,
     return hits;
 }
 
+// Neighbors of a command = top-N most similar OTHER commands, derived from
+// name+desc via rankCommands (zero new data -> the map never rots). If cmdName
+// matches a known doc, rank against that doc's "name desc"; otherwise treat
+// cmdName as a free-text intent. Self is always excluded.
+inline std::vector<CmdHit> neighborsOf(const std::string& cmdName,
+                                       const std::vector<CmdDoc>& docs, int n) {
+    if (docs.empty() || n <= 0) return {};
+    std::string intent = cmdName;
+    for (const auto& d : docs)
+        if (d.name == cmdName) { intent = d.name + " " + d.desc; break; }
+    auto hits = rankCommands(intent, docs, n + 1);   // +1 to absorb self
+    std::vector<CmdHit> out;
+    for (auto& h : hits) {
+        if (h.name == cmdName) continue;             // drop self
+        out.push_back(h);
+        if (static_cast<int>(out.size()) >= n) break;
+    }
+    return out;
+}
+
+// One-line "related commands" footer for a command's --help (the hallway map at
+// decision-time). ASCII-only (Windows console safe; no glyphs). Empty string when
+// there are no neighbors so callers can append unconditionally.
+inline std::string formatRelatedFooter(const std::string& cmd,
+                                       const std::vector<CmdHit>& nb) {
+    if (nb.empty()) return std::string();
+    std::string s = "\nrelated:";
+    for (const auto& h : nb) s += " icmg " + h.name + ",";
+    if (!s.empty() && s.back() == ',') s.pop_back();
+    s += "   (icmg map " + cmd + ")\n";
+    return s;
+}
+
+// Pure gate for when to print the related footer (M2 --help + M3 output-run):
+//   --help invocation  -> ON by default (suppress with ICMG_NO_MAP_FOOTER).
+//   normal run         -> OFF by default; opt in with ICMG_MAP_FOOTER, and only
+//                         when the command succeeded (rcOk) to avoid noise on error.
+inline bool shouldShowFooter(bool isHelp, bool rcOk,
+                             bool noHelpFooterEnv, bool optInRunEnv) {
+    if (isHelp) return !noHelpFooterEnv;
+    return optInRunEnv && rcOk;
+}
+
+// Feature-map M4: a near-duplicate pair = two commands whose "name desc" text
+// overlaps at/above `threshold` (symmetric Jaccard). Surfaced by `icmg doctor`
+// so an accidental duplicate command is caught at health-check time (durable
+// anti-dup, not reliant on the model remembering the reflex rule). Sorted desc.
+struct DupPair { std::string a, b; double score = 0.0; };
+
+inline std::vector<DupPair> findNearDuplicateCommands(const std::vector<CmdDoc>& docs,
+                                                      double threshold) {
+    std::vector<DupPair> out;
+    for (size_t i = 0; i < docs.size(); ++i)
+        for (size_t j = i + 1; j < docs.size(); ++j) {
+            double s = promptJaccard(docs[i].name + " " + docs[i].desc,
+                                     docs[j].name + " " + docs[j].desc);
+            if (s >= threshold) out.push_back({docs[i].name, docs[j].name, s});
+        }
+    std::stable_sort(out.begin(), out.end(),
+                     [](const DupPair& a, const DupPair& b) { return a.score > b.score; });
+    return out;
+}
+
 }  // namespace icmg::core

@@ -212,6 +212,12 @@ int Scanner::scan(const std::string& root, const Options& opts) {
         node.size_bytes = (int64_t)fsz;
         node.file_hash  = hash;
         node.zone       = zoner.resolveForPath(zone_path);
+        // Graph WRITE path. On hosts missing an OpenSSL/CryptoAPI module that
+        // SQLCipher's write-side crypto loads at runtime (Windows Server 2019:
+        // rsaenh/cryptbase/ntmarta chain -> module err126), upsertNode throws.
+        // Degrade: skip this file, keep scanning -- never crash/hang the scan.
+        // `icmg context` still serves whatever the graph already holds.
+        try {
         int64_t nodeId = store_.upsertNode(node);
         for (auto& imp : result.imports) pending.emplace_back(nodeId, fpath, imp);
         auto& sym_reg = core::Registry<BaseSymbolExtractor>::instance();
@@ -237,6 +243,15 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             }
         }
         ++updated;
+        } catch (const std::exception& e) {
+            static bool warned = false;
+            if (!warned) {
+                warned = true;
+                std::cerr << "icmg: graph write skipped (" << e.what()
+                          << ") -- scan continues without persisting (host crypto/module issue).\n";
+            }
+            return;
+        }
     };
 
     // Single-file fast path: skip directory walk entirely.
