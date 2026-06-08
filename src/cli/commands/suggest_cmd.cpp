@@ -6,6 +6,7 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/command_suggest.hpp"
+#include "../registry_docs.hpp"
 #include "../../core/stdin_util.hpp"
 #include <nlohmann/json.hpp>
 #include <cstdlib>
@@ -54,7 +55,7 @@ public:
 
         // Rank the live command registry (skip self to avoid noise).
         auto& reg = core::Registry<BaseCommand>::instance();
-        auto hits = core::rankCommands(intent, registryDocs(), top);
+        auto hits = core::rankCommands(intent, registryDocs("suggest"), top);
 
         if (js) {
             nlohmann::json arr = nlohmann::json::array();
@@ -76,17 +77,8 @@ public:
     }
 
 private:
-    // Build {name, description} docs from the live registry (excluding self).
-    std::vector<core::CmdDoc> registryDocs() const {
-        auto& reg = core::Registry<BaseCommand>::instance();
-        std::vector<core::CmdDoc> docs;
-        for (const auto& k : reg.keys()) {
-            if (k == "suggest") continue;
-            auto cmd = reg.create(k);
-            docs.push_back({k, cmd ? cmd->description() : std::string()});
-        }
-        return docs;
-    }
+    // Registry snapshot lives in cli::registryDocs (registry_docs.hpp) -- shared
+    // with `icmg map` so the {name,desc} builder has one source of truth.
 
     // UserPromptSubmit hook: read the prompt from stdin (JSON {"prompt":...} or raw
     // text), and emit at most one high-confidence command hint. Opt out with
@@ -101,7 +93,7 @@ private:
             if (j.contains("prompt") && j["prompt"].is_string()) prompt = j["prompt"].get<std::string>();
         } catch (...) { /* not JSON -> treat as raw prompt text */ }
 
-        auto hits = core::rankCommands(prompt, registryDocs(), 1);
+        auto hits = core::rankCommands(prompt, registryDocs("suggest"), 1);
         if (hits.empty() || hits[0].score < gate) return 0;
         auto cmd = core::Registry<BaseCommand>::instance().create(hits[0].name);
         std::cout << "[icmg] relevant command: icmg " << hits[0].name;
