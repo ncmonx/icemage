@@ -96,4 +96,14 @@ inline std::string formatRelatedFooter(const std::string& cmd,
     return s;
 }
 
+// Pure gate for when to print the related footer (M2 --help + M3 output-run):
+//   --help invocation  -> ON by default (suppress with ICMG_NO_MAP_FOOTER).
+//   normal run         -> OFF by default; opt in with ICMG_MAP_FOOTER, and only
+//                         when the command succeeded (rcOk) to avoid noise on error.
+inline bool shouldShowFooter(bool isHelp, bool rcOk,
+                             bool noHelpFooterEnv, bool optInRunEnv) {
+    if (isHelp) return !noHelpFooterEnv;
+    return optInRunEnv && rcOk;
+}
+
 }  // namespace icmg::core

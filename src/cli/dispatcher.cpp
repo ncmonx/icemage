@@ -231,15 +231,17 @@ static void applyPendingUpgrade() {
     std::cerr << "[icmg] pending upgrade applied: " << tag << "\n";
 }
 
-// Feature-map M2: when a command was invoked with --help/-h, append a one-line
-// "related commands" footer (derived neighbors) after its own help output, so
-// the hallway map shows up at decision-time. Opt out with ICMG_NO_MAP_FOOTER.
+// Feature-map M2+M3: append a one-line "related commands" footer (derived
+// neighbors) so the hallway map shows up at decision-time.
+//   M2: on --help/-h (ON by default; suppress with ICMG_NO_MAP_FOOTER).
+//   M3: after a normal successful run (OFF by default; opt in ICMG_MAP_FOOTER).
 static void printRelatedFooter(const std::string& cmd,
-                               const std::vector<std::string>& rest) {
+                               const std::vector<std::string>& rest, int rc) {
     bool isHelp = false;
     for (const auto& a : rest) if (a == "--help" || a == "-h") { isHelp = true; break; }
-    if (!isHelp) return;
-    if (std::getenv("ICMG_NO_MAP_FOOTER")) return;
+    bool noHelp = std::getenv("ICMG_NO_MAP_FOOTER") != nullptr;
+    bool optIn  = std::getenv("ICMG_MAP_FOOTER") != nullptr;
+    if (!core::shouldShowFooter(isHelp, rc == 0, noHelp, optIn)) return;
     auto nb = core::neighborsOf(cmd, registryDocs(), 5);
     std::cout << core::formatRelatedFooter(cmd, nb);
 }
@@ -336,7 +338,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
     if (reg.has(cmd)) {
         auto handler = reg.create(cmd);
         int rc = handler->run(rest);
-        printRelatedFooter(cmd, rest);
+        printRelatedFooter(cmd, rest, rc);
         return rc;
     }
 
@@ -347,7 +349,7 @@ int Dispatcher::run(const std::vector<std::string>& args) {
             auto handler = reg.create(compound);
             std::vector<std::string> crest(rest.begin() + 1, rest.end());
             int rc = handler->run(crest);
-            printRelatedFooter(compound, crest);
+            printRelatedFooter(compound, crest, rc);
             return rc;
         }
     }

@@ -45,3 +45,15 @@ TEST("feature_map: formatRelatedFooter lists neighbors + map hint") {
     ASSERT_TRUE(f.find("icmg govern") != std::string::npos);
     ASSERT_TRUE(f.find("icmg map context-budget") != std::string::npos);
 }
+
+TEST("feature_map: shouldShowFooter --help on by default, suppressed by env") {
+    ASSERT_TRUE(shouldShowFooter(/*isHelp*/true,  /*rcOk*/true,  /*noHelp*/false, /*optIn*/false));
+    ASSERT_TRUE(shouldShowFooter(true,  false, false, false));   // help shows even on nonzero rc
+    ASSERT_TRUE(!shouldShowFooter(true, true,  /*noHelp*/true,  false)); // ICMG_NO_MAP_FOOTER suppresses
+}
+
+TEST("feature_map: shouldShowFooter normal run off unless opt-in + success") {
+    ASSERT_TRUE(!shouldShowFooter(/*isHelp*/false, true,  false, /*optIn*/false)); // default off
+    ASSERT_TRUE( shouldShowFooter(false, /*rcOk*/true,  false, /*optIn*/true));    // opt-in + success
+    ASSERT_TRUE(!shouldShowFooter(false, /*rcOk*/false, false, /*optIn*/true));    // opt-in but failed -> off
+}
