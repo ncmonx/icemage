@@ -15,6 +15,7 @@
 #include "core/path_utils.hpp"
 #include "core/version_check.hpp"
 #include "core/crash_hint.hpp"
+#include "core/dll_trace.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
 #include <system_error>
@@ -148,6 +149,11 @@ int main(int argc, char* argv[]) {
     // silently instead of showing a system dialog; SEM_NOOPENFILEERRORBOX
     // suppresses the "file not found" UI.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+
+    // Loader tracer: remember the last DLL loaded (+ ICMG_TRACE_DLL=1 streams all)
+    // so an err126 crash can name the subsystem that was initializing. Catches
+    // runtime LoadLibrary-by-name modules invisible to the PE import walk.
+    icmg::core::installDllTracer();
 
     // v1.19.0: sanitize PATH inside icmg-core too — when icmg-core is invoked
     // directly (Task Scheduler, Startup folder, schtask, user manual exec),
@@ -388,7 +394,14 @@ int main(int argc, char* argv[]) {
         // err126 (module-load) self-diagnosis: tell the user how to capture the
         // exact missing module -- the name lives in the OS loader, not e.what().
         std::string mhint = icmg::core::moduleLoadHint(e.what(), sys_code);
-        if (!mhint.empty()) std::cerr << mhint;
+        if (!mhint.empty()) {
+            const std::string& last = icmg::core::lastLoadedDll();
+            if (!last.empty())
+                std::cerr << "      last DLL loaded before crash: " << last
+                          << "  (the missing module is one this loads at runtime;\n"
+                          << "       re-run with ICMG_TRACE_DLL=1 to see the full load order)\n";
+            std::cerr << mhint;
+        }
         return 1;
     } catch (...) {
         std::vector<std::string> cap = {
