@@ -14,8 +14,10 @@
 #include "core/exec_utils.hpp"
 #include "core/path_utils.hpp"
 #include "core/version_check.hpp"
+#include "core/crash_hint.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
+#include <system_error>
 
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
@@ -369,14 +371,24 @@ int main(int argc, char* argv[]) {
             icmg::cli::Dispatcher d2;
             d2.run(cap);
         } catch (...) { /* swallow — never crash twice */ }
+        int sys_code = 0;
         if (auto fse = dynamic_cast<const std::filesystem::filesystem_error*>(&e)) {
-            std::cerr << "icmg: filesystem error code " << fse->code().value()
+            sys_code = fse->code().value();
+            std::cerr << "icmg: filesystem error code " << sys_code
                       << " (" << fse->code().message() << ")\n";
             if (!fse->path1().empty()) std::cerr << "      path1: " << fse->path1().string() << "\n";
             if (!fse->path2().empty()) std::cerr << "      path2: " << fse->path2().string() << "\n";
+        } else if (auto se = dynamic_cast<const std::system_error*>(&e)) {
+            sys_code = se->code().value();
+            std::cerr << "icmg: system error code " << sys_code
+                      << " (" << se->code().message() << ")\n";
         }
         std::cerr << "icmg: uncaught error: " << e.what() << "\n"
                   << "      Crash logged. Send report: icmg bug-report --send-pending\n";
+        // err126 (module-load) self-diagnosis: tell the user how to capture the
+        // exact missing module -- the name lives in the OS loader, not e.what().
+        std::string mhint = icmg::core::moduleLoadHint(e.what(), sys_code);
+        if (!mhint.empty()) std::cerr << mhint;
         return 1;
     } catch (...) {
         std::vector<std::string> cap = {
