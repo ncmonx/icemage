@@ -83,4 +83,17 @@ inline std::vector<CmdHit> neighborsOf(const std::string& cmdName,
     return out;
 }
 
+// One-line "related commands" footer for a command's --help (the hallway map at
+// decision-time). ASCII-only (Windows console safe; no glyphs). Empty string when
+// there are no neighbors so callers can append unconditionally.
+inline std::string formatRelatedFooter(const std::string& cmd,
+                                       const std::vector<CmdHit>& nb) {
+    if (nb.empty()) return std::string();
+    std::string s = "\nrelated:";
+    for (const auto& h : nb) s += " icmg " + h.name + ",";
+    if (!s.empty() && s.back() == ',') s.pop_back();
+    s += "   (icmg map " + cmd + ")\n";
+    return s;
+}
+
 }  // namespace icmg::core

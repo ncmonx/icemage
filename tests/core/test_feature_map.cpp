@@ -32,3 +32,16 @@ TEST("feature_map: unknown cmd -> intent fallback never crashes") {
 TEST("feature_map: empty docs -> empty") {
     ASSERT_EQ(neighborsOf("x", {}, 3).size(), (size_t)0);
 }
+
+TEST("feature_map: formatRelatedFooter empty neighbors -> empty string") {
+    ASSERT_EQ(formatRelatedFooter("ctx", {}).size(), (size_t)0);
+}
+
+TEST("feature_map: formatRelatedFooter lists neighbors + map hint") {
+    std::vector<CmdHit> nb = { {"savings", 0.9}, {"govern", 0.5} };
+    std::string f = formatRelatedFooter("context-budget", nb);
+    ASSERT_TRUE(f.find("related:") != std::string::npos);
+    ASSERT_TRUE(f.find("icmg savings") != std::string::npos);
+    ASSERT_TRUE(f.find("icmg govern") != std::string::npos);
+    ASSERT_TRUE(f.find("icmg map context-budget") != std::string::npos);
+}

@@ -1,6 +1,8 @@
 #include "dispatcher.hpp"
 #include "core/version.hpp"
 #include "base_command.hpp"
+#include "registry_docs.hpp"            // feature-map M2: --help related footer
+#include "../core/command_suggest.hpp" // neighborsOf + formatRelatedFooter
 #include "../core/registry.hpp"
 #include "../core/config.hpp"
 #include "../core/global_db.hpp"
@@ -229,6 +231,19 @@ static void applyPendingUpgrade() {
     std::cerr << "[icmg] pending upgrade applied: " << tag << "\n";
 }
 
+// Feature-map M2: when a command was invoked with --help/-h, append a one-line
+// "related commands" footer (derived neighbors) after its own help output, so
+// the hallway map shows up at decision-time. Opt out with ICMG_NO_MAP_FOOTER.
+static void printRelatedFooter(const std::string& cmd,
+                               const std::vector<std::string>& rest) {
+    bool isHelp = false;
+    for (const auto& a : rest) if (a == "--help" || a == "-h") { isHelp = true; break; }
+    if (!isHelp) return;
+    if (std::getenv("ICMG_NO_MAP_FOOTER")) return;
+    auto nb = core::neighborsOf(cmd, registryDocs(), 5);
+    std::cout << core::formatRelatedFooter(cmd, nb);
+}
+
 int Dispatcher::run(const std::vector<std::string>& args) {
     applyPendingUpgrade();
     sweepStaleOldFiles();  // v1.21.9: clean up `.old-<PID>` from prior updates
@@ -320,7 +335,9 @@ int Dispatcher::run(const std::vector<std::string>& args) {
     auto& reg = icmg::core::Registry<icmg::cli::BaseCommand>::instance();
     if (reg.has(cmd)) {
         auto handler = reg.create(cmd);
-        return handler->run(rest);
+        int rc = handler->run(rest);
+        printRelatedFooter(cmd, rest);
+        return rc;
     }
 
     // Try compound command: "graph scan" → look up "graph-scan" in registry
@@ -328,7 +345,10 @@ int Dispatcher::run(const std::vector<std::string>& args) {
         std::string compound = cmd + "-" + rest[0];
         if (reg.has(compound)) {
             auto handler = reg.create(compound);
-            return handler->run(std::vector<std::string>(rest.begin() + 1, rest.end()));
+            std::vector<std::string> crest(rest.begin() + 1, rest.end());
+            int rc = handler->run(crest);
+            printRelatedFooter(compound, crest);
+            return rc;
         }
     }
 
