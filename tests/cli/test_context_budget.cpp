@@ -6,6 +6,9 @@
 #include "../../src/cli/model_pricing.hpp"
 #include "../../src/core/intent_slice.hpp"
 #include "../../src/core/read_dedup.hpp"
+#include "../../src/cli/statusline.hpp"
+#include "../../src/cli/find_slices.hpp"
+#include "../../src/cli/bench_savings.hpp"
 #include <fstream>
 #include <filesystem>
 #include <cmath>
@@ -176,4 +179,65 @@ TEST("read_dedup: stub text names file + escape hatch + bytes skipped") {
     ASSERT_CONTAINS(s, "unchanged");
     ASSERT_CONTAINS(s, "--full");
     ASSERT_CONTAINS(s, "2048");
+}
+
+// --- statusline: compact CC status-bar line (makes budget visible) --------
+TEST("statusline: humanTok scales raw/K/M") {
+    ASSERT_EQ(humanTok(900), std::string("900"));
+    ASSERT_EQ(humanTok(128000), std::string("128K"));
+    ASSERT_EQ(humanTok(566604), std::string("567K"));   // rounded
+    ASSERT_EQ(humanTok(1000000), std::string("1.0M"));
+}
+
+TEST("statusline: modelShortName drops vendor prefix + claude-") {
+    ASSERT_EQ(modelShortName("claude-opus-4-8"), std::string("opus-4-8"));
+    ASSERT_EQ(modelShortName("anthropic/claude-sonnet-4-6"), std::string("sonnet-4-6"));
+    ASSERT_EQ(modelShortName("gpt-4o"), std::string("gpt-4o"));
+    ASSERT_EQ(modelShortName("<synthetic>"), std::string(""));
+    ASSERT_EQ(modelShortName(""), std::string(""));
+}
+
+TEST("statusline: format shows ctx% + model + used/limit") {
+    std::string s = formatStatusline(computeBudget(566604, 1000000), "opus-4-8");
+    ASSERT_CONTAINS(s, "icmg");
+    ASSERT_CONTAINS(s, "opus-4-8");
+    ASSERT_CONTAINS(s, "ctx 56%");
+    ASSERT_CONTAINS(s, "567K/1.0M");
+    // no model + no limit -> minimal line, no crash
+    ASSERT_CONTAINS(formatStatusline(computeBudget(0, 0), ""), "ctx 0%");
+}
+
+// --- find: one-shot multi-file intent search (fewer turns) ----------------
+TEST("find: ranks files by intent density, drops misses, caps maxFiles") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"a.cpp", "void f() {\n  int rate = 1;\n}\n"},                          // 1 hit
+        {"b.cpp", "void g() {\n  rate_limit();\n  set_rate(2);\n  rate++;\n}\n"},// 3 hits (rate x3)
+        {"c.cpp", "void h() {\n  unrelated();\n}\n"}                            // 0 hits
+    };
+    auto r = icmg::cli::rankFileSlices(files, "rate", /*ctx*/1, /*maxFiles*/5, /*maxWin*/3);
+    ASSERT_EQ((int)r.size(), 2);                 // c.cpp dropped
+    ASSERT_EQ(r[0].file, std::string("b.cpp"));  // densest first
+    ASSERT_TRUE(r[0].score > r[1].score);
+    ASSERT_TRUE(!r[0].ranges.empty());
+    // maxFiles cap
+    ASSERT_EQ((int)icmg::cli::rankFileSlices(files, "rate", 1, 1, 3).size(), 1);
+    // no intent terms / no match -> empty
+    ASSERT_EQ((int)icmg::cli::rankFileSlices(files, "zzz", 1, 5, 3).size(), 0);
+}
+
+// --- bench savings: reproducible read-reduction math ----------------------
+TEST("bench_savings: caps large files at cap, sums, computes pct") {
+    auto r = icmg::cli::benchReadSavings({10000, 200, 5000}, /*cap*/1024);
+    ASSERT_EQ(r.files, 3);
+    ASSERT_EQ(r.naiveTokens, 15200LL);
+    ASSERT_EQ(r.icmgTokens, 2248LL);          // 1024 + 200 + 1024
+    ASSERT_EQ(r.pctSaved, 85);
+}
+
+TEST("bench_savings: all-under-cap = 0% saved; empty = zeros") {
+    auto u = icmg::cli::benchReadSavings({100, 200}, 1024);
+    ASSERT_EQ(u.pctSaved, 0);
+    ASSERT_EQ(u.icmgTokens, 300LL);
+    auto e = icmg::cli::benchReadSavings({}, 1024);
+    ASSERT_EQ(e.files, 0); ASSERT_EQ(e.naiveTokens, 0LL); ASSERT_EQ(e.pctSaved, 0);
 }

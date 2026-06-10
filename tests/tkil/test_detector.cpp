@@ -2,7 +2,15 @@
 #include "../../src/tkil/detector.hpp"
 #include "../../src/core/cmd_densify.hpp"
 #include "../../src/core/openssl_rng.hpp"
+#include "../../src/core/hook_sanitize.hpp"
+#include "../../src/graph/extractor/ruby_extract.hpp"
+#include "../../src/graph/extractor/swift_extract.hpp"
+#include "../../src/graph/extractor/kotlin_extract.hpp"
+#include "../../src/graph/extractor/scala_extract.hpp"
+#include "../../src/graph/extractor/lua_extract.hpp"
+#include "../../src/graph/extractor/dart_extract.hpp"
 #include <cstring>
+#include <algorithm>
 
 using icmg::tkil::CmdType;
 using icmg::tkil::Detector;
@@ -167,6 +175,150 @@ TEST("openssl_rng: install routes OpenSSL RNG onto BCrypt") {
     ASSERT_TRUE(icmg::core::installBCryptOpenSSLRand());
 }
 #endif
+
+// ---- hook_sanitize: drop dead python precompact-snapshot hook -------------
+TEST("hook_sanitize: removes python snapshot cmd, keeps native, prunes empties") {
+    auto cfg = nlohmann::json::parse(R"({
+      "hooks": {
+        "PreCompact": [
+          { "hooks": [
+              { "type": "command", "command": "python3 ~/.claude/hooks/icmg-precompact-snapshot.py" },
+              { "type": "command", "command": "icmg hook precompact" }
+          ]},
+          { "hooks": [
+              { "type": "command", "command": "python3 ~/.claude/hooks/icmg-precompact-snapshot.py" }
+          ]}
+        ]
+      }
+    })");
+    int removed = icmg::core::removeStaleSnapshotHooks(cfg);
+    ASSERT_EQ(removed, 2);
+    // entry 1 keeps only the native command; entry 2 (now empty) is pruned.
+    ASSERT_EQ((int)cfg["hooks"]["PreCompact"].size(), 1);
+    ASSERT_EQ((int)cfg["hooks"]["PreCompact"][0]["hooks"].size(), 1);
+    ASSERT_CONTAINS(cfg["hooks"]["PreCompact"][0]["hooks"][0]["command"].get<std::string>(), "icmg hook precompact");
+}
+
+TEST("hook_sanitize: ensureStatusLine adds when absent, never clobbers") {
+    auto a = nlohmann::json::object();
+    ASSERT_TRUE(icmg::core::ensureStatusLine(a, "icmg statusline"));
+    ASSERT_CONTAINS(a["statusLine"]["command"].get<std::string>(), "icmg statusline");
+    ASSERT_EQ(a["statusLine"]["type"].get<std::string>(), std::string("command"));
+    // already has one -> untouched
+    auto b = nlohmann::json::parse(R"({"statusLine":{"type":"command","command":"mybar"}})");
+    ASSERT_FALSE(icmg::core::ensureStatusLine(b, "icmg statusline"));
+    ASSERT_EQ(b["statusLine"]["command"].get<std::string>(), std::string("mybar"));
+}
+
+TEST("hook_sanitize: no-op when no snapshot ref present") {
+    auto cfg = nlohmann::json::parse(R"({"hooks":{"Stop":[{"hooks":[{"command":"icmg hook stop"}]}]}})");
+    ASSERT_EQ(icmg::core::removeStaleSnapshotHooks(cfg), 0);
+    ASSERT_EQ((int)cfg["hooks"]["Stop"].size(), 1);              // untouched
+    auto empty = nlohmann::json::object();
+    ASSERT_EQ(icmg::core::removeStaleSnapshotHooks(empty), 0);  // no hooks key
+}
+
+// ---- ruby extractor (new language) ----------------------------------------
+TEST("ruby_extract: require/module/class/def -> imports/namespaces/classes/functions") {
+    auto r = icmg::graph::extractRuby(
+        "require 'json'\n"
+        "require_relative '../lib/foo'\n"
+        "module Billing\n"
+        "  class Invoice < Base\n"
+        "    def total; end\n"
+        "    def self.create; end\n"
+        "  end\n"
+        "end\n");
+    auto has = [](const std::vector<std::string>& v, const std::string& x) {
+        return std::find(v.begin(), v.end(), x) != v.end();
+    };
+    ASSERT_TRUE(has(r.imports, "json"));
+    ASSERT_TRUE(has(r.imports, "../lib/foo"));
+    ASSERT_TRUE(has(r.namespaces, "Billing"));
+    ASSERT_TRUE(has(r.classes, "Invoice"));
+    ASSERT_TRUE(has(r.functions, "total"));
+    ASSERT_TRUE(has(r.functions, "create"));     // def self.create
+}
+
+TEST("ruby_extract: empty + non-ruby content -> no symbols") {
+    auto r = icmg::graph::extractRuby("");
+    ASSERT_EQ((int)(r.imports.size() + r.classes.size() + r.functions.size()), 0);
+}
+
+static bool sym_has(const std::vector<std::string>& v, const std::string& x) {
+    return std::find(v.begin(), v.end(), x) != v.end();
+}
+
+TEST("swift_extract: import/struct/class/func") {
+    auto r = icmg::graph::extractSwift(
+        "import Foundation\n"
+        "struct Point { let x: Int }\n"
+        "final class Service {\n"
+        "  func run() {}\n"
+        "  static func make() {}\n"
+        "}\n");
+    ASSERT_TRUE(sym_has(r.imports, "Foundation"));
+    ASSERT_TRUE(sym_has(r.classes, "Point"));
+    ASSERT_TRUE(sym_has(r.classes, "Service"));
+    ASSERT_TRUE(sym_has(r.functions, "run"));
+    ASSERT_TRUE(sym_has(r.functions, "make"));
+}
+
+TEST("kotlin_extract: package/import/class/fun") {
+    auto r = icmg::graph::extractKotlin(
+        "package com.app\n"
+        "import kotlin.collections.List\n"
+        "data class User(val id: Int)\n"
+        "object Repo {\n"
+        "  suspend fun fetch(): User? = null\n"
+        "}\n");
+    ASSERT_TRUE(sym_has(r.namespaces, "com.app"));
+    ASSERT_TRUE(sym_has(r.imports, "kotlin.collections.List"));
+    ASSERT_TRUE(sym_has(r.classes, "User"));
+    ASSERT_TRUE(sym_has(r.classes, "Repo"));
+    ASSERT_TRUE(sym_has(r.functions, "fetch"));
+}
+
+TEST("scala_extract: package/import/object/trait/def") {
+    auto r = icmg::graph::extractScala(
+        "package billing\n"
+        "import scala.collection.mutable\n"
+        "sealed trait Event\n"
+        "case class Paid(amount: Int) extends Event\n"
+        "object Ledger {\n"
+        "  def post(e: Event): Unit = {}\n"
+        "}\n");
+    ASSERT_TRUE(sym_has(r.namespaces, "billing"));
+    ASSERT_TRUE(sym_has(r.imports, "scala.collection.mutable"));
+    ASSERT_TRUE(sym_has(r.classes, "Event"));
+    ASSERT_TRUE(sym_has(r.classes, "Paid"));
+    ASSERT_TRUE(sym_has(r.classes, "Ledger"));
+    ASSERT_TRUE(sym_has(r.functions, "post"));
+}
+
+TEST("lua_extract: require + function forms") {
+    auto r = icmg::graph::extractLua(
+        "local json = require 'json'\n"
+        "function M.greet(name) end\n"
+        "local function helper() end\n"
+        "Handler = function() end\n");
+    ASSERT_TRUE(sym_has(r.imports, "json"));
+    ASSERT_TRUE(sym_has(r.functions, "M.greet"));
+    ASSERT_TRUE(sym_has(r.functions, "helper"));
+    ASSERT_TRUE(sym_has(r.functions, "Handler"));
+}
+
+TEST("dart_extract: import/class/mixin/enum") {
+    auto r = icmg::graph::extractDart(
+        "import 'package:flutter/material.dart';\n"
+        "abstract class Widget {}\n"
+        "mixin Clickable {}\n"
+        "enum Color { red, green }\n");
+    ASSERT_TRUE(sym_has(r.imports, "package:flutter/material.dart"));
+    ASSERT_TRUE(sym_has(r.classes, "Widget"));
+    ASSERT_TRUE(sym_has(r.classes, "Clickable"));
+    ASSERT_TRUE(sym_has(r.classes, "Color"));
+}
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }

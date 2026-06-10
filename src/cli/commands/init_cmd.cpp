@@ -28,6 +28,7 @@
 #include "../../core/service_install.hpp"
 #include "../sayless_migrate.hpp"
 #include <nlohmann/json.hpp>
+#include "../../core/hook_sanitize.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -1612,6 +1613,31 @@ private:
             if (fs::exists(stale_py, _rmec)) {
                 fs::remove(stale_py, _rmec);
                 std::cout << "  cleanup: removed stale icmg-precompact-snapshot.py\n";
+            }
+        }
+        // Strip the stale python PreCompact hook ENTRY from settings.json
+        // (script-file form the python3 -c SessionStart sanitizer never matched);
+        // native `icmg hook precompact` covers it. The dead entry spammed
+        // `python3: command not found` on every compaction on python-less hosts.
+        {
+            fs::path ps = root / ".claude" / "settings.json";
+            std::error_code _psec;
+            if (fs::exists(ps, _psec)) {
+                try {
+                    std::ifstream sf(ps);
+                    std::string sbody((std::istreambuf_iterator<char>(sf)), std::istreambuf_iterator<char>());
+                    sf.close();
+                    nlohmann::json scfg = nlohmann::json::parse(sbody, nullptr, false);
+                    if (!scfg.is_discarded()) {
+                        int rmN = core::removeStaleSnapshotHooks(scfg);
+                        bool sl = core::ensureStatusLine(scfg, "icmg statusline");
+                        if (rmN > 0 || sl) {
+                            std::ofstream so(ps); so << scfg.dump(2) << "\n";
+                            if (rmN > 0) std::cout << "  cleanup: dropped " << rmN << " stale python precompact hook entry(ies)\n";
+                            if (sl)      std::cout << "  + statusLine: icmg statusline (context budget in CC status bar)\n";
+                        }
+                    }
+                } catch (...) { /* best-effort */ }
             }
         }
         // v1.78.1: caveman -> sayless migration. Auto-rename old flag files

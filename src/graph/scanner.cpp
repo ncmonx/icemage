@@ -45,9 +45,14 @@ static const struct { const char* ext; const char* lang; } EXT_MAP[] = {
     {".js","js"}, {".jsx","js"}, {".ts","js"}, {".tsx","js"}, {".mjs","js"},
     {".go","go"},
     {".rs","rust"},
-    {".java","java"}, {".kt","java"}, {".kts","java"},
+    {".java","java"}, {".kt","kotlin"}, {".kts","kotlin"},
     {".cs","csharp"}, {".csx","csharp"},
     {".php","php"}, {".php5","php"}, {".phtml","php"},
+    {".rb","ruby"}, {".rake","ruby"}, {".gemspec","ruby"},
+    {".swift","swift"},
+    {".scala","scala"}, {".sc","scala"},
+    {".lua","lua"},
+    {".dart","dart"},
     {".sql","sql"},
     // Phase 68: doc/data/config files. Lang label only — no AST extractor;
     // generic extractor still applies (regex symbol scan).
