@@ -4,6 +4,9 @@
 #include "../../src/core/openssl_rng.hpp"
 #include "../../src/core/hook_sanitize.hpp"
 #include "../../src/graph/extractor/ruby_extract.hpp"
+#include "../../src/graph/extractor/swift_extract.hpp"
+#include "../../src/graph/extractor/kotlin_extract.hpp"
+#include "../../src/graph/extractor/scala_extract.hpp"
 #include <cstring>
 #include <algorithm>
 
@@ -227,6 +230,57 @@ TEST("ruby_extract: require/module/class/def -> imports/namespaces/classes/funct
 TEST("ruby_extract: empty + non-ruby content -> no symbols") {
     auto r = icmg::graph::extractRuby("");
     ASSERT_EQ((int)(r.imports.size() + r.classes.size() + r.functions.size()), 0);
+}
+
+static bool sym_has(const std::vector<std::string>& v, const std::string& x) {
+    return std::find(v.begin(), v.end(), x) != v.end();
+}
+
+TEST("swift_extract: import/struct/class/func") {
+    auto r = icmg::graph::extractSwift(
+        "import Foundation\n"
+        "struct Point { let x: Int }\n"
+        "final class Service {\n"
+        "  func run() {}\n"
+        "  static func make() {}\n"
+        "}\n");
+    ASSERT_TRUE(sym_has(r.imports, "Foundation"));
+    ASSERT_TRUE(sym_has(r.classes, "Point"));
+    ASSERT_TRUE(sym_has(r.classes, "Service"));
+    ASSERT_TRUE(sym_has(r.functions, "run"));
+    ASSERT_TRUE(sym_has(r.functions, "make"));
+}
+
+TEST("kotlin_extract: package/import/class/fun") {
+    auto r = icmg::graph::extractKotlin(
+        "package com.app\n"
+        "import kotlin.collections.List\n"
+        "data class User(val id: Int)\n"
+        "object Repo {\n"
+        "  suspend fun fetch(): User? = null\n"
+        "}\n");
+    ASSERT_TRUE(sym_has(r.namespaces, "com.app"));
+    ASSERT_TRUE(sym_has(r.imports, "kotlin.collections.List"));
+    ASSERT_TRUE(sym_has(r.classes, "User"));
+    ASSERT_TRUE(sym_has(r.classes, "Repo"));
+    ASSERT_TRUE(sym_has(r.functions, "fetch"));
+}
+
+TEST("scala_extract: package/import/object/trait/def") {
+    auto r = icmg::graph::extractScala(
+        "package billing\n"
+        "import scala.collection.mutable\n"
+        "sealed trait Event\n"
+        "case class Paid(amount: Int) extends Event\n"
+        "object Ledger {\n"
+        "  def post(e: Event): Unit = {}\n"
+        "}\n");
+    ASSERT_TRUE(sym_has(r.namespaces, "billing"));
+    ASSERT_TRUE(sym_has(r.imports, "scala.collection.mutable"));
+    ASSERT_TRUE(sym_has(r.classes, "Event"));
+    ASSERT_TRUE(sym_has(r.classes, "Paid"));
+    ASSERT_TRUE(sym_has(r.classes, "Ledger"));
+    ASSERT_TRUE(sym_has(r.functions, "post"));
 }
 
 #ifndef ICMG_MONO_TEST
