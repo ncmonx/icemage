@@ -1,9 +1,16 @@
 // 2026-06-07: context-budget gauge (pure helpers).
+// 2026-06-10: + model context-window registry + model pricing registry (folded
+// here, same budget-meter concern, to avoid a new CMakeLists test target).
 #include "../test_main.hpp"
 #include "../../src/cli/context_budget.hpp"
+#include "../../src/cli/model_pricing.hpp"
 #include <fstream>
 #include <filesystem>
+#include <cmath>
 using namespace icmg::cli;
+
+// Compare $/MTok as integer cents to avoid double-eq fragility.
+static long long mp_cents(double d) { return (long long)(d * 100.0 + 0.5); }
 
 static const std::string USAGE =
   R"("usage":{"input_tokens":124,"cache_creation_input_tokens":3881,"cache_read_input_tokens":562599,"output_tokens":458})";
@@ -78,4 +85,34 @@ TEST("model_context: lastModelFromTranscript skips synthetic, takes last real") 
     ASSERT_EQ(lastModelFromTranscript(p.string()), std::string("claude-opus-4-8"));
     std::filesystem::remove(p);
     ASSERT_EQ(lastModelFromTranscript("Z:/nope/none.jsonl"), std::string(""));  // missing -> empty
+}
+
+// --- model pricing registry (as-of 2026-06; override-able) ---------------
+TEST("model_pricing: Claude tiers (in/out $/MTok)") {
+    ASSERT_EQ(mp_cents(modelPricing("claude-opus-4-8").in),  1500LL);
+    ASSERT_EQ(mp_cents(modelPricing("claude-opus-4-8").out), 7500LL);
+    ASSERT_EQ(mp_cents(modelPricing("claude-sonnet-4-6").in),  300LL);
+    ASSERT_EQ(mp_cents(modelPricing("claude-sonnet-4-6").out), 1500LL);
+    ASSERT_EQ(mp_cents(modelPricing("claude-haiku-4-5").in),  100LL);
+    ASSERT_EQ(mp_cents(modelPricing("claude-haiku-4-5").out), 500LL);
+}
+
+TEST("model_pricing: substring-match on vendor-prefixed / dated ids") {
+    ASSERT_EQ(mp_cents(modelPricing("anthropic/claude-opus-4-8-20260101").in), 1500LL);
+}
+
+TEST("model_pricing: non-Claude tiers") {
+    ASSERT_EQ(mp_cents(modelPricing("gpt-4o-2024-11-20").in),  250LL);
+    ASSERT_EQ(mp_cents(modelPricing("gpt-4o-2024-11-20").out), 1000LL);
+    ASSERT_EQ(mp_cents(modelPricing("o1-preview").in),  1500LL);
+    ASSERT_EQ(mp_cents(modelPricing("o1-preview").out), 6000LL);
+    ASSERT_EQ(mp_cents(modelPricing("gemini-1.5-pro").in),  125LL);
+    ASSERT_EQ(mp_cents(modelPricing("gemini-1.5-pro").out), 500LL);
+}
+
+TEST("model_pricing: default = Sonnet for unknown / empty / synthetic") {
+    ASSERT_EQ(mp_cents(modelPricing("some-future-llm-xyz").in),  300LL);
+    ASSERT_EQ(mp_cents(modelPricing("some-future-llm-xyz").out), 1500LL);
+    ASSERT_EQ(mp_cents(modelPricing("").in),  300LL);
+    ASSERT_EQ(mp_cents(modelPricing("<synthetic>").out), 1500LL);
 }
