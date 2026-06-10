@@ -21,6 +21,11 @@ A single binary that makes Claude Code, Cursor, and every other AI coding assist
 
 If you've ever watched 30K tokens evaporate on a single file read, paid for "thinking" you didn't need, or re-explained the same project context after `/clear` for the fifth time today — this is for you.
 
+<p align="center">
+  <!-- 30-second demo. Regenerate: `vhs assets/demo.tape` (see assets/demo.tape header), commit assets/demo.gif, then uncomment the <img> below. -->
+  <!-- <img src="assets/demo.gif" alt="icmg in action — savings, one-shot find, slim context" width="760"/> -->
+</p>
+
 ---
 
 ## 🟢 Why Icemage
@@ -87,16 +92,36 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## 🚀 Quick start
 
-1. **Download** the latest installer from the [Releases page](https://github.com/ncmonx/icemage/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux.
-2. **Extract** the archive into any folder of your choice.
-3. **Add the folder to your `PATH`** so the `icmg` command is available everywhere.
-4. **Open your project** in a terminal and run:
+**One line — Linux / macOS:**
 
-   ```text
-   icmg init
-   ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/ncmonx/icemage/main/scripts/install.sh | sh
+```
 
-   That's it. The next time you launch Claude Code (or Cursor / Cline / Windsurf — see below), Icemage will quietly start trimming tokens.
+**One line — Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/ncmonx/icemage/main/scripts/install.ps1 | iex
+```
+
+The installer grabs the latest release, verifies its SHA-256, and drops `icmg` into your bin dir (`~/.local/bin` on Linux/macOS, `%USERPROFILE%\bin` on Windows). Pin a version with `ICMG_VERSION=2.1.0`, or change where it lands with `ICMG_BIN_DIR`.
+
+<details>
+<summary>Prefer a manual download?</summary>
+
+1. **Download** the latest archive from the [Releases page](https://github.com/ncmonx/icemage/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux, `icmg-<version>-macos-arm64.tar.gz` for macOS.
+2. **Extract** it into any folder.
+3. **Add that folder to your `PATH`** so `icmg` is available everywhere.
+
+</details>
+
+Then, in your project terminal:
+
+```text
+icmg init
+```
+
+That's it. The next time you launch Claude Code (or Cursor / Cline / Windsurf — see below), Icemage will quietly start trimming tokens.
 
 ---
 

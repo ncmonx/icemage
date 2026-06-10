@@ -1,0 +1,22 @@
+{
+  "name": "ncmonx",
+  "owner": {
+    "name": "ncmonx",
+    "url": "https://github.com/ncmonx"
+  },
+  "metadata": {
+    "description": "Plugins by ncmonx — token-efficiency tooling for AI coding assistants.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "icemage",
+      "source": "./",
+      "description": "Token-efficient context engine (icmg). 70-90% cheaper AI coding via graph-aware reads, output filtering, cross-session memory, and a per-model context budget. 41 MCP tools.",
+      "version": "2.1.0",
+      "category": "productivity",
+      "keywords": ["token-efficiency", "context", "memory", "mcp", "cost-reduction"],
+      "strict": false
+    }
+  ]
+}

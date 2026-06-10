@@ -1,0 +1,27 @@
+{
+  "name": "icemage",
+  "version": "2.1.0",
+  "description": "Token-efficient context engine for AI coding assistants. Cuts 70-90% of token cost via graph-aware file reads, command-output filtering, cross-session memory, and a per-model context budget — exposed as 41 MCP tools.",
+  "author": {
+    "name": "ncmonx",
+    "url": "https://github.com/ncmonx"
+  },
+  "homepage": "https://github.com/ncmonx/icemage",
+  "repository": "https://github.com/ncmonx/icemage",
+  "license": "Elastic-2.0",
+  "keywords": [
+    "token-efficiency",
+    "context-engineering",
+    "code-graph",
+    "memory",
+    "mcp",
+    "claude-code",
+    "cost-reduction"
+  ],
+  "mcpServers": {
+    "icemage": {
+      "command": "icmg",
+      "args": ["--mcp-server"]
+    }
+  }
+}
