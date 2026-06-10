@@ -7,6 +7,8 @@
 #include "../../src/graph/extractor/swift_extract.hpp"
 #include "../../src/graph/extractor/kotlin_extract.hpp"
 #include "../../src/graph/extractor/scala_extract.hpp"
+#include "../../src/graph/extractor/lua_extract.hpp"
+#include "../../src/graph/extractor/dart_extract.hpp"
 #include <cstring>
 #include <algorithm>
 
@@ -281,6 +283,30 @@ TEST("scala_extract: package/import/object/trait/def") {
     ASSERT_TRUE(sym_has(r.classes, "Paid"));
     ASSERT_TRUE(sym_has(r.classes, "Ledger"));
     ASSERT_TRUE(sym_has(r.functions, "post"));
+}
+
+TEST("lua_extract: require + function forms") {
+    auto r = icmg::graph::extractLua(
+        "local json = require 'json'\n"
+        "function M.greet(name) end\n"
+        "local function helper() end\n"
+        "Handler = function() end\n");
+    ASSERT_TRUE(sym_has(r.imports, "json"));
+    ASSERT_TRUE(sym_has(r.functions, "M.greet"));
+    ASSERT_TRUE(sym_has(r.functions, "helper"));
+    ASSERT_TRUE(sym_has(r.functions, "Handler"));
+}
+
+TEST("dart_extract: import/class/mixin/enum") {
+    auto r = icmg::graph::extractDart(
+        "import 'package:flutter/material.dart';\n"
+        "abstract class Widget {}\n"
+        "mixin Clickable {}\n"
+        "enum Color { red, green }\n");
+    ASSERT_TRUE(sym_has(r.imports, "package:flutter/material.dart"));
+    ASSERT_TRUE(sym_has(r.classes, "Widget"));
+    ASSERT_TRUE(sym_has(r.classes, "Clickable"));
+    ASSERT_TRUE(sym_has(r.classes, "Color"));
 }
 
 #ifndef ICMG_MONO_TEST

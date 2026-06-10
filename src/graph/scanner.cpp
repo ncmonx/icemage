@@ -51,6 +51,8 @@ static const struct { const char* ext; const char* lang; } EXT_MAP[] = {
     {".rb","ruby"}, {".rake","ruby"}, {".gemspec","ruby"},
     {".swift","swift"},
     {".scala","scala"}, {".sc","scala"},
+    {".lua","lua"},
+    {".dart","dart"},
     {".sql","sql"},
     // Phase 68: doc/data/config files. Lang label only — no AST extractor;
     // generic extractor still applies (regex symbol scan).
