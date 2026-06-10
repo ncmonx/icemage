@@ -48,10 +48,12 @@ public:
         std::string action = args[0];
         bool global = hasFlag(args, "--global");
 
-        // THINKING toggle (separate flag base).
+        // THINKING toggle (separate flag base). --level lite|ultra|hyper sets
+        // shorthand density (stored in the flag; read by the SessionStart hook).
         if (action == "thinking") {
             std::string sub = args.size() > 1 ? args[1] : "status";
-            return toggle(sub, global, "sayless-think", "THINKING");
+            std::string lvl = flagValue(args, "--level", "ultra");
+            return toggle(sub, global, "sayless-think", "THINKING", lvl);
         }
 
         // RESPONSE toggle (base flag) — keeps level + backward-compat.
@@ -88,7 +90,7 @@ public:
                       << "  response: " << (r.on ? "ON" : "OFF")
                       << " (source=" << r.source
                       << (r.on ? (", level=" + r.level) : "") << ")\n"
-                      << "  thinking: " << (t.on ? "ON (brutal)" : "OFF")
+                      << "  thinking: " << (t.on ? ("ON (brutal, level=" + t.level + ")") : std::string("OFF"))
                       << " (source=" << t.source << ")\n";
             return 0;
         }
@@ -137,18 +139,20 @@ private:
 
     // Generic on/off/status for a flag base (used by `thinking`).
     int toggle(const std::string& sub, bool global,
-               const std::string& base, const std::string& label) {
+               const std::string& base, const std::string& label,
+               const std::string& onValue = "on") {
         std::error_code ec;
+        std::string tag = (onValue != "on") ? (", level=" + onValue) : "";
         if (sub == "on") {
             if (global) {
                 fs::create_directories(globalFlag(base).parent_path(), ec);
-                std::ofstream f(globalFlag(base)); f << "on\n";
-                std::cout << "icmg sayless: " << label << " ON (global)\n";
+                std::ofstream f(globalFlag(base)); f << onValue << "\n";
+                std::cout << "icmg sayless: " << label << " ON (global" << tag << ")\n";
             } else {
                 fs::create_directories(projFlag(base).parent_path(), ec);
                 fs::remove(projOff(base), ec);
-                std::ofstream f(projFlag(base)); f << "on\n";
-                std::cout << "icmg sayless: " << label << " ON (this project)\n";
+                std::ofstream f(projFlag(base)); f << onValue << "\n";
+                std::cout << "icmg sayless: " << label << " ON (this project" << tag << ")\n";
             }
             return 0;
         }
