@@ -29,6 +29,7 @@
 #include "../sayless_migrate.hpp"
 #include <nlohmann/json.hpp>
 #include "../../core/hook_sanitize.hpp"
+#include "../../core/ide_settings.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -1639,6 +1640,32 @@ private:
                     }
                 } catch (...) { /* best-effort */ }
             }
+        }
+        // IDE terminal: disable file-link validation so VSCode/Cursor don't
+        // probe drive-letter tokens (e.g. "b:/...") printed in tool output -- a
+        // dead/disconnected B: drive raises a modal "cannot find the drive"
+        // popup on every probe. Opt-out: ICMG_NO_IDE_LINKFIX. Never clobbers an
+        // existing user value. See known-issue #33001.
+        if (!std::getenv("ICMG_NO_IDE_LINKFIX")) {
+            try {
+                fs::path vsdir = root / ".vscode";
+                fs::path vs    = vsdir / "settings.json";
+                std::error_code _vsec;
+                nlohmann::json vcfg = nlohmann::json::object();
+                bool ok = true;
+                if (fs::exists(vs, _vsec)) {
+                    std::ifstream vf(vs);
+                    std::string vbody((std::istreambuf_iterator<char>(vf)), std::istreambuf_iterator<char>());
+                    vf.close();
+                    vcfg = nlohmann::json::parse(vbody, nullptr, false);
+                    if (vcfg.is_discarded()) ok = false;  // malformed user file -- leave it alone
+                }
+                if (ok && core::ensureTerminalFileLinksOff(vcfg)) {
+                    fs::create_directories(vsdir, _vsec);
+                    std::ofstream vo(vs); vo << vcfg.dump(2) << "\n";
+                    std::cout << "  + .vscode/settings.json enableFileLinks=off (stops B:/ drive-link popup; opt-out ICMG_NO_IDE_LINKFIX)\n";
+                }
+            } catch (...) { /* best-effort */ }
         }
         // v1.78.1: caveman -> sayless migration. Auto-rename old flag files
         // + remove stale caveman hook script (idempotent; no-op if nothing to do).
