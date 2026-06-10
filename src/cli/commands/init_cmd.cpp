@@ -226,7 +226,10 @@ if [[ -n "$resp" ]]; then
         "Off when user says 'stop sayless' or 'normal mode'.")
 fi
 if [[ -n "$think" ]]; then
-    tmsg=$(printf '%s\n' "SAYLESS THINKING MODE - BRUTAL (kill tokens in internal reasoning):" \
+    tlevel=$(head -n1 ".icmg/sayless-think.flag" 2>/dev/null)
+    [[ -z "$tlevel" ]] && tlevel=$(head -n1 "${HOME:-$USERPROFILE}/.icmg/sayless-think.flag" 2>/dev/null)
+    [[ -z "$tlevel" ]] && tlevel=ultra
+    tmsg=$(printf '%s\n' "SAYLESS THINKING MODE - BRUTAL [level: ${tlevel}] (kill tokens in internal reasoning):" \
         "- Symbols + abbrev only. No prose, no full sentences, no narration." \
         "- Symbols: -> leads-to, = is, != not, & and, | or, w/ with, b/c because." \
         "- Abbrev: fn var ret err cfg dep impl req ctx repo db idx ptr." \
@@ -234,6 +237,11 @@ if [[ -n "$think" ]]; then
         "- No 'Let me / Now I / Looking at'. No restating the question." \
         "- If approach obvious -> skip thinking entirely. Every token earns place." \
         "- Like a human: think internally, need not verbalize every thought.")
+    if [[ "$tlevel" == "hyper" ]]; then
+        tmsg="${tmsg}"$'\n'"- HYPER: stack symbols, 1-3 words per line, drop recoverable subject/verb."
+    elif [[ "$tlevel" == "lite" ]]; then
+        tmsg="${tmsg}"$'\n'"- LITE: abbreviations + fragments OK, light prose allowed; symbols optional."
+    fi
     if [[ -n "$msg" ]]; then msg="${msg}"$'\n\n'"${tmsg}"; else msg="$tmsg"; fi
 fi
 
@@ -363,13 +371,12 @@ fi
 # per call). Match short questions / explainers; inject no_think directive
 # via additionalContext. Opt-out: ICMG_NO_AUTO_THINK=1
 if [[ "${ICMG_NO_AUTO_THINK:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
-    plen=${#PROMPT}
-    shopt -s nocasematch
-    _simple=0
-    if [[ $plen -lt 80 ]] || [[ "$PROMPT" =~ ^(what|why|how|where|when|kapan|apa|kenapa|siapa)[[:space:]] ]] || [[ "$PROMPT" =~ (^|[[:space:]])(commit|push|pull|stash|rebase|checkout|status|rerun|retry|revert|lanjut|kelar|selesai|ok|oke|iya|sip|gas)([[:space:]]|$) ]]; then _simple=1; fi
-    shopt -u nocasematch
-    if [[ $_simple -eq 1 ]]; then
-        printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] trivial/mechanical prompt -> thinking budget suppressed for this turn (set ICMG_NO_AUTO_THINK=1 to disable)"}}' 2>/dev/null
+    # Single source of truth: classifyIntent via `icmg think-gate` (unit-tested
+    # SIMPLE/COMPLEX keywords), not a duplicate bash regex. Emits the
+    # skip-thinking hint JSON iff the prompt classifies as simple.
+    if command -v icmg >/dev/null 2>&1; then
+        _H=$(icmg think-gate --hint "$PROMPT" 2>/dev/null)
+        [[ -n "$_H" ]] && printf '%s' "$_H"
     fi
 fi
 
