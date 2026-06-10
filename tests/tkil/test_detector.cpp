@@ -1,8 +1,10 @@
 #include "../test_main.hpp"
 #include "../../src/tkil/detector.hpp"
+#include "../../src/core/cmd_densify.hpp"
 
 using icmg::tkil::CmdType;
 using icmg::tkil::Detector;
+using icmg::core::densifyCommand;
 
 // ---- Detector unit tests ---------------------------------------------------
 
@@ -121,6 +123,31 @@ TEST("detector: empty → Default") {
     ASSERT_EQ(d.detect(""), CmdType::Default);
 }
 
+
+// ---- Command densifier (pre-exec) -----------------------------------------
+TEST("densify: git status -> porcelain+branch") {
+    ASSERT_EQ(densifyCommand("git status"), std::string("git status --porcelain=v2 --branch"));
+}
+TEST("densify: git log -> oneline; pytest -> quiet/tb; tsc -> pretty false") {
+    ASSERT_EQ(densifyCommand("git log"), std::string("git log --oneline"));
+    ASSERT_EQ(densifyCommand("pytest tests/"), std::string("pytest tests/ -q --tb=line"));
+    ASSERT_EQ(densifyCommand("tsc"), std::string("tsc --pretty false"));
+    ASSERT_EQ(densifyCommand("pip list"), std::string("pip list --format=freeze"));
+    ASSERT_EQ(densifyCommand("npm ls"), std::string("npm ls --depth=0"));
+}
+TEST("densify: idempotent + skips when user gave a conflicting flag") {
+    // already-dense -> unchanged (idempotent)
+    ASSERT_EQ(densifyCommand("git status --porcelain=v2 --branch"),
+              std::string("git status --porcelain=v2 --branch"));
+    ASSERT_EQ(densifyCommand("git log --oneline"), std::string("git log --oneline"));
+    ASSERT_EQ(densifyCommand("pytest -v"), std::string("pytest -v"));   // explicit verbose wins
+}
+TEST("densify: bails on shell composition + leaves unknown commands alone") {
+    ASSERT_EQ(densifyCommand("git status && echo hi"), std::string("git status && echo hi"));
+    ASSERT_EQ(densifyCommand("echo $(git status)"), std::string("echo $(git status)"));
+    ASSERT_EQ(densifyCommand("git status | head"), std::string("git status | head"));
+    ASSERT_EQ(densifyCommand("ls -la"), std::string("ls -la"));         // no rule -> unchanged
+}
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
