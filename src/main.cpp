@@ -16,6 +16,7 @@
 #include "core/version_check.hpp"
 #include "core/crash_hint.hpp"
 #include "core/dll_trace.hpp"
+#include "core/openssl_rng.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
 #include <system_error>
@@ -154,6 +155,10 @@ int main(int argc, char* argv[]) {
     // so an err126 crash can name the subsystem that was initializing. Catches
     // runtime LoadLibrary-by-name modules invisible to the PE import walk.
     icmg::core::installDllTracer();
+    // err126 root fix (Server 2019 / Core): route OpenSSL's RNG onto BCrypt so
+    // SQLCipher writes never load the missing CryptoAPI (rsaenh) module. Must run
+    // before any encrypted DB is opened. Opt out with ICMG_NO_RAND_OVERRIDE=1.
+    if (!std::getenv("ICMG_NO_RAND_OVERRIDE")) icmg::core::installBCryptOpenSSLRand();
 
     // v1.19.0: sanitize PATH inside icmg-core too — when icmg-core is invoked
     // directly (Task Scheduler, Startup folder, schtask, user manual exec),
