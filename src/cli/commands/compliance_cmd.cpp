@@ -132,7 +132,7 @@ private:
         return fs::path(h ? h : ".");
     }
     static fs::path logPath()  { return homeDir() / ".icmg" / "compliance-violations.jsonl"; }
-    static fs::path flagPath() { return homeDir() / ".icmg" / "sayless.flag"; }
+    static fs::path flagPath() { return homeDir() / ".icmg" / "sayless-think.flag"; }
 
     static int countThinkingWords(const std::string& raw) {
         // Manual scan: find `"thinking":"...` (or similar key) → count

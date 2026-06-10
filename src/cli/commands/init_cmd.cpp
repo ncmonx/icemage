@@ -201,47 +201,51 @@ exec icmg hook pretooluse-read
 
 // Phase 51 T2: SessionStart hook injects sayless directive when flag present.
 static const char* SAYLESS_PROMPT_SH = R"BASH(#!/usr/bin/env bash
-# Auto-installed by `icmg init`. Toggle via `icmg sayless on/off`.
 set -uo pipefail
-# v1.66 per-project precedence: project OFF marker > project ON > global ON
-[[ -f ".icmg/sayless.off" ]] && exit 0
-gflag="${HOME:-$USERPROFILE}/.icmg/sayless.flag"
-if [[ -f ".icmg/sayless.flag" ]]; then flag=".icmg/sayless.flag"
-elif [[ -f "$gflag" ]]; then flag="$gflag"
-else exit 0; fi
-level=$(head -n1 "$flag" 2>/dev/null || echo ultra)
+# Split sayless: RESPONSE (sayless.flag) + THINKING (sayless-think.flag) are
+# INDEPENDENT toggles. Each precedence: project OFF > project ON > global ON.
+resolve() { # $1 = flag basename -> echo "on" when effective ON
+  local b="$1"
+  [[ -f ".icmg/${b}.off" ]] && return 0
+  if [[ -f ".icmg/${b}.flag" ]]; then echo on; return 0; fi
+  [[ -f "${HOME:-$USERPROFILE}/.icmg/${b}.flag" ]] && echo on
+}
+resp=$(resolve sayless)
+think=$(resolve sayless-think)
+[[ -z "$resp" && -z "$think" ]] && exit 0
 date -u "+%Y-%m-%dT%H:%M:%SZ" > "${HOME:-$USERPROFILE}/.icmg/sayless-last-trigger.txt" 2>/dev/null || true
-msg=$(printf '%s\n' "SAYLESS MODE ACTIVE - level: ${level}." \
-    "Respond terse. All technical substance stay. Only fluff die." \
-    "Drop articles, filler, pleasantries, hedging. Fragments OK." \
-    "Short synonyms. Technical terms exact. Code blocks unchanged." \
-    "Pattern: [thing] [action] [reason]. [next step]." \
-    "Code/commits/security/PRs: write normal." \
-    "" \
-    "THINKING PHASE rules (this is where verbose drift happens):" \
-    "- Apply sayless ultra to internal thinking section too." \
-    "- Internal reasoning: bullet fragments, no prose paragraphs." \
-    "- Cap thinking to 80 words. If approach is obvious, skip thinking entirely." \
-    "- No 'Let me check / Now I will / Looking at...' narration." \
-    "- Decision form: '[option] -> [outcome]. pick [winner].'" \
-    "- Repeating the question back inside thinking is forbidden." \
-    "" \
-    "Off only when user says 'stop sayless' or 'normal mode'.")
-# Phase 67 T32: prepend violation pressure if recent sayless thinking-phase
-# violations recorded. Escalates language at 2+ / 5+ violations in 24h.
-# Phase 70: also surface real session token total to model â€” encourages
-# self-throttling when token usage high.
+
+msg=""
+if [[ -n "$resp" ]]; then
+    msg=$(printf '%s\n' "SAYLESS RESPONSE MODE - ultra." \
+        "Respond terse. All technical substance stay. Only fluff die." \
+        "Drop articles, filler, pleasantries, hedging. Fragments OK." \
+        "Short synonyms. Technical terms exact. Code blocks unchanged." \
+        "Pattern: [thing] [action] [reason]. [next step]." \
+        "Code/commits/security/PRs: write normal." \
+        "Off when user says 'stop sayless' or 'normal mode'.")
+fi
+if [[ -n "$think" ]]; then
+    tmsg=$(printf '%s\n' "SAYLESS THINKING MODE - BRUTAL (kill tokens in internal reasoning):" \
+        "- Symbols + abbrev only. No prose, no full sentences, no narration." \
+        "- Symbols: -> leads-to, = is, != not, & and, | or, w/ with, b/c because." \
+        "- Abbrev: fn var ret err cfg dep impl req ctx repo db idx ptr." \
+        "- Decision: 'X -> Y. pick Z.'  Problem: 'A bad b/c B. use C.'" \
+        "- No 'Let me / Now I / Looking at'. No restating the question." \
+        "- If approach obvious -> skip thinking entirely. Every token earns place." \
+        "- Like a human: think internally, need not verbalize every thought.")
+    if [[ -n "$msg" ]]; then msg="${msg}"$'\n\n'"${tmsg}"; else msg="$tmsg"; fi
+fi
+
 if command -v icmg >/dev/null 2>&1; then
-    pressure=$(icmg compliance inject 2>/dev/null)
-    tok_summary=$(icmg context-budget --json --top 0 2>/dev/null | icmg hookio get total_tokens 2>/dev/null)
-    if [[ -n "$tok_summary" && "$tok_summary" -gt 50000 ]]; then
-        # Convert to K for brevity.
-        k=$((tok_summary / 1000))
-        budget_msg="SESSION TOKEN USAGE: ${k}K so far. Apply compression. Use icmg context+--lines instead of full Read. Skip thinking when obvious."
-        msg="${budget_msg}"$'\n\n'"${msg}"
+    tok=$(icmg context-budget --json --top 0 2>/dev/null | icmg hookio get total_tokens 2>/dev/null)
+    if [[ -n "$tok" && "$tok" -gt 50000 ]]; then
+        k=$((tok / 1000))
+        msg="SESSION TOKENS: ${k}K. Compress. icmg context+--lines not full Read. Skip thinking when obvious."$'\n\n'"${msg}"
     fi
-    if [[ -n "$pressure" ]]; then
-        msg="${pressure}"$'\n\n'"${msg}"
+    if [[ -n "$think" ]]; then
+        pressure=$(icmg compliance inject 2>/dev/null)
+        [[ -n "$pressure" ]] && msg="${pressure}"$'\n\n'"${msg}"
     fi
 fi
 printf '%s' "$msg" | icmg hookio emit SessionStart --ctx-stdin

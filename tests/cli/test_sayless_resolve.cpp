@@ -55,3 +55,19 @@ TEST("sayless: hyper level supported (new in v1.78.1)") {
     ASSERT_TRUE(s.on);
     ASSERT_EQ(s.level, std::string("hyper"));
 }
+
+// v2.x split: RESPONSE and THINKING use the SAME pure resolver, each called
+// with its own flag's existence bools — so the two toggles are independent.
+TEST("sayless: response + thinking resolve independently") {
+    // response ON (global), thinking OFF (nothing set)
+    auto resp  = resolveSayless(false, false, true,  "", "ultra");
+    auto think = resolveSayless(false, false, false, "", "");
+    ASSERT_TRUE(resp.on);
+    ASSERT_FALSE(think.on);
+    // reversed: response OFF (project-off marker), thinking ON (project flag)
+    auto resp2  = resolveSayless(true,  false, true, "", "ultra");
+    auto think2 = resolveSayless(false, true,  false, "", "");
+    ASSERT_FALSE(resp2.on);
+    ASSERT_TRUE(think2.on);
+    ASSERT_EQ(think2.source, std::string("project"));
+}
