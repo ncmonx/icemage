@@ -2,6 +2,7 @@
 #include "../../src/tkil/detector.hpp"
 #include "../../src/core/cmd_densify.hpp"
 #include "../../src/core/openssl_rng.hpp"
+#include "../../src/core/hook_sanitize.hpp"
 #include <cstring>
 
 using icmg::tkil::CmdType;
@@ -167,6 +168,37 @@ TEST("openssl_rng: install routes OpenSSL RNG onto BCrypt") {
     ASSERT_TRUE(icmg::core::installBCryptOpenSSLRand());
 }
 #endif
+
+// ---- hook_sanitize: drop dead python precompact-snapshot hook -------------
+TEST("hook_sanitize: removes python snapshot cmd, keeps native, prunes empties") {
+    auto cfg = nlohmann::json::parse(R"({
+      "hooks": {
+        "PreCompact": [
+          { "hooks": [
+              { "type": "command", "command": "python3 ~/.claude/hooks/icmg-precompact-snapshot.py" },
+              { "type": "command", "command": "icmg hook precompact" }
+          ]},
+          { "hooks": [
+              { "type": "command", "command": "python3 ~/.claude/hooks/icmg-precompact-snapshot.py" }
+          ]}
+        ]
+      }
+    })");
+    int removed = icmg::core::removeStaleSnapshotHooks(cfg);
+    ASSERT_EQ(removed, 2);
+    // entry 1 keeps only the native command; entry 2 (now empty) is pruned.
+    ASSERT_EQ((int)cfg["hooks"]["PreCompact"].size(), 1);
+    ASSERT_EQ((int)cfg["hooks"]["PreCompact"][0]["hooks"].size(), 1);
+    ASSERT_CONTAINS(cfg["hooks"]["PreCompact"][0]["hooks"][0]["command"].get<std::string>(), "icmg hook precompact");
+}
+
+TEST("hook_sanitize: no-op when no snapshot ref present") {
+    auto cfg = nlohmann::json::parse(R"({"hooks":{"Stop":[{"hooks":[{"command":"icmg hook stop"}]}]}})");
+    ASSERT_EQ(icmg::core::removeStaleSnapshotHooks(cfg), 0);
+    ASSERT_EQ((int)cfg["hooks"]["Stop"].size(), 1);              // untouched
+    auto empty = nlohmann::json::object();
+    ASSERT_EQ(icmg::core::removeStaleSnapshotHooks(empty), 0);  // no hooks key
+}
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
