@@ -11,6 +11,7 @@
 #include "../auto_zone.hpp"
 #include "../model_pricing.hpp"
 #include "../../core/intent_slice.hpp"
+#include "../../core/read_dedup.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/tool_call_cache.hpp"
 #include <cstdlib>
@@ -91,6 +92,7 @@ public:
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
             "  --no-cache        Bypass hot-context cache (force recompute)\n"
+            "  --full            Re-emit full body even on a cache hit (skip dedup stub)\n"
             "  --json            JSON output\n";
     }
 
@@ -229,7 +231,13 @@ public:
                 core::ToolCallCache tcc(db);
                 auto opt = tcc.lookup("context", ctx_cache_args);
                 if (opt) {
-                    std::cout << *opt;
+                    // Read dedup: cache HIT = file unchanged since already shown this
+                    // session (key has mtime+size) -> emit a stub, not the full body.
+                    bool force_full = hasFlag(args, "--full") || std::getenv("ICMG_NO_DEDUP_STUB");
+                    if (core::shouldStubContext(opt->size(), force_full))
+                        std::cout << core::contextSeenStub(file, opt->size());
+                    else
+                        std::cout << *opt;
                     // Boost graph priority: this file is hot for this session.
                     try {
                         db.run("UPDATE graph_nodes SET access_count = access_count + 1, "

@@ -5,6 +5,7 @@
 #include "../../src/cli/context_budget.hpp"
 #include "../../src/cli/model_pricing.hpp"
 #include "../../src/core/intent_slice.hpp"
+#include "../../src/core/read_dedup.hpp"
 #include <fstream>
 #include <filesystem>
 #include <cmath>
@@ -158,4 +159,21 @@ TEST("intent_slice: no match -> empty; stopwords/short terms dropped") {
     auto r = icmg::core::intentSliceRanges(SLICE_BODY, "a the rate", 1, 4, 80);
     ASSERT_EQ((int)r.size(), 2);
     ASSERT_EQ(r[0].start, 1); ASSERT_EQ(r[1].start, 7);
+}
+
+// --- read dedup: stub on context cache HIT (already-shown body) -----------
+TEST("read_dedup: stub only for big bodies, never when forced full") {
+    ASSERT_TRUE(icmg::core::shouldStubContext(2000, /*forceFull*/false));
+    ASSERT_TRUE(icmg::core::shouldStubContext(400, false));    // boundary (>=)
+    ASSERT_TRUE(!icmg::core::shouldStubContext(399, false));   // too small
+    ASSERT_TRUE(!icmg::core::shouldStubContext(100, false));
+    ASSERT_TRUE(!icmg::core::shouldStubContext(2000, true));   // --full forces full
+}
+
+TEST("read_dedup: stub text names file + escape hatch + bytes skipped") {
+    std::string s = icmg::core::contextSeenStub("src/foo.cpp", 2048);
+    ASSERT_CONTAINS(s, "src/foo.cpp");
+    ASSERT_CONTAINS(s, "unchanged");
+    ASSERT_CONTAINS(s, "--full");
+    ASSERT_CONTAINS(s, "2048");
 }
