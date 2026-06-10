@@ -7,6 +7,7 @@
 #include "../../src/core/intent_slice.hpp"
 #include "../../src/core/read_dedup.hpp"
 #include "../../src/cli/statusline.hpp"
+#include "../../src/cli/find_slices.hpp"
 #include <fstream>
 #include <filesystem>
 #include <cmath>
@@ -203,4 +204,22 @@ TEST("statusline: format shows ctx% + model + used/limit") {
     ASSERT_CONTAINS(s, "567K/1.0M");
     // no model + no limit -> minimal line, no crash
     ASSERT_CONTAINS(formatStatusline(computeBudget(0, 0), ""), "ctx 0%");
+}
+
+// --- find: one-shot multi-file intent search (fewer turns) ----------------
+TEST("find: ranks files by intent density, drops misses, caps maxFiles") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"a.cpp", "void f() {\n  int rate = 1;\n}\n"},                          // 1 hit
+        {"b.cpp", "void g() {\n  rate_limit();\n  set_rate(2);\n  rate++;\n}\n"},// 3 hits (rate x3)
+        {"c.cpp", "void h() {\n  unrelated();\n}\n"}                            // 0 hits
+    };
+    auto r = icmg::cli::rankFileSlices(files, "rate", /*ctx*/1, /*maxFiles*/5, /*maxWin*/3);
+    ASSERT_EQ((int)r.size(), 2);                 // c.cpp dropped
+    ASSERT_EQ(r[0].file, std::string("b.cpp"));  // densest first
+    ASSERT_TRUE(r[0].score > r[1].score);
+    ASSERT_TRUE(!r[0].ranges.empty());
+    // maxFiles cap
+    ASSERT_EQ((int)icmg::cli::rankFileSlices(files, "rate", 1, 1, 3).size(), 1);
+    // no intent terms / no match -> empty
+    ASSERT_EQ((int)icmg::cli::rankFileSlices(files, "zzz", 1, 5, 3).size(), 0);
 }
