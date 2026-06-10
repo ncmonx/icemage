@@ -241,3 +241,20 @@ TEST("bench_savings: all-under-cap = 0% saved; empty = zeros") {
     auto e = icmg::cli::benchReadSavings({}, 1024);
     ASSERT_EQ(e.files, 0); ASSERT_EQ(e.naiveTokens, 0LL); ASSERT_EQ(e.pctSaved, 0);
 }
+
+// 2026-06-10: thinking-token accounting (estimate ~chars/4 from thinking blocks)
+TEST("sumThinkingTokens: counts blocks + estimates, ignores non-thinking") {
+    std::string body =
+        std::string(R"({"content":[{"type":"thinking","thinking":"abcdefgh"},)")
+      + R"({"type":"text","text":"ignored ignored"}]})" "\n"
+      + R"({"content":[{"type":"thinking","thinking":"abcdefghijkl"}]})";
+    auto ts = sumThinkingTokens(body);
+    ASSERT_EQ(ts.blocks, 2);
+    ASSERT_EQ(ts.est_tokens, 5LL);   // 8/4 + 12/4 = 2 + 3
+    ASSERT_EQ(ts.max_block, 3LL);
+}
+TEST("sumThinkingTokens: no thinking blocks = zero") {
+    auto ts = sumThinkingTokens(R"({"content":[{"type":"text","text":"hello world"}]})");
+    ASSERT_EQ(ts.blocks, 0);
+    ASSERT_EQ(ts.est_tokens, 0LL);
+}
