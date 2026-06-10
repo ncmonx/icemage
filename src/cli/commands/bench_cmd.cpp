@@ -16,6 +16,11 @@
 #include "../../core/hooks/runners.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../bench_savings.hpp"
+#include "../../core/token_budget.hpp"
+#include <filesystem>
+#include <fstream>
+#include <set>
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -183,6 +188,7 @@ public:
             "  recall <query>   Semantic recall latency (default --n 20)\n"
             "  compress         Compress throughput (reads stdin)\n"
             "  hooks            Hook event latencies (Stop/PreCompact/PostToolUseRead)\n"
+            "  savings          Token read-savings on THIS repo (reproducible; --sample N)\n"
             "  all              Run all + emit JSON\n\n"
             "Options:\n"
             "  --n N            Trial count (default 20)\n"
@@ -202,6 +208,55 @@ public:
         out["icmg"]    = "bench";
         out["n"]       = n;
 
+        if (action == "savings") {
+            int sample = 0;
+            try { sample = std::stoi(flagValue(args, "--sample", "0")); } catch (...) {}
+            namespace fs = std::filesystem;
+            static const std::set<std::string> skipDir = {
+                ".git",".icmg","node_modules","third_party","vendor","dist","build",
+                "out","target",".vs","build-msvc-full","icmg-build","__pycache__"};
+            static const std::set<std::string> ext = {
+                ".cpp",".hpp",".h",".hh",".cc",".cxx",".c",".py",".js",".jsx",".ts",".tsx",
+                ".go",".java",".rs",".cs",".php",".rb",".kt",".kts",".swift",".scala",".lua",".sql",".sh"};
+            std::vector<long long> toks;
+            std::error_code ec;
+            fs::path root = fs::current_path(ec);
+            auto it = fs::recursive_directory_iterator(
+                root, fs::directory_options::skip_permission_denied, ec);
+            fs::recursive_directory_iterator dend;
+            for (; it != dend; it.increment(ec)) {
+                if (ec) { ec.clear(); continue; }
+                if (it->is_directory(ec)) {
+                    if (skipDir.count(it->path().filename().string())) it.disable_recursion_pending();
+                    continue;
+                }
+                if (!it->is_regular_file(ec)) continue;
+                std::string e = it->path().extension().string();
+                for (auto& c : e) c = (char)std::tolower((unsigned char)c);
+                if (!ext.count(e)) continue;
+                std::uintmax_t sz = it->file_size(ec);
+                if (ec || sz == 0 || sz > 1024 * 1024) { ec.clear(); continue; }
+                toks.push_back((long long)core::estimateTokens((std::size_t)sz));
+                if (sample > 0 && (int)toks.size() >= sample) break;
+            }
+            long long cap = (long long)core::estimateTokens((std::size_t)4096);
+            auto rs = benchReadSavings(toks, cap);
+            if (json_out) {
+                nlohmann::json j;
+                j["files"] = rs.files; j["naive_tokens"] = rs.naiveTokens;
+                j["icmg_tokens"] = rs.icmgTokens; j["pct_saved"] = rs.pctSaved;
+                j["cap_tokens"] = cap;
+                std::cout << j.dump() << "\n";
+            } else {
+                std::cout << "icmg bench savings -- reading this repo via `icmg context` vs raw Read:\n"
+                          << "  files scanned:     " << rs.files << "\n"
+                          << "  naive (full read): " << rs.naiveTokens << " tok\n"
+                          << "  icmg (capped):     " << rs.icmgTokens << " tok\n"
+                          << "  saved:             " << rs.pctSaved << "%  (cap ~" << cap << " tok/file)\n"
+                          << "  note: icmg context caps each read; --for/--lines slices save further.\n";
+            }
+            return 0;
+        }
         if (action == "recall") {
             std::string q;
             for (size_t i = 1; i < args.size(); ++i) {

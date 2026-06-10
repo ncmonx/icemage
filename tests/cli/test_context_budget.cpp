@@ -8,6 +8,7 @@
 #include "../../src/core/read_dedup.hpp"
 #include "../../src/cli/statusline.hpp"
 #include "../../src/cli/find_slices.hpp"
+#include "../../src/cli/bench_savings.hpp"
 #include <fstream>
 #include <filesystem>
 #include <cmath>
@@ -222,4 +223,21 @@ TEST("find: ranks files by intent density, drops misses, caps maxFiles") {
     ASSERT_EQ((int)icmg::cli::rankFileSlices(files, "rate", 1, 1, 3).size(), 1);
     // no intent terms / no match -> empty
     ASSERT_EQ((int)icmg::cli::rankFileSlices(files, "zzz", 1, 5, 3).size(), 0);
+}
+
+// --- bench savings: reproducible read-reduction math ----------------------
+TEST("bench_savings: caps large files at cap, sums, computes pct") {
+    auto r = icmg::cli::benchReadSavings({10000, 200, 5000}, /*cap*/1024);
+    ASSERT_EQ(r.files, 3);
+    ASSERT_EQ(r.naiveTokens, 15200LL);
+    ASSERT_EQ(r.icmgTokens, 2248LL);          // 1024 + 200 + 1024
+    ASSERT_EQ(r.pctSaved, 85);
+}
+
+TEST("bench_savings: all-under-cap = 0% saved; empty = zeros") {
+    auto u = icmg::cli::benchReadSavings({100, 200}, 1024);
+    ASSERT_EQ(u.pctSaved, 0);
+    ASSERT_EQ(u.icmgTokens, 300LL);
+    auto e = icmg::cli::benchReadSavings({}, 1024);
+    ASSERT_EQ(e.files, 0); ASSERT_EQ(e.naiveTokens, 0LL); ASSERT_EQ(e.pctSaved, 0);
 }
