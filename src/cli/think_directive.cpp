@@ -30,7 +30,13 @@ static int wordCount(const std::string& s) {
 static const std::vector<std::string> SIMPLE_KEYWORDS = {
     "rename", "format", "list", "show", "count", "print", "dump", "export",
     "view", "ls", "cat", "echo", "what is", "what's", "find ", "locate",
-    "where is", "remove", "delete file", "copy", "move file", "lookup"
+    "where is", "remove", "delete file", "copy", "move file", "lookup",
+    // v2.x suppress-gate: mechanical / status / ack classes (substring-safe —
+    // avoid short tokens like "ok"/"ya"/"next" that hide in common words;
+    // short bare acks are already simple via wordCount<=5). COMPLEX wins on tie.
+    "commit", "git status", "git log", "git diff", "git push", "git pull",
+    "stash", "rebase", "checkout", "status", "rerun", "retry", "revert",
+    "lanjut", "kelar", "selesai"
 };
 
 static const std::vector<std::string> COMPLEX_KEYWORDS = {

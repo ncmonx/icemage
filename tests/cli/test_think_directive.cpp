@@ -36,6 +36,25 @@ TEST("classify: complex wins over simple on tie") {
     ASSERT_EQ(intentLabel(i), std::string("complex"));
 }
 
+// v2.x suppress-gate: more mechanical / status / ack classes classify as simple
+// (so the skip-thinking hint fires on them). COMPLEX still wins on tie.
+TEST("classify: commit + push mechanical → simple") {
+    ASSERT_EQ(intentLabel(classifyIntent("commit these changes and push them upstream")),
+              std::string("simple"));
+}
+TEST("classify: git status mid-sentence → simple") {
+    ASSERT_EQ(intentLabel(classifyIntent("check the git status of the working tree")),
+              std::string("simple"));
+}
+TEST("classify: Indonesian ack 'lanjut' → simple") {
+    ASSERT_EQ(intentLabel(classifyIntent("ok lanjut yang tadi sampai semua hijau")),
+              std::string("simple"));
+}
+TEST("classify: complex still wins over the new simple keywords") {
+    ASSERT_EQ(intentLabel(classifyIntent("commit after you refactor the auth module")),
+              std::string("complex"));
+}
+
 TEST("directive: no-think wraps + idempotent") {
     auto a = applyNoThinkDirective("task X");
     ASSERT_TRUE(hasDirective(a));

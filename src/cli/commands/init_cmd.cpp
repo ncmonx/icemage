@@ -364,8 +364,12 @@ fi
 # via additionalContext. Opt-out: ICMG_NO_AUTO_THINK=1
 if [[ "${ICMG_NO_AUTO_THINK:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
     plen=${#PROMPT}
-    if [[ $plen -lt 80 ]] || [[ "$PROMPT" =~ ^(what|why|how|where|when|kapan|apa|kenapa|siapa)[[:space:]] ]]; then
-        printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] trivial prompt detected -> thinking budget suppressed for this turn (set ICMG_NO_AUTO_THINK=1 to disable)"}}' 2>/dev/null
+    shopt -s nocasematch
+    _simple=0
+    if [[ $plen -lt 80 ]] || [[ "$PROMPT" =~ ^(what|why|how|where|when|kapan|apa|kenapa|siapa)[[:space:]] ]] || [[ "$PROMPT" =~ (^|[[:space:]])(commit|push|pull|stash|rebase|checkout|status|rerun|retry|revert|lanjut|kelar|selesai|ok|oke|iya|sip|gas)([[:space:]]|$) ]]; then _simple=1; fi
+    shopt -u nocasematch
+    if [[ $_simple -eq 1 ]]; then
+        printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] trivial/mechanical prompt -> thinking budget suppressed for this turn (set ICMG_NO_AUTO_THINK=1 to disable)"}}' 2>/dev/null
     fi
 fi
 
