@@ -1,8 +1,12 @@
 #include "../test_main.hpp"
 #include "../../src/tkil/detector.hpp"
+#include "../../src/core/cmd_densify.hpp"
+#include "../../src/core/openssl_rng.hpp"
+#include <cstring>
 
 using icmg::tkil::CmdType;
 using icmg::tkil::Detector;
+using icmg::core::densifyCommand;
 
 // ---- Detector unit tests ---------------------------------------------------
 
@@ -121,6 +125,48 @@ TEST("detector: empty → Default") {
     ASSERT_EQ(d.detect(""), CmdType::Default);
 }
 
+
+// ---- Command densifier (pre-exec) -----------------------------------------
+TEST("densify: git status -> porcelain+branch") {
+    ASSERT_EQ(densifyCommand("git status"), std::string("git status --porcelain=v2 --branch"));
+}
+TEST("densify: git log -> oneline; pytest -> quiet/tb; tsc -> pretty false") {
+    ASSERT_EQ(densifyCommand("git log"), std::string("git log --oneline"));
+    ASSERT_EQ(densifyCommand("pytest tests/"), std::string("pytest tests/ -q --tb=line"));
+    ASSERT_EQ(densifyCommand("tsc"), std::string("tsc --pretty false"));
+    ASSERT_EQ(densifyCommand("pip list"), std::string("pip list --format=freeze"));
+    ASSERT_EQ(densifyCommand("npm ls"), std::string("npm ls --depth=0"));
+}
+TEST("densify: idempotent + skips when user gave a conflicting flag") {
+    // already-dense -> unchanged (idempotent)
+    ASSERT_EQ(densifyCommand("git status --porcelain=v2 --branch"),
+              std::string("git status --porcelain=v2 --branch"));
+    ASSERT_EQ(densifyCommand("git log --oneline"), std::string("git log --oneline"));
+    ASSERT_EQ(densifyCommand("pytest -v"), std::string("pytest -v"));   // explicit verbose wins
+}
+TEST("densify: bails on shell composition + leaves unknown commands alone") {
+    ASSERT_EQ(densifyCommand("git status && echo hi"), std::string("git status && echo hi"));
+    ASSERT_EQ(densifyCommand("echo $(git status)"), std::string("echo $(git status)"));
+    ASSERT_EQ(densifyCommand("git status | head"), std::string("git status | head"));
+    ASSERT_EQ(densifyCommand("ls -la"), std::string("ls -la"));         // no rule -> unchanged
+}
+
+// ---- OpenSSL RNG override (BCrypt) -- Server 2019 err126 root fix ----------
+#if defined(_WIN32)
+TEST("openssl_rng: bcryptFill yields entropy (non-zero, varies, n=0 ok)") {
+    unsigned char a[32] = {0}, b[32] = {0};
+    ASSERT_TRUE(icmg::core::bcryptFill(a, sizeof(a)));
+    ASSERT_TRUE(icmg::core::bcryptFill(b, sizeof(b)));
+    bool a_allzero = true; for (unsigned char c : a) if (c) { a_allzero = false; break; }
+    ASSERT_FALSE(a_allzero);                       // real entropy, not zeros
+    ASSERT_TRUE(std::memcmp(a, b, sizeof(a)) != 0); // two draws differ
+    ASSERT_TRUE(icmg::core::bcryptFill(nullptr, 0)); // n=0 is a no-op success
+}
+
+TEST("openssl_rng: install routes OpenSSL RNG onto BCrypt") {
+    ASSERT_TRUE(icmg::core::installBCryptOpenSSLRand());
+}
+#endif
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }

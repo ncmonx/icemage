@@ -1,4 +1,4 @@
-﻿// Phase 19: context bundle commands.
+// Phase 19: context bundle commands.
 //   icmg context <file>           — single-call file/symbols/neighbors/memory bundle
 //   icmg pack <task>              — task-context aggregator (recall + context + rules)
 //   icmg diff-summary             — symbol-aware git-diff summary
@@ -9,6 +9,9 @@
 #include "../cache_emitter.hpp"
 #include "../think_directive.hpp"
 #include "../auto_zone.hpp"
+#include "../model_pricing.hpp"
+#include "../../core/intent_slice.hpp"
+#include "../../core/read_dedup.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/tool_call_cache.hpp"
 #include <cstdlib>
@@ -82,11 +85,14 @@ public:
             "  --no-symbols      Skip child symbol list\n"
             "  --no-memory       Skip related memory\n"
             "  --no-content      Skip raw file body excerpt (default: include)\n"
+            "  --for INTENT      Emit only lines relevant to INTENT (semantic slice;\n"
+            "                    no line-number guessing). Ignored when --lines is set.\n"
             "  --siblings        Also list test/doc/types sibling files (Phase 67)\n"
             "  --symbol NAME     Return only body of named symbol + immediate deps (80%+ token cut)\n"
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
             "  --no-cache        Bypass hot-context cache (force recompute)\n"
+            "  --full            Re-emit full body even on a cache hit (skip dedup stub)\n"
             "  --json            JSON output\n";
     }
 
@@ -219,12 +225,19 @@ public:
               + "|nocontent=" + (hasFlag(args, "--no-content") ? "1" : "0")
               + "|sibs=" + (hasFlag(args, "--siblings") ? "1" : "0")
               + "|lines=" + flagValue(args, "--lines")
+              + "|for=" + flagValue(args, "--for")
               + "|symbol=" + flagValue(args, "--symbol");
             try {
                 core::ToolCallCache tcc(db);
                 auto opt = tcc.lookup("context", ctx_cache_args);
                 if (opt) {
-                    std::cout << *opt;
+                    // Read dedup: cache HIT = file unchanged since already shown this
+                    // session (key has mtime+size) -> emit a stub, not the full body.
+                    bool force_full = hasFlag(args, "--full") || std::getenv("ICMG_NO_DEDUP_STUB");
+                    if (core::shouldStubContext(opt->size(), force_full))
+                        std::cout << core::contextSeenStub(file, opt->size());
+                    else
+                        std::cout << *opt;
                     // Boost graph priority: this file is hot for this session.
                     try {
                         db.run("UPDATE graph_nodes SET access_count = access_count + 1, "
@@ -484,6 +497,7 @@ public:
         // so Claude doesn't fall back to native Read for line ranges.
         bool no_content = hasFlag(args, "--no-content");
         std::string lines_arg = flagValue(args, "--lines");
+        std::string for_intent = flagValue(args, "--for");  // semantic single-file slice
         int line_start = 0, line_end = 0;
         if (!lines_arg.empty()) {
             auto dash = lines_arg.find('-');
@@ -539,6 +553,27 @@ public:
                         << (truncated ? "; truncated" : "")
                         << ") ---\n" << slice_body;
                     if (truncated) out << "\n--- [slice truncated; raise --max-bytes] ---\n";
+                } else if (!for_intent.empty()) {
+                    // --for: emit only the lines relevant to the intent (no range guessing).
+                    auto ranges = core::intentSliceRanges(body, for_intent, /*ctx*/6, /*maxRanges*/4, /*maxTotal*/120);
+                    std::vector<std::string> all; { std::istringstream is(body); std::string ln; while (std::getline(is, ln)) all.push_back(ln); }
+                    std::ostringstream rend;
+                    for (auto& r : ranges) {
+                        rend << "--- lines " << r.start << "-" << r.end << " ---\n";
+                        for (int n = r.start; n <= r.end && n <= (int)all.size(); ++n)
+                            rend << std::setw(5) << n << "  " << all[(size_t)n - 1] << "\n";
+                    }
+                    std::string slice_body = rend.str();
+                    if (slice_body.empty()) {
+                        out << "\n--- Content (" << resolved << "; no line matched \"" << for_intent
+                            << "\" -- try `icmg context " << resolved << "` for the full file) ---\n";
+                    } else {
+                        bool truncated = slice_body.size() > budget;
+                        if (truncated) slice_body.resize(budget);
+                        out << "\n--- Content (" << resolved << " for \"" << for_intent << "\"; "
+                            << ranges.size() << " window(s)" << (truncated ? "; truncated" : "") << ") ---\n" << slice_body;
+                        if (truncated) out << "\n--- [slice truncated; raise --max-bytes] ---\n";
+                    }
                 } else {
                     bool truncated = body.size() > budget;
                     if (truncated) body.resize(budget);
@@ -643,6 +678,9 @@ public:
                          });
             } catch (...) {}
             int est_thinking_saved = nt * 1500;  // est 1.5K thinking tok saved per no-think call
+            // Honest per-model output rate (thinking tok = output); ICMG_MODEL or default Sonnet.
+            const char* pm = std::getenv("ICMG_MODEL");
+            double out_rate = modelPricing(pm ? pm : "").out;
             std::cout << "Thinking-budget telemetry (last 30d):\n"
                       << "  total calls:     " << total << "\n"
                       << "    simple:        " << simple << "\n"
@@ -652,7 +690,7 @@ public:
                       << "  concise mode:    " << conc << "\n"
                       << "  total bytes out: " << bytes_total << "\n"
                       << "  est thinking tok saved: " << est_thinking_saved
-                      << " (~$" << (est_thinking_saved * 15 / 1000000.0) << " on Sonnet 4.5)\n";
+                      << " (~$" << (est_thinking_saved * out_rate / 1000000.0) << " at $" << out_rate << "/MTok output)\n";
             return 0;
         }
 

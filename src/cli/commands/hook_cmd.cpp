@@ -809,9 +809,14 @@ private:
                 if (!tp.empty()) {
                     long long used = lastContextTokensFromTranscript(tp);
                     if (used > 0) {
-                        long long limit = 1000000;
-                        if (const char* e = std::getenv("ICMG_CONTEXT_LIMIT")) { try { limit = std::stoll(e); } catch (...) {} }
-                        ctxbudget_hint = formatBudget(computeBudget(used, limit)) + " ";
+                        // Per-model honest limit (env override > model window > 200K default).
+                        long long limit = resolveContextLimit(tp);
+                        auto cb = computeBudget(used, limit);
+                        ctxbudget_hint = formatBudget(cb) + " ";
+                        // Feature-map surfacing: near compaction, surface the dense-summary
+                        // capability so it gets used (PreCompact can't inject -- CC drops it).
+                        if (cb.pctUsed >= 75)
+                            ctxbudget_hint += "[near compaction -> `icmg distill template` prints a dense Goal/Done/State/Next/Keep handoff to fill] ";
                     }
                 }
             } catch (...) {}

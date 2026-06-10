@@ -74,8 +74,7 @@ public:
         if (hasFlag(args, "--brief")) {
             std::string ep = flagValue(args, "--transcript");
             fs::path tp = ep.empty() ? findLatestTranscript() : fs::path(ep);
-            long long limit = 1000000;
-            if (const char* e = std::getenv("ICMG_CONTEXT_LIMIT")) { try { limit = std::stoll(e); } catch (...) {} }
+            long long limit = resolveContextLimit(tp.string());  // per-model honest window
             long long used = 0;
             if (!tp.empty() && fs::exists(tp)) {
                 std::ifstream bf(tp, std::ios::binary);

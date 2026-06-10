@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.0.14 LANGUAGES CXX C)
+project(icmg VERSION 2.0.15 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -649,6 +649,7 @@ add_icmg_test(test_service_singleton tests/core/test_service_singleton.cpp)
 add_icmg_test(test_wasm_skill    tests/wasm/test_wasm_skill.cpp)
 add_icmg_test(test_wasm_runtime tests/wasm/test_wasm_runtime.cpp)
 add_icmg_test(test_context_budget tests/cli/test_context_budget.cpp)
+add_icmg_test(test_dense_summary tests/cli/test_dense_summary.cpp)  # odysseus-inspired dense compaction summary (AGPL-clean reimpl)
 add_icmg_test(test_persona_local_only tests/core/test_persona_local_only.cpp)
 add_icmg_test(test_write_queue   tests/core/test_write_queue.cpp)
 add_icmg_test(test_node_bloom   tests/graph/test_node_bloom.cpp)

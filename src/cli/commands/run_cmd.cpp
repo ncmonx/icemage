@@ -10,6 +10,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/cmd_densify.hpp"
 #include "../../tkil/tkil.hpp"
 #include <iostream>
 #include <sstream>
@@ -140,6 +141,17 @@ public:
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
         tkil::Tkil executor(db);
+
+        // Pre-exec densify: rewrite noisy commands to emit less (git status ->
+        // --porcelain, pytest -> -q --tb=line, ...) BEFORE Tkil filters output.
+        // Pure + guarded (skips shell composition); opt out with ICMG_NO_DENSIFY=1.
+        if (!std::getenv("ICMG_NO_DENSIFY")) {
+            std::string densed = core::densifyCommand(command);
+            if (densed != command) {
+                std::cerr << "[icmg run] densified: " << command << " -> " << densed << "\n";
+                command = densed;
+            }
+        }
 
         return executor.runFiltered(command, raw, json_out, dry_run, stream, ultra);
     }
