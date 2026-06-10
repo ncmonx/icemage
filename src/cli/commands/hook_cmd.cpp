@@ -809,8 +809,8 @@ private:
                 if (!tp.empty()) {
                     long long used = lastContextTokensFromTranscript(tp);
                     if (used > 0) {
-                        long long limit = 1000000;
-                        if (const char* e = std::getenv("ICMG_CONTEXT_LIMIT")) { try { limit = std::stoll(e); } catch (...) {} }
+                        // Per-model honest limit (env override > model window > 200K default).
+                        long long limit = resolveContextLimit(tp);
                         auto cb = computeBudget(used, limit);
                         ctxbudget_hint = formatBudget(cb) + " ";
                         // Feature-map surfacing: near compaction, surface the dense-summary

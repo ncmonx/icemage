@@ -42,3 +42,40 @@ TEST("context_budget: lastContextTokensFromTranscript reads LAST usage") {
     std::filesystem::remove(p);
     ASSERT_EQ(lastContextTokensFromTranscript("Z:/nope/none.jsonl"), 0LL);  // missing -> 0
 }
+
+// 2026-06-10: model context-window registry -- makes the budget meter honest
+// per-model instead of a hardcoded 1M (which lies on 128K/200K models).
+TEST("model_context: Claude Code 1M-window families") {
+    ASSERT_EQ(modelContextWindow("claude-opus-4-8"), 1000000LL);
+    ASSERT_EQ(modelContextWindow("claude-sonnet-4-6"), 1000000LL);
+    // substring-match: full vendor-prefixed / date-suffixed ids still resolve
+    ASSERT_EQ(modelContextWindow("anthropic/claude-opus-4-8-20260101"), 1000000LL);
+    ASSERT_EQ(modelContextWindow("gemini-1.5-pro"), 1000000LL);
+}
+
+TEST("model_context: 128K-window families") {
+    ASSERT_EQ(modelContextWindow("gpt-4o-2024-11-20"), 128000LL);
+    ASSERT_EQ(modelContextWindow("gpt-4-turbo"), 128000LL);
+    ASSERT_EQ(modelContextWindow("deepseek-chat"), 128000LL);
+    ASSERT_EQ(modelContextWindow("mistral-large-latest"), 128000LL);
+}
+
+TEST("model_context: default 200K for unknown / 200K-window / synthetic") {
+    ASSERT_EQ(modelContextWindow("claude-haiku-4-5"), 200000LL);  // Haiku = 200K, not opus/sonnet-4
+    ASSERT_EQ(modelContextWindow("o1-preview"), 200000LL);
+    ASSERT_EQ(modelContextWindow("some-future-llm-xyz"), 200000LL);
+    ASSERT_EQ(modelContextWindow("<synthetic>"), 200000LL);       // CC synthetic turns
+    ASSERT_EQ(modelContextWindow(""), 200000LL);
+}
+
+TEST("model_context: lastModelFromTranscript skips synthetic, takes last real") {
+    auto p = std::filesystem::temp_directory_path() / "icmg-modelctx-test.jsonl";
+    { std::ofstream f(p);
+      f << "{\"message\":{\"model\":\"claude-sonnet-4-6\"}}\n";
+      f << "{\"message\":{\"model\":\"<synthetic>\"}}\n";          // must be skipped
+      f << "{\"message\":{\"model\":\"claude-opus-4-8\"}}\n";      // last real wins
+      f << "{\"unrelated\":1}\n"; }
+    ASSERT_EQ(lastModelFromTranscript(p.string()), std::string("claude-opus-4-8"));
+    std::filesystem::remove(p);
+    ASSERT_EQ(lastModelFromTranscript("Z:/nope/none.jsonl"), std::string(""));  // missing -> empty
+}

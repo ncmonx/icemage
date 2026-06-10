@@ -10,6 +10,8 @@
 
 #include <fstream>
 #include <iterator>
+#include <utility>
+#include <cstdlib>
 namespace icmg::cli {
 
 struct BudgetInfo { long long used = 0, limit = 0; int pctUsed = 0, pctLeft = 100; };
@@ -73,6 +75,69 @@ inline long long lastContextTokensFromTranscript(const std::string& path) {
         pos = nl + 1;
     }
     return used;
+}
+
+// --- Model context-window registry --------------------------------------
+// The budget meter needs the REAL context window for the running model. A
+// hardcoded 1M lies on 128K/200K models (warns far too late -> blows past
+// compaction). This maps a model id (substring) to its documented window.
+//
+// Default = 200000 (the standard window for most modern models incl. the
+// Claude API, OpenAI o-series). Choosing the SMALLER window as the fallback
+// is the safe failure: an unknown model warns EARLY, never late. Only models
+// with a genuinely larger/smaller documented window deviate from the default.
+inline long long modelContextWindow(const std::string& model) {
+    struct Entry { const char* needle; long long window; };
+    // Priority order: first substring match wins. Most-specific first.
+    static const Entry kTable[] = {
+        // Claude Code effective 1M-context families + Gemini long-context
+        {"opus-4",   1000000},
+        {"sonnet-4", 1000000},
+        {"gemini",   1000000},
+        // 128K-window families
+        {"gpt-4o",   128000},
+        {"gpt-4",    128000},   // gpt-4-turbo etc. (modern default)
+        {"deepseek", 128000},
+        {"mistral",  128000},
+        // Everything else (o-series, Haiku, Claude 3, unknown) -> default 200K.
+    };
+    for (const auto& e : kTable)
+        if (model.find(e.needle) != std::string::npos) return e.window;
+    return 200000;  // safe default: under-estimate -> nudge early, not late
+}
+
+// Tail-scan a transcript .jsonl (last ~256 KB) and return the LAST real
+// "model":"..." value, skipping CC's "<synthetic>" turns. "" if none/unreadable.
+inline std::string lastModelFromTranscript(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return "";
+    f.seekg(0, std::ios::end);
+    std::streamoff sz = f.tellg();
+    std::streamoff start = sz > (256 * 1024) ? sz - (256 * 1024) : 0;
+    f.seekg(start);
+    std::string chunk((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    const std::string key = "\"model\":\"";
+    std::string last;
+    size_t p = 0;
+    while ((p = chunk.find(key, p)) != std::string::npos) {
+        p += key.size();
+        size_t end = chunk.find('"', p);
+        if (end == std::string::npos) break;
+        std::string m = chunk.substr(p, end - p);
+        if (!m.empty() && m != "<synthetic>") last = m;  // keep last real
+        p = end + 1;
+    }
+    return last;
+}
+
+// Resolve the context limit for a transcript: explicit env override wins, then
+// the running model's documented window, then the safe default. Centralizes the
+// limit logic so every call site (hook, `contextbudget --brief`) stays honest.
+inline long long resolveContextLimit(const std::string& transcriptPath) {
+    if (const char* e = std::getenv("ICMG_CONTEXT_LIMIT")) {
+        try { long long v = std::stoll(e); if (v > 0) return v; } catch (...) {}
+    }
+    return modelContextWindow(lastModelFromTranscript(transcriptPath));
 }
 
 } // namespace icmg::cli
