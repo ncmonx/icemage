@@ -11,6 +11,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../dense_summary.hpp"   // dense structured-summary template for compaction
 #include <fstream>
 #include <iostream>
 #include <regex>
@@ -35,15 +36,32 @@ public:
             "            memory_node with topic prefix 'auto:'.\n"
             "  session   Read stdin (full transcript), summarize into one\n"
             "            consolidated 'session:' memory_node.\n"
-            "  show      List recent auto-distilled entries.\n\n"
+            "  show      List recent auto-distilled entries.\n"
+            "  template  Print the dense structured-summary instruction for the\n"
+            "            model to fill at compaction (Goal/Done/State/Next/Keep).\n\n"
             "Options:\n"
-            "  --min-len N    Skip when input < N chars (default 200)\n"
-            "  --tag T        Custom topic suffix\n";
+            "  --min-len N        Skip when input < N chars (default 200)\n"
+            "  --tag T            Custom topic suffix\n"
+            "  --turns N          (template) stamp turns summarized\n"
+            "  --compactions N    (template) stamp compaction count\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         std::string action = args[0];
+
+        // `template` -- emit the dense structured-summary instruction for the
+        // model to fill at compaction (consistent, information-dense handoff
+        // that survives compaction far better than free-form prose). The
+        // PreCompact hook can inject this so the model produces a uniform
+        // summary. No DB / no stdin needed.
+        if (action == "template") {
+            int turns = 0, compactions = 0;
+            try { turns = std::stoi(flagValue(args, "--turns", "0")); } catch (...) {}
+            try { compactions = std::stoi(flagValue(args, "--compactions", "0")); } catch (...) {}
+            std::cout << denseSummaryPrompt(turns, compactions);
+            return 0;
+        }
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
