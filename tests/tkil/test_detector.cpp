@@ -199,6 +199,17 @@ TEST("hook_sanitize: removes python snapshot cmd, keeps native, prunes empties")
     ASSERT_CONTAINS(cfg["hooks"]["PreCompact"][0]["hooks"][0]["command"].get<std::string>(), "icmg hook precompact");
 }
 
+TEST("hook_sanitize: ensureStatusLine adds when absent, never clobbers") {
+    auto a = nlohmann::json::object();
+    ASSERT_TRUE(icmg::core::ensureStatusLine(a, "icmg statusline"));
+    ASSERT_CONTAINS(a["statusLine"]["command"].get<std::string>(), "icmg statusline");
+    ASSERT_EQ(a["statusLine"]["type"].get<std::string>(), std::string("command"));
+    // already has one -> untouched
+    auto b = nlohmann::json::parse(R"({"statusLine":{"type":"command","command":"mybar"}})");
+    ASSERT_FALSE(icmg::core::ensureStatusLine(b, "icmg statusline"));
+    ASSERT_EQ(b["statusLine"]["command"].get<std::string>(), std::string("mybar"));
+}
+
 TEST("hook_sanitize: no-op when no snapshot ref present") {
     auto cfg = nlohmann::json::parse(R"({"hooks":{"Stop":[{"hooks":[{"command":"icmg hook stop"}]}]}})");
     ASSERT_EQ(icmg::core::removeStaleSnapshotHooks(cfg), 0);

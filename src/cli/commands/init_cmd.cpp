@@ -1627,14 +1627,14 @@ private:
                     std::ifstream sf(ps);
                     std::string sbody((std::istreambuf_iterator<char>(sf)), std::istreambuf_iterator<char>());
                     sf.close();
-                    if (sbody.find("icmg-precompact-snapshot.py") != std::string::npos) {
-                        nlohmann::json scfg = nlohmann::json::parse(sbody, nullptr, false);
-                        if (!scfg.is_discarded()) {
-                            int rmN = core::removeStaleSnapshotHooks(scfg);
-                            if (rmN > 0) {
-                                std::ofstream so(ps); so << scfg.dump(2) << "\n";
-                                std::cout << "  cleanup: dropped " << rmN << " stale python precompact hook entry(ies) from settings.json\n";
-                            }
+                    nlohmann::json scfg = nlohmann::json::parse(sbody, nullptr, false);
+                    if (!scfg.is_discarded()) {
+                        int rmN = core::removeStaleSnapshotHooks(scfg);
+                        bool sl = core::ensureStatusLine(scfg, "icmg statusline");
+                        if (rmN > 0 || sl) {
+                            std::ofstream so(ps); so << scfg.dump(2) << "\n";
+                            if (rmN > 0) std::cout << "  cleanup: dropped " << rmN << " stale python precompact hook entry(ies)\n";
+                            if (sl)      std::cout << "  + statusLine: icmg statusline (context budget in CC status bar)\n";
                         }
                     }
                 } catch (...) { /* best-effort */ }

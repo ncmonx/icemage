@@ -45,4 +45,13 @@ inline int removeStaleSnapshotHooks(nlohmann::json& cfg) {
     return removed;
 }
 
+// Ensure Claude Code's statusLine runs `command` (default makes icmg's per-model
+// context budget visible every turn). Won't clobber a user's existing statusLine.
+// Returns true if it added one.
+inline bool ensureStatusLine(nlohmann::json& cfg, const std::string& command) {
+    if (cfg.contains("statusLine") && !cfg["statusLine"].is_null()) return false;
+    cfg["statusLine"] = { {"type", "command"}, {"command", command} };
+    return true;
+}
+
 }  // namespace icmg::core
