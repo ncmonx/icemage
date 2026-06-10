@@ -6,6 +6,7 @@
 #include "../../src/cli/model_pricing.hpp"
 #include "../../src/core/intent_slice.hpp"
 #include "../../src/core/read_dedup.hpp"
+#include "../../src/cli/statusline.hpp"
 #include <fstream>
 #include <filesystem>
 #include <cmath>
@@ -176,4 +177,30 @@ TEST("read_dedup: stub text names file + escape hatch + bytes skipped") {
     ASSERT_CONTAINS(s, "unchanged");
     ASSERT_CONTAINS(s, "--full");
     ASSERT_CONTAINS(s, "2048");
+}
+
+// --- statusline: compact CC status-bar line (makes budget visible) --------
+TEST("statusline: humanTok scales raw/K/M") {
+    ASSERT_EQ(humanTok(900), std::string("900"));
+    ASSERT_EQ(humanTok(128000), std::string("128K"));
+    ASSERT_EQ(humanTok(566604), std::string("567K"));   // rounded
+    ASSERT_EQ(humanTok(1000000), std::string("1.0M"));
+}
+
+TEST("statusline: modelShortName drops vendor prefix + claude-") {
+    ASSERT_EQ(modelShortName("claude-opus-4-8"), std::string("opus-4-8"));
+    ASSERT_EQ(modelShortName("anthropic/claude-sonnet-4-6"), std::string("sonnet-4-6"));
+    ASSERT_EQ(modelShortName("gpt-4o"), std::string("gpt-4o"));
+    ASSERT_EQ(modelShortName("<synthetic>"), std::string(""));
+    ASSERT_EQ(modelShortName(""), std::string(""));
+}
+
+TEST("statusline: format shows ctx% + model + used/limit") {
+    std::string s = formatStatusline(computeBudget(566604, 1000000), "opus-4-8");
+    ASSERT_CONTAINS(s, "icmg");
+    ASSERT_CONTAINS(s, "opus-4-8");
+    ASSERT_CONTAINS(s, "ctx 56%");
+    ASSERT_CONTAINS(s, "567K/1.0M");
+    // no model + no limit -> minimal line, no crash
+    ASSERT_CONTAINS(formatStatusline(computeBudget(0, 0), ""), "ctx 0%");
 }
