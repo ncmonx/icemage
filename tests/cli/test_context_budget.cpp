@@ -4,6 +4,7 @@
 #include "../test_main.hpp"
 #include "../../src/cli/context_budget.hpp"
 #include "../../src/cli/model_pricing.hpp"
+#include "../../src/core/intent_slice.hpp"
 #include <fstream>
 #include <filesystem>
 #include <cmath>
@@ -115,4 +116,46 @@ TEST("model_pricing: default = Sonnet for unknown / empty / synthetic") {
     ASSERT_EQ(mp_cents(modelPricing("some-future-llm-xyz").out), 1500LL);
     ASSERT_EQ(mp_cents(modelPricing("").in),  300LL);
     ASSERT_EQ(mp_cents(modelPricing("<synthetic>").out), 1500LL);
+}
+
+// --- intent slice: semantic single-file slice (icmg context --for) -------
+// 10-line fixture; line 2 + line 8 carry "rate".
+static const std::string SLICE_BODY =
+    "alpha one\n"          // 1
+    "beta rate two\n"      // 2  hit: rate
+    "gamma three\n"        // 3
+    "delta four\n"         // 4  hit: four
+    "epsilon five\n"       // 5  hit: five
+    "zeta six\n"           // 6
+    "eta seven\n"          // 7
+    "theta rate eight\n"   // 8  hit: rate, eight
+    "iota nine\n"          // 9
+    "kappa ten\n";         // 10
+
+TEST("intent_slice: two distant hits -> two windows in reading order") {
+    auto r = icmg::core::intentSliceRanges(SLICE_BODY, "rate", /*ctx*/1, /*maxRanges*/4, /*maxTotal*/80);
+    ASSERT_EQ((int)r.size(), 2);
+    ASSERT_EQ(r[0].start, 1); ASSERT_EQ(r[0].end, 3);
+    ASSERT_EQ(r[1].start, 7); ASSERT_EQ(r[1].end, 9);
+}
+
+TEST("intent_slice: adjacent hits merge into one window") {
+    auto r = icmg::core::intentSliceRanges(SLICE_BODY, "four five", 1, 4, 80);
+    ASSERT_EQ((int)r.size(), 1);
+    ASSERT_EQ(r[0].start, 3); ASSERT_EQ(r[0].end, 6);
+}
+
+TEST("intent_slice: top-ranked window wins under maxRanges cap") {
+    // line 8 scores 2 (rate+eight) > line 2 scores 1 (rate) -> keep line-8 window.
+    auto r = icmg::core::intentSliceRanges(SLICE_BODY, "rate eight", 1, 1, 80);
+    ASSERT_EQ((int)r.size(), 1);
+    ASSERT_EQ(r[0].start, 7); ASSERT_EQ(r[0].end, 9);
+}
+
+TEST("intent_slice: no match -> empty; stopwords/short terms dropped") {
+    ASSERT_EQ((int)icmg::core::intentSliceRanges(SLICE_BODY, "zzz", 1, 4, 80).size(), 0);
+    // "a"/"the" dropped -> behaves exactly like the bare "rate" query
+    auto r = icmg::core::intentSliceRanges(SLICE_BODY, "a the rate", 1, 4, 80);
+    ASSERT_EQ((int)r.size(), 2);
+    ASSERT_EQ(r[0].start, 1); ASSERT_EQ(r[1].start, 7);
 }
