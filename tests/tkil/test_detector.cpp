@@ -3,7 +3,9 @@
 #include "../../src/core/cmd_densify.hpp"
 #include "../../src/core/openssl_rng.hpp"
 #include "../../src/core/hook_sanitize.hpp"
+#include "../../src/graph/extractor/ruby_extract.hpp"
 #include <cstring>
+#include <algorithm>
 
 using icmg::tkil::CmdType;
 using icmg::tkil::Detector;
@@ -198,6 +200,33 @@ TEST("hook_sanitize: no-op when no snapshot ref present") {
     ASSERT_EQ((int)cfg["hooks"]["Stop"].size(), 1);              // untouched
     auto empty = nlohmann::json::object();
     ASSERT_EQ(icmg::core::removeStaleSnapshotHooks(empty), 0);  // no hooks key
+}
+
+// ---- ruby extractor (new language) ----------------------------------------
+TEST("ruby_extract: require/module/class/def -> imports/namespaces/classes/functions") {
+    auto r = icmg::graph::extractRuby(
+        "require 'json'\n"
+        "require_relative '../lib/foo'\n"
+        "module Billing\n"
+        "  class Invoice < Base\n"
+        "    def total; end\n"
+        "    def self.create; end\n"
+        "  end\n"
+        "end\n");
+    auto has = [](const std::vector<std::string>& v, const std::string& x) {
+        return std::find(v.begin(), v.end(), x) != v.end();
+    };
+    ASSERT_TRUE(has(r.imports, "json"));
+    ASSERT_TRUE(has(r.imports, "../lib/foo"));
+    ASSERT_TRUE(has(r.namespaces, "Billing"));
+    ASSERT_TRUE(has(r.classes, "Invoice"));
+    ASSERT_TRUE(has(r.functions, "total"));
+    ASSERT_TRUE(has(r.functions, "create"));     // def self.create
+}
+
+TEST("ruby_extract: empty + non-ruby content -> no symbols") {
+    auto r = icmg::graph::extractRuby("");
+    ASSERT_EQ((int)(r.imports.size() + r.classes.size() + r.functions.size()), 0);
 }
 
 #ifndef ICMG_MONO_TEST
