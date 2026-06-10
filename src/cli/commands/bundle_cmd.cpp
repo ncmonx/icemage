@@ -1,4 +1,4 @@
-﻿// Phase 19: context bundle commands.
+// Phase 19: context bundle commands.
 //   icmg context <file>           — single-call file/symbols/neighbors/memory bundle
 //   icmg pack <task>              — task-context aggregator (recall + context + rules)
 //   icmg diff-summary             — symbol-aware git-diff summary
@@ -9,6 +9,7 @@
 #include "../cache_emitter.hpp"
 #include "../think_directive.hpp"
 #include "../auto_zone.hpp"
+#include "../model_pricing.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/tool_call_cache.hpp"
 #include <cstdlib>
@@ -643,6 +644,9 @@ public:
                          });
             } catch (...) {}
             int est_thinking_saved = nt * 1500;  // est 1.5K thinking tok saved per no-think call
+            // Honest per-model output rate (thinking tok = output); ICMG_MODEL or default Sonnet.
+            const char* pm = std::getenv("ICMG_MODEL");
+            double out_rate = modelPricing(pm ? pm : "").out;
             std::cout << "Thinking-budget telemetry (last 30d):\n"
                       << "  total calls:     " << total << "\n"
                       << "    simple:        " << simple << "\n"
@@ -652,7 +656,7 @@ public:
                       << "  concise mode:    " << conc << "\n"
                       << "  total bytes out: " << bytes_total << "\n"
                       << "  est thinking tok saved: " << est_thinking_saved
-                      << " (~$" << (est_thinking_saved * 15 / 1000000.0) << " on Sonnet 4.5)\n";
+                      << " (~$" << (est_thinking_saved * out_rate / 1000000.0) << " at $" << out_rate << "/MTok output)\n";
             return 0;
         }
 
