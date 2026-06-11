@@ -269,6 +269,7 @@ cmd=$(printf '%s' "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
 if [[ "$cmd" == icmg\ * ]]; then
     read -r _ _rsub _rarg _ <<< "$cmd"
     icmg ritual saw "$_rsub" "$_rarg" >/dev/null 2>&1 || true
+    icmg discipline log "$_rsub" >/dev/null 2>&1 || true
 fiout=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
 [[ -z "$out" ]] && out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.output 2>/dev/null)
 sz=${#out}
@@ -758,6 +759,7 @@ icmg popup-killer ensure >/dev/null 2>&1 || true
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
+icmg discipline reset >/dev/null 2>&1 || true
 # C2: reset cross-turn near-dup window so a fresh session starts un-suppressed.
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-injected-slices.txt" 2>/dev/null || true
 HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
