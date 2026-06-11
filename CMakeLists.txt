@@ -890,6 +890,7 @@ add_icmg_test(test_warm_loop_integration tests/llm/test_warm_loop_integration.cp
 add_icmg_test(test_router                tests/cli/test_router.cpp)               # v1.53.0 TDD
 add_icmg_test(test_confidence            tests/cli/test_confidence.cpp)           # v1.61 F10
 add_icmg_test(test_sayless_resolve       tests/cli/test_sayless_resolve.cpp)      # v1.78.1 (renamed from test_caveman_resolve v1.66)
+add_icmg_test(test_ritual_gate            tests/cli/test_ritual_gate.cpp)         # ritual gate (post-change 5-sync enforcement) 2026-06-11
 add_icmg_test(test_sayless_migration     tests/cli/test_sayless_migration.cpp)    # v1.78.1
 add_icmg_test(test_gist                  tests/cli/test_gist.cpp)                 # v1.63 F12
 add_icmg_test(test_mine                  tests/cli/test_mine.cpp)                 # v1.63 F8

@@ -263,7 +263,13 @@ printf '%s' "$msg" | icmg hookio emit SessionStart --ctx-stdin
 static const char* CAP_OUTPUT_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 INPUT=$(cat)
-out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
+# Ritual gate: record any icmg sync command (store/wflog/graph/zone/verify) so
+# the Stop-hook ritual gate can clear once the model completes the post-change sync.
+cmd=$(printf '%s' "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
+if [[ "$cmd" == icmg\ * ]]; then
+    read -r _ _rsub _rarg _ <<< "$cmd"
+    icmg ritual saw "$_rsub" "$_rarg" >/dev/null 2>&1 || true
+fiout=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
 [[ -z "$out" ]] && out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.output 2>/dev/null)
 sz=${#out}
 CAP=${ICMG_CAP_BYTES:-8000}
@@ -734,6 +740,7 @@ static const char* GRAPH_UPDATE_SH = R"BASH(#!/usr/bin/env bash
 command -v icmg >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
 printf '%s' "$INPUT" | icmg hook posttooluse-edit 2>/dev/null || true
+[[ "${ICMG_NO_RITUAL_GATE:-0}" = "1" ]] || icmg ritual touch >/dev/null 2>&1 || true
 exit 0
 )BASH";
 
@@ -2083,7 +2090,10 @@ private:
                      {"command", "command -v icmg >/dev/null 2>&1 || exit 0; [ -n \"$ICMG_NO_COMPACT_ADVISE\" ] && exit 0; FILL=$(icmg context-budget --percent 2>/dev/null | tr -dc '0-9' | head -c 3); [ -z \"$FILL\" ] && exit 0; MSG=$(icmg govern advise --fill \"$FILL\" 2>/dev/null); [ -z \"$MSG\" ] && exit 0; printf '%s' \"$MSG\" | icmg hookio emit Stop --ctx-stdin"}},
                     {{"type", "command"},
                      {"timeout", 10},
-                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; icmg prompt-capture 2>/dev/null || exit 0"}}
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; icmg prompt-capture 2>/dev/null || exit 0"}},
+                    {{"type", "command"},
+                     {"timeout", 10},
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; icmg ritual gate 2>/dev/null || exit 0"}}
                 })}
             }
         });
