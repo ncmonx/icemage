@@ -7,6 +7,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
+#include "../../core/path_utils.hpp"  // icmgGlobalDir — single source of truth for config dir
 #ifdef _WIN32
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
@@ -74,6 +75,14 @@ public:
         if (action == "unset") {
             if (args.size() < 2) { std::cerr << "config unset: <key> required\n"; return 1; }
             return doUnset(path, args[1]);
+        }
+        if (action == "path") {
+            // Ground truth: where config is actually read/written + the DBs.
+            std::cout << "config: " << configPath().string() << "\n";
+            auto& cfgp = core::Config::instance();
+            std::cout << "global-db: " << cfgp.globalDbPath() << "\n";
+            std::cout << "project-db: " << cfgp.projectDbPath(".") << "\n";
+            return 0;
         }
         if (action == "edit") return doEdit(path);
         if (action == "zone") return doZone(args);
@@ -162,10 +171,10 @@ public:
 
 private:
     fs::path configPath() {
-        const char* h = std::getenv("USERPROFILE");
-        if (!h) h = std::getenv("HOME");
-        if (!h) h = ".";
-        return fs::path(h) / ".icmg" / "config.json";
+        // Use the SAME dir the Config singleton uses (icmgGlobalDir =
+        // %APPDATA%/icmg on Windows). Previously hardcoded ~/.icmg, which
+        // disagreed with set/get -> unset/edit/zone/list edited a stale file.
+        return fs::path(icmg::core::icmgGlobalDir()) / "config.json";
     }
 
     int doList(const fs::path& path) {
