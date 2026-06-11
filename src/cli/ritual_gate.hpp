@@ -6,8 +6,9 @@
 // "do NOT use native". This is its missing *positive* counterpart: it enforces
 // "you MUST actually USE the icmg sync features after a change".
 //
-// CLAUDE.md mandates a 5-sync ritual after every change (graph update / store /
-// zone / wflog / verify), but that was a SOFT instruction the model could skip
+// The icmg workflow convention (see AGENTS.md) mandates a 5-sync ritual after
+// every change (graph update / store / zone / wflog / verify), but that was a
+// SOFT instruction the model could skip
 // — exactly the failure recorded in icmg memory:
 //     "fail: icmg-first hook enforcement — soft PreToolUse additional-context
 //      reminder ... Failed because: Model (any) can ignore appended reminders."
