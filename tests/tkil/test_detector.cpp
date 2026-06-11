@@ -3,6 +3,7 @@
 #include "../../src/core/cmd_densify.hpp"
 #include "../../src/core/openssl_rng.hpp"
 #include "../../src/core/hook_sanitize.hpp"
+#include "../../src/core/ide_settings.hpp"
 #include "../../src/graph/extractor/ruby_extract.hpp"
 #include "../../src/graph/extractor/swift_extract.hpp"
 #include "../../src/graph/extractor/kotlin_extract.hpp"
@@ -208,6 +209,17 @@ TEST("hook_sanitize: ensureStatusLine adds when absent, never clobbers") {
     auto b = nlohmann::json::parse(R"({"statusLine":{"type":"command","command":"mybar"}})");
     ASSERT_FALSE(icmg::core::ensureStatusLine(b, "icmg statusline"));
     ASSERT_EQ(b["statusLine"]["command"].get<std::string>(), std::string("mybar"));
+}
+
+// 2026-06-10: .vscode/settings.json terminal file-link gate (B:/ popup #33001).
+TEST("ide_settings: enableFileLinks off added when absent, never clobbers") {
+    auto a = nlohmann::json::object();
+    ASSERT_TRUE(icmg::core::ensureTerminalFileLinksOff(a));
+    ASSERT_EQ(a["terminal.integrated.enableFileLinks"].get<std::string>(), std::string("off"));
+    // already set (any value) -> untouched, returns false
+    auto b = nlohmann::json::parse(R"({"terminal.integrated.enableFileLinks":"notRemote"})");
+    ASSERT_FALSE(icmg::core::ensureTerminalFileLinksOff(b));
+    ASSERT_EQ(b["terminal.integrated.enableFileLinks"].get<std::string>(), std::string("notRemote"));
 }
 
 TEST("hook_sanitize: no-op when no snapshot ref present") {

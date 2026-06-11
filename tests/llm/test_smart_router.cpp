@@ -3,6 +3,7 @@
 
 #include "../test_main.hpp"
 #include "../../src/llm/smart_router.hpp"
+#include "../../src/llm/vulkan_probe.hpp"
 
 using namespace icmg::llm;
 
@@ -67,4 +68,25 @@ TEST("router: precompact COLD no-premium -> LLM_LOCAL; with premium -> REGEX") {
     ASSERT_TRUE(routeFor(c).route == Route::LLM_LOCAL);
     c.premium_available = true;
     ASSERT_TRUE(routeFor(c).route == Route::REGEX);
+}
+
+// 2026-06-10: headless Vulkan-ICD gate for the local LLM backend (err126
+// crash on Win Server 2019 headless — known-issue #32877). Pure decision.
+TEST("vulkan gate: off-Windows is always safe") {
+    ASSERT_TRUE(llamaBackendSafe(/*win*/false, /*icd*/false, /*noVk*/false, /*forceVk*/false));
+}
+
+TEST("vulkan gate: Windows requires a Vulkan ICD") {
+    ASSERT_TRUE(llamaBackendSafe(true, true, false, false));   // ICD present -> safe
+    ASSERT_TRUE(!llamaBackendSafe(true, false, false, false)); // no ICD -> unsafe (the bug)
+}
+
+TEST("vulkan gate: ICMG_GGML_NO_VULKAN disables even with an ICD") {
+    ASSERT_TRUE(!llamaBackendSafe(true, true, /*noVk*/true, false));
+    ASSERT_TRUE(!llamaBackendSafe(false, true, /*noVk*/true, false));
+}
+
+TEST("vulkan gate: ICMG_FORCE_VULKAN overrides a missing ICD and force-off") {
+    ASSERT_TRUE(llamaBackendSafe(true, /*icd*/false, false, /*forceVk*/true));
+    ASSERT_TRUE(llamaBackendSafe(true, false, /*noVk*/true, /*forceVk*/true)); // force-on wins
 }

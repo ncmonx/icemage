@@ -50,6 +50,7 @@ public:
             "and Claude's real context-window fill.\n\n"
             "Options:\n"
             "  --transcript PATH  Override default ~/.claude/projects/<cwd-hash>/*.jsonl\n"
+            "  --thinking         Estimate thinking-block tokens spent this session\n"
             "  --all-sessions     Aggregate every transcript in current project\n"
             "                     (sums across all *.jsonl in ~/.claude/projects/<cwd>/)\n"
             "  --all-users        Enumerate sibling user homes (multi-user aggregate)\n"
@@ -95,6 +96,18 @@ public:
             }
             if (used <= 0) { std::cerr << "context-budget --brief: no API usage in transcript\n"; return 1; }
             std::cout << formatBudget(computeBudget(used, limit)) << "\n";
+            return 0;
+        }
+        if (hasFlag(args, "--thinking")) {
+            std::string ep = flagValue(args, "--transcript");
+            fs::path tp = ep.empty() ? findLatestTranscript() : fs::path(ep);
+            if (tp.empty() || !fs::exists(tp)) { std::cerr << "context-budget --thinking: no transcript found\n"; return 1; }
+            std::ifstream bf(tp, std::ios::binary);
+            std::string body((std::istreambuf_iterator<char>(bf)), std::istreambuf_iterator<char>());
+            ThinkingSpend ts = sumThinkingTokens(body);
+            std::cout << "thinking tokens (est): " << ts.est_tokens
+                      << "  |  " << ts.blocks << " block(s)  |  largest ~" << ts.max_block << "\n"
+                      << "note: estimate (~4 chars/token); thinking folds into output_tokens, not billed separately.\n";
             return 0;
         }
         bool json_out     = hasFlag(args, "--json");

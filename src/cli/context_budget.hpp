@@ -140,4 +140,36 @@ inline long long resolveContextLimit(const std::string& transcriptPath) {
     return modelContextWindow(lastModelFromTranscript(transcriptPath));
 }
 
+// --- Thinking-token accounting -------------------------------------------
+// Thinking tokens are NOT broken out in the API usage object (they fold into
+// output_tokens), so we ESTIMATE (~4 chars/token) from the transcript's
+// "thinking" content blocks. Honest approximation — makes the otherwise
+// invisible thinking cost visible per session. Not exact billing.
+struct ThinkingSpend { long long est_tokens = 0; int blocks = 0; long long max_block = 0; };
+
+inline ThinkingSpend sumThinkingTokens(const std::string& body) {
+    ThinkingSpend r;
+    const std::string marker = "\"type\":\"thinking\"";
+    const std::string field  = "\"thinking\":\"";
+    size_t p = 0;
+    while ((p = body.find(marker, p)) != std::string::npos) {
+        size_t tp = body.find(field, p);
+        if (tp == std::string::npos) { p += marker.size(); continue; }
+        tp += field.size();
+        long long chars = 0;
+        size_t i = tp;
+        while (i < body.size()) {              // count to unescaped closing quote
+            char c = body[i];
+            if (c == '\\' && i + 1 < body.size()) { ++chars; i += 2; continue; }
+            if (c == '"') break;
+            ++chars; ++i;
+        }
+        long long t = chars / 4;               // ~4 chars/token
+        r.est_tokens += t; ++r.blocks;
+        if (t > r.max_block) r.max_block = t;
+        p = (i > p) ? i : p + marker.size();
+    }
+    return r;
+}
+
 } // namespace icmg::cli

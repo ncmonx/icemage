@@ -7,6 +7,7 @@
 #include "llama_runner.hpp"
 #include "../core/sys_resources.hpp"
 #include "telemetry.hpp"
+#include "vulkan_probe.hpp"   // headless Vulkan-ICD gate (err126 #32877)
 
 #include <chrono>
 #include <cstring>
@@ -45,7 +46,7 @@ static std::string detokenize(const llama_vocab* vocab, llama_token tok) {
     return std::string(buf, buf + n);
 }
 
-bool LlamaRunner::available() { return true; }
+bool LlamaRunner::available() { return localLlmBackendSafe(); }
 
 
 // v1.47.0: silent log callback. llama.cpp + ggml dump device probe,
@@ -66,6 +67,16 @@ LlamaRunner::LlamaRunner() : impl_(new Impl()) {
     // Vulkan device probe + model loader progress bar respect them.
     llama_log_set(llmSilentLogCb, nullptr);
     ggml_log_set(llmSilentLogCb, nullptr);
+    // Headless / no Vulkan ICD (or user-disabled via ICMG_GGML_NO_VULKAN):
+    // skip backend init to avoid the ggml Vulkan device probe (vkCreateInstance)
+    // that surfaces as err126 and crashes on Win Server 2019 (known-issue
+    // #32877). Runner stays unloaded; available() reports false so callers skip
+    // the local-LLM path. Override the probe with ICMG_FORCE_VULKAN=1.
+    if (!localLlmBackendSafe()) {
+        impl_->last_err = "local LLM backend disabled: no Vulkan ICD on this host "
+                          "(headless/no-GPU). Set ICMG_FORCE_VULKAN=1 to override.";
+        return;
+    }
     llama_backend_init();
     impl_->backend_inited = true;
 }
@@ -89,6 +100,11 @@ bool LlamaRunner::load(const std::string& gguf_path,
                        const LlamaParams& p,
                        std::uint64_t model_min_mb) {
     if (!impl_) return false;
+    if (!impl_->backend_inited) {
+        impl_->last_err = "local LLM backend not initialized (no Vulkan ICD / "
+                          "headless host) — set ICMG_FORCE_VULKAN=1 to override";
+        return false;
+    }
     impl_->reset();
     impl_->last_err.clear();
 
