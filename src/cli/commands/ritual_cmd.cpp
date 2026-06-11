@@ -23,6 +23,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/rule_telemetry.hpp"
 #include "../ritual_gate.hpp"
 #include <cstdlib>
 #include <filesystem>
@@ -190,6 +191,9 @@ public:
             if (!v.owed) return 0;
             std::string miss;
             for (RitualStep s : v.missing) { if (!miss.empty()) miss += ", "; miss += ritualStepName(s); }
+            // Telemetry: record the block so `icmg discipline report` can show
+            // gate-firing counts (measure the discipline, not just enforce it).
+            core::RuleTelemetry::record("ritual-block", "", miss);
             // Stop-hook contract: decision:block forces the model to continue
             // and address the reason before the turn can end.
             std::cout <<

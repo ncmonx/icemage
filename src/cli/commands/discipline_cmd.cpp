@@ -13,6 +13,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/rule_telemetry.hpp"
 #include "../discipline_score.hpp"
 #include <filesystem>
 #include <fstream>
@@ -61,6 +62,7 @@ public:
             "  (no arg)        Print the scorecard (used/total, %, cold features)\n"
             "  log <sub>       Record a used subcommand (hook; deduped)\n"
             "  reset           Clear the session ledger (SessionStart)\n"
+            "  report          Capstone dashboard: coverage + gate-firing telemetry\n"
             "  inject          SessionStart additionalContext nudge when coverage is low\n\n"
             "Core features tracked: recall pack context graph store wflog verify\n"
             "zone run parallel fail memoir. Fed by the PostToolUse:Bash hook.\n";
@@ -85,6 +87,35 @@ public:
         }
 
         DisciplineScore s = scoreDiscipline(loadUsed());
+
+        if (action == "report") {
+            // Capstone: closes the loop — enforce (ritual/recall-gate) AND
+            // measure. Coverage + grade from the ledger; gate-firing counts
+            // from the shared rule-viol telemetry (recorded by the gates when
+            // they block/deny). Lets you SEE whether the model is improving:
+            // fewer blocks over time = the discipline is landing.
+            std::cout << "icmg discipline — session report\n"
+                      << "  coverage: " << s.pct << "% (" << s.used << "/" << s.total
+                      << ") — " << disciplineGrade(s.pct) << "\n";
+            if (!s.cold.empty()) {
+                std::cout << "  cold:     ";
+                for (const auto& c : s.cold) std::cout << c << " ";
+                std::cout << "\n";
+            }
+            // Gate-firing telemetry (the two positive-side hard gates).
+            auto rows = core::RuleTelemetry::topByCount(50);
+            bool anyGate = false;
+            std::cout << "  gate firings (session / all-time):\n";
+            for (const auto& r : rows) {
+                if (r.rule_id != "ritual-block" && r.rule_id != "recall-gate-deny") continue;
+                anyGate = true;
+                std::cout << "    " << r.rule_id << "  "
+                          << r.count_session << " / " << r.count_total << "\n";
+            }
+            if (!anyGate)
+                std::cout << "    (none yet — gates clean this session)\n";
+            return 0;
+        }
 
         if (action == "inject") {
             // Only nudge when coverage is meaningfully low (avoids noise once

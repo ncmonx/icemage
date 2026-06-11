@@ -22,6 +22,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/rule_telemetry.hpp"
 #include "../recall_gate.hpp"
 #include "../think_directive.hpp"
 #include <cstdlib>
@@ -108,6 +109,9 @@ public:
         if (action == "check") {
             if (std::getenv("ICMG_NO_RECALL_GATE")) return 0;
             if (!v.block) return 0;
+            // Telemetry: record the deny so `icmg discipline report` shows
+            // gate-firing counts over time.
+            core::RuleTelemetry::record("recall-gate-deny", "", "complex task, no recall this turn");
             // PreToolUse deny contract: deny + reason. The model recovers by
             // running `icmg pack "<task>"` (or recall) then retrying the edit.
             std::cout <<

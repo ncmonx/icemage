@@ -48,3 +48,14 @@ TEST("discipline: custom core list honored") {
     ASSERT_EQ(s.used, 2);
     ASSERT_EQ(s.pct, 50);
 }
+
+TEST("discipline: grade bands (strong/ok/thin/blind)") {
+    ASSERT_EQ(disciplineGrade(100), std::string("strong"));
+    ASSERT_EQ(disciplineGrade(75),  std::string("strong"));
+    ASSERT_EQ(disciplineGrade(74),  std::string("ok"));
+    ASSERT_EQ(disciplineGrade(50),  std::string("ok"));
+    ASSERT_EQ(disciplineGrade(49),  std::string("thin"));
+    ASSERT_EQ(disciplineGrade(25),  std::string("thin"));
+    ASSERT_EQ(disciplineGrade(24),  std::string("blind"));
+    ASSERT_EQ(disciplineGrade(0),   std::string("blind"));
+}

@@ -47,4 +47,14 @@ inline DisciplineScore scoreDiscipline(
     return s;
 }
 
+// Qualitative band for a coverage % — the one-word verdict shown by
+// `icmg discipline report`. Pure + testable (presentation logic stays out of
+// the scorer). Bands: strong >=75, ok >=50, thin >=25, blind <25.
+inline std::string disciplineGrade(int pct) {
+    if (pct >= 75) return "strong";
+    if (pct >= 50) return "ok";
+    if (pct >= 25) return "thin";
+    return "blind";
+}
+
 }  // namespace icmg::cli
