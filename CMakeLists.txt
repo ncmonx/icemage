@@ -733,6 +733,7 @@ add_icmg_test(test_encrypt_migration tests/core/test_encrypt_migration.cpp) # v1
 add_icmg_test(test_precompact_output tests/core/test_precompact_output.cpp) # v1.75.1 precompact schema
 add_icmg_test(test_zone_resolver tests/core/test_zone_resolver.cpp)
 add_icmg_test(test_csharp_symbols tests/graph/test_csharp_symbols.cpp)
+add_icmg_test(test_kotlin_swift_symbols tests/graph/test_kotlin_swift_symbols.cpp)  # regex symbol extractors 2026-06-11
 add_icmg_test(test_parallel tests/core/test_parallel.cpp)
 add_icmg_test(test_embedder tests/embed/test_embedder.cpp)
 add_icmg_test(test_graph_dedupe tests/graph/test_graph_dedupe.cpp)
