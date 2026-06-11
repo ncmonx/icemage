@@ -29,6 +29,7 @@
 #include "../sayless_migrate.hpp"
 #include <nlohmann/json.hpp>
 #include "../../core/hook_sanitize.hpp"
+#include "../../core/ide_settings.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -200,47 +201,59 @@ exec icmg hook pretooluse-read
 
 // Phase 51 T2: SessionStart hook injects sayless directive when flag present.
 static const char* SAYLESS_PROMPT_SH = R"BASH(#!/usr/bin/env bash
-# Auto-installed by `icmg init`. Toggle via `icmg sayless on/off`.
 set -uo pipefail
-# v1.66 per-project precedence: project OFF marker > project ON > global ON
-[[ -f ".icmg/sayless.off" ]] && exit 0
-gflag="${HOME:-$USERPROFILE}/.icmg/sayless.flag"
-if [[ -f ".icmg/sayless.flag" ]]; then flag=".icmg/sayless.flag"
-elif [[ -f "$gflag" ]]; then flag="$gflag"
-else exit 0; fi
-level=$(head -n1 "$flag" 2>/dev/null || echo ultra)
+# Split sayless: RESPONSE (sayless.flag) + THINKING (sayless-think.flag) are
+# INDEPENDENT toggles. Each precedence: project OFF > project ON > global ON.
+resolve() { # $1 = flag basename -> echo "on" when effective ON
+  local b="$1"
+  [[ -f ".icmg/${b}.off" ]] && return 0
+  if [[ -f ".icmg/${b}.flag" ]]; then echo on; return 0; fi
+  [[ -f "${HOME:-$USERPROFILE}/.icmg/${b}.flag" ]] && echo on
+}
+resp=$(resolve sayless)
+think=$(resolve sayless-think)
+[[ -z "$resp" && -z "$think" ]] && exit 0
 date -u "+%Y-%m-%dT%H:%M:%SZ" > "${HOME:-$USERPROFILE}/.icmg/sayless-last-trigger.txt" 2>/dev/null || true
-msg=$(printf '%s\n' "SAYLESS MODE ACTIVE - level: ${level}." \
-    "Respond terse. All technical substance stay. Only fluff die." \
-    "Drop articles, filler, pleasantries, hedging. Fragments OK." \
-    "Short synonyms. Technical terms exact. Code blocks unchanged." \
-    "Pattern: [thing] [action] [reason]. [next step]." \
-    "Code/commits/security/PRs: write normal." \
-    "" \
-    "THINKING PHASE rules (this is where verbose drift happens):" \
-    "- Apply sayless ultra to internal thinking section too." \
-    "- Internal reasoning: bullet fragments, no prose paragraphs." \
-    "- Cap thinking to 80 words. If approach is obvious, skip thinking entirely." \
-    "- No 'Let me check / Now I will / Looking at...' narration." \
-    "- Decision form: '[option] -> [outcome]. pick [winner].'" \
-    "- Repeating the question back inside thinking is forbidden." \
-    "" \
-    "Off only when user says 'stop sayless' or 'normal mode'.")
-# Phase 67 T32: prepend violation pressure if recent sayless thinking-phase
-# violations recorded. Escalates language at 2+ / 5+ violations in 24h.
-# Phase 70: also surface real session token total to model â€” encourages
-# self-throttling when token usage high.
-if command -v icmg >/dev/null 2>&1; then
-    pressure=$(icmg compliance inject 2>/dev/null)
-    tok_summary=$(icmg context-budget --json --top 0 2>/dev/null | icmg hookio get total_tokens 2>/dev/null)
-    if [[ -n "$tok_summary" && "$tok_summary" -gt 50000 ]]; then
-        # Convert to K for brevity.
-        k=$((tok_summary / 1000))
-        budget_msg="SESSION TOKEN USAGE: ${k}K so far. Apply compression. Use icmg context+--lines instead of full Read. Skip thinking when obvious."
-        msg="${budget_msg}"$'\n\n'"${msg}"
+
+msg=""
+if [[ -n "$resp" ]]; then
+    msg=$(printf '%s\n' "SAYLESS RESPONSE MODE - ultra." \
+        "Respond terse. All technical substance stay. Only fluff die." \
+        "Drop articles, filler, pleasantries, hedging. Fragments OK." \
+        "Short synonyms. Technical terms exact. Code blocks unchanged." \
+        "Pattern: [thing] [action] [reason]. [next step]." \
+        "Code/commits/security/PRs: write normal." \
+        "Off when user says 'stop sayless' or 'normal mode'.")
+fi
+if [[ -n "$think" ]]; then
+    tlevel=$(head -n1 ".icmg/sayless-think.flag" 2>/dev/null)
+    [[ -z "$tlevel" ]] && tlevel=$(head -n1 "${HOME:-$USERPROFILE}/.icmg/sayless-think.flag" 2>/dev/null)
+    [[ -z "$tlevel" ]] && tlevel=ultra
+    tmsg=$(printf '%s\n' "SAYLESS THINKING MODE - BRUTAL [level: ${tlevel}] (kill tokens in internal reasoning):" \
+        "- Symbols + abbrev only. No prose, no full sentences, no narration." \
+        "- Symbols: -> leads-to, = is, != not, & and, | or, w/ with, b/c because." \
+        "- Abbrev: fn var ret err cfg dep impl req ctx repo db idx ptr." \
+        "- Decision: 'X -> Y. pick Z.'  Problem: 'A bad b/c B. use C.'" \
+        "- No 'Let me / Now I / Looking at'. No restating the question." \
+        "- If approach obvious -> skip thinking entirely. Every token earns place." \
+        "- Like a human: think internally, need not verbalize every thought.")
+    if [[ "$tlevel" == "hyper" ]]; then
+        tmsg="${tmsg}"$'\n'"- HYPER: stack symbols, 1-3 words per line, drop recoverable subject/verb."
+    elif [[ "$tlevel" == "lite" ]]; then
+        tmsg="${tmsg}"$'\n'"- LITE: abbreviations + fragments OK, light prose allowed; symbols optional."
     fi
-    if [[ -n "$pressure" ]]; then
-        msg="${pressure}"$'\n\n'"${msg}"
+    if [[ -n "$msg" ]]; then msg="${msg}"$'\n\n'"${tmsg}"; else msg="$tmsg"; fi
+fi
+
+if command -v icmg >/dev/null 2>&1; then
+    tok=$(icmg context-budget --json --top 0 2>/dev/null | icmg hookio get total_tokens 2>/dev/null)
+    if [[ -n "$tok" && "$tok" -gt 50000 ]]; then
+        k=$((tok / 1000))
+        msg="SESSION TOKENS: ${k}K. Compress. icmg context+--lines not full Read. Skip thinking when obvious."$'\n\n'"${msg}"
+    fi
+    if [[ -n "$think" ]]; then
+        pressure=$(icmg compliance inject 2>/dev/null)
+        [[ -n "$pressure" ]] && msg="${pressure}"$'\n\n'"${msg}"
     fi
 fi
 printf '%s' "$msg" | icmg hookio emit SessionStart --ctx-stdin
@@ -250,7 +263,15 @@ printf '%s' "$msg" | icmg hookio emit SessionStart --ctx-stdin
 static const char* CAP_OUTPUT_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 INPUT=$(cat)
-out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
+# Ritual gate: record any icmg sync command (store/wflog/graph/zone/verify) so
+# the Stop-hook ritual gate can clear once the model completes the post-change sync.
+cmd=$(printf '%s' "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
+if [[ "$cmd" == icmg\ * ]]; then
+    read -r _ _rsub _rarg _ <<< "$cmd"
+    icmg ritual saw "$_rsub" "$_rarg" >/dev/null 2>&1 || true
+    icmg discipline log "$_rsub" >/dev/null 2>&1 || true
+    case "$_rsub" in recall|pack|context|cross-recall|wake-up) icmg recall-gate mark >/dev/null 2>&1 || true ;; esac
+fiout=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
 [[ -z "$out" ]] && out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.output 2>/dev/null)
 sz=${#out}
 CAP=${ICMG_CAP_BYTES:-8000}
@@ -358,11 +379,17 @@ fi
 # per call). Match short questions / explainers; inject no_think directive
 # via additionalContext. Opt-out: ICMG_NO_AUTO_THINK=1
 if [[ "${ICMG_NO_AUTO_THINK:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
-    plen=${#PROMPT}
-    if [[ $plen -lt 80 ]] || [[ "$PROMPT" =~ ^(what|why|how|where|when|kapan|apa|kenapa|siapa)[[:space:]] ]]; then
-        printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"[icmg] trivial prompt detected -> thinking budget suppressed for this turn (set ICMG_NO_AUTO_THINK=1 to disable)"}}' 2>/dev/null
+    # Single source of truth: classifyIntent via `icmg think-gate` (unit-tested
+    # SIMPLE/COMPLEX keywords), not a duplicate bash regex. Emits the
+    # skip-thinking hint JSON iff the prompt classifies as simple.
+    if command -v icmg >/dev/null 2>&1; then
+        _H=$(icmg think-gate --hint "$PROMPT" 2>/dev/null)
+        [[ -n "$_H" ]] && printf '%s' "$_H"
     fi
 fi
+
+# Pre-task recall gate: arm per-turn marker (complex classification + reset recalled).
+[[ "${ICMG_NO_RECALL_GATE:-0}" = "1" ]] || icmg recall-gate arm --task "$PROMPT" >/dev/null 2>&1 || true
 
 # v1.30.0: sayless-auto for long-prose prompts (>800 chars typical
 # explainer/spec). Inject sayless ultra hint so reply is compressed.
@@ -718,6 +745,7 @@ static const char* GRAPH_UPDATE_SH = R"BASH(#!/usr/bin/env bash
 command -v icmg >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
 printf '%s' "$INPUT" | icmg hook posttooluse-edit 2>/dev/null || true
+[[ "${ICMG_NO_RITUAL_GATE:-0}" = "1" ]] || icmg ritual touch >/dev/null 2>&1 || true
 exit 0
 )BASH";
 
@@ -735,6 +763,7 @@ icmg popup-killer ensure >/dev/null 2>&1 || true
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
+icmg discipline reset >/dev/null 2>&1 || true
 # C2: reset cross-turn near-dup window so a fresh session starts un-suppressed.
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-injected-slices.txt" 2>/dev/null || true
 HOT=$(icmg context-node match "" --tier hot --top 5 --fmt plain 2>/dev/null)
@@ -1640,6 +1669,32 @@ private:
                 } catch (...) { /* best-effort */ }
             }
         }
+        // IDE terminal: disable file-link validation so VSCode/Cursor don't
+        // probe drive-letter tokens (e.g. "b:/...") printed in tool output -- a
+        // dead/disconnected B: drive raises a modal "cannot find the drive"
+        // popup on every probe. Opt-out: ICMG_NO_IDE_LINKFIX. Never clobbers an
+        // existing user value. See known-issue #33001.
+        if (!std::getenv("ICMG_NO_IDE_LINKFIX")) {
+            try {
+                fs::path vsdir = root / ".vscode";
+                fs::path vs    = vsdir / "settings.json";
+                std::error_code _vsec;
+                nlohmann::json vcfg = nlohmann::json::object();
+                bool ok = true;
+                if (fs::exists(vs, _vsec)) {
+                    std::ifstream vf(vs);
+                    std::string vbody((std::istreambuf_iterator<char>(vf)), std::istreambuf_iterator<char>());
+                    vf.close();
+                    vcfg = nlohmann::json::parse(vbody, nullptr, false);
+                    if (vcfg.is_discarded()) ok = false;  // malformed user file -- leave it alone
+                }
+                if (ok && core::ensureTerminalFileLinksOff(vcfg)) {
+                    fs::create_directories(vsdir, _vsec);
+                    std::ofstream vo(vs); vo << vcfg.dump(2) << "\n";
+                    std::cout << "  + .vscode/settings.json enableFileLinks=off (stops B:/ drive-link popup; opt-out ICMG_NO_IDE_LINKFIX)\n";
+                }
+            } catch (...) { /* best-effort */ }
+        }
         // v1.78.1: caveman -> sayless migration. Auto-rename old flag files
         // + remove stale caveman hook script (idempotent; no-op if nothing to do).
         {
@@ -1768,6 +1823,15 @@ private:
                      {"timeout", 3},
                      {"command",
                         std::string("bash -c '[ -f .claude/hooks/icmg-compressed-write.sh ] && bash .claude/hooks/icmg-compressed-write.sh || exit 0'")}}
+                })}
+            },
+            {
+                {"matcher", "Edit|Write"},
+                {"hooks",   json::array({
+                    {{"type", "command"},
+                     {"timeout", 5},
+                     {"command",
+                        "command -v icmg >/dev/null 2>&1 || exit 0; icmg recall-gate check 2>/dev/null || exit 0"}}
                 })}
             },
             {
@@ -2041,7 +2105,10 @@ private:
                      {"command", "command -v icmg >/dev/null 2>&1 || exit 0; [ -n \"$ICMG_NO_COMPACT_ADVISE\" ] && exit 0; FILL=$(icmg context-budget --percent 2>/dev/null | tr -dc '0-9' | head -c 3); [ -z \"$FILL\" ] && exit 0; MSG=$(icmg govern advise --fill \"$FILL\" 2>/dev/null); [ -z \"$MSG\" ] && exit 0; printf '%s' \"$MSG\" | icmg hookio emit Stop --ctx-stdin"}},
                     {{"type", "command"},
                      {"timeout", 10},
-                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; icmg prompt-capture 2>/dev/null || exit 0"}}
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; icmg prompt-capture 2>/dev/null || exit 0"}},
+                    {{"type", "command"},
+                     {"timeout", 10},
+                     {"command", "command -v icmg >/dev/null 2>&1 || exit 0; icmg ritual gate 2>/dev/null || exit 0"}}
                 })}
             }
         });

@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/ncmonx/icemage)](https://github.com/ncmonx/icemage/releases)
 [![downloads](https://img.shields.io/github/downloads/ncmonx/icemage/total)](https://github.com/ncmonx/icemage/releases)
 [![last-commit](https://img.shields.io/github/last-commit/ncmonx/icemage)](https://github.com/ncmonx/icemage/commits/main)
-[![tests](https://img.shields.io/badge/tests-1673%2F1673%20passing-brightgreen)](#)
+[![tests](https://img.shields.io/badge/tests-1706%2F1706%20passing-brightgreen)](#)
 [![mcp tools](https://img.shields.io/badge/MCP%20tools-41-blueviolet)](#)
 [![commands](https://img.shields.io/badge/CLI%20commands-95%2B-blue)](#)
 [![license](https://img.shields.io/badge/license-Elastic--2.0-blue.svg)](LICENSE)
@@ -20,6 +20,11 @@
 A single binary that makes Claude Code, Cursor, and every other AI coding assistant **70–90% cheaper** to run — without dumbing them down.
 
 If you've ever watched 30K tokens evaporate on a single file read, paid for "thinking" you didn't need, or re-explained the same project context after `/clear` for the fifth time today — this is for you.
+
+<p align="center">
+  <!-- 30-second demo. Regenerate: `vhs assets/demo.tape` (see assets/demo.tape header), commit assets/demo.gif, then uncomment the <img> below. -->
+  <!-- <img src="assets/demo.gif" alt="icmg in action — savings, one-shot find, slim context" width="760"/> -->
+</p>
 
 ---
 
@@ -79,24 +84,44 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## ✨ What's new
 
+- **v2.2.0** - **The discipline trilogy — positive-side enforcement that makes the model use the toolkit, not just avoid native calls.** icmg's enforcement was all defensive (block raw `Read`/`grep`, redirect to icmg); this adds the missing positive half — three gates that surround a work cycle, all auto-wired by `icmg init`, each with an opt-out env. `icmg recall-gate` (PRE-task) denies the first `Edit`/`Write` of a *complex* task until an `icmg recall`/`pack` has run this turn, killing the "edit a subsystem blind" anti-pattern — simple one-liners never block. `icmg ritual` (POST-change) is a Stop-hook gate that emits a hard `decision:block` when you've edited code but skipped the post-change sync (`store` + `wflog`), so the project memory never silently goes stale — replacing a soft reminder the model could ignore. `icmg discipline` (VISIBILITY) is a per-session feature-coverage scorecard, and `icmg discipline report` closes the loop by pairing coverage with gate-firing telemetry (reusing the existing rule-viol store) so you can *see* the discipline working — fewer blocks over time means it's landing. Full automated suite passes (1706 checks).
 - **v2.1.0** - **One-turn code search, a visible context budget, one-line install, and 6 more languages.** `icmg find "<intent>"` is a one-shot multi-file semantic search — IDF-ranked so an exact identifier beats common words — returning just the relevant line windows from the right files and collapsing a Read→Grep→Read chain into a single turn. `icmg statusline` (auto-wired by `icmg init`) puts the per-model-honest context budget in Claude Code's status bar every turn — the invisible token cost made visible. `icmg bench savings` measures the reduction on YOUR repo, reproducibly (e.g. ~46% fewer tokens to read a ~1000-file tree via `icmg context` vs raw reads). One-line installers (`scripts/install.sh` / `install.ps1`) fetch, checksum-verify, and install the latest release — no build step. Six new graph languages — Ruby, Swift, Kotlin (now dedicated; was mis-mapped to Java), Scala, Lua, Dart — bring first-class import/symbol extraction to 14 languages. Plus a cleanup for a stale Python PreCompact hook that spammed `python3: command not found` on Python-less servers. Full automated suite passes (1673 checks).
 - **v2.0.15** - **Token-efficiency leap + the Windows Server 2019 crypto crash fixed at the root.** Less re-reading, honest budgets, denser commands. New `icmg context <file> --for "<intent>"` returns only the lines relevant to an intent — each line is scored against the intent terms, windows are built around the hits, merged, and the top windows emitted with line numbers — so you get ~30 relevant lines instead of ~500, with no `--lines A-B` guessing. A read-dedup stub: re-reading an unchanged file (a context **cache hit** — the key already includes the file's mtime+size, so any edit misses the cache) now emits a compact "already shown this session" stub instead of re-dumping the body (~97% saved on the re-read; `--full` or `ICMG_NO_DEDUP_STUB` re-emits in full). A pre-exec command densifier in `icmg run` rewrites noisy commands to emit less *before* the output filter even runs (`git status → --porcelain=v2 --branch`, `pytest → -q --tb=line`, `tsc → --pretty false`, `pip list → --format=freeze`, …) — pure, idempotent, and guarded against shell composition and flags you set yourself. The context-budget meter and `icmg savings` are now per-model honest: a model context-window registry (`opus-4`/`gemini` 1M, `gpt-4o`/`deepseek` 128K, default a safe 200K) replaces a hardcoded 1M that lied on smaller windows, and a pricing registry replaces a hardcoded Sonnet rate that understated Opus cost ~5×. And the **root** of the headless Windows Server 2019 `err126` crash is fixed: SQLCipher's encrypted writes drew randomness through a legacy CryptoAPI module that isn't installed on Server Core — `icmg` now routes OpenSSL's RNG onto `BCryptGenRandom` (self-contained, always present) so `icmg context` / `graph update` run fully instead of degrading. Full automated suite passes (1657 checks).
 - **v2.0.14** - **Windows-Server crypto-crash resilience, self-diagnosing module errors, and a command "you-are-here" map.** On hosts where a runtime crypto module is absent (a Windows Server SKU where SQLCipher's write-side crypto lazily loads a DLL that isn't there → `err126 "specified module could not be found"`), `icmg context` no longer crashes — it degrades to emitting the raw file so the caller keeps read access, and the graph scanner skips an un-writable node instead of crashing or hanging. Errors now diagnose themselves: an `err126` crash prints the last successfully-loaded DLL plus an actionable hint, `ICMG_TRACE_DLL=1` streams the full load order, and a new `icmg doctor --deps` walks each bundled DLL's PE import table (static **and** delay) to name any module that won't resolve on this machine — no Process Monitor or admin required. New navigation: `icmg map <cmd>` shows a command's related neighbors (derived from the live registry, so it never rots), every command's `--help` ends with a `related:` footer, and `icmg doctor` flags accidental near-duplicate commands. Housekeeping: the rich diagnose-and-auto-fix `doctor` is now canonical (a duplicate registration had been shadowing it), the quick DB/schema probe moved to `icmg db-check`, and doctor's bundled-DLL check matches the real shipped set. Full automated suite passes (1633 checks).
 - **v2.0.13** - **Audit-grade read-only enforcement, a no-bypass escape hatch, and a service-process bloat fix.** A new `icmg strict audit` read-only mode for token-frugal audits: native full-file `Read` is hard-denied and redirected to `icmg context` (~80% fewer tokens) while targeted slices stay allowed, and browser-automation MCP tools (puppeteer/playwright) are denied at PreToolUse because their DOM/screenshot payloads bypass the command filter entirely — safe because an audit never edits (hard-denying `Read` otherwise breaks Claude Code's Read-before-Edit contract). `RAW=1` no longer bypasses pure read/search verbs (`cat`/`grep`/`sed`/…) — those always have an icmg equivalent, so the bypass is denied with an escalating hourly cooldown cap, stopping the escape hatch from becoming a habitual token leak. And a singleton-guard fix: the `icmg service` background process used a `Global\` named mutex that requires elevation, so on a normal session it failed open and the per-prompt autostart spawned dozens of duplicate services (DB-lock contention that hung `graph update`, a dead-drive popup storm, pipe collisions) — the guard now uses the `Local\` namespace and holds without elevation. Full automated suite passes (1600 checks).
-- **v2.0.12** - **Frictionless capture, unread-aware messaging, one-shot session resume, and zero-LLM event memory.** Four small high-leverage tools. `icmg store --quick "<msg>"` drops a note with no topic (an auto `quick:<epoch>` is assigned) for friction-free capture mid-task. `icmg msg check` peeks unread cross-session messages since a persisted cursor that auto-advances, so you never pass `--since` by hand. `icmg wake-up --resume` appends persona identity and recent moments to the session briefing, re-hydrating continuity in one command. And `icmg auto-extract` is a Layer-0, zero-LLM memory capture for tool events: a successful `git commit` becomes a workflow-log note, a failing build's error becomes a known-issue candidate, everything else is skipped silently — enriched with rule-based entity extraction (URLs, IPs, env vars, @mentions) so a captured event is searchable by what it referenced, all without a model call. Full automated suite passes (1593 checks).
 
 ## 🚀 Quick start
 
-1. **Download** the latest installer from the [Releases page](https://github.com/ncmonx/icemage/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux.
-2. **Extract** the archive into any folder of your choice.
-3. **Add the folder to your `PATH`** so the `icmg` command is available everywhere.
-4. **Open your project** in a terminal and run:
+**One line — Linux / macOS:**
 
-   ```text
-   icmg init
-   ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/ncmonx/icemage/main/scripts/install.sh | sh
+```
 
-   That's it. The next time you launch Claude Code (or Cursor / Cline / Windsurf — see below), Icemage will quietly start trimming tokens.
+**One line — Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/ncmonx/icemage/main/scripts/install.ps1 | iex
+```
+
+The installer grabs the latest release, verifies its SHA-256, and drops `icmg` into your bin dir (`~/.local/bin` on Linux/macOS, `%USERPROFILE%\bin` on Windows). Pin a version with `ICMG_VERSION=2.1.0`, or change where it lands with `ICMG_BIN_DIR`.
+
+<details>
+<summary>Prefer a manual download?</summary>
+
+1. **Download** the latest archive from the [Releases page](https://github.com/ncmonx/icemage/releases) — `icmg-<version>-win-x64.zip` for Windows, `icmg-<version>-linux-x64.tar.gz` for Linux, `icmg-<version>-macos-arm64.tar.gz` for macOS.
+2. **Extract** it into any folder.
+3. **Add that folder to your `PATH`** so `icmg` is available everywhere.
+
+</details>
+
+Then, in your project terminal:
+
+```text
+icmg init
+```
+
+That's it. The next time you launch Claude Code (or Cursor / Cline / Windsurf — see below), Icemage will quietly start trimming tokens.
 
 ---
 

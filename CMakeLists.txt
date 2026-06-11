@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.1.0 LANGUAGES CXX C)
+project(icmg VERSION 2.2.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -456,7 +456,7 @@ if(ICMG_USE_TREESITTER)
         # v1.27.0 Phase 3: tree-sitter-vue/html/svelte grammars (vendored in-tree).
         # tag.h scanner needs `tree_sitter/array.h` from runtime lib/src dir.
         set(_TS_RUNTIME_SRC ${TS_RUNTIME_DIR}/lib/src)
-        foreach(_TS_LANG vue html svelte go rust java cpp)
+        foreach(_TS_LANG vue html svelte go rust java cpp lua dart)
             set(_TS_DIR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-${_TS_LANG}/src)
             if(EXISTS ${_TS_DIR}/parser.c)
                 set(_TS_SRC ${_TS_DIR}/parser.c)
@@ -890,6 +890,9 @@ add_icmg_test(test_warm_loop_integration tests/llm/test_warm_loop_integration.cp
 add_icmg_test(test_router                tests/cli/test_router.cpp)               # v1.53.0 TDD
 add_icmg_test(test_confidence            tests/cli/test_confidence.cpp)           # v1.61 F10
 add_icmg_test(test_sayless_resolve       tests/cli/test_sayless_resolve.cpp)      # v1.78.1 (renamed from test_caveman_resolve v1.66)
+add_icmg_test(test_ritual_gate            tests/cli/test_ritual_gate.cpp)         # ritual gate (post-change 5-sync enforcement) 2026-06-11
+add_icmg_test(test_discipline_score       tests/cli/test_discipline_score.cpp)    # feature-coverage scorecard 2026-06-11
+add_icmg_test(test_recall_gate            tests/cli/test_recall_gate.cpp)         # pre-task recall gate 2026-06-11
 add_icmg_test(test_sayless_migration     tests/cli/test_sayless_migration.cpp)    # v1.78.1
 add_icmg_test(test_gist                  tests/cli/test_gist.cpp)                 # v1.63 F12
 add_icmg_test(test_mine                  tests/cli/test_mine.cpp)                 # v1.63 F8
