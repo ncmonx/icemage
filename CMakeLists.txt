@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.2.0 LANGUAGES CXX C)
+project(icmg VERSION 2.3.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -733,6 +733,9 @@ add_icmg_test(test_encrypt_migration tests/core/test_encrypt_migration.cpp) # v1
 add_icmg_test(test_precompact_output tests/core/test_precompact_output.cpp) # v1.75.1 precompact schema
 add_icmg_test(test_zone_resolver tests/core/test_zone_resolver.cpp)
 add_icmg_test(test_csharp_symbols tests/graph/test_csharp_symbols.cpp)
+add_icmg_test(test_kotlin_swift_symbols tests/graph/test_kotlin_swift_symbols.cpp)  # regex symbol extractors 2026-06-11
+add_icmg_test(test_ruby_scala_symbols   tests/graph/test_ruby_scala_symbols.cpp)    # regex symbol extractors 2026-06-11
+add_icmg_test(test_whereami             tests/cli/test_whereami.cpp)                # whereami ground-truth 2026-06-11
 add_icmg_test(test_parallel tests/core/test_parallel.cpp)
 add_icmg_test(test_embedder tests/embed/test_embedder.cpp)
 add_icmg_test(test_graph_dedupe tests/graph/test_graph_dedupe.cpp)
