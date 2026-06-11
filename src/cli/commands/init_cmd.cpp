@@ -270,6 +270,7 @@ if [[ "$cmd" == icmg\ * ]]; then
     read -r _ _rsub _rarg _ <<< "$cmd"
     icmg ritual saw "$_rsub" "$_rarg" >/dev/null 2>&1 || true
     icmg discipline log "$_rsub" >/dev/null 2>&1 || true
+    case "$_rsub" in recall|pack|context|cross-recall|wake-up) icmg recall-gate mark >/dev/null 2>&1 || true ;; esac
 fiout=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
 [[ -z "$out" ]] && out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.output 2>/dev/null)
 sz=${#out}
@@ -386,6 +387,9 @@ if [[ "${ICMG_NO_AUTO_THINK:-0}" != "1" ]] && [[ -n "${PROMPT:-}" ]]; then
         [[ -n "$_H" ]] && printf '%s' "$_H"
     fi
 fi
+
+# Pre-task recall gate: arm per-turn marker (complex classification + reset recalled).
+[[ "${ICMG_NO_RECALL_GATE:-0}" = "1" ]] || icmg recall-gate arm --task "$PROMPT" >/dev/null 2>&1 || true
 
 # v1.30.0: sayless-auto for long-prose prompts (>800 chars typical
 # explainer/spec). Inject sayless ultra hint so reply is compressed.
@@ -1819,6 +1823,15 @@ private:
                      {"timeout", 3},
                      {"command",
                         std::string("bash -c '[ -f .claude/hooks/icmg-compressed-write.sh ] && bash .claude/hooks/icmg-compressed-write.sh || exit 0'")}}
+                })}
+            },
+            {
+                {"matcher", "Edit|Write"},
+                {"hooks",   json::array({
+                    {{"type", "command"},
+                     {"timeout", 5},
+                     {"command",
+                        "command -v icmg >/dev/null 2>&1 || exit 0; icmg recall-gate check 2>/dev/null || exit 0"}}
                 })}
             },
             {
