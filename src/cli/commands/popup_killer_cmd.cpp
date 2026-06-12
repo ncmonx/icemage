@@ -52,6 +52,29 @@ namespace {
 std::atomic<bool> g_stop{false};
 std::atomic<int>  g_dismissed{0};
 
+// DIAGNOSTIC (2026-06-12): log the matched dialog's owner process + full text
+// before dismissing. The body usually names the exact drive/path being probed
+// (e.g. "...drive B:\..."), which reveals the elusive source of the popup.
+void logDialogDetail(HWND hwnd) {
+    char title[128] = {0}; GetWindowTextA(hwnd, title, sizeof(title) - 1);
+    std::string body;
+    EnumChildWindows(hwnd, [](HWND c, LPARAM lp) -> BOOL {
+        char b[256] = {0};
+        if (GetWindowTextA(c, b, sizeof(b) - 1) > 0) {
+            auto* s = reinterpret_cast<std::string*>(lp); *s += b; *s += " | ";
+        }
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&body));
+    DWORD pid = 0; GetWindowThreadProcessId(hwnd, &pid);
+    char pname[MAX_PATH] = "?";
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (h) { DWORD n = MAX_PATH; QueryFullProcessImageNameA(h, 0, pname, &n); CloseHandle(h); }
+    std::error_code ec; fs::create_directories(core::icmgGlobalDir(), ec);
+    std::ofstream f(fs::path(core::icmgGlobalDir()) / "popup-killer.log", std::ios::app);
+    if (f) f << "DIALOG pid=" << pid << " proc=" << pname
+             << " title=[" << title << "] body=[" << body << "]\n";
+}
+
 // Test window for drive-not-found signature.
 // Heuristics (any-of):
 //   1. Title matches "[A-Z]:" exactly (e.g. "B:/", "B:\")
@@ -81,7 +104,8 @@ bool isDriveNotFoundDialog(HWND hwnd) {
 BOOL CALLBACK enumProc(HWND hwnd, LPARAM /*lparam*/) {
     if (!IsWindowVisible(hwnd)) return TRUE;
     if (!isDriveNotFoundDialog(hwnd)) return TRUE;
-    // Found one — dismiss invisibly.
+    // Found one — log its source then dismiss invisibly.
+    logDialogDetail(hwnd);
     PostMessageA(hwnd, WM_CLOSE, 0, 0);
     g_dismissed.fetch_add(1);
     return TRUE;
@@ -104,6 +128,7 @@ void CALLBACK winEventProc(HWINEVENTHOOK, DWORD /*event*/, HWND hwnd,
     if (GetClassNameA(hwnd, cls, sizeof(cls) - 1) <= 0) return;
     if (std::strcmp(cls, "#32770") != 0) return;   // system dialogs only
     if (isDriveNotFoundDialog(hwnd)) {
+        logDialogDetail(hwnd);
         PostMessageA(hwnd, WM_CLOSE, 0, 0);
         g_dismissed.fetch_add(1);
     }

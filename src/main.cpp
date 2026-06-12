@@ -151,6 +151,16 @@ int main(int argc, char* argv[]) {
     // suppresses the "file not found" UI.
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
 
+    // B:/ "insert disk" popup ROOT FIX (2026-06-12): under git-bash/MSYS, the
+    // path-converter rewrites cmd.exe flags that look like POSIX paths into drive
+    // paths (/c -> C:\, and crucially /B -> B:\). When icmg spawns a subprocess
+    // wrapped in cmd.exe, an unconvertible drive (B:) makes cmd.exe raise the
+    // modal "B:/ cannot find drive" dialog on EVERY spawn (regression since the
+    // subprocess-spawning grew ~v0.50). Disabling MSYS path/arg conversion in
+    // icmg's environment propagates to every child shell, so flags pass verbatim.
+    SetEnvironmentVariableA("MSYS_NO_PATHCONV", "1");
+    SetEnvironmentVariableA("MSYS2_ARG_CONV_EXCL", "*");
+
     // Loader tracer: remember the last DLL loaded (+ ICMG_TRACE_DLL=1 streams all)
     // so an err126 crash can name the subsystem that was initializing. Catches
     // runtime LoadLibrary-by-name modules invisible to the PE import walk.
