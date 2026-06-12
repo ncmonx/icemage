@@ -27,7 +27,7 @@ TEST("rankByTemporal: recent file outranks older one of equal centrality") {
     GraphNode a; a.id=1; a.kind="file"; a.path="recent.cpp"; a.updated_at=NOW-1*DAY;
     GraphNode b; b.id=2; b.kind="file"; b.path="old.cpp";    b.updated_at=NOW-100*DAY;
     nodes={a,b};
-    std::map<int64_t,int> deg{{1,5},{2,5}};
+    std::map<int64_t,double> deg{{1,5.0},{2,5.0}};
     auto r = rankByTemporal(nodes, deg, NOW, 14*DAY);
     ASSERT_EQ((int)r.size(), 2);
     ASSERT_EQ((int)r[0].id, 1);   // recent first
@@ -41,6 +41,16 @@ TEST("rankByTemporal: skips symbol nodes") {
     ASSERT_EQ((int)r.size(), 0);
 }
 
+TEST("rankByTemporal: higher centrality outranks lower at equal recency") {
+    std::vector<GraphNode> nodes;
+    GraphNode a; a.id=1; a.kind="file"; a.path="hub.cpp";  a.updated_at=NOW-5*DAY;
+    GraphNode b; b.id=2; b.kind="file"; b.path="leaf.cpp"; b.updated_at=NOW-5*DAY;
+    nodes={a,b};
+    std::map<int64_t,double> score{{1,0.40},{2,0.05}};
+    auto r = rankByTemporal(nodes, score, NOW, 14*DAY);
+    ASSERT_EQ((int)r.size(), 2);
+    ASSERT_EQ((int)r[0].id, 1);   // higher PageRank centrality first at equal recency
+}
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

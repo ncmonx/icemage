@@ -1,22 +1,26 @@
 #pragma once
-// v2.0.0 externals (Ultra Compression / repo-compact): build a token-budgeted repo
-// skeleton — most-connected files first, each followed by its symbol signatures.
-// Pure + header-only (no DB) so it is unit-testable; centrality is injected.
+// v2.0.0 repo skeleton: rank files by graph centrality, emit a budgeted
+// signature outline. Pure + header-only (no DB) so it is unit-testable;
+// centrality is injected. PageRank upgrade (2026-06-12): the injected score is a
+// double (PageRank from graph_centrality.hpp) instead of integer degree, so
+// transitive/confidence-weighted importance drives the ordering. Any
+// descending-by-value id->score map works.
 #include "graph_node.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <string>
 #include <vector>
 
 namespace icmg::graph {
 
-// `deg` = degreeCentrality(nodes, edges) (see graph_report.hpp). Files are ranked
-// by centrality desc; each emits its child symbol signatures, accumulating until
-// the char budget is hit. The single top file is always included (never empty-out
-// when there is input).
+// `score` = pageRank(nodes, edges) (see graph_centrality.hpp) -- or any
+// id->importance map. Files are ranked by score desc; each emits its child
+// symbol signatures, accumulating until the char budget is hit. The single top
+// file is always included (never empty-out when there is input).
 inline std::string buildRepoSkeleton(const std::vector<GraphNode>& nodes,
-                                     const std::map<int64_t,int>& deg,
+                                     const std::map<int64_t,double>& score,
                                      size_t budgetChars) {
     std::vector<const GraphNode*> files;
     std::map<int64_t, std::vector<const GraphNode*>> kids;
@@ -26,12 +30,12 @@ inline std::string buildRepoSkeleton(const std::vector<GraphNode>& nodes,
     }
     if (files.empty()) return "";
 
-    auto degOf = [&](int64_t id) {
-        auto it = deg.find(id);
-        return it == deg.end() ? 0 : it->second;
+    auto scoreOf = [&](int64_t id) {
+        auto it = score.find(id);
+        return it == score.end() ? 0.0 : it->second;
     };
     std::sort(files.begin(), files.end(), [&](const GraphNode* a, const GraphNode* b) {
-        int da = degOf(a->id), db = degOf(b->id);
+        double da = scoreOf(a->id), db = scoreOf(b->id);
         if (da != db) return da > db;          // higher centrality first
         return a->path < b->path;              // stable tie-break
     });
@@ -39,7 +43,9 @@ inline std::string buildRepoSkeleton(const std::vector<GraphNode>& nodes,
     std::string out;
     bool first = true;
     for (const auto* f : files) {
-        std::string block = f->path + " [deg=" + std::to_string(degOf(f->id)) + "]\n";
+        // [pr=N] = PageRank centrality scaled to an integer for readability.
+        long long pr = std::llround(scoreOf(f->id) * 10000.0);
+        std::string block = f->path + " [pr=" + std::to_string(pr) + "]\n";
         auto kit = kids.find(f->id);
         if (kit != kids.end()) {
             for (const auto* k : kit->second) {

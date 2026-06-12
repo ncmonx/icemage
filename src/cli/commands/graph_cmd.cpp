@@ -9,6 +9,7 @@
 #include "../../core/trace_parse.hpp"     // v2.0.0 TE3 (runtime edges)
 #include "../../graph/repo_skeleton.hpp"  // v2.0.0 externals (repo-compact)
 #include "../../graph/temporal.hpp"       // v2.0.0 externals (temporal KG)
+#include "../../graph/graph_centrality.hpp" // PageRank (2026-06-12)
 #include <ctime>
 #include <fstream>
 #include "../../graph/scanner.hpp"
@@ -579,8 +580,8 @@ public:
             auto ef = store.edgesFrom(n.id);
             edges.insert(edges.end(), ef.begin(), ef.end());
         }
-        auto deg = graph::degreeCentrality(nodes, edges);
-        std::cout << graph::buildRepoSkeleton(nodes, deg, budget);
+        auto score = graph::pageRank(nodes, edges);
+        std::cout << graph::buildRepoSkeleton(nodes, score, budget);
         return 0;
     }
 };
@@ -603,8 +604,8 @@ public:
         if (nodes.empty()) { std::cout << "graph recent: empty graph.\n"; return 0; }
         std::vector<graph::GraphEdge> edges;
         for (const auto& n : nodes) { auto ef = store.edgesFrom(n.id); edges.insert(edges.end(), ef.begin(), ef.end()); }
-        auto deg = graph::degreeCentrality(nodes, edges);
-        auto ranked = graph::rankByTemporal(nodes, deg, (int64_t)std::time(nullptr),
+        auto score = graph::pageRank(nodes, edges);
+        auto ranked = graph::rankByTemporal(nodes, score, (int64_t)std::time(nullptr),
                                             (int64_t)halflife_days * 86400);
         std::map<int64_t,std::string> path;
         for (const auto& n : nodes) path[n.id] = n.path;

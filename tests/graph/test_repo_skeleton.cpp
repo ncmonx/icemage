@@ -26,7 +26,7 @@ GraphNode sym(int64_t id, int64_t parent, const std::string& path,
 
 TEST("repo skeleton: most-connected file emitted first") {
     std::vector<GraphNode> nodes{ file(1,"core.cpp"), file(2,"util.cpp") };
-    std::map<int64_t,int> deg{ {1, 9}, {2, 1} };
+    std::map<int64_t,double> deg{ {1, 9}, {2, 1} };
     auto s = buildRepoSkeleton(nodes, deg, 1000);
     auto pc = s.find("core.cpp");
     auto pu = s.find("util.cpp");
@@ -39,7 +39,7 @@ TEST("repo skeleton: includes child symbol signatures") {
         file(1,"core.cpp"),
         sym(2,1,"core.cpp","doWork","void doWork(int)"),
     };
-    std::map<int64_t,int> deg{ {1,5} };
+    std::map<int64_t,double> deg{ {1,5} };
     auto s = buildRepoSkeleton(nodes, deg, 1000);
     ASSERT_CONTAINS(s, std::string("core.cpp"));
     ASSERT_CONTAINS(s, std::string("doWork"));
@@ -47,10 +47,10 @@ TEST("repo skeleton: includes child symbol signatures") {
 
 TEST("repo skeleton: respects byte budget") {
     std::vector<GraphNode> nodes;
-    std::map<int64_t,int> deg;
+    std::map<int64_t,double> deg;
     for (int64_t i = 1; i <= 50; ++i) {
         nodes.push_back(file(i, "file" + std::to_string(i) + ".cpp"));
-        deg[i] = (int)(50 - i);
+        deg[i] = (double)(50 - i);
     }
     auto s = buildRepoSkeleton(nodes, deg, 200);
     ASSERT_TRUE(s.size() <= 260);   // budget + small overrun for the always-included top
@@ -58,7 +58,7 @@ TEST("repo skeleton: respects byte budget") {
 
 TEST("repo skeleton: empty -> empty") {
     std::vector<GraphNode> nodes;
-    std::map<int64_t,int> deg;
+    std::map<int64_t,double> deg;
     ASSERT_EQ(buildRepoSkeleton(nodes, deg, 100), std::string(""));
 }
 
