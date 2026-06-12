@@ -87,6 +87,27 @@ TEST("parseArgv: backslash Windows path with spaces stays one token") {
 }
 
 
+// ---- hasShellOperators (shell-vs-argv routing) ----------------------------
+
+TEST("hasShellOperators: unquoted pipe/redirect/and/semicolon/subshell -> true") {
+    using icmg::tkil::hasShellOperators;
+    ASSERT_TRUE(hasShellOperators("ls src/ | grep x"));
+    ASSERT_TRUE(hasShellOperators("a && b"));
+    ASSERT_TRUE(hasShellOperators("a || b"));
+    ASSERT_TRUE(hasShellOperators("cmd > out.txt"));
+    ASSERT_TRUE(hasShellOperators("cat < in.txt"));
+    ASSERT_TRUE(hasShellOperators("a ; b"));
+    ASSERT_TRUE(hasShellOperators("echo $(date)"));
+    ASSERT_TRUE(hasShellOperators("echo `date`"));
+}
+
+TEST("hasShellOperators: quoted operators are literal -> false") {
+    using icmg::tkil::hasShellOperators;
+    ASSERT_FALSE(hasShellOperators("grep 'a|b' file"));
+    ASSERT_FALSE(hasShellOperators("echo \"x && y\""));
+    ASSERT_FALSE(hasShellOperators("ls -la src"));
+    ASSERT_FALSE(hasShellOperators("git commit -m 'fix; done'"));
+}
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
