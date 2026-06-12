@@ -91,6 +91,24 @@ void scanOnce() {
     EnumWindows(enumProc, 0);
 }
 
+// Event-driven instant dismiss: fires the moment a dialog is shown, so the
+// drive-not-found popup is closed before it paints a visible frame (the 100ms
+// poll alone left a perceptible flash -- a health concern for some users).
+// Cheap pre-filter on class #32770 (system dialog) keeps this fast even though
+// the hook sees every window-show system-wide.
+void CALLBACK winEventProc(HWINEVENTHOOK, DWORD /*event*/, HWND hwnd,
+                           LONG idObject, LONG /*idChild*/,
+                           DWORD /*thread*/, DWORD /*time*/) {
+    if (!hwnd || idObject != OBJID_WINDOW) return;
+    char cls[16] = {0};
+    if (GetClassNameA(hwnd, cls, sizeof(cls) - 1) <= 0) return;
+    if (std::strcmp(cls, "#32770") != 0) return;   // system dialogs only
+    if (isDriveNotFoundDialog(hwnd)) {
+        PostMessageA(hwnd, WM_CLOSE, 0, 0);
+        g_dismissed.fetch_add(1);
+    }
+}
+
 fs::path logPath() {
     return fs::path(core::icmgGlobalDir()) / "popup-killer.log";
 }
@@ -164,19 +182,34 @@ private:
     int cmdRun() {
         // Single-instance: a global named mutex prevents piling up daemons (the
         // SessionStart hook calls `ensure` every session). A second instance exits.
-        HANDLE mtx = CreateMutexA(nullptr, TRUE, "Global\\icmg_popup_killer");
+        // Local\ namespace: Global\ needs SeCreateGlobalPrivilege -> CreateMutexA
+        // fails ACCESS_DENIED on a non-elevated session -> guard fell open (#31901).
+        HANDLE mtx = CreateMutexA(nullptr, TRUE, "Local\\icmg_popup_killer");
         if (mtx && GetLastError() == ERROR_ALREADY_EXISTS) return 0;
-        std::cerr << "icmg popup-killer: scanning every 100ms (Ctrl+C to stop)\n";
+        std::cerr << "icmg popup-killer: event-driven dismiss + 100ms sweep (Ctrl+C)\n";
+        // Primary: dismiss the instant a dialog is shown (kills the flash).
+        HWINEVENTHOOK hook = SetWinEventHook(
+            EVENT_OBJECT_SHOW, EVENT_OBJECT_SHOW,
+            nullptr, winEventProc, 0, 0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+        // Fallback floor: keep the prior 100ms sweep for anything the event
+        // misses (dialogs already open before we started, missed events).
+        SetTimer(nullptr, 1, 100, nullptr);
         int last_log = 0;
-        while (!g_stop.load()) {
-            scanOnce();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            int cur = g_dismissed.load();
-            if (cur != last_log && (cur - last_log) >= 10) {
-                appendLog("loop tally=" + std::to_string(cur));
-                last_log = cur;
+        MSG msg;
+        while (!g_stop.load() && GetMessageA(&msg, nullptr, 0, 0)) {
+            if (msg.message == WM_TIMER) {
+                scanOnce();
+                int cur = g_dismissed.load();
+                if (cur != last_log && (cur - last_log) >= 10) {
+                    appendLog("loop tally=" + std::to_string(cur));
+                    last_log = cur;
+                }
             }
+            TranslateMessage(&msg);
+            DispatchMessageA(&msg);
         }
+        if (hook) UnhookWinEvent(hook);
         return 0;
     }
 
@@ -187,7 +220,7 @@ private:
     int cmdEnsure() {
         // Cheap fast-path: if the daemon already holds the mutex, do nothing.
         // Lets every hook call `ensure` (self-heal) at ~zero cost when alive.
-        HANDLE existing = OpenMutexA(SYNCHRONIZE, FALSE, "Global\\icmg_popup_killer");
+        HANDLE existing = OpenMutexA(SYNCHRONIZE, FALSE, "Local\\icmg_popup_killer");
         if (existing) { CloseHandle(existing); return 0; }
         char self[MAX_PATH];
         if (!GetModuleFileNameA(nullptr, self, MAX_PATH)) return 1;
