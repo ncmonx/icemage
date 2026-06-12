@@ -41,6 +41,21 @@ TEST("run-args: args with spaces are re-quoted") {
     auto r = parseRunArgs({"echo", "hello world"});
     ASSERT_CONTAINS(r.command, "\"hello world\"");
 }
+TEST("run-args: single quoted token is a verbatim shell line (pipe preserved)") {
+    auto r = parseRunArgs({"ls src/ | grep -i graph"});
+    ASSERT_EQ(r.command, std::string("ls src/ | grep -i graph"));   // NOT re-quoted
+}
+
+TEST("run-args: single token with spaces runs as a shell line") {
+    auto r = parseRunArgs({"echo hello"});
+    ASSERT_EQ(r.command, std::string("echo hello"));
+}
+
+TEST("run-args: single token after --raw is still a verbatim shell line") {
+    auto r = parseRunArgs({"--raw", "ls | wc -l"});
+    ASSERT_TRUE(r.raw);
+    ASSERT_EQ(r.command, std::string("ls | wc -l"));
+}
 
 using icmg::cli::destructiveDecision;
 using icmg::cli::DestructiveDecision;

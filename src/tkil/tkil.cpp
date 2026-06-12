@@ -96,15 +96,23 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
     // Phase 82 T5: real-time streaming — print each line as subprocess emits it.
     // Filter summary appended at end so filter context (full output) is preserved.
     if (stream && !json) {
-        auto argv = parseArgv(command);
+        // Shell commands (pipes / && / redirects) must reach the shell intact;
+        // re-quoting argv tokens would feed `|` to the first program as a
+        // literal arg (the non-stream path's bug, same fix). Simple commands
+        // keep argv re-quoting so spaces survive.
         std::string sh_cmd;
-        for (size_t i = 0; i < argv.size(); ++i) {
-            if (i) sh_cmd += ' ';
-            const auto& a = argv[i];
-            bool needs_q = a.empty() ||
-                           a.find_first_of(" \t\"'") != std::string::npos;
-            if (needs_q) { sh_cmd += '"'; sh_cmd += a; sh_cmd += '"'; }
-            else sh_cmd += a;
+        if (hasShellOperators(command)) {
+            sh_cmd = command;
+        } else {
+            auto argv = parseArgv(command);
+            for (size_t i = 0; i < argv.size(); ++i) {
+                if (i) sh_cmd += ' ';
+                const auto& a = argv[i];
+                bool needs_q = a.empty() ||
+                               a.find_first_of(" \t\"'") != std::string::npos;
+                if (needs_q) { sh_cmd += '"'; sh_cmd += a; sh_cmd += '"'; }
+                else sh_cmd += a;
+            }
         }
         sh_cmd += " 2>&1";
         if (FILE* pipe = popen(sh_cmd.c_str(), "r")) {

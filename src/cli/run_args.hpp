@@ -51,8 +51,20 @@ inline RunArgs parseRunArgs(const std::vector<std::string>& args) {
         }
         in_cmd = true;
         r.cmd_args.push_back(a);
-        if (!r.command.empty()) r.command += " ";
-        r.command += runQuoteArg(a);
+    }
+    // Build the shell-ready command line. A SINGLE token is already a complete
+    // shell line (the user quoted the whole command: `icmg run "ls | grep x"`),
+    // so use it verbatim -- re-quoting it would make `bash -c` treat the entire
+    // line as one command name ("ls | grep x: command not found"). Multiple
+    // tokens are joined with per-token quoting so spaces survive as word
+    // boundaries for the downstream shell.
+    if (r.cmd_args.size() == 1) {
+        r.command = r.cmd_args[0];
+    } else {
+        for (const auto& a : r.cmd_args) {
+            if (!r.command.empty()) r.command += " ";
+            r.command += runQuoteArg(a);
+        }
     }
     return r;
 }
