@@ -100,3 +100,42 @@ TEST("pagerank: deterministic for fixed iterations") {
     auto b = pageRank(nodes, edges);
     for (auto& kv : a) ASSERT_TRUE(std::fabs(kv.second - b[kv.first]) < 1e-12);
 }
+
+// ---- seedFromTask (personalization vector for task-aware ranking) ----------
+
+TEST("seedFromTask: node whose symbol_name contains a task token is seeded") {
+    std::vector<GraphNode> nodes;
+    GraphNode a; a.id=1; a.kind="function"; a.symbol_name="pageRank"; a.path="src/graph/graph_centrality.hpp";
+    GraphNode b; b.id=2; b.kind="function"; b.symbol_name="unrelated"; b.path="src/x.cpp";
+    nodes = {a, b};
+    auto seed = seedFromTask(nodes, "improve pagerank ranking");
+    ASSERT_TRUE(seed.count(1) && seed[1] > 0);
+    ASSERT_TRUE(seed.find(2) == seed.end());
+}
+
+TEST("seedFromTask: more token matches -> higher weight") {
+    std::vector<GraphNode> nodes;
+    GraphNode a; a.id=1; a.kind="file";     a.path="graph_centrality.hpp"; a.symbol_name="";
+    GraphNode b; b.id=2; b.kind="function"; b.path="graph_centrality.hpp"; b.symbol_name="pageRank";
+    nodes = {a, b};
+    auto seed = seedFromTask(nodes, "graph centrality pagerank");
+    ASSERT_TRUE(seed[2] > seed[1]);   // b also matches the 'pagerank' symbol token
+}
+
+TEST("seedFromTask: short tokens ignored; only-short task -> empty seed") {
+    std::vector<GraphNode> nodes;
+    GraphNode a; a.id=1; a.kind="function"; a.symbol_name="parser"; a.path="p.cpp";
+    nodes = {a};
+    auto s1 = seedFromTask(nodes, "fix the parser");      // 'parser' (>=3) matches
+    ASSERT_TRUE(s1.count(1));
+    auto s2 = seedFromTask(nodes, "a to in of");          // all < 3 chars -> no tokens
+    ASSERT_TRUE(s2.empty());
+}
+
+TEST("seedFromTask: case-insensitive on symbol_name and path basename") {
+    std::vector<GraphNode> nodes;
+    GraphNode a; a.id=1; a.kind="function"; a.symbol_name="PageRank"; a.path="src/Graph/GraphStore.cpp";
+    nodes = {a};
+    auto seed = seedFromTask(nodes, "PAGERANK graphstore");
+    ASSERT_TRUE(seed.count(1) && seed[1] >= 2);   // pagerank + graphstore both match
+}

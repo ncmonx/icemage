@@ -17,8 +17,11 @@
 #include "graph_node.hpp"
 #include "graph_report.hpp"   // edgeConfidence
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <map>
+#include <set>
+#include <string>
 #include <vector>
 
 namespace icmg::graph {
@@ -102,6 +105,39 @@ inline std::map<int64_t,double> personalizedPageRank(
         const std::map<int64_t,double>& seed,
         double d = 0.85, int iters = 30) {
     return pageRankCore(nodes, edges, seed, d, iters);
+}
+
+// Build a personalization seed from a free-text task: a node's weight = the
+// number of DISTINCT task tokens (lowercased, length >= 3) that appear in its
+// symbol_name or path basename. Nodes with no match are absent (uniform-treated
+// by personalizedPageRank). Feeding this seed pulls the ranking toward
+// task-relevant code instead of global third_party hubs. Pure + testable.
+inline std::map<int64_t,double> seedFromTask(const std::vector<GraphNode>& nodes,
+                                             const std::string& task) {
+    // tokenize task into distinct lowercase alnum tokens of length >= 3
+    std::set<std::string> toks;
+    std::string cur;
+    auto flush = [&]() { if (cur.size() >= 3) toks.insert(cur); cur.clear(); };
+    for (char c : task) {
+        if (std::isalnum((unsigned char)c)) cur += (char)std::tolower((unsigned char)c);
+        else flush();
+    }
+    flush();
+
+    std::map<int64_t,double> seed;
+    if (toks.empty()) return seed;
+    for (const auto& n : nodes) {
+        std::string hay = n.symbol_name;
+        std::string p = n.path;
+        size_t sl = p.find_last_of("/\\");
+        hay += " ";
+        hay += (sl == std::string::npos ? p : p.substr(sl + 1));
+        for (char& c : hay) c = (char)std::tolower((unsigned char)c);
+        int matches = 0;
+        for (const auto& t : toks) if (hay.find(t) != std::string::npos) ++matches;
+        if (matches > 0) seed[n.id] = (double)matches;
+    }
+    return seed;
 }
 
 }  // namespace icmg::graph

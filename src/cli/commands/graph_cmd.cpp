@@ -563,7 +563,7 @@ public:
 class GraphSkeletonCommand : public BaseCommand {
 public:
     std::string name()        const override { return "graph-skeleton"; }
-    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols)"; }
+    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols; --for <task> personalizes)"; }
 
     int run(const std::vector<std::string>& args) override {
         size_t budget = 8000;
@@ -580,7 +580,14 @@ public:
             auto ef = store.edgesFrom(n.id);
             edges.insert(edges.end(), ef.begin(), ef.end());
         }
-        auto score = graph::pageRank(nodes, edges);
+        std::string forTask = flagValue(args, "--for");
+        std::map<int64_t,double> score;
+        if (!forTask.empty()) {
+            auto seed = graph::seedFromTask(nodes, forTask);   // task-personalized
+            score = graph::personalizedPageRank(nodes, edges, seed);
+        } else {
+            score = graph::pageRank(nodes, edges);
+        }
         std::cout << graph::buildRepoSkeleton(nodes, score, budget);
         return 0;
     }
