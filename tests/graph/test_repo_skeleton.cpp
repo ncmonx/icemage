@@ -105,6 +105,34 @@ TEST("repo skeleton: empty rootPrefix = no scoping (case-insensitive prefix)") {
     auto s = buildRepoSkeleton(nodes, score, 1000, true, "d:/proj/icemage");
     ASSERT_CONTAINS(s, std::string("a.cpp"));   // matched case-insensitively
 }
+TEST("isTestPath: tests/ dir and test_/_test/.test/.spec basenames") {
+    ASSERT_TRUE(isTestPath("tests/graph/test_x.cpp"));
+    ASSERT_TRUE(isTestPath("src/foo/test/bar.cpp"));
+    ASSERT_TRUE(isTestPath("pkg/foo_test.go"));
+    ASSERT_TRUE(isTestPath("ui/Button.test.tsx"));
+    ASSERT_TRUE(isTestPath("ui/Button.spec.ts"));
+    ASSERT_TRUE(isTestPath("a/__tests__/b.js"));
+}
+
+TEST("isTestPath: production source is not a test") {
+    ASSERT_FALSE(isTestPath("src/graph/graph_centrality.hpp"));
+    ASSERT_FALSE(isTestPath("src/latest_value.cpp"));   // 'test' substring, not a test file
+}
+
+TEST("repo skeleton: excludes test files by default, keeps source") {
+    std::vector<GraphNode> nodes{ file(1,"tests/graph/test_edges.cpp"), file(2,"src/core/db.cpp") };
+    std::map<int64_t,double> score{ {1, 0.9}, {2, 0.1} };   // test scores higher (edge noise)
+    auto s = buildRepoSkeleton(nodes, score, 1000);          // default excludeTests=true
+    ASSERT_TRUE(s.find("test_edges.cpp") == std::string::npos);
+    ASSERT_CONTAINS(s, std::string("src/core/db.cpp"));
+}
+
+TEST("repo skeleton: includeTests=true shows tests") {
+    std::vector<GraphNode> nodes{ file(1,"tests/graph/test_edges.cpp"), file(2,"src/core/db.cpp") };
+    std::map<int64_t,double> score{ {1, 0.9}, {2, 0.1} };
+    auto s = buildRepoSkeleton(nodes, score, 1000, true, "", true);   // excludeTests=false
+    ASSERT_CONTAINS(s, std::string("test_edges.cpp"));
+}
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

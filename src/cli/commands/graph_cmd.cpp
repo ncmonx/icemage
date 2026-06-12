@@ -563,7 +563,7 @@ public:
 class GraphSkeletonCommand : public BaseCommand {
 public:
     std::string name()        const override { return "graph-skeleton"; }
-    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols; --for <task> personalizes; --include-vendored; --all-paths)"; }
+    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols; --for <task> personalizes; --include-vendored; --all-paths; --tests)"; }
 
     int run(const std::vector<std::string>& args) override {
         size_t budget = 8000;
@@ -590,7 +590,8 @@ public:
         }
         bool includeVendored = hasFlag(args, "--include-vendored");
         std::string root = hasFlag(args, "--all-paths") ? std::string("") : std::filesystem::current_path().string();
-        std::cout << graph::buildRepoSkeleton(nodes, score, budget, !includeVendored, root);
+        bool includeTests = hasFlag(args, "--tests");
+        std::cout << graph::buildRepoSkeleton(nodes, score, budget, !includeVendored, root, includeTests);
         return 0;
     }
 };
