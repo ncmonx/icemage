@@ -62,6 +62,49 @@ TEST("repo skeleton: empty -> empty") {
     ASSERT_EQ(buildRepoSkeleton(nodes, deg, 100), std::string(""));
 }
 
+TEST("isVendoredPath: third_party / node_modules / windows sep are vendored") {
+    ASSERT_TRUE(isVendoredPath("third_party/onnx/api.h"));
+    ASSERT_TRUE(isVendoredPath("src/third_party/x.cpp"));
+    ASSERT_TRUE(isVendoredPath("a/node_modules/b.js"));
+    ASSERT_TRUE(isVendoredPath("C:\\proj\\third_party\\llama\\x.h"));
+}
+
+TEST("isVendoredPath: own source is not vendored (segment match, not substring)") {
+    ASSERT_FALSE(isVendoredPath("src/graph/graph_centrality.hpp"));
+    ASSERT_FALSE(isVendoredPath("src/vendored_notes.cpp"));   // 'vendor' substring, no /vendor/ segment
+}
+
+TEST("repo skeleton: excludes vendored files by default, keeps own code") {
+    std::vector<GraphNode> nodes{ file(1,"third_party/onnx/api.h"), file(2,"src/core/db.cpp") };
+    std::map<int64_t,double> score{ {1, 0.9}, {2, 0.1} };    // vendored scores higher
+    auto s = buildRepoSkeleton(nodes, score, 1000);          // default excludeVendored=true
+    ASSERT_TRUE(s.find("third_party") == std::string::npos); // vendored dropped
+    ASSERT_CONTAINS(s, std::string("src/core/db.cpp"));      // own code kept
+}
+
+TEST("repo skeleton: include-vendored shows vendored too") {
+    std::vector<GraphNode> nodes{ file(1,"third_party/onnx/api.h"), file(2,"src/core/db.cpp") };
+    std::map<int64_t,double> score{ {1, 0.9}, {2, 0.1} };
+    auto s = buildRepoSkeleton(nodes, score, 1000, false);   // excludeVendored=false
+    ASSERT_CONTAINS(s, std::string("third_party"));
+}
+TEST("repo skeleton: rootPrefix scopes to the project tree") {
+    std::vector<GraphNode> nodes{
+        file(1,"D:/proj/icemage/src/core/db.cpp"),
+        file(2,"D:/proj/other/src/x.cpp"),
+    };
+    std::map<int64_t,double> score{ {1, 0.1}, {2, 0.9} };   // outside-tree scores higher
+    auto s = buildRepoSkeleton(nodes, score, 1000, true, "D:/proj/icemage");
+    ASSERT_CONTAINS(s, std::string("db.cpp"));
+    ASSERT_TRUE(s.find("other/src/x.cpp") == std::string::npos);
+}
+
+TEST("repo skeleton: empty rootPrefix = no scoping (case-insensitive prefix)") {
+    std::vector<GraphNode> nodes{ file(1,"D:/Proj/IceMage/src/a.cpp") };
+    std::map<int64_t,double> score{ {1, 0.5} };
+    auto s = buildRepoSkeleton(nodes, score, 1000, true, "d:/proj/icemage");
+    ASSERT_CONTAINS(s, std::string("a.cpp"));   // matched case-insensitively
+}
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
