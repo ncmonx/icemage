@@ -17,6 +17,7 @@
 // PURE CORE — no I/O — so the verdict logic is unit-testable. The `icmg ritual`
 // command wraps it with a marker file; the Stop hook calls `icmg ritual gate`.
 
+#include <cctype>
 #include <optional>
 #include <set>
 #include <string>
@@ -84,6 +85,78 @@ inline std::optional<RitualStep> stepForCommand(const std::string& sub,
     if (sub == "verify")                    return RitualStep::Verify;
     if (sub == "zone")                      return RitualStep::Zone;
     return std::nullopt;
+}
+
+// Parse a full shell command LINE and return the sync steps it contains, in
+// first-seen order (deduped). Fixes the recorder bug (known-issue #33370) where
+// the Bash hook only inspected the first token of a command that started
+// literally with `icmg `. This handles two real defeats:
+//   (a) leading env-var prefixes  — `RAW=1 icmg store ...`  (strip VAR=val)
+//   (b) chained / piped commands  — `icmg store ... && icmg wflog ...`
+//                                    (scan every &&/||/;/| segment)
+// Each segment's first word is basename-matched against `icmg`/`icmg.exe`; its
+// next two tokens feed stepForCommand. Pure (no I/O) so it is unit-testable.
+inline std::vector<RitualStep> parseSyncStepsFromCommandLine(const std::string& line) {
+    std::vector<RitualStep> out;
+    std::set<RitualStep> seen;
+
+    auto consider = [&](const std::string& raw) {
+        // 1. trim leading whitespace
+        size_t a = 0;
+        while (a < raw.size() && (raw[a] == ' ' || raw[a] == '\t')) ++a;
+        std::string s = raw.substr(a);
+        // 2. strip leading VAR=val env prefixes (one or more): NAME=...<space>
+        for (;;) {
+            size_t i = 0;
+            if (i >= s.size() ||
+                !(std::isalpha((unsigned char)s[i]) || s[i] == '_')) break;
+            size_t j = i + 1;
+            while (j < s.size() &&
+                   (std::isalnum((unsigned char)s[j]) || s[j] == '_')) ++j;
+            if (j >= s.size() || s[j] != '=') break;       // not a VAR= token
+            size_t k = j + 1;                              // consume value...
+            while (k < s.size() && s[k] != ' ' && s[k] != '\t') ++k;
+            while (k < s.size() && (s[k] == ' ' || s[k] == '\t')) ++k;
+            if (k == 0) break;
+            s = s.substr(k);
+        }
+        // 3. take up to three whitespace tokens (prog, sub, arg1)
+        std::vector<std::string> tok;
+        size_t i = 0;
+        while (i < s.size() && tok.size() < 3) {
+            while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
+            size_t st = i;
+            while (i < s.size() && s[i] != ' ' && s[i] != '\t') ++i;
+            if (i > st) tok.push_back(s.substr(st, i - st));
+        }
+        if (tok.empty()) return;
+        // 4. basename(prog) must be icmg (allow path + .exe on Windows)
+        std::string prog = tok[0];
+        size_t slash = prog.find_last_of("/\\");
+        if (slash != std::string::npos) prog = prog.substr(slash + 1);
+        if (prog.size() > 4 && prog.compare(prog.size() - 4, 4, ".exe") == 0)
+            prog = prog.substr(0, prog.size() - 4);
+        if (prog != "icmg") return;
+        std::string sub  = tok.size() > 1 ? tok[1] : "";
+        std::string arg1 = tok.size() > 2 ? tok[2] : "";
+        if (auto step = stepForCommand(sub, arg1))
+            if (seen.insert(*step).second) out.push_back(*step);
+    };
+
+    // Split on shell separators. A single '&'/'|' also covers '&&'/'||'
+    // (the empty middle segment is harmless). '2>&1' splits too, but the
+    // leading `icmg <sub>` of that segment is still intact -> step detected.
+    std::string seg;
+    for (char c : line) {
+        if (c == ';' || c == '\n' || c == '|' || c == '&') {
+            consider(seg);
+            seg.clear();
+        } else {
+            seg += c;
+        }
+    }
+    consider(seg);
+    return out;
 }
 
 }  // namespace icmg::cli

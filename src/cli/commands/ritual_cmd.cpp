@@ -12,6 +12,11 @@
 //                                       sync step, record it. Auto-clears the
 //                                       owed state once all required steps seen
 //                                       (hook: PostToolUse on Bash).
+//   icmg ritual saw-line "<full cmd>"  Like `saw` but parses the WHOLE command
+//                                       line: strips VAR= prefixes + scans every
+//                                       &&/||/;/| segment. The PostToolUse:Bash
+//                                       hook uses this so `RAW=1 icmg store` and
+//                                       `icmg store && icmg wflog` both record.
 //   icmg ritual did <step>             Manually mark a step done (graph|store|
 //                                       zone|wflog|verify).
 //   icmg ritual status                 Human-readable state + missing steps.
@@ -133,6 +138,26 @@ public:
             // Auto-clear once the required set is satisfied.
             if (!evaluateRitual(toCore(d)).owed && d.changedCount > 0) {
                 d = DiskState{};                       // reset: ritual complete
+                save(d);
+                std::cout << "icmg ritual: 5-sync complete — gate cleared\n";
+            } else {
+                save(d);
+            }
+            return 0;
+        }
+
+        if (action == "saw-line") {
+            // Robust recorder (known-issue #33370): given the FULL command line,
+            // detect every icmg sync sub-command even behind a VAR= env prefix or
+            // joined by &&/||/;/|. Replaces the fragile single-token `saw` parse
+            // in the Bash hook (which missed `RAW=1 icmg store` and chained cmds).
+            if (args.size() < 2) return 0;
+            auto steps = parseSyncStepsFromCommandLine(args[1]);
+            if (steps.empty()) return 0;
+            DiskState d = load();
+            for (RitualStep s : steps) d.done.insert(s);
+            if (!evaluateRitual(toCore(d)).owed && d.changedCount > 0) {
+                d = DiskState{};
                 save(d);
                 std::cout << "icmg ritual: 5-sync complete — gate cleared\n";
             } else {
