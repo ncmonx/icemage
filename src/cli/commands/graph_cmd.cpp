@@ -600,7 +600,7 @@ public:
 class GraphRecentCommand : public BaseCommand {
 public:
     std::string name()        const override { return "graph-recent"; }
-    std::string description() const override { return "Files ranked by recency-decayed centrality (temporal)"; }
+    std::string description() const override { return "Files ranked by recency-decayed PageRank (temporal; --tests/--include-vendored/--all-paths)"; }
 
     int run(const std::vector<std::string>& args) override {
         int limit = 20; int halflife_days = 14;
@@ -615,8 +615,11 @@ public:
         std::vector<graph::GraphEdge> edges;
         for (const auto& n : nodes) { auto ef = store.edgesFrom(n.id); edges.insert(edges.end(), ef.begin(), ef.end()); }
         auto score = graph::pageRank(nodes, edges);
+        std::string rroot = hasFlag(args, "--all-paths") ? std::string("") : std::filesystem::current_path().string();
         auto ranked = graph::rankByTemporal(nodes, score, (int64_t)std::time(nullptr),
-                                            (int64_t)halflife_days * 86400);
+                                            (int64_t)halflife_days * 86400,
+                                            !hasFlag(args, "--include-vendored"), rroot,
+                                            hasFlag(args, "--tests"));
         std::map<int64_t,std::string> path;
         for (const auto& n : nodes) path[n.id] = n.path;
         int shown = 0;

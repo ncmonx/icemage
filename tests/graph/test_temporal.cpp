@@ -51,6 +51,17 @@ TEST("rankByTemporal: higher centrality outranks lower at equal recency") {
     ASSERT_EQ((int)r.size(), 2);
     ASSERT_EQ((int)r[0].id, 1);   // higher PageRank centrality first at equal recency
 }
+TEST("rankByTemporal: drops vendored + test files by default") {
+    std::vector<GraphNode> nodes;
+    GraphNode a; a.id=1; a.kind="file"; a.path="src/core/db.cpp";     a.updated_at=NOW-1*DAY;
+    GraphNode b; b.id=2; b.kind="file"; b.path="third_party/x/api.h"; b.updated_at=NOW-1*DAY;
+    GraphNode d; d.id=3; d.kind="file"; d.path="tests/test_x.cpp";    d.updated_at=NOW-1*DAY;
+    nodes={a,b,d};
+    std::map<int64_t,double> score{{1,0.3},{2,0.9},{3,0.9}};   // vendored+test score higher
+    auto r = rankByTemporal(nodes, score, NOW, 14*DAY);
+    ASSERT_EQ((int)r.size(), 1);        // only src/core/db.cpp survives the hygiene filter
+    ASSERT_EQ((int)r[0].id, 1);
+}
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
