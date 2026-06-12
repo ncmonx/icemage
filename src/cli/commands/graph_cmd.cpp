@@ -9,6 +9,7 @@
 #include "../../core/trace_parse.hpp"     // v2.0.0 TE3 (runtime edges)
 #include "../../graph/repo_skeleton.hpp"  // v2.0.0 externals (repo-compact)
 #include "../../graph/temporal.hpp"       // v2.0.0 externals (temporal KG)
+#include "../../graph/graph_centrality.hpp" // PageRank (2026-06-12)
 #include <ctime>
 #include <fstream>
 #include "../../graph/scanner.hpp"
@@ -562,7 +563,7 @@ public:
 class GraphSkeletonCommand : public BaseCommand {
 public:
     std::string name()        const override { return "graph-skeleton"; }
-    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols)"; }
+    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols; --for <task> personalizes; --include-vendored; --all-paths; --tests)"; }
 
     int run(const std::vector<std::string>& args) override {
         size_t budget = 8000;
@@ -579,8 +580,18 @@ public:
             auto ef = store.edgesFrom(n.id);
             edges.insert(edges.end(), ef.begin(), ef.end());
         }
-        auto deg = graph::degreeCentrality(nodes, edges);
-        std::cout << graph::buildRepoSkeleton(nodes, deg, budget);
+        std::string forTask = flagValue(args, "--for");
+        std::map<int64_t,double> score;
+        if (!forTask.empty()) {
+            auto seed = graph::seedFromTask(nodes, forTask);   // task-personalized
+            score = graph::personalizedPageRank(nodes, edges, seed);
+        } else {
+            score = graph::pageRank(nodes, edges);
+        }
+        bool includeVendored = hasFlag(args, "--include-vendored");
+        std::string root = hasFlag(args, "--all-paths") ? std::string("") : std::filesystem::current_path().string();
+        bool includeTests = hasFlag(args, "--tests");
+        std::cout << graph::buildRepoSkeleton(nodes, score, budget, !includeVendored, root, includeTests);
         return 0;
     }
 };
@@ -589,7 +600,7 @@ public:
 class GraphRecentCommand : public BaseCommand {
 public:
     std::string name()        const override { return "graph-recent"; }
-    std::string description() const override { return "Files ranked by recency-decayed centrality (temporal)"; }
+    std::string description() const override { return "Files ranked by recency-decayed PageRank (temporal; --for <task> personalizes; --tests/--include-vendored/--all-paths)"; }
 
     int run(const std::vector<std::string>& args) override {
         int limit = 20; int halflife_days = 14;
@@ -603,9 +614,15 @@ public:
         if (nodes.empty()) { std::cout << "graph recent: empty graph.\n"; return 0; }
         std::vector<graph::GraphEdge> edges;
         for (const auto& n : nodes) { auto ef = store.edgesFrom(n.id); edges.insert(edges.end(), ef.begin(), ef.end()); }
-        auto deg = graph::degreeCentrality(nodes, edges);
-        auto ranked = graph::rankByTemporal(nodes, deg, (int64_t)std::time(nullptr),
-                                            (int64_t)halflife_days * 86400);
+        std::string rfor = flagValue(args, "--for");
+        auto score = rfor.empty()
+            ? graph::pageRank(nodes, edges)
+            : graph::personalizedPageRank(nodes, edges, graph::seedFromTask(nodes, rfor));
+        std::string rroot = hasFlag(args, "--all-paths") ? std::string("") : std::filesystem::current_path().string();
+        auto ranked = graph::rankByTemporal(nodes, score, (int64_t)std::time(nullptr),
+                                            (int64_t)halflife_days * 86400,
+                                            !hasFlag(args, "--include-vendored"), rroot,
+                                            hasFlag(args, "--tests"));
         std::map<int64_t,std::string> path;
         for (const auto& n : nodes) path[n.id] = n.path;
         int shown = 0;

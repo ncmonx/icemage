@@ -27,7 +27,7 @@ TEST("rankByTemporal: recent file outranks older one of equal centrality") {
     GraphNode a; a.id=1; a.kind="file"; a.path="recent.cpp"; a.updated_at=NOW-1*DAY;
     GraphNode b; b.id=2; b.kind="file"; b.path="old.cpp";    b.updated_at=NOW-100*DAY;
     nodes={a,b};
-    std::map<int64_t,int> deg{{1,5},{2,5}};
+    std::map<int64_t,double> deg{{1,5.0},{2,5.0}};
     auto r = rankByTemporal(nodes, deg, NOW, 14*DAY);
     ASSERT_EQ((int)r.size(), 2);
     ASSERT_EQ((int)r[0].id, 1);   // recent first
@@ -41,6 +41,27 @@ TEST("rankByTemporal: skips symbol nodes") {
     ASSERT_EQ((int)r.size(), 0);
 }
 
+TEST("rankByTemporal: higher centrality outranks lower at equal recency") {
+    std::vector<GraphNode> nodes;
+    GraphNode a; a.id=1; a.kind="file"; a.path="hub.cpp";  a.updated_at=NOW-5*DAY;
+    GraphNode b; b.id=2; b.kind="file"; b.path="leaf.cpp"; b.updated_at=NOW-5*DAY;
+    nodes={a,b};
+    std::map<int64_t,double> score{{1,0.40},{2,0.05}};
+    auto r = rankByTemporal(nodes, score, NOW, 14*DAY);
+    ASSERT_EQ((int)r.size(), 2);
+    ASSERT_EQ((int)r[0].id, 1);   // higher PageRank centrality first at equal recency
+}
+TEST("rankByTemporal: drops vendored + test files by default") {
+    std::vector<GraphNode> nodes;
+    GraphNode a; a.id=1; a.kind="file"; a.path="src/core/db.cpp";     a.updated_at=NOW-1*DAY;
+    GraphNode b; b.id=2; b.kind="file"; b.path="third_party/x/api.h"; b.updated_at=NOW-1*DAY;
+    GraphNode d; d.id=3; d.kind="file"; d.path="tests/test_x.cpp";    d.updated_at=NOW-1*DAY;
+    nodes={a,b,d};
+    std::map<int64_t,double> score{{1,0.3},{2,0.9},{3,0.9}};   // vendored+test score higher
+    auto r = rankByTemporal(nodes, score, NOW, 14*DAY);
+    ASSERT_EQ((int)r.size(), 1);        // only src/core/db.cpp survives the hygiene filter
+    ASSERT_EQ((int)r[0].id, 1);
+}
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

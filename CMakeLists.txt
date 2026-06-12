@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.3.1 LANGUAGES CXX C)
+project(icmg VERSION 2.4.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -716,6 +716,7 @@ add_icmg_test(test_code_search tests/mcp/test_code_search.cpp)  # v2.0.0 externa
 add_icmg_test(test_mcp_toolset tests/mcp/test_mcp_toolset.cpp)  # v2.0.0 externals (dynamic toolsets)
 add_icmg_test(test_graph_edges  tests/graph/test_graph_edges.cpp)
 add_icmg_test(test_graph_report tests/graph/test_graph_report.cpp)        # v1.71 Graphify
+add_icmg_test(test_graph_centrality tests/graph/test_graph_centrality.cpp)  # PageRank 2026-06-12
 add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.75 #187
 add_icmg_test(test_sqlcipher_spike tests/core/test_sqlcipher_spike.cpp) # v1.76 T1
 add_icmg_test(test_recall_cache tests/core/test_recall_cache.cpp) # ram-brain A

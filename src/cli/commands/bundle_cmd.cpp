@@ -41,6 +41,7 @@ void writeTokenReceipt(core::Db& db, const std::string& cmd,
 #include "../../graph/graph_store.hpp"
 #include "../../graph/scanner.hpp"
 #include "../../graph/ast_compressor.hpp"
+#include "../../graph/graph_centrality.hpp" // PageRank (pack --pr)
 #include "../../core/token_counter.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
@@ -913,41 +914,65 @@ public:
                               (int)(mem_bytes / 4), mem_raw_tok);
         }
 
-        // 2. Mentioned files: scan task tokens, look up symbol or file
+        // 2. Mentioned files: scan task tokens, look up symbol or file. With --pr the
+        // candidates are ranked by Personalized PageRank (seeded from the task) so the
+        // most structurally-central task-relevant files fill the slots instead of
+        // arbitrary first-match order. Default path stays fast (no full-graph load)
+        // per the no-heavy-default-hot-path principle.
         std::regex word_re(R"(\b[A-Za-z_][A-Za-z0-9_]{2,})");
         std::ostringstream files_section;
         std::set<int64_t> seen_ids;
-        int file_hits = 0;
+        bool pr_rank = hasFlag(args, "--pr");
+        static const std::set<std::string> stop = {
+            "the","and","for","fix","bug","when","why","how",
+            "what","this","that","must","can","run","get"};
+
+        // gather de-duped candidate symbols across task tokens
+        std::vector<graph::GraphNode> candidates;
         for (auto it = std::sregex_iterator(task.begin(), task.end(), word_re);
-             it != std::sregex_iterator() && file_hits < 5; ++it) {
+             it != std::sregex_iterator(); ++it) {
+            if (!pr_rank && candidates.size() >= 5) break;   // default: keep it cheap
             std::string tok = (*it)[0].str();
-            // Skip very common short tokens
-            static const std::set<std::string> stop = {
-                "the","and","for","fix","bug","when","why","how",
-                "what","this","that","must","can","run","get"};
             std::string tlo = tok; std::transform(tlo.begin(), tlo.end(), tlo.begin(), ::tolower);
             if (stop.count(tlo)) continue;
+            for (auto& s : store.findSymbol(tok))
+                if (seen_ids.insert(s.id).second) candidates.push_back(s);
+        }
 
-            // Try symbol first
-            auto syms = store.findSymbol(tok);
-            for (auto& s : syms) {
-                if (seen_ids.insert(s.id).second) {
-                    // Phase 82 T3: cross-call session dedup — skip body if
-                    // this file was already emitted in a prior pack this session.
-                    bool already_seen = refs.seen("FILE", s.path);
-                    if (!already_seen) refs.getOrAssign("FILE", s.path);
-                    if (already_seen) {
-                        files_section << "### " << s.symbol_name
-                                      << " [already in context — " << s.path << "]\n";
-                    } else {
-                        files_section << "### " << s.symbol_name
-                                      << " (" << s.kind << ", L" << s.line_start
-                                      << "-" << s.line_end << ")\n"
-                                      << "Path: " << s.path << "\n\n";
-                    }
-                    ++file_hits;
-                }
+        // opt-in Personalized-PageRank ranking (loads full graph; off by default)
+        if (pr_rank && candidates.size() > 1) {
+            auto prNodes = store.all();
+            std::vector<graph::GraphEdge> prEdges;
+            for (const auto& n : prNodes) {
+                auto ef = store.edgesFrom(n.id);
+                prEdges.insert(prEdges.end(), ef.begin(), ef.end());
             }
+            auto seed  = graph::seedFromTask(prNodes, task);
+            auto score = graph::personalizedPageRank(prNodes, prEdges, seed);
+            std::stable_sort(candidates.begin(), candidates.end(),
+                [&](const graph::GraphNode& x, const graph::GraphNode& y) {
+                    double sx = score.count(x.id) ? score.at(x.id) : 0.0;
+                    double sy = score.count(y.id) ? score.at(y.id) : 0.0;
+                    return sx > sy;
+                });
+        }
+
+        // emit top hits (cap 5)
+        int file_hits = 0;
+        for (auto& s : candidates) {
+            if (file_hits >= 5) break;
+            bool already_seen = refs.seen("FILE", s.path);
+            if (!already_seen) refs.getOrAssign("FILE", s.path);
+            if (already_seen) {
+                files_section << "### " << s.symbol_name
+                              << " [already in context — " << s.path << "]\n";
+            } else {
+                files_section << "### " << s.symbol_name
+                              << " (" << s.kind << ", L" << s.line_start
+                              << "-" << s.line_end << ")\n"
+                              << "Path: " << s.path << "\n\n";
+            }
+            ++file_hits;
         }
         if (file_hits > 0) {
             size_t fs_start = out.tellp();
