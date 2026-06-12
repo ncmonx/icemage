@@ -266,12 +266,18 @@ INPUT=$(cat)
 # Ritual gate: record any icmg sync command (store/wflog/graph/zone/verify) so
 # the Stop-hook ritual gate can clear once the model completes the post-change sync.
 cmd=$(printf '%s' "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
-if [[ "$cmd" == icmg\ * ]]; then
-    read -r _ _rsub _rarg _ <<< "$cmd"
-    icmg ritual saw "$_rsub" "$_rarg" >/dev/null 2>&1 || true
+# Record EVERY icmg sync sub-command in the (possibly chained / env-prefixed)
+# command line so the Stop-hook ritual gate clears (known-issue #33370).
+icmg ritual saw-line "$cmd" >/dev/null 2>&1 || true
+# discipline + recall-gate operate on the first real sub (strip VAR= prefixes).
+_c="$cmd"
+while [[ "$_c" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]] ]]; do _c="${_c#* }"; done
+if [[ "$_c" == icmg\ * ]]; then
+    read -r _ _rsub _rarg _ <<< "$_c"
     icmg discipline log "$_rsub" >/dev/null 2>&1 || true
     case "$_rsub" in recall|pack|context|cross-recall|wake-up) icmg recall-gate mark >/dev/null 2>&1 || true ;; esac
-fiout=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
+fi
+out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.stdout 2>/dev/null)
 [[ -z "$out" ]] && out=$(printf '%s' "$INPUT" | icmg hookio get tool_response.output 2>/dev/null)
 sz=${#out}
 CAP=${ICMG_CAP_BYTES:-8000}

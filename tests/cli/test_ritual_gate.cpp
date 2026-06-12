@@ -70,3 +70,63 @@ TEST("ritual: stepName round-trips the labels") {
     ASSERT_EQ(ritualStepName(RitualStep::Verify), std::string("verify"));
     ASSERT_EQ(ritualStepName(RitualStep::Zone),   std::string("zone"));
 }
+
+// ---- parseSyncStepsFromCommandLine ----------------------------------------
+// The recorder bug (2026-06-12, known-issue #33370): the Bash hook only saw the
+// FIRST token of a command and only if it started literally with `icmg ` — so
+// `RAW=1 icmg store` (env prefix) and `icmg store && icmg wflog` (chained)
+// never recorded, and the Stop-hook ritual gate misfired forever. These pin the
+// pure parser that fixes both: strip leading VAR= prefixes + scan all segments.
+
+TEST("ritual parse: plain single sync command") {
+    auto v = parseSyncStepsFromCommandLine("icmg store --topic x \"y\"");
+    ASSERT_EQ(v.size(), (size_t)1);
+    ASSERT_EQ((int)v[0], (int)RitualStep::Store);
+}
+
+TEST("ritual parse: strips VAR= env prefix (RAW=1 icmg ...)") {
+    auto v = parseSyncStepsFromCommandLine("RAW=1 icmg wflog save --goal g");
+    ASSERT_EQ(v.size(), (size_t)1);
+    ASSERT_EQ((int)v[0], (int)RitualStep::Wflog);
+}
+
+TEST("ritual parse: chained store && wflog records BOTH in order") {
+    auto v = parseSyncStepsFromCommandLine(
+        "icmg store --topic x \"y\" && icmg wflog save --goal g");
+    ASSERT_EQ(v.size(), (size_t)2);
+    ASSERT_EQ((int)v[0], (int)RitualStep::Store);
+    ASSERT_EQ((int)v[1], (int)RitualStep::Wflog);
+}
+
+TEST("ritual parse: pipe-to-head still detects the sync command") {
+    auto v = parseSyncStepsFromCommandLine("icmg store --topic x \"y\" 2>&1 | head -2");
+    ASSERT_EQ(v.size(), (size_t)1);
+    ASSERT_EQ((int)v[0], (int)RitualStep::Store);
+}
+
+TEST("ritual parse: non-icmg + ritual-neutral icmg yield nothing") {
+    auto v = parseSyncStepsFromCommandLine(
+        "grep foo bar && icmg recall q && icmg context f.cpp");
+    ASSERT_TRUE(v.empty());
+}
+
+TEST("ritual parse: dedups repeated step (store + memoir both -> Store once)") {
+    auto v = parseSyncStepsFromCommandLine("icmg store -t a x && icmg memoir add y");
+    ASSERT_EQ(v.size(), (size_t)1);
+    ASSERT_EQ((int)v[0], (int)RitualStep::Store);
+}
+
+TEST("ritual parse: graph update + store + wflog all captured in order") {
+    auto v = parseSyncStepsFromCommandLine(
+        "icmg graph update ; icmg store -t a x ; icmg wflog save --goal g");
+    ASSERT_EQ(v.size(), (size_t)3);
+    ASSERT_EQ((int)v[0], (int)RitualStep::Graph);
+    ASSERT_EQ((int)v[1], (int)RitualStep::Store);
+    ASSERT_EQ((int)v[2], (int)RitualStep::Wflog);
+}
+
+TEST("ritual parse: icmg.exe basename (Windows) still detected") {
+    auto v = parseSyncStepsFromCommandLine("icmg.exe wflog save --goal g");
+    ASSERT_EQ(v.size(), (size_t)1);
+    ASSERT_EQ((int)v[0], (int)RitualStep::Wflog);
+}
