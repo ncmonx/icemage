@@ -1033,8 +1033,11 @@ void GraphStore::resolveAndInsertEdges(
             std::string callee = import_name.substr(5);
             auto it = sym2ids.find(callee);
             if (it != sym2ids.end()) {
-                for (int64_t dst : it->second) {
-                    if (dst == src_id) continue;
+                // Ambiguity guard (filterCallTargets): a callee name defined in
+                // many files cannot be pinned by name alone -> emit edges only
+                // when specific enough, else none. Kills common-name fan-out
+                // that inflated unrelated/third_party centrality.
+                for (int64_t dst : filterCallTargets(it->second, src_id)) {
                     GraphEdge e; e.src = src_id; e.dst = dst; e.edge_type = "calls"; e.weight = 1.5;
                     upsertEdge(e);
                 }

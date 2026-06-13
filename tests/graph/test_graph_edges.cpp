@@ -375,6 +375,27 @@ TEST("designer grouping: standalone cs with no companions gets no group_id") {
 // ---------------------------------------------------------------------------
 
 
+// filterCallTargets — name-based call ambiguity guard (pure)
+TEST("filterCallTargets: unique name -> single edge") {
+    auto t = icmg::graph::filterCallTargets({42}, 1);
+    ASSERT_EQ((int)t.size(), 1);
+    ASSERT_EQ((long long)t[0], 42LL);
+}
+
+TEST("filterCallTargets: excludes self") {
+    auto t = icmg::graph::filterCallTargets({1, 2, 3}, 2);
+    ASSERT_EQ((int)t.size(), 2);   // 1 and 3, self(2) dropped
+}
+
+TEST("filterCallTargets: few defs (<= cap) all kept") {
+    auto t = icmg::graph::filterCallTargets({10, 11, 12}, 99, 4);
+    ASSERT_EQ((int)t.size(), 3);
+}
+
+TEST("filterCallTargets: too ambiguous (> cap) -> no edges") {
+    auto t = icmg::graph::filterCallTargets({1, 2, 3, 4, 5, 6}, 99, 4);
+    ASSERT_TRUE(t.empty());
+}
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
