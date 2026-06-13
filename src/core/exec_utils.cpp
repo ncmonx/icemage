@@ -163,8 +163,10 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
         // `yarn.cmd`) which CreateProcess cannot launch directly. Retry via
         // bash -lc when running under MSYS2/Git Bash so login profile loads
         // /usr/bin + ~/.bashrc PATH augmentations (npm prefix etc.).
-        if (err == ERROR_FILE_NOT_FOUND &&
-            (std::getenv("MSYSTEM") != nullptr || std::getenv("BASH") != nullptr)) {
+        // Retry on ANY Windows (not just MSYS): safeExecShell picks bash under
+        // MSYS, else full-path PowerShell -- so builtins/cmdlets (echo, dir,
+        // Get-ChildItem) and .cmd/.bat shims resolve where CreateProcess can't.
+        if (err == ERROR_FILE_NOT_FOUND) {
             // Reconstruct shell-quoted command line.
             std::string sh_cmd;
             for (size_t i = 0; i < argv.size(); ++i) {
@@ -398,32 +400,35 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
             // Prefer pwsh (PS7+) or powershell (PS5) over cmd.exe on non-MSYS Windows.
             // Enables Select-String, Get-ChildItem, etc. without MSYS install.
             // Checked once per process: pwsh.exe first, fall back to powershell.exe.
-            static const char* s_ps = nullptr;
-            if (!s_ps) {
-                const char* cands[] = {
-                    "C:/Program Files/PowerShell/7/pwsh.exe",
-                    "C:/Program Files/PowerShell/7.5/pwsh.exe",
-                    "C:/Program Files/PowerShell/7.4/pwsh.exe",
-                    nullptr
+            static std::string s_shell;
+            if (s_shell.empty()) {
+                auto envOr = [](const char* k, const char* def) {
+                    const char* v = std::getenv(k); std::string s = v ? v : def;
+                    for (char& ch : s) if (ch == '\\') ch = '/';
+                    return s;
                 };
-                for (int i = 0; cands[i]; ++i) {
-                    std::ifstream chk(cands[i]);
-                    if (chk.good()) { s_ps = "pwsh.exe"; break; }
-                }
-                if (!s_ps) s_ps = "powershell.exe";
+                std::string pf = envOr("ProgramFiles", "C:/Program Files");
+                std::string sr = envOr("SystemRoot",   "C:/Windows");
+                std::vector<std::string> cands = {
+                    pf + "/PowerShell/7/pwsh.exe",
+                    pf + "/PowerShell/7.5/pwsh.exe",
+                    pf + "/PowerShell/7.4/pwsh.exe",
+                };
+                std::string ps5 = sr + "/System32/WindowsPowerShell/v1.0/powershell.exe";
+                s_shell = resolveWinShell(cands, ps5,
+                    [](const std::string& p){ std::ifstream f(p); return f.good(); });
             }
-            // Escape inner double-quotes for pwsh -Command "<...>": each " -> \\".
-            // Without this, curl.exe -H "User-Agent:..." breaks the wrapper parse,
-            // the native arg is lost, and HTTP/JSON callers get empty output.
+            // Escape inner double-quotes for the -Command "<...>" wrapper.
             std::string esc;
             esc.reserve(cmd_line.size() + 16);
             for (char ch : cmd_line) {
                 if (ch == '"') esc += "\\\"";
                 else esc += ch;
             }
-            full_cmd = std::string(s_ps)
-                     + " -NoProfile -NonInteractive -Command \"" + esc + "\"";
-        }
+            // Quote the FULL shell path so CreateProcessA uses it verbatim (no
+            // PATH search) -- fixes "CreateProcess failed: 2" on non-MSYS Windows
+            // (PS5 lives in a System32 subdir, Store pwsh is an app alias).
+            full_cmd = "\"" + s_shell + "\" -NoProfile -NonInteractive -Command \"" + esc + "\"";        }
     }
 
     SECURITY_ATTRIBUTES sa{};

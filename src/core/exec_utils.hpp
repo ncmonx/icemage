@@ -41,4 +41,17 @@ inline const char* curlBin() {
 #endif
 }
 
+// Resolve the non-MSYS Windows shell to a FULL absolute path. CreateProcessA's
+// PATH search (NULL lpApplicationName) is unreliable here: it misses
+// powershell.exe under System32\WindowsPowerShell\v1.0 and the Store/WindowsApps
+// pwsh app-execution alias, yielding "CreateProcess failed: 2" for users without
+// git-bash. Pure + templated on the existence predicate so it is unit-testable.
+// Returns the first existing pwsh candidate, else the PowerShell 5 full path.
+template <typename ExistsFn>
+inline std::string resolveWinShell(const std::vector<std::string>& candPwsh,
+                                   const std::string& powershell5Full,
+                                   ExistsFn exists) {
+    for (const auto& c : candPwsh) if (!c.empty() && exists(c)) return c;
+    return powershell5Full;
+}
 } // namespace icmg::core

@@ -16,6 +16,8 @@
 #include <chrono>
 #include <algorithm>
 #include <sstream>
+#include <fstream>
+#include <filesystem>
 #include <cmath>
 #include <unordered_map>
 
@@ -35,12 +37,45 @@ void rcFlushOnWrite() { ++MemoryStore::recallEpoch(); MemoryStore::recallCache()
 // ---- helpers ----
 
 static std::string captureGitSha() {
-    auto res = core::safeExecShell("git rev-parse --short HEAD 2>/dev/null", false, 3000);
-    if (res.exit_code != 0 || res.out.empty()) return "";
-    std::string sha = res.out;
-    while (!sha.empty() && (sha.back() == '\n' || sha.back() == '\r' || sha.back() == ' '))
-        sha.pop_back();
-    return sha;
+    // Read .git/HEAD directly -- the old `git rev-parse` via safeExecShell spawned
+    // a shell + git subprocess on EVERY store (~hundreds of ms on the hot path).
+    // Walk up for .git, resolve a loose ref -> short sha. git_sha is optional
+    // provenance, so anything unresolvable (packed-refs, worktree edge) -> "".
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path dir = fs::current_path(ec);
+    fs::path gitdir;
+    for (int i = 0; i < 40 && !dir.empty(); ++i) {
+        fs::path g = dir / ".git";
+        if (fs::exists(g, ec)) {
+            if (fs::is_directory(g, ec)) { gitdir = g; }
+            else {
+                std::ifstream gf(g);
+                std::string line; std::getline(gf, line);
+                const std::string pfx = "gitdir: ";
+                if (line.rfind(pfx, 0) == 0) gitdir = fs::path(line.substr(pfx.size()));
+            }
+            break;
+        }
+        fs::path parent = dir.parent_path();
+        if (parent == dir) break;
+        dir = parent;
+    }
+    if (gitdir.empty()) return "";
+    std::ifstream head(gitdir / "HEAD");
+    if (!head) return "";
+    std::string h; std::getline(head, h);
+    while (!h.empty() && (h.back()=='\n'||h.back()=='\r'||h.back()==' ')) h.pop_back();
+    std::string full;
+    const std::string refpfx = "ref: ";
+    if (h.rfind(refpfx, 0) == 0) {
+        std::ifstream rf(gitdir / h.substr(refpfx.size()));
+        if (rf) std::getline(rf, full);          // loose ref; packed-refs -> ""
+    } else {
+        full = h;                                 // detached HEAD: raw sha
+    }
+    while (!full.empty() && (full.back()=='\n'||full.back()=='\r'||full.back()==' ')) full.pop_back();
+    return full.size() >= 7 ? full.substr(0, 7) : full;
 }
 
 int64_t MemoryStore::nowEpoch() const {
@@ -154,13 +189,41 @@ std::vector<MemoryNode> MemoryStore::findSimilar(const std::string& topic,
                                                    const std::string& content,
                                                    double threshold) const {
     std::vector<MemoryNode> result;
-    auto nodes = all();
+    // Dup candidates are bounded to the most-recent N memories. Full-corpus
+    // Jaccard (all()) was O(N) and dominated the store hot path (~seconds once
+    // the corpus grew to thousands). Near-dups are overwhelmingly recent
+    // re-stores, so a missed old near-dup is a non-issue vs taxing every store.
+    std::vector<MemoryNode> nodes;
+    {
+        const int kDupScanLimit = 500;
+        int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        db_.query("SELECT id,topic,content,keywords,importance,frequency,"
+                  "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
+                  "FROM memory_nodes WHERE deleted_at IS NULL "
+                  "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?) "
+                  "ORDER BY id DESC LIMIT ?",
+                  {std::to_string(now), std::to_string(kDupScanLimit)},
+                  [&](const core::Row& r) { nodes.push_back(rowToNode(r)); });
+    }
     std::string combined = topic + " " + content;
+    // Tokenize the query ONCE (jaccardSimilarity re-tokenized `combined` on
+    // every node -> 500x wasted work on the store hot path). Same multiset
+    // word-set Jaccard as jaccardSimilarity(), just with the query hoisted.
+    auto jtok = [](const std::string& s) {
+        std::vector<std::string> tk; std::istringstream ss(s); std::string t;
+        while (ss >> t) { std::transform(t.begin(), t.end(), t.begin(), ::tolower); tk.push_back(t); }
+        std::sort(tk.begin(), tk.end());
+        return tk;
+    };
+    auto ta = jtok(combined);
     for (auto& n : nodes) {
-        std::string nc = n.topic + " " + n.content;
-        if (jaccardSimilarity(combined, nc) >= threshold) {
-            result.push_back(n);
-        }
+        auto tb = jtok(n.topic + " " + n.content);
+        std::vector<std::string> inter, uni;
+        std::set_intersection(ta.begin(), ta.end(), tb.begin(), tb.end(), std::back_inserter(inter));
+        std::set_union       (ta.begin(), ta.end(), tb.begin(), tb.end(), std::back_inserter(uni));
+        double j = uni.empty() ? 0.0 : (double)inter.size() / (double)uni.size();
+        if (j >= threshold) result.push_back(n);
     }
 
     // v1.62 F15: optional semantic near-dup pass. Word-set Jaccard misses
