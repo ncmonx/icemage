@@ -174,6 +174,23 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
     New-Item -ItemType Directory -Force "$PSScriptRoot\build-msvc-full\Release" | Out-Null
     Copy-Item $exeSrc $exeDest -Force
     logline "copied: $exeDest"
+    # Auto-copy runtime DLLs next to the shipped exe so it runs standalone
+    # (no more manual copy-the-13-DLLs step before running the fresh build).
+    # Fresh build emits 8 DLLs under $BuildDir; 5 third-party DLLs
+    # (libcrypto / tree-sitter / zstd / vulkan-1 / wasmtime) live only in the
+    # install dir. Layer install-dir DLLs first (baseline), then overlay the
+    # fresh build DLLs so a just-rebuilt DLL always wins. Guarded: skip a
+    # source silently if it is absent.
+    $relDir  = "$PSScriptRoot\build-msvc-full\Release"
+    $instBin = "$env:USERPROFILE\bin"
+    if (Test-Path $instBin) {
+        Get-ChildItem "$instBin\*.dll" -ErrorAction SilentlyContinue |
+            Copy-Item -Destination $relDir -Force
+    }
+    Get-ChildItem $BuildDir -Recurse -Filter '*.dll' -ErrorAction SilentlyContinue |
+        Copy-Item -Destination $relDir -Force
+    $dllCount = (Get-ChildItem "$relDir\*.dll" -ErrorAction SilentlyContinue).Count
+    logline "copied $dllCount runtime DLL(s) next to exe"
     # NOTE: do NOT clean $BuildDir here. It lives on C:\ (no D: clutter) and
     # wiping it forces a full recompile next build + races icmg_test link
     # (LNK1104). Incremental artifacts stay; third_party Vulkan .obj preserved.
