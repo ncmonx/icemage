@@ -718,6 +718,7 @@ add_icmg_test(test_graph_edges  tests/graph/test_graph_edges.cpp)
 add_icmg_test(test_graph_report tests/graph/test_graph_report.cpp)        # v1.71 Graphify
 add_icmg_test(test_graph_centrality tests/graph/test_graph_centrality.cpp)  # PageRank 2026-06-12
 add_icmg_test(test_graph_sync_filter tests/graph/test_graph_sync_filter.cpp)  # incremental mem-sync 2026-06-14
+add_icmg_test(test_graph_xref_filter tests/graph/test_graph_xref_filter.cpp)  # incremental xref rebuild 2026-06-14
 add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.75 #187
 add_icmg_test(test_sqlcipher_spike tests/core/test_sqlcipher_spike.cpp) # v1.76 T1
 add_icmg_test(test_recall_cache tests/core/test_recall_cache.cpp) # ram-brain A

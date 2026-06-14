@@ -9,6 +9,7 @@
 #include <sstream>
 #include <algorithm>
 #include <tuple>
+#include <set>
 #include <nlohmann/json.hpp>
 
 // MD5 via simple streaming (enough for staleness check)
@@ -358,10 +359,17 @@ int Scanner::scan(const std::string& root, const Options& opts) {
         store_.resolveAndInsertEdges(pending);
     }
 
-    // Strategy 4: class cross-reference — always run after scan, even if no
-    // explicit imports were found (same-namespace C# files have no `using`).
+    // Strategy 4: class cross-reference — run after scan, even if no explicit
+    // imports were found (same-namespace C# files have no `using`). 2026-06-14:
+    // incremental xref only re-reads the files this scan changed (huge speedup
+    // on `graph update`); full scan re-reads every node.
     if (opts.resolve_edges) {
-        store_.buildXRefEdges();
+        if (opts.incremental_xref) {
+            std::set<std::string> changed(updated_paths_.begin(), updated_paths_.end());
+            store_.buildXRefEdges(&changed);
+        } else {
+            store_.buildXRefEdges();
+        }
     }
 
     // VS designer file grouping: detect .cs/.Designer.cs/.resx triples and

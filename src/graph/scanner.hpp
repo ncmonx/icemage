@@ -32,6 +32,12 @@ public:
         bool                     skip_stale   = true; // skip if hash unchanged
         bool                     resolve_edges = true; // run edge resolution after scan
         bool                     gitignore    = true;  // A9: respect .gitignore
+        // 2026-06-14: incremental xref. When true, the post-scan class
+        // cross-reference pass only re-reads the files this scan changed
+        // (updatedPaths()) instead of EVERY graph node (~7000 disk reads).
+        // `graph update` sets this; full `graph scan` leaves it false so the
+        // whole-graph xref still runs.
+        bool                     incremental_xref = false;
     };
 
     explicit Scanner(GraphStore& store);

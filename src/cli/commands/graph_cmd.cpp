@@ -889,6 +889,10 @@ public:
         graph::Scanner scanner(store);
 
         if (!json_out) std::cout << "Updating graph for: " << path << "\n";
+        // 2026-06-14: incremental xref — only re-read files this scan changed
+        // (not all ~7000 nodes). Plain `graph update` is incremental; full
+        // `graph scan` keeps whole-graph xref.
+        opts.incremental_xref = true;
         int count = scanner.scan(path, opts);
         // Incremental mem-sync (2026-06-14): sync ONLY the files this scan
         // actually changed, not all ~7000 file nodes. Eliminates the per-file

@@ -1,4 +1,5 @@
 #include "graph_store.hpp"
+#include "graph_xref_filter.hpp"  // incremental xref (2026-06-14)
 #include "../core/fts_query.hpp"  // v2.0.0 search snapshot (FTS)
 #include <chrono>
 #include <algorithm>
@@ -1158,7 +1159,16 @@ void GraphStore::resolveAndInsertEdges(
 // Scans ALL nodes in DB; for each file, checks if class names declared in
 // OTHER files appear as word tokens in its content. Always called after scan,
 // independent of whether any imports were collected.
-void GraphStore::buildXRefEdges() {
+void GraphStore::buildXRefEdges(const std::set<std::string>* changed) {
+    // 2026-06-14: incremental xref. Reading EVERY node's full content on every
+    // `graph update` (even at 0 changed files) was the ~150s bottleneck. When a
+    // changed-set is supplied, only re-read+scan those source files; their
+    // outgoing "uses" edges are the only ones whose source content changed.
+    bool incremental = (changed != nullptr);
+    std::set<std::string> empty_set;
+    const std::set<std::string>& changed_set = changed ? *changed : empty_set;
+    if (!xrefShouldRun(changed_set.size(), incremental)) return;  // nothing changed
+
     TxnGuard _txn(db_);   // v1.60 F4: batch xref edge inserts
     // Collect all nodes: id + path
     struct NodeInfo { int64_t id; std::string path; };
@@ -1208,8 +1218,10 @@ void GraphStore::buildXRefEdges() {
         return false;
     };
 
-    // For each node: read file, check class names from OTHER files
+    // For each node: read file, check class names from OTHER files.
+    // Incremental: only read source files the scan actually changed.
     for (auto& ni : nodes) {
+        if (!xrefIsSourceNode(ni.path, changed_set, incremental)) continue;
         std::ifstream f(ni.path, std::ios::binary);
         if (!f) continue;
         std::ostringstream buf;
