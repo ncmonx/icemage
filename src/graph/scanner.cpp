@@ -166,6 +166,7 @@ int Scanner::scan(const std::string& root, const Options& opts) {
 
     fs::path root_path(root);
     int updated = 0;
+    updated_paths_.clear();   // track which files this scan actually rewrites
     int max_file_size = 2 * 1024 * 1024; // skip files > 2MB
 
     auto* generic = makeGenericExtractor();
@@ -248,6 +249,7 @@ int Scanner::scan(const std::string& root, const Options& opts) {
             }
         }
         ++updated;
+        updated_paths_.push_back(fpath);
         } catch (const std::exception& e) {
             static bool warned = false;
             if (!warned) {

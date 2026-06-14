@@ -40,8 +40,15 @@ public:
     int scan(const std::string& root);
     int scan(const std::string& root, const Options& opts);
 
+    // Paths of the files actually (re)written during the most recent scan().
+    // Lets callers sync ONLY changed files to memory instead of re-walking the
+    // whole graph (the `icmg graph update` mem-sync bottleneck). Canonical paths
+    // matching graph_node.path. Reset at the start of each scan().
+    const std::vector<std::string>& updatedPaths() const { return updated_paths_; }
+
 private:
     GraphStore& store_;
+    std::vector<std::string> updated_paths_;
 
     std::string md5File(const std::string& path) const;
     std::string detectLang(const std::string& ext) const;

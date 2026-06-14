@@ -717,6 +717,7 @@ add_icmg_test(test_mcp_toolset tests/mcp/test_mcp_toolset.cpp)  # v2.0.0 externa
 add_icmg_test(test_graph_edges  tests/graph/test_graph_edges.cpp)
 add_icmg_test(test_graph_report tests/graph/test_graph_report.cpp)        # v1.71 Graphify
 add_icmg_test(test_graph_centrality tests/graph/test_graph_centrality.cpp)  # PageRank 2026-06-12
+add_icmg_test(test_graph_sync_filter tests/graph/test_graph_sync_filter.cpp)  # incremental mem-sync 2026-06-14
 add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.75 #187
 add_icmg_test(test_sqlcipher_spike tests/core/test_sqlcipher_spike.cpp) # v1.76 T1
 add_icmg_test(test_recall_cache tests/core/test_recall_cache.cpp) # ram-brain A
@@ -867,6 +868,8 @@ add_icmg_test(test_migration_0032       tests/core/test_migration_0032.cpp)
 add_icmg_test(test_approach_cmd         tests/cli/test_approach_cmd.cpp)
 add_icmg_test(test_hook_approach        tests/core/test_hook_approach.cpp)
 add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)
+add_icmg_test(test_content_status       tests/cli/test_content_status.cpp)  # P3: 0-byte file != path mismatch
+add_icmg_test(test_savings_daily        tests/cli/test_savings_daily.cpp)  # savings --daily console rows
 # v1.10.0 backlog burn:
 add_icmg_test(test_hookio_cmd           tests/cli/test_hookio_cmd.cpp)
 add_icmg_test(test_cleanup_cmd          tests/cli/test_cleanup_cmd.cpp)
