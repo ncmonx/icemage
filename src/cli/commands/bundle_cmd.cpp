@@ -7,6 +7,7 @@
 
 #include "../base_command.hpp"
 #include "../cache_emitter.hpp"
+#include "../content_status.hpp"
 #include "../think_directive.hpp"
 #include "../auto_zone.hpp"
 #include "../model_pricing.hpp"
@@ -531,8 +532,14 @@ public:
                 resolved = cand;
                 break;
             }
-            if (!body.empty()) {
-                if (line_start > 0) {
+            if (classifyContent(resolved, body) != ContentStatus::Unavailable) {
+                if (body.empty()) {
+                    // Opened fine, but the file is 0 bytes (e.g. now.md right
+                    // after NDC rotation, a fresh empty file). NOT a path
+                    // mismatch — say so plainly instead of sending the agent
+                    // chasing a nonexistent path problem.
+                    out << "\n--- Content (" << resolved << "; empty file, 0 bytes) ---\n";
+                } else if (line_start > 0) {
                     // Slice to requested line range. Output preserves line
                     // numbers via `cat -n` style header so Claude can locate
                     // edit anchors without re-running Read.
