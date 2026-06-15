@@ -11,6 +11,7 @@
 
 using icmg::cli::collectContextFiles;
 using icmg::cli::singleFileArgs;
+using icmg::cli::parseChangedFiles;
 
 // 1. Multiple bare file args are all collected, in order.
 TEST("context-batch: collects multiple file args") {
@@ -74,4 +75,43 @@ TEST("context-batch: singleFileArgs dedups the kept file") {
     int count = 0;
     for (auto& s : sub) if (s == "a.hpp") ++count;
     ASSERT_EQ(count, 1);
+}
+
+// 7. parseChangedFiles: one path per line, in order.
+TEST("context-changed: parses one path per line") {
+    auto f = parseChangedFiles("src/a.cpp\nsrc/b.hpp\ntests/c.cpp\n");
+    ASSERT_EQ((int)f.size(), 3);
+    ASSERT_EQ(f[0], std::string("src/a.cpp"));
+    ASSERT_EQ(f[1], std::string("src/b.hpp"));
+    ASSERT_EQ(f[2], std::string("tests/c.cpp"));
+}
+
+// 8. parseChangedFiles: trims trailing CR (Windows git output).
+TEST("context-changed: trims CR and trailing space") {
+    auto f = parseChangedFiles("src/a.cpp\r\nsrc/b.hpp  \r\n");
+    ASSERT_EQ((int)f.size(), 2);
+    ASSERT_EQ(f[0], std::string("src/a.cpp"));
+    ASSERT_EQ(f[1], std::string("src/b.hpp"));
+}
+
+// 9. parseChangedFiles: skips blank lines.
+TEST("context-changed: skips blank lines") {
+    auto f = parseChangedFiles("\nsrc/a.cpp\n\n\nsrc/b.hpp\n\n");
+    ASSERT_EQ((int)f.size(), 2);
+    ASSERT_EQ(f[0], std::string("src/a.cpp"));
+    ASSERT_EQ(f[1], std::string("src/b.hpp"));
+}
+
+// 10. parseChangedFiles: dedups while preserving first-seen order.
+TEST("context-changed: dedups preserving order") {
+    auto f = parseChangedFiles("src/a.cpp\nsrc/b.hpp\nsrc/a.cpp\n");
+    ASSERT_EQ((int)f.size(), 2);
+    ASSERT_EQ(f[0], std::string("src/a.cpp"));
+    ASSERT_EQ(f[1], std::string("src/b.hpp"));
+}
+
+// 11. parseChangedFiles: empty input -> empty list.
+TEST("context-changed: empty input yields empty") {
+    auto f = parseChangedFiles("");
+    ASSERT_EQ((int)f.size(), 0);
 }

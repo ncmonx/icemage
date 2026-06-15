@@ -72,4 +72,24 @@ inline std::vector<std::string> singleFileArgs(
     return sub;
 }
 
+// Parse `git diff --name-only` output into a file list: one path per line,
+// trimmed of CR/LF, blanks skipped. Order preserved, duplicates dropped
+// (a file can appear once for staged + once for unstaged in some diff modes).
+inline std::vector<std::string> parseChangedFiles(const std::string& git_output) {
+    std::vector<std::string> files;
+    std::set<std::string> seen;
+    std::string ln;
+    for (size_t i = 0; i <= git_output.size(); ++i) {
+        if (i == git_output.size() || git_output[i] == '\n') {
+            while (!ln.empty() && (ln.back() == '\r' || ln.back() == ' '))
+                ln.pop_back();
+            if (!ln.empty() && seen.insert(ln).second) files.push_back(ln);
+            ln.clear();
+        } else {
+            ln.push_back(git_output[i]);
+        }
+    }
+    return files;
+}
+
 } // namespace icmg::cli

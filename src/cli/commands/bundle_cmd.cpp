@@ -110,11 +110,44 @@ public:
             "  --diff            Force delta path (seeds baseline on first call). Auto-default once a baseline exists.\n"
             "  --no-diff         Disable auto-diff: always emit the full body (still refreshes baseline)\n"
             "  --diff-reset      Clear the stored diff baseline for this file (next read shows full)\n"
+            "  --changed         Bundle every file changed in the working tree (git diff --name-only HEAD)\n"
             "  --json            JSON output\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || args[0] == "--help") { usage(); return 0; }
+
+        // Feature E (2026-06-15): --changed. Pull a bundle for every file
+        // changed in the working tree (git diff --name-only HEAD), then
+        // dispatch the single-file path per file (auto-diff applies).
+        {
+            bool changed = false;
+            for (auto& a : args) if (a == "--changed") { changed = true; break; }
+            if (changed) {
+                auto r = core::safeExecShell("git diff --name-only HEAD", false, 10000);
+                if (r.exit_code != 0) {
+                    std::cerr << "icmg context --changed: not a git repo (or git unavailable)\n";
+                    return 1;
+                }
+                auto changed_files = parseChangedFiles(r.out);
+                if (changed_files.empty()) {
+                    std::cout << "No changed files in the working tree.\n";
+                    return 0;
+                }
+                std::vector<std::string> base;
+                for (auto& a : args) if (a != "--changed") base.push_back(a);
+                int rc = 0;
+                bool first = true;
+                for (const auto& fpath : changed_files) {
+                    if (!first) std::cout << "\n" << std::string(70, '=') << "\n";
+                    first = false;
+                    auto combined = base;
+                    combined.push_back(fpath);
+                    rc |= run(singleFileArgs(combined, fpath));
+                }
+                return rc;
+            }
+        }
 
         // Feature D (2026-06-15): batch read-many. When 2+ file args are
         // given, pull a bundle per file in one call (dispatch the single-file
