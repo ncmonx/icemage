@@ -326,8 +326,11 @@ private:
     void printDefault(const std::vector<imem::MemoryNode>& nodes) const {
         if (nodes.empty()) { std::cout << "No results.\n"; return; }
         for (auto& n : nodes) {
-            std::cout << std::fixed << std::setprecision(1)
-                      << "[" << n.score << "] " << n.topic << "\n";
+            // Citable header: "[score] #id <icon> topic" so each result can be
+            // re-fetched (`recall --get <id>`) or cited by id.
+            std::ostringstream sc;
+            sc << std::fixed << std::setprecision(1) << n.score;
+            std::cout << formatCitationHeader(n, sc.str()) << "\n";
             std::cout << "  \"";
             // Truncate long content
             if (n.content.size() > 120)

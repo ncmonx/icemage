@@ -18,6 +18,7 @@ using icmg::cli::formatIndexLine;
 using icmg::cli::formatIndex;
 using icmg::cli::dayKey;
 using icmg::cli::formatTimeline;
+using icmg::cli::formatCitationHeader;
 
 static MemoryNode mk(int64_t id, const std::string& topic,
                      const std::string& content, int importance = 1) {
@@ -154,4 +155,15 @@ TEST("recall-index: formatTimeline groups by day, newest first, one header per d
 TEST("recall-index: formatTimeline on empty list does not crash") {
     std::string out = formatTimeline({});
     ASSERT_NOT_CONTAINS(out, "#");
+}
+
+// ---- citation header (default recall is now citable by id) ------------------
+// 10. Header carries #id (so the agent can --get / cite it) + topic + score.
+TEST("recall-index: formatCitationHeader includes #id, score and topic") {
+    MemoryNode n = mk(1842, "decisions-recall", "some note", 1);
+    std::string h = formatCitationHeader(n, "3.5");
+    ASSERT_CONTAINS(h, "#1842");
+    ASSERT_CONTAINS(h, "3.5");
+    ASSERT_CONTAINS(h, "decisions-recall");
+    ASSERT_CONTAINS(h, "\xF0\x9F\x9F\xA4");  // 🟤 decision icon present
 }

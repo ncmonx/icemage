@@ -171,4 +171,15 @@ inline std::string formatTimeline(std::vector<imem::MemoryNode> nodes) {
     return os.str();
 }
 
+// ---- citation header: "[score] #id  <icon> topic" for default recall -------
+// Default recall output omitted the node id, so results could not be cited or
+// re-fetched with `--get`. This pure helper renders a citable header line; the
+// command layer appends the score-formatted content beneath it.
+inline std::string formatCitationHeader(const imem::MemoryNode& n,
+                                        const std::string& scoreStr) {
+    std::ostringstream os;
+    os << "[" << scoreStr << "] #" << n.id << " " << iconFor(n) << " " << n.topic;
+    return os.str();
+}
+
 } // namespace icmg::cli
