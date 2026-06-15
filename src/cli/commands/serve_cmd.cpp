@@ -6,6 +6,7 @@
 // Endpoints:
 //   GET /                 -> bundled HTML (read-only dashboard)
 //   GET /api/audit        -> wiki audit metrics JSON
+//   GET /api/health       -> status probe (uptime, db_ok, counts, version)
 //   GET /api/memory?n=20  -> last N memory_nodes
 //   GET /api/graph?n=50   -> top N graph_nodes (file kind)
 //   GET /api/recall?q=X   -> BM25 recall (text-only path; no semantic)
@@ -19,6 +20,9 @@
 #include "../../core/db.hpp"
 #include "../../core/context_node_store.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../serve_health.hpp"          // 2026-06-15: /api/health probe
+#include "../../core/version.hpp"       // ICMG_VERSION for health payload
+#include <ctime>
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <sstream>
@@ -411,6 +415,7 @@ public:
 
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help")) { usage(); return 0; }
+        start_time_ = std::time(nullptr);   // 2026-06-15: for /api/health uptime
         int port = 8080;
         try { port = std::stoi(flagValue(args, "--port", "8080")); } catch (...) {}
         std::string host = flagValue(args, "--host", "127.0.0.1");
@@ -446,6 +451,7 @@ public:
     }
 
 private:
+    std::time_t start_time_ = 0;   // 2026-06-15: server start, for health uptime
     static void tryOpenBrowser(const std::string& url) {
 #ifdef _WIN32
         ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -473,6 +479,8 @@ private:
             body = INDEX_HTML;
         } else if (path.rfind("/api/audit", 0) == 0) {
             body = apiAudit(cfg); ctype = "application/json";
+        } else if (path.rfind("/api/health", 0) == 0) {
+            body = apiHealth(cfg); ctype = "application/json";
         } else if (path.rfind("/api/memory", 0) == 0) {
             body = apiMemory(cfg, parseN(path)); ctype = "application/json";
         } else if (path.rfind("/api/graph", 0) == 0) {
@@ -509,6 +517,21 @@ private:
             } else out.push_back(raw[i]);
         }
         return out;
+    }
+
+    // 2026-06-15: GET /api/health — machine-readable probe (uptime, db, counts).
+    std::string apiHealth(core::Config& cfg) {
+        bool db_ok = true;
+        long long mem = 0, nodes = 0;
+        try {
+            core::Db db(cfg.projectDbPath("."));
+            db.query("SELECT COUNT(*) FROM memory_nodes WHERE deleted_at IS NULL", {},
+                     [&](const core::Row& r){ if (!r.empty()) mem = std::stoll(r[0]); });
+            db.query("SELECT COUNT(*) FROM graph_nodes", {},
+                     [&](const core::Row& r){ if (!r.empty()) nodes = std::stoll(r[0]); });
+        } catch (...) { db_ok = false; }
+        long long uptime = start_time_ ? (long long)(std::time(nullptr) - start_time_) : 0;
+        return buildHealthJson(db_ok, uptime, mem, nodes, core::ICMG_VERSION);
     }
 
     std::string apiAudit(core::Config& cfg) {
