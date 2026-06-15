@@ -18,6 +18,10 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/config.hpp"
+#include "../../core/db.hpp"
+#include "../../graph/graph_store.hpp"
+#include "../grep_symbols.hpp"
 
 #include <iostream>
 #include <regex>
@@ -85,17 +89,23 @@ public:
             "  -B <N>                 N lines before match\n"
             "  -C <N>                 N lines around (alias for -A=-B=N)\n"
             "  -n, --line-number      Show line numbers\n"
-            "  -i, --ignore-case      Case-insensitive\n";
+            "  -i, --ignore-case      Case-insensitive\n"
+            "  --symbols              Group matches under their enclosing function/class (graph)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
 
+        bool symbols_mode = hasFlag(args, "--symbols");
+
         // Build rg argv. Brace-expand any --glob value.
         std::vector<std::string> rg_argv;
         rg_argv.push_back("rg");
+        bool has_n = false;
         for (size_t i = 0; i < args.size(); ++i) {
             const std::string& a = args[i];
+            if (a == "--symbols") continue;   // icmg-only flag, not for rg
+            if (a == "-n" || a == "--line-number") has_n = true;
             if (a == "--glob" && i + 1 < args.size()) {
                 auto patterns = braceExpand(args[++i]);
                 for (auto& p : patterns) {
@@ -106,6 +116,8 @@ public:
             }
             rg_argv.push_back(a);
         }
+        // --symbols needs line numbers to resolve the enclosing symbol.
+        if (symbols_mode && !has_n) rg_argv.push_back("-n");
 
         // Dispatch via `icmg run` path so Tkil filter + token cap apply.
         // Build a single shell command string.
@@ -121,6 +133,49 @@ public:
         }
         // Forward to run_cmd via safeExecShell. Result.stdout printed.
         auto r = core::safeExecShell(cmd, false, 30000);
+
+        if (symbols_mode) {
+            // Parse rg rows, resolve each match's enclosing symbol from the
+            // graph, then render grouped-by-symbol. Falls back to raw output
+            // when nothing parses (e.g. rg printed an error).
+            auto matches = parseGrepMatches(r.out);
+            if (!matches.empty()) {
+                try {
+                    auto& cfg = core::Config::instance();
+                    core::Db db(cfg.projectDbPath("."));
+                    graph::GraphStore store(db);
+                    // Cache file-node -> child symbols so repeated hits in the
+                    // same file don't re-query the graph.
+                    std::map<std::string, std::vector<graph::GraphNode>> sym_cache;
+                    for (auto& m : matches) {
+                        auto it = sym_cache.find(m.path);
+                        if (it == sym_cache.end()) {
+                            std::vector<graph::GraphNode> kids;
+                            // getNode resolves relative/abs/slash path variants.
+                            if (auto fn = store.getNode(m.path); fn && fn->id > 0)
+                                kids = store.childrenOf(fn->id);
+                            it = sym_cache.emplace(m.path, std::move(kids)).first;
+                        }
+                        // Tightest enclosing symbol containing this line.
+                        const graph::GraphNode* best = nullptr;
+                        for (const auto& k : it->second) {
+                            if (k.kind == "file") continue;
+                            if (k.line_start <= m.line && m.line <= k.line_end) {
+                                if (!best ||
+                                    (k.line_end - k.line_start) < (best->line_end - best->line_start))
+                                    best = &k;
+                            }
+                        }
+                        if (best) { m.symbol = best->symbol_name; m.kind = best->kind; }
+                    }
+                } catch (...) { /* no graph DB — render with empty symbols */ }
+                std::cout << renderSymbolGrep(matches);
+                if (!r.err.empty()) std::cerr << r.err;
+                return r.exit_code;
+            }
+            // else: fall through to raw output below.
+        }
+
         if (!r.out.empty()) std::cout << r.out;
         if (!r.err.empty()) std::cerr << r.err;
         return r.exit_code;

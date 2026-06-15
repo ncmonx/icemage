@@ -110,6 +110,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Impact as DOT graph | `icmg graph impact <file> --format dot` |
 | Filter by edge type | `icmg graph impact <file> --edge-type imports` |
 | Search code | `icmg run grep ...` (auto-filtered) |
+| Search code, grouped by enclosing function/class | `icmg grep <pat> --symbols` (graph-resolved, compact) |
 | Recall past decision | `icmg recall "<query>"` |
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
 | Recall across projects | `icmg cross-recall "<query>"` |
@@ -304,6 +305,7 @@ git push private restore/private-main:main --force
 |---|---|
 | `icmg context <file>` | Graph + symbols + memory (80%+ smaller than raw read) |
 | `icmg context <file> --diff` | Delta re-read: only lines changed since last --diff of this file (`--diff-reset` clears baseline) |
+| `icmg grep <pat> --symbols` | Symbol-aware search: matches grouped under their enclosing function/class (graph-resolved) |
 | `icmg pack "<task>"` | 4KB context bundle for new tasks |
 | `icmg parallel --task "..." --task "..."` | Run 2+ tasks concurrently (3-6Ã— speedup) |
 | `icmg run <cmd>` | Run noisy command through Tkil filter |
