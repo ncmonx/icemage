@@ -24,6 +24,7 @@
 #include "../ref_registry.hpp"
 #include "../pack_delta.hpp"
 #include "../content_delta.hpp"
+#include "../context_batch.hpp"
 #include "../../core/secret_scanner.hpp"
 // v1.32.0 B4: pack --rerank via warm-pool LLM.
 #include "../../llm/warm_pool.hpp"
@@ -91,7 +92,8 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg context <file> [options]\n\n"
+            "Usage: icmg context <file> [<file2> ...] [options]\n\n"
+            "Give 2+ files to pull a bundle for each in one call (batch read-many).\n\n"
             "Options:\n"
             "  --depth N         Neighbor depth (default: 1)\n"
             "  --no-symbols      Skip child symbol list\n"
@@ -113,6 +115,24 @@ public:
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || args[0] == "--help") { usage(); return 0; }
+
+        // Feature D (2026-06-15): batch read-many. When 2+ file args are
+        // given, pull a bundle per file in one call (dispatch the single-file
+        // path per file, separated by a divider). Single-file path unchanged.
+        {
+            auto files = collectContextFiles(args);
+            if (files.size() > 1) {
+                int rc = 0;
+                bool first = true;
+                for (const auto& fpath : files) {
+                    if (!first) std::cout << "\n" << std::string(70, '=') << "\n";
+                    first = false;
+                    rc |= run(singleFileArgs(args, fpath));
+                }
+                return rc;
+            }
+        }
+
         std::string file;
         for (auto& a : args) if (!a.empty() && a[0] != '-') { file = a; break; }
         if (file.empty()) { std::cerr << "icmg context: requires <file>\n"; return 1; }

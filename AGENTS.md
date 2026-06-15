@@ -99,6 +99,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 |---|---|
 | **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default â€” see rule above) |
 | Read a large file | `icmg context <file>` (graph + symbols + memory) |
+| Read several files at once | `icmg context <f1> <f2> <f3>` (batch read-many — one bundle per file, one call) |
 | Re-read a file after editing it | `icmg context <file>` (AUTO-diff: once shown, re-reads emit only changed lines; `--no-diff`/`--full` forces full; `--diff-reset` clears baseline) |
 | Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
@@ -304,6 +305,7 @@ git push private restore/private-main:main --force
 | Command | Description |
 |---|---|
 | `icmg context <file>` | Graph + symbols + memory (80%+ smaller than raw read) |
+| `icmg context <f1> <f2> ...` | Batch read-many: one bundle per file in a single call (value-flags like `--lines` apply to all) |
 | `icmg context <file>` (auto-diff) | Delta re-read by DEFAULT: after a file is shown once, subsequent reads emit only changed lines. `--no-diff`/`--full` = always full body; `--diff` = force/seed; `--diff-reset` = clear baseline |
 | `icmg grep <pat> --symbols` | Symbol-aware search: matches grouped under their enclosing function/class (graph-resolved) |
 | `icmg pack "<task>"` | 4KB context bundle for new tasks |
