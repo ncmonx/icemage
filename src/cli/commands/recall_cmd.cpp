@@ -67,7 +67,7 @@ public:
             "  --index         Layer-1 index: #id|icon|title|~tok (progressive disclosure)\n"
             "  --timeline      Layer-1 chronological view, grouped by day (newest first)\n"
             "  --get IDS       Layer-2: fetch full content for comma-separated ids\n"
-            "  --by topic|date Group --index output (default: topic)\n"
+            "  --by topic|file Group --index output (default: topic; file=by graph-node ref)\n"
             "  --json          JSON output\n";
     }
 

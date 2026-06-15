@@ -19,6 +19,7 @@ using icmg::cli::formatIndex;
 using icmg::cli::dayKey;
 using icmg::cli::formatTimeline;
 using icmg::cli::formatCitationHeader;
+using icmg::cli::groupKeyFor;
 
 static MemoryNode mk(int64_t id, const std::string& topic,
                      const std::string& content, int importance = 1) {
@@ -166,4 +167,40 @@ TEST("recall-index: formatCitationHeader includes #id, score and topic") {
     ASSERT_CONTAINS(h, "3.5");
     ASSERT_CONTAINS(h, "decisions-recall");
     ASSERT_CONTAINS(h, "\xF0\x9F\x9F\xA4");  // 🟤 decision icon present
+}
+
+// ---- group-by-graph-node (--by file) ---------------------------------------
+// 11. by=file extracts the first file-path-like token from content as the key.
+TEST("recall-index: groupKeyFor by=file extracts a source-file reference") {
+    MemoryNode n = mk(1, "decisions-x", "fixed the parser in src/cli/recall_cmd.cpp today");
+    ASSERT_EQ(groupKeyFor(n, "file"), std::string("src/cli/recall_cmd.cpp"));
+}
+// 12. by=file falls back to topic when content mentions no file.
+TEST("recall-index: groupKeyFor by=file falls back to topic when no file token") {
+    MemoryNode n = mk(1, "decisions-y", "we decided to ship it. done today.");
+    ASSERT_EQ(groupKeyFor(n, "file"), std::string("decisions-y"));
+}
+// 13. by=topic always returns the topic (no file scan).
+TEST("recall-index: groupKeyFor by=topic returns topic verbatim") {
+    MemoryNode n = mk(1, "decisions-z", "touches src/main.cpp but grouped by topic");
+    ASSERT_EQ(groupKeyFor(n, "topic"), std::string("decisions-z"));
+}
+// 14. formatIndex --by file groups rows under their file key.
+TEST("recall-index: formatIndex by=file groups under the file reference") {
+    std::vector<MemoryNode> nodes = {
+        mk(20, "decisions-a", "patched src/core/db.cpp for WAL"),
+        mk(21, "decisions-b", "another tweak to src/core/db.cpp here"),
+        mk(22, "decisions-c", "unrelated note with no file at all"),
+    };
+    std::string out = formatIndex(nodes, "file");
+    ASSERT_CONTAINS(out, "src/core/db.cpp");
+    ASSERT_CONTAINS(out, "#20");
+    ASSERT_CONTAINS(out, "#21");
+    ASSERT_CONTAINS(out, "#22");
+    // single GROUP HEADER for the shared file key. Headers are unindented
+    // (line-start); row titles echo content so we match the header form only.
+    std::string header = "\nsrc/core/db.cpp\n";
+    size_t f = out.find(header);
+    ASSERT_TRUE(f != std::string::npos);                 // header present
+    ASSERT_TRUE(out.find(header, f + 1) == std::string::npos);  // exactly one
 }

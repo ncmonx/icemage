@@ -86,7 +86,8 @@ inline std::string formatIndexLine(const imem::MemoryNode& n) {
     return os.str();
 }
 
-// ---- full index, grouped by `by` (topic|date|file). v1: topic|other -------
+// ---- full index, grouped by `by` (topic|file). ----------------------------
+inline std::string groupKeyFor(const imem::MemoryNode& n, const std::string& by); // fwd
 inline std::string formatIndex(const std::vector<imem::MemoryNode>& nodes,
                                const std::string& by = "topic") {
     if (nodes.empty()) return std::string("No results.\n");
@@ -94,7 +95,7 @@ inline std::string formatIndex(const std::vector<imem::MemoryNode>& nodes,
     // stable group order = first-seen; one header per group, rows indented.
     std::vector<std::string> order;
     for (auto& n : nodes) {
-        const std::string key = (by == "topic") ? n.topic : n.topic; // v1: topic only
+        const std::string key = groupKeyFor(n, by);
         if (std::find(order.begin(), order.end(), key) == order.end())
             order.push_back(key);
     }
@@ -104,7 +105,7 @@ inline std::string formatIndex(const std::vector<imem::MemoryNode>& nodes,
     for (auto& key : order) {
         os << key << "\n";
         for (auto& n : nodes) {
-            const std::string nk = (by == "topic") ? n.topic : n.topic;
+            const std::string nk = groupKeyFor(n, by);
             if (nk != key) continue;
             os << "  " << formatIndexLine(n) << "\n";
         }
@@ -180,6 +181,41 @@ inline std::string formatCitationHeader(const imem::MemoryNode& n,
     std::ostringstream os;
     os << "[" << scoreStr << "] #" << n.id << " " << iconFor(n) << " " << n.topic;
     return os.str();
+}
+
+// ---- group key: which bucket a node falls into for the index view ----------
+// by="topic" -> the topic string. by="file" -> the first file-path-like token
+// found in the content (a graph-node reference), falling back to topic when the
+// memory mentions no file. Pure + heuristic so grouping is testable offline.
+inline std::string groupKeyFor(const imem::MemoryNode& n, const std::string& by) {
+    if (by != "file") return n.topic;
+    // Scan content for the first token that looks like a source file: contains
+    // a '.' followed by 1-4 alnum chars at a word boundary (e.g. foo.cpp,
+    // bar.hpp, x.ts). Path separators are kept so the full ref is the key.
+    const std::string& c = n.content;
+    size_t i = 0;
+    auto isPathChar = [](char ch){
+        return std::isalnum((unsigned char)ch) || ch=='.' || ch=='_' || ch=='-'
+            || ch=='/' || ch=='\\' || ch==':';
+    };
+    while (i < c.size()) {
+        // start of a candidate token
+        if (!isPathChar(c[i])) { ++i; continue; }
+        size_t start = i;
+        while (i < c.size() && isPathChar(c[i])) ++i;
+        std::string tok = c.substr(start, i - start);
+        // must contain a dot with a short alnum extension at the end
+        size_t dot = tok.rfind('.');
+        if (dot != std::string::npos && dot + 1 < tok.size()) {
+            std::string ext = tok.substr(dot + 1);
+            bool good = ext.size() >= 1 && ext.size() <= 4;
+            for (char e : ext) if (!std::isalnum((unsigned char)e)) good = false;
+            // avoid trailing-dot sentences ("done.") by requiring the token to
+            // hold a path sep OR a known-ish code extension shape (alpha start).
+            if (good && std::isalpha((unsigned char)ext[0])) return tok;
+        }
+    }
+    return n.topic;  // no file mentioned -> fall back to topic bucket
 }
 
 } // namespace icmg::cli
