@@ -116,8 +116,13 @@ public:
             }
             rg_argv.push_back(a);
         }
-        // --symbols needs line numbers to resolve the enclosing symbol.
-        if (symbols_mode && !has_n) rg_argv.push_back("-n");
+        // --symbols needs line numbers to resolve the enclosing symbol, and
+        // --with-filename so a single explicit file still prefixes path: (rg
+        // drops the path when given exactly one file, which breaks parsing).
+        if (symbols_mode) {
+            if (!has_n) rg_argv.push_back("-n");
+            rg_argv.push_back("--with-filename");
+        }
 
         // Dispatch via `icmg run` path so Tkil filter + token cap apply.
         // Build a single shell command string.
