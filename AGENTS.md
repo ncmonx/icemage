@@ -112,6 +112,9 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Recall past decision | `icmg recall "<query>"` |
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
 | Recall across projects | `icmg cross-recall "<query>"` |
+| Recall as a cheap index (titles only) | `icmg recall "<q>" --index` then `--get <id>[,id]` for full (progressive disclosure) |
+| Recall grouped by file/graph-node | `icmg recall "<q>" --index --by file` |
+| Recall as a chronological timeline | `icmg recall "<q>" --timeline` (grouped by day, newest first) |
 | Start new task | `icmg pack "<task>"` (4KB context bundle) |
 | Delegate to LLM | `icmg agent "<task>"` (packâ†’promptâ†’user-CLI) |
 | Run noisy command | `icmg run <cmd>` (Tkil filter â€” 60-90% smaller) |
@@ -123,7 +126,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Shrink to token budget | `icmg shrink` |
 | Expand compressed text | `icmg expand` |
 | View token savings | `icmg savings` |
-| Session-start briefing | `icmg wake-up` (decisions + phases + fixes) |
+| Session-start briefing | `icmg wake-up` (decisions + phases + fixes; typed-icon legend + `~N tok` cost footer) |
 | Browse/manage memories | `icmg memory list/forget/purge` |
 | Anti-pattern recall | `icmg fail recall "<task>"` / `icmg fail store "<task>" "<approach>" "<reason>"` |
 | Cross-session awareness | `icmg session claim/clear/list` |
@@ -284,8 +287,11 @@ git push private restore/private-main:main --force
 |---|---|
 | `icmg recall "<query>"` | BM25 memory recall |
 | `icmg recall "<query>" --semantic` | Semantic (ONNX) recall |
+| `icmg recall "<query>" --index` / `--get <id>` | Progressive disclosure: cheap title index, then fetch chosen ids |
+| `icmg recall "<query>" --timeline` | Chronological recall, grouped by day (newest first) |
+| `icmg recall "<query>" --index --by file` | Group the index by file / graph-node reference |
 | `icmg cross-recall "<query>"` | Recall across all projects |
-| `icmg store --topic T "<text>"` | Store a memory node |
+| `icmg store --topic T "<text>"` | Store a memory node (auto-derives keywords when `--kw` omitted; redacts `<private>..</private>`) |
 | `icmg memory list` | List memory nodes |
 | `icmg memory forget <id>` | Soft-delete a memory |
 | `icmg fail store "<task>" "<approach>" "<reason>"` | Record failed approach |
@@ -336,6 +342,8 @@ git push private restore/private-main:main --force
 | Command | Description |
 |---|---|
 | `icmg update` | Self-upgrade |
+| `icmg install --system [--force] [--status]` | Install binary system-wide; skips re-copy when version matches (smart cache), `--status` shows installed vs running |
+| `icmg serve [--port N]` | Read-only dashboard server; `GET /api/health` is a machine-readable probe (status, uptime, db_ok, counts, version) |
 | `icmg whats-new` | Release notes |
 | `icmg doctor` | Diagnose icmg issues |
 | `icmg health` | System health check |
