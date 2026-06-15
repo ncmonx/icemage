@@ -25,6 +25,7 @@
 #include "../pack_delta.hpp"
 #include "../content_delta.hpp"
 #include "../context_batch.hpp"
+#include "../symbol_bundle.hpp"
 #include "../../core/secret_scanner.hpp"
 // v1.32.0 B4: pack --rerank via warm-pool LLM.
 #include "../../llm/warm_pool.hpp"
@@ -103,6 +104,7 @@ public:
             "                    no line-number guessing). Ignored when --lines is set.\n"
             "  --siblings        Also list test/doc/types sibling files (Phase 67)\n"
             "  --symbol NAME     Return only body of named symbol + immediate deps (80%+ token cut)\n"
+            "                    With NO file arg: cross-file bundle (definition + callers + callees via graph)\n"
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
             "  --no-cache        Bypass hot-context cache (force recompute)\n"
@@ -167,7 +169,82 @@ public:
         }
 
         std::string file;
-        for (auto& a : args) if (!a.empty() && a[0] != '-') { file = a; break; }
+        {
+            auto detected = collectContextFiles(args);
+            if (!detected.empty()) file = detected.front();
+        }
+
+        // Feature F (2026-06-15): --symbol NAME with NO file arg -> cross-file
+        // symbol bundle (definition + callers + callees) resolved via the graph.
+        // (When a file IS given, --symbol keeps its file-scoped slice behaviour.)
+        {
+            std::string sym_name = flagValue(args, "--symbol");
+            if (!sym_name.empty() && file.empty()) {
+                auto& cfg = core::Config::instance();
+                core::Db db(cfg.projectDbPath("."));
+                graph::GraphStore store(db);
+                auto syms = store.findSymbol(sym_name);
+                if (syms.empty()) {
+                    std::cerr << "icmg context --symbol: '" << sym_name
+                              << "' not found in graph\n";
+                    return 1;
+                }
+                const auto& def = syms[0];
+                // Symbol-node paths carry a "<file>#<qualified>" suffix; strip it
+                // for the on-disk body read and for a clean def label.
+                std::string def_file = def.path;
+                auto hashpos = def_file.find('#');
+                if (hashpos != std::string::npos) def_file = def_file.substr(0, hashpos);
+
+                SymbolBundleData bd;
+                bd.total_matches = (int)syms.size();
+                bd.def = { def.symbol_name, def.kind, def_file, def.line_start, def.line_end };
+
+                // Slice the definition body from the source file.
+                {
+                    std::ifstream sf(def_file, std::ios::binary);
+                    if (sf) {
+                        std::string ln; int cur = 0; std::ostringstream bo;
+                        while (std::getline(sf, ln)) {
+                            ++cur;
+                            if (def.line_start > 0 && cur < def.line_start) continue;
+                            if (def.line_end   > 0 && cur > def.line_end)   break;
+                            bo << cur << "\t" << ln << "\n";
+                        }
+                        bd.body = bo.str();
+                    }
+                }
+
+                auto refOf = [&](int64_t id) -> SymRef {
+                    SymRef r;
+                    db.query("SELECT path, COALESCE(symbol_name,''), kind, line_start, line_end "
+                             "FROM graph_nodes WHERE id=?",
+                             {std::to_string(id)},
+                             [&](const core::Row& row){
+                                 if (row.size() >= 5) {
+                                     r.path = row[0]; r.name = row[1]; r.kind = row[2];
+                                     try { r.line_start = std::stoi(row[3]); } catch (...) {}
+                                     try { r.line_end   = std::stoi(row[4]); } catch (...) {}
+                                     auto hp = r.path.find('#');
+                                     if (hp != std::string::npos) r.path = r.path.substr(0, hp);
+                                 }
+                             });
+                    return r;
+                };
+                for (auto& e : store.edgesTo(def.id))
+                    if (e.edge_type == "calls" && e.src > 0) bd.callers.push_back(refOf(e.src));
+                for (auto& e : store.edgesFrom(def.id))
+                    if (e.edge_type == "calls" && e.dst > 0) bd.callees.push_back(refOf(e.dst));
+
+                // Collapse name-collision fan-out (see dedupRefsByName).
+                dedupRefsByName(bd.callers);
+                dedupRefsByName(bd.callees);
+
+                std::cout << renderSymbolBundle(bd);
+                return 0;
+            }
+        }
+
         if (file.empty()) { std::cerr << "icmg context: requires <file>\n"; return 1; }
 
         // v1.28.0 #D fix: tolerate Windows drive-letter paths whose backslash

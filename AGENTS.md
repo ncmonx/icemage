@@ -103,6 +103,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Bundle every file you just changed | `icmg context --changed` (git diff --name-only HEAD → batch + auto-diff) |
 | Re-read a file after editing it | `icmg context <file>` (AUTO-diff: once shown, re-reads emit only changed lines; `--no-diff`/`--full` forces full; `--diff-reset` clears baseline) |
 | Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
+| Bundle a symbol: def + callers + callees | `icmg context --symbol <Name>` (no file arg → cross-file graph bundle) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
 | Shortest path between files | `icmg graph path <from> <to>` |
 | BFS layers by distance | `icmg graph layers <file> [--reverse]` |
@@ -274,6 +275,7 @@ git push private restore/private-main:main --force
 | `icmg graph neighbors <file> [--reverse]` | Direct 1-hop neighbors |
 | `icmg graph common <fileA> <fileB>` | Shared upstream dependencies |
 | `icmg graph symbol <Name>` | Find symbol definition |
+| `icmg context --symbol <Name>` | Cross-file symbol bundle: definition body + callers + callees in one shot (no file arg). With a file arg, --symbol keeps its file-scoped body slice. Same-name fan-out deduped |
 | `icmg graph callers <symbol>` | Who calls this symbol |
 | `icmg graph callees <symbol>` | What this symbol calls |
 | `icmg graph related <file>` | Related files by edge proximity |
