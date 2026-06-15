@@ -674,6 +674,7 @@ add_icmg_test(test_scan_tree     tests/core/test_scan_tree.cpp)              # v
 add_icmg_test(test_json_safe     tests/core/test_json_safe.cpp)              # v1.68.1
 add_icmg_test(test_run_args      tests/cli/test_run_args.cpp)                # v1.70 #178
 add_icmg_test(test_recall_json   tests/cli/test_recall_json.cpp)             # v1.70 #176
+add_icmg_test(test_recall_index  tests/cli/test_recall_index.cpp)            # 2026-06-15 progressive-disclosure
 add_icmg_test(test_llm_list_json tests/cli/test_llm_list_json.cpp)           # v1.70 #177
 add_icmg_test(test_pattern_pass tests/tkil/test_pattern_pass.cpp)
 add_icmg_test(test_outcome      tests/tkil/test_outcome.cpp)
