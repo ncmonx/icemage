@@ -65,6 +65,7 @@ public:
             "  --explain       Show score breakdown\n"
             "  --history       Show recent queries\n"
             "  --index         Layer-1 index: #id|icon|title|~tok (progressive disclosure)\n"
+            "  --timeline      Layer-1 chronological view, grouped by day (newest first)\n"
             "  --get IDS       Layer-2: fetch full content for comma-separated ids\n"
             "  --by topic|date Group --index output (default: topic)\n"
             "  --json          JSON output\n";
@@ -82,6 +83,7 @@ public:
             if (!ids.empty()) return runGet(ids, hasFlag(args, "--json"));
         }
         bool index    = hasFlag(args, "--index");
+        bool timeline = hasFlag(args, "--timeline");
         std::string by = flagValue(args, "--by", "topic");
         bool history  = hasFlag(args, "--history");
         bool json     = hasFlag(args, "--json");
@@ -221,6 +223,8 @@ public:
 
         if (json) {
             printJson(results);
+        } else if (timeline) {
+            std::cout << formatTimeline(results);
         } else if (index) {
             std::cout << formatIndex(results, by);
         } else if (explain) {

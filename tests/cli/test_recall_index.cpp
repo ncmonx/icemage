@@ -16,6 +16,8 @@ using icmg::cli::makeTitle;
 using icmg::cli::iconFor;
 using icmg::cli::formatIndexLine;
 using icmg::cli::formatIndex;
+using icmg::cli::dayKey;
+using icmg::cli::formatTimeline;
 
 static MemoryNode mk(int64_t id, const std::string& topic,
                      const std::string& content, int importance = 1) {
@@ -105,5 +107,51 @@ TEST("recall-index: formatIndex groups by topic with single header per topic") {
 // 6. Empty input -> empty (or no-result) string, no crash.
 TEST("recall-index: formatIndex on empty list does not crash") {
     std::string out = formatIndex({}, "topic");
+    ASSERT_NOT_CONTAINS(out, "#");
+}
+
+// ---- timeline (chronological view, grouped by day) -------------------------
+static MemoryNode mkAt(int64_t id, const std::string& topic,
+                       const std::string& content, int64_t created_at) {
+    MemoryNode n = mk(id, topic, content);
+    n.created_at = created_at;
+    return n;
+}
+
+// 7. dayKey buckets an epoch to a UTC "YYYY-MM-DD" string (deterministic).
+TEST("recall-index: dayKey formats epoch to UTC YYYY-MM-DD") {
+    // 2026-06-15 00:00:00 UTC = 1781481600 ; +12h still same day.
+    std::string d = dayKey(1781481600 + 12 * 3600);
+    ASSERT_EQ(d, std::string("2026-06-15"));
+    ASSERT_EQ(dayKey(0), std::string("unknown"));
+}
+
+// 8. formatTimeline groups by day, one header per day, newest day first.
+TEST("recall-index: formatTimeline groups by day, newest first, one header per day") {
+    int64_t day1 = 1781481600;          // 2026-06-15 00:00 UTC
+    int64_t day0 = day1 - 86400;        // 2026-06-14
+    std::vector<MemoryNode> nodes = {
+        mkAt(10, "decisions-a", "old note on day0",       day0 + 100),
+        mkAt(11, "decisions-b", "newer note on day1",     day1 + 200),
+        mkAt(12, "decisions-c", "newest note on day1",    day1 + 9000),
+    };
+    std::string out = formatTimeline(nodes);
+    // all ids present
+    ASSERT_CONTAINS(out, "#10");
+    ASSERT_CONTAINS(out, "#11");
+    ASSERT_CONTAINS(out, "#12");
+    // both day headers present
+    ASSERT_CONTAINS(out, "2026-06-15");
+    ASSERT_CONTAINS(out, "2026-06-14");
+    // newest day (06-15) appears before older day (06-14)
+    ASSERT_TRUE(out.find("2026-06-15") < out.find("2026-06-14"));
+    // one header per day: 2026-06-14 appears exactly once
+    size_t f = out.find("2026-06-14");
+    ASSERT_TRUE(out.find("2026-06-14", f + 1) == std::string::npos);
+}
+
+// 9. Empty timeline -> no-result, no crash, no '#'.
+TEST("recall-index: formatTimeline on empty list does not crash") {
+    std::string out = formatTimeline({});
     ASSERT_NOT_CONTAINS(out, "#");
 }

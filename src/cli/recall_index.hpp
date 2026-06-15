@@ -16,6 +16,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <ctime>
+#include <cstdio>
 
 namespace icmg::cli {
 
@@ -109,6 +111,63 @@ inline std::string formatIndex(const std::vector<imem::MemoryNode>& nodes,
     }
     os << "\n\xF0\x9F\x92\xA1 fetch detail: icmg recall --get <id>[,<id>...]"
           "   |   critical types (\xF0\x9F\x94\xB4\xF0\x9F\x9F\xA4\xE2\x9A\x96\xEF\xB8\x8F) often worth fetching now\n";
+    return os.str();
+}
+
+// ---- timeline view: chronological, grouped by day --------------------------
+// Day bucket key "YYYY-MM-DD" derived from a unix epoch in UTC. UTC (not local)
+// keeps the format deterministic across machines/timezones -> unit-testable.
+inline std::string dayKey(int64_t epoch) {
+    if (epoch <= 0) return "unknown";
+    std::time_t t = (std::time_t)epoch;
+    std::tm tmv{};
+#if defined(_WIN32)
+    gmtime_s(&tmv, &t);
+#else
+    gmtime_r(&t, &tmv);
+#endif
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
+                  tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday);
+    return std::string(buf);
+}
+
+// HH:MM (UTC) for one timeline row.
+inline std::string hourMin(int64_t epoch) {
+    if (epoch <= 0) return "--:--";
+    std::time_t t = (std::time_t)epoch;
+    std::tm tmv{};
+#if defined(_WIN32)
+    gmtime_s(&tmv, &t);
+#else
+    gmtime_r(&t, &tmv);
+#endif
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+    return std::string(buf);
+}
+
+// Chronological index: sort by created_at DESC (newest first), print one day
+// header per bucket, rows = "HH:MM <icon> <title>  #id". Same typed-icon + title
+// helpers as the topic index so the vocabulary stays consistent.
+inline std::string formatTimeline(std::vector<imem::MemoryNode> nodes) {
+    if (nodes.empty()) return std::string("No results.\n");
+    std::sort(nodes.begin(), nodes.end(),
+              [](const imem::MemoryNode& a, const imem::MemoryNode& b){
+                  return a.created_at > b.created_at;
+              });
+    std::ostringstream os;
+    int64_t total_tok = 0;
+    for (auto& n : nodes) total_tok += core::estimateTokens(n.content);
+    os << nodes.size() << " hit(s) timeline, newest first (~" << total_tok << " tok index)\n\n";
+    std::string curDay;
+    for (auto& n : nodes) {
+        std::string d = dayKey(n.created_at);
+        if (d != curDay) { os << d << "\n"; curDay = d; }
+        os << "  " << hourMin(n.created_at) << " " << iconFor(n) << " "
+           << makeTitle(n.content) << "  #" << n.id << "\n";
+    }
+    os << "\n\xF0\x9F\x92\xA1 fetch detail: icmg recall --get <id>[,<id>...]\n";
     return os.str();
 }
 
