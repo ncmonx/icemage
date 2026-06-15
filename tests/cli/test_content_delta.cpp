@@ -72,3 +72,32 @@ TEST("content-delta: preserves cur-side line number of the change") {
     ASSERT_CONTAINS(r.text, "CHANGED");
     ASSERT_CONTAINS(r.text, "3");   // line number 3 rendered next to it
 }
+
+// ---- Feature C (2026-06-15): auto-default diff decision -----------------
+using icmg::cli::shouldContextDiff;
+
+// 6. First call (no baseline, no flags) => full body, not a diff.
+TEST("context-autodiff: no baseline yields full body") {
+    ASSERT_TRUE(!shouldContextDiff(/*explicit*/false, /*no_diff*/false,
+                                   /*baseline*/false, /*reset*/false));
+}
+
+// 7. Re-read with an existing baseline => auto-diff (no flag needed).
+TEST("context-autodiff: baseline present auto-diffs") {
+    ASSERT_TRUE(shouldContextDiff(false, false, /*baseline*/true, false));
+}
+
+// 8. --no-diff (or --full) opts out even when a baseline exists.
+TEST("context-autodiff: no_diff opts out") {
+    ASSERT_TRUE(!shouldContextDiff(false, /*no_diff*/true, /*baseline*/true, false));
+}
+
+// 9. Explicit --diff forces the diff path even with no baseline (seed call).
+TEST("context-autodiff: explicit diff forces path") {
+    ASSERT_TRUE(shouldContextDiff(/*explicit*/true, false, /*baseline*/false, false));
+}
+
+// 10. --diff-reset always shows full (clears + reseeds), even with a baseline.
+TEST("context-autodiff: reset shows full") {
+    ASSERT_TRUE(!shouldContextDiff(false, false, /*baseline*/true, /*reset*/true));
+}

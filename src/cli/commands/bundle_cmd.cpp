@@ -104,9 +104,10 @@ public:
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
             "  --no-cache        Bypass hot-context cache (force recompute)\n"
-            "  --full            Re-emit full body even on a cache hit (skip dedup stub)\n"
-            "  --diff            Emit only lines changed since the last --diff of this file\n"
-            "  --diff-reset      Clear the stored --diff baseline for this file\n"
+            "  --full            Re-emit full body even on a cache hit (skip dedup stub); also disables auto-diff\n"
+            "  --diff            Force delta path (seeds baseline on first call). Auto-default once a baseline exists.\n"
+            "  --no-diff         Disable auto-diff: always emit the full body (still refreshes baseline)\n"
+            "  --diff-reset      Clear the stored diff baseline for this file (next read shows full)\n"
             "  --json            JSON output\n";
     }
 
@@ -223,7 +224,15 @@ public:
         // baseline. Leaving ctx_cache_args empty also skips the store, so a
         // delta is never persisted under the plain `context` cache key.
         bool diff_reset = hasFlag(args, "--diff-reset");
-        bool diff_mode  = hasFlag(args, "--diff") || diff_reset;
+        bool explicit_diff = hasFlag(args, "--diff");
+        // Feature C (2026-06-15): auto-default delta. Once a per-file baseline
+        // exists, a re-read auto-emits only the delta unless the caller opts
+        // out (--no-diff / --full / env). Explicit --diff and --diff-reset
+        // still bypass the session cache so the body is recomputed + diffed.
+        bool no_diff    = hasFlag(args, "--no-diff") || hasFlag(args, "--full")
+                       || std::getenv("ICMG_CONTEXT_NO_AUTODIFF");
+        bool diff_mode  = explicit_diff || diff_reset;
+        bool emitted_delta = false;  // set when a delta (not full body) was emitted
         std::string ctx_cache_args;
         if (!no_cache && !diff_mode) {
             namespace fs = std::filesystem;
@@ -600,32 +609,31 @@ public:
                             << ranges.size() << " window(s)" << (truncated ? "; truncated" : "") << ") ---\n" << slice_body;
                         if (truncated) out << "\n--- [slice truncated; raise --max-bytes] ---\n";
                     }
-                } else if (diff_mode) {
-                    // --diff: emit only the lines changed since the last --diff
-                    // of this file (baseline at .icmg/last-context-<hash>.txt).
-                    // First call seeds the baseline + shows the full body; an
-                    // unchanged re-read collapses to a one-line note.
+                } else {
+                    // Content emission with auto-default delta (Feature C,
+                    // 2026-06-15). Per-file baseline at .icmg/last-context-
+                    // <hash>.txt, refreshed every call. Once it exists, a
+                    // re-read auto-shows only the delta (no flag) unless the
+                    // caller opts out (--no-diff/--full/env). Explicit --diff
+                    // forces the diff path on the seed call; --diff-reset
+                    // clears the baseline and shows the full body again.
                     namespace fs2 = std::filesystem;
                     fs2::path base = ctxBaselinePath(resolved.empty() ? file : resolved);
                     if (diff_reset) { std::error_code _rec; fs2::remove(base, _rec); }
+                    bool baseline_exists = !diff_reset && fs2::exists(base);
                     std::string prev;
-                    if (!diff_reset && fs2::exists(base)) {
+                    if (baseline_exists) {
                         std::ifstream bf(base, std::ios::binary);
                         std::ostringstream bb; bb << bf.rdbuf(); prev = bb.str();
                     }
-                    if (prev.empty()) {
-                        std::string b2 = body;
-                        bool truncated = b2.size() > budget;
-                        if (truncated) b2.resize(budget);
-                        out << "\n--- Content (" << resolved
-                            << "; --diff baseline seeded, full shown"
-                            << (truncated ? "; truncated" : "") << ") ---\n" << b2;
-                        if (truncated) out << "\n--- [content truncated; raise --max-bytes] ---\n";
-                    } else {
+                    bool want_diff = shouldContextDiff(explicit_diff, no_diff,
+                                                       baseline_exists, diff_reset);
+                    if (want_diff && !prev.empty()) {
                         auto d = computeContentDelta(prev, body, 2);
+                        emitted_delta = true;
                         if (d.identical) {
                             out << "\n--- Content (" << resolved
-                                << "; unchanged since last --diff) ---\n";
+                                << "; unchanged since last shown) ---\n";
                         } else {
                             std::string dt = d.text;
                             bool truncated = dt.size() > budget;
@@ -636,16 +644,24 @@ public:
                                 << ") ---\n" << dt;
                             if (truncated) out << "\n--- [delta truncated; raise --max-bytes] ---\n";
                         }
+                    } else {
+                        std::string b2 = body;
+                        bool truncated = b2.size() > budget;
+                        if (truncated) b2.resize(budget);
+                        const char* why = explicit_diff ? "; --diff baseline seeded, full shown"
+                                        : diff_reset     ? "; baseline reset, full shown"
+                                                         : "";
+                        out << "\n--- Content (" << resolved << why
+                            << (truncated ? "; truncated" : "")
+                            << ") ---\n" << b2;
+                        if (truncated) out << "\n--- [content truncated; raise --max-bytes for more] ---\n";
                     }
-                    // Refresh baseline with the current full body for next --diff.
-                    try { std::ofstream of(base, std::ios::binary); of << body; } catch (...) {}
-                } else {
-                    bool truncated = body.size() > budget;
-                    if (truncated) body.resize(budget);
-                    out << "\n--- Content (" << resolved
-                        << (truncated ? "; truncated" : "")
-                        << ") ---\n" << body;
-                    if (truncated) out << "\n--- [content truncated; raise --max-bytes for more] ---\n";
+                    // Refresh baseline with current full body for next call.
+                    try {
+                        std::error_code _ec;
+                        fs2::create_directories(base.parent_path(), _ec);
+                        std::ofstream of(base, std::ios::binary); of << body;
+                    } catch (...) {}
                 }
             } else {
                 out << "\n--- Content unavailable (graph path mismatch; try `icmg context "
@@ -659,8 +675,10 @@ public:
         std::cout << capped;
 
         // Phase 74 T5: store + boost. Cache 30min default. Hot file = high
-        // priority on next graph search.
-        if (!no_cache && !ctx_cache_args.empty()) {
+        // priority on next graph search. Skip the store when a delta was
+        // emitted (emitted_delta) so a partial body never gets cached under
+        // the full-context key.
+        if (!no_cache && !ctx_cache_args.empty() && !emitted_delta) {
             try {
                 core::ToolCallCache tcc(db);
                 tcc.store("context", ctx_cache_args, capped, /*ttl_sec*/ 1800);

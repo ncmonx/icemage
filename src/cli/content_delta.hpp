@@ -96,4 +96,22 @@ inline ContentDeltaResult computeContentDelta(const std::string& prev,
     return res;
 }
 
+// Feature C (2026-06-15): auto-default delta for `icmg context <file>`.
+// Decide whether to emit a delta instead of the full body. The command keeps a
+// per-file baseline on every call; once a baseline exists, a re-read after an
+// edit shows only the delta automatically — no explicit flag needed.
+//   explicit_diff   user passed --diff (force diff path even w/o baseline)
+//   no_diff         user opted out (--no-diff / --full / env override)
+//   baseline_exists a prior baseline file is present for this file
+//   diff_reset      user passed --diff-reset (clear baseline -> show full, reseed)
+// Returns true => take the diff path (caller still falls back to full body when
+// there is no prior content to diff against, i.e. the seed call).
+inline bool shouldContextDiff(bool explicit_diff, bool no_diff,
+                              bool baseline_exists, bool diff_reset) {
+    if (diff_reset)    return false;   // reset shows full + reseeds baseline
+    if (no_diff)       return false;   // explicit opt-out
+    if (explicit_diff) return true;    // forced (seed-then-diff)
+    return baseline_exists;            // auto: diff only once we have a baseline
+}
+
 } // namespace icmg::cli
