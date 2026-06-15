@@ -99,6 +99,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 |---|---|
 | **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default â€” see rule above) |
 | Read a large file | `icmg context <file>` (graph + symbols + memory) |
+| Re-read a file after editing it | `icmg context <file> --diff` (only changed lines vs last --diff; unchanged = 1-line note) |
 | Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
 | Shortest path between files | `icmg graph path <from> <to>` |
@@ -302,6 +303,7 @@ git push private restore/private-main:main --force
 | Command | Description |
 |---|---|
 | `icmg context <file>` | Graph + symbols + memory (80%+ smaller than raw read) |
+| `icmg context <file> --diff` | Delta re-read: only lines changed since last --diff of this file (`--diff-reset` clears baseline) |
 | `icmg pack "<task>"` | 4KB context bundle for new tasks |
 | `icmg parallel --task "..." --task "..."` | Run 2+ tasks concurrently (3-6Ã— speedup) |
 | `icmg run <cmd>` | Run noisy command through Tkil filter |
