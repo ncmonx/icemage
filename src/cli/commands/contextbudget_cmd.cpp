@@ -141,14 +141,38 @@ public:
         parseTranscript(transcript, by_source, entries, total_tokens);
 
         // v2.0.1: --percent prints just the context-window fill % (for the C5
-        // idle-compact advisor + scripts). Window default 200K (CC flagship);
-        // override via ICMG_CONTEXT_WINDOW. Capped to [0,100].
+        // idle-compact advisor + scripts).
+        // FIX (2026-06-15): report the LIVE window fill = the LAST API usage's
+        // input(+cache) tokens vs the per-model window -- NOT the cumulative
+        // sum of every token spent this session (total_tokens). The cumulative
+        // sum measures "how long the session got" and saturates to 100% on any
+        // long session, falsely signalling "context full" to the compact
+        // advisor (govern advise --fill). This now matches --brief's honest
+        // gauge. Window: per-model resolveContextLimit, override ICMG_CONTEXT_WINDOW.
         if (hasFlag(args, "--percent")) {
-            long long window = 200000;
+            long long window = resolveContextLimit(transcript.string());
             if (const char* w = std::getenv("ICMG_CONTEXT_WINDOW")) {
                 try { window = std::stoll(w); } catch (...) {}
             }
-            int pct = window > 0 ? (int)(total_tokens * 100 / window) : 0;
+            long long used = 0;  // live window fill = most recent input_tokens line
+            {
+                std::ifstream bf(transcript, std::ios::binary);
+                bf.seekg(0, std::ios::end); std::streamoff sz = bf.tellg();
+                std::streamoff st = sz > 524288 ? sz - 524288 : 0; bf.seekg(st);
+                std::string chunk((std::istreambuf_iterator<char>(bf)), std::istreambuf_iterator<char>());
+                size_t pos = 0;
+                while (pos <= chunk.size()) {
+                    size_t nl = chunk.find('\n', pos);
+                    std::string ln = chunk.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+                    if (ln.find("input_tokens") != std::string::npos) {
+                        long long t = contextTokensFromUsageLine(ln);
+                        if (t > 0) used = t;
+                    }
+                    if (nl == std::string::npos) break;
+                    pos = nl + 1;
+                }
+            }
+            int pct = window > 0 ? (int)(used * 100 / window) : 0;
             if (pct > 100) pct = 100;
             if (pct < 0) pct = 0;
             std::cout << pct << "\n";
