@@ -8,6 +8,7 @@
 #include "../../core/spawn_detached.hpp"     // #6 background consolidate launch
 #include "../../core/path_utils.hpp"         // selfExePath
 #include "../quick_store_helpers.hpp"         // #luna-batch: store --quick
+#include "../private_filter.hpp"               // 2026-06-15: <private> redaction
 #include <iostream>
 #include <string>
 #include <chrono>
@@ -32,6 +33,7 @@ public:
             "  --kw k1,k2,...                  Comma-separated keywords\n"
             "  --ttl <days>                    Expire after N days\n"
             "  --force                         Store even if duplicate detected\n"
+            "  <private>..</private>           Inline regions are redacted before storage\n"
             "  --json                          JSON output\n";
     }
 
@@ -57,6 +59,21 @@ public:
             topic   = args[0];
             content = args[1];
         }
+        // 2026-06-15 (claude-mem idea): redact <private>...</private> regions so
+        // sensitive bytes never reach the DB. If the whole content was private,
+        // there is nothing left to store -> skip with a clear message.
+        if (hasPrivate(content)) {
+            content = stripPrivate(content);
+            // trim surrounding whitespace left by redaction
+            while (!content.empty() && (content.front() == ' ' || content.front() == '\n')) content.erase(content.begin());
+            while (!content.empty() && (content.back()  == ' ' || content.back()  == '\n')) content.pop_back();
+            if (content.empty()) {
+                std::cerr << "icmg store: content was entirely <private>; nothing stored\n";
+                return 0;
+            }
+            std::cerr << "[icmg store] redacted <private> region(s) before storing\n";
+        }
+
         std::string kw      = flagValue(args, "--kw");
         std::string imp_str = flagValue(args, "--importance", "med");
         std::string ttl_str = flagValue(args, "--ttl");
