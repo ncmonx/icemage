@@ -12,6 +12,7 @@
 using icmg::cli::collectContextFiles;
 using icmg::cli::singleFileArgs;
 using icmg::cli::parseChangedFiles;
+using icmg::cli::gitListCmdForFlag;
 
 // 1. Multiple bare file args are all collected, in order.
 TEST("context-batch: collects multiple file args") {
@@ -114,4 +115,20 @@ TEST("context-changed: dedups preserving order") {
 TEST("context-changed: empty input yields empty") {
     auto f = parseChangedFiles("");
     ASSERT_EQ((int)f.size(), 0);
+}
+
+// 12. gitListCmdForFlag maps --changed to working-tree diff.
+TEST("context-changed: gitListCmdForFlag --changed") {
+    ASSERT_EQ(parseChangedFiles("").size(), (size_t)0); // keep parseChangedFiles linked
+    ASSERT_TRUE(icmg::cli::gitListCmdForFlag("--changed") == std::string("git diff --name-only HEAD"));
+}
+
+// 13. gitListCmdForFlag maps --staged to the cached (index) diff.
+TEST("context-changed: gitListCmdForFlag --staged") {
+    ASSERT_TRUE(icmg::cli::gitListCmdForFlag("--staged") == std::string("git diff --cached --name-only"));
+}
+
+// 14. gitListCmdForFlag returns empty for an unknown flag.
+TEST("context-changed: gitListCmdForFlag unknown -> empty") {
+    ASSERT_TRUE(icmg::cli::gitListCmdForFlag("--bogus").empty());
 }

@@ -113,34 +113,41 @@ public:
             "  --no-diff         Disable auto-diff: always emit the full body (still refreshes baseline)\n"
             "  --diff-reset      Clear the stored diff baseline for this file (next read shows full)\n"
             "  --changed         Bundle every file changed in the working tree (git diff --name-only HEAD)\n"
+            "  --staged          Bundle every staged file (git diff --cached) - pre-commit review\n"
             "  --json            JSON output\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || args[0] == "--help") { usage(); return 0; }
 
-        // Feature E (2026-06-15): --changed. Pull a bundle for every file
-        // changed in the working tree (git diff --name-only HEAD), then
-        // dispatch the single-file path per file (auto-diff applies).
+        // Feature E (2026-06-15): --changed / --staged. Pull a bundle for every
+        // file changed in the working tree (git diff --name-only HEAD) or staged
+        // (git diff --cached --name-only), then dispatch the single-file path per
+        // file (auto-diff applies). --staged is the pre-commit review sibling.
         {
-            bool changed = false;
-            for (auto& a : args) if (a == "--changed") { changed = true; break; }
-            if (changed) {
-                auto r = core::safeExecShell("git diff --name-only HEAD", false, 10000);
+            const char* sel_flag = nullptr;   // the flag the user passed
+            for (auto& a : args) {
+                if (a == "--changed" || a == "--staged") { sel_flag = a.c_str(); break; }
+            }
+            if (sel_flag) {
+                auto r = core::safeExecShell(gitListCmdForFlag(sel_flag), false, 10000);
                 if (r.exit_code != 0) {
-                    std::cerr << "icmg context --changed: not a git repo (or git unavailable)\n";
+                    std::cerr << "icmg context " << sel_flag
+                              << ": not a git repo (or git unavailable)\n";
                     return 1;
                 }
-                auto changed_files = parseChangedFiles(r.out);
-                if (changed_files.empty()) {
-                    std::cout << "No changed files in the working tree.\n";
+                auto sel_files = parseChangedFiles(r.out);
+                if (sel_files.empty()) {
+                    std::cout << (std::string("--staged") == sel_flag
+                                  ? "No staged files (nothing git-added).\n"
+                                  : "No changed files in the working tree.\n");
                     return 0;
                 }
                 std::vector<std::string> base;
-                for (auto& a : args) if (a != "--changed") base.push_back(a);
+                for (auto& a : args) if (a != sel_flag) base.push_back(a);
                 int rc = 0;
                 bool first = true;
-                for (const auto& fpath : changed_files) {
+                for (const auto& fpath : sel_files) {
                     if (!first) std::cout << "\n" << std::string(70, '=') << "\n";
                     first = false;
                     auto combined = base;

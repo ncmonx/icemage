@@ -92,4 +92,13 @@ inline std::vector<std::string> parseChangedFiles(const std::string& git_output)
     return files;
 }
 
+// Feature E (2026-06-15): map a context selector flag to the git command that
+// lists its files. "--changed" = working-tree vs HEAD; "--staged" = index vs
+// HEAD (pre-commit review). Empty string for an unknown flag.
+inline std::string gitListCmdForFlag(const std::string& flag) {
+    if (flag == "--changed") return "git diff --name-only HEAD";
+    if (flag == "--staged")  return "git diff --cached --name-only";
+    return "";
+}
+
 } // namespace icmg::cli
