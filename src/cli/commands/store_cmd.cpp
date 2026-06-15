@@ -9,6 +9,7 @@
 #include "../../core/path_utils.hpp"         // selfExePath
 #include "../quick_store_helpers.hpp"         // #luna-batch: store --quick
 #include "../private_filter.hpp"               // 2026-06-15: <private> redaction
+#include "../store_autokw.hpp"                 // 2026-06-15: auto-keyword (semantic-title v2)
 #include <iostream>
 #include <string>
 #include <chrono>
@@ -75,6 +76,11 @@ public:
         }
 
         std::string kw      = flagValue(args, "--kw");
+        // semantic-title v2: when no explicit --kw, derive salient keywords from
+        // content so recall/BM25 gets signal even on terse captures. Derived
+        // AFTER <private> redaction so secrets never leak into keywords.
+        bool kw_auto = kw.empty();
+        if (kw_auto) kw = autoKeywords(content);
         std::string imp_str = flagValue(args, "--importance", "med");
         std::string ttl_str = flagValue(args, "--ttl");
         bool force          = hasFlag(args, "--force");
@@ -161,6 +167,7 @@ public:
                 std::cout << "}\n";
             } else {
                 std::cout << "Stored [#" << id << "] " << topic << "\n";
+                if (kw_auto && !kw.empty()) std::cout << "[auto-kw] " << kw << "\n";
                 if (show_hint) std::cout << "[hint] " << hint << "\n";
             }
             return 0;
