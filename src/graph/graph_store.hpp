@@ -7,6 +7,7 @@
 #include <vector>
 #include <list>
 #include <string>
+#include <set>
 
 namespace icmg::graph {
 
@@ -97,8 +98,12 @@ public:
     // import_list: vector of (src_node_id, src_path, import_name_string)
     void resolveAndInsertEdges(
         const std::vector<std::tuple<int64_t,std::string,std::string>>& import_list);
-    // Strategy 4: class cross-reference (Graphify-style) — always run after scan
-    void buildXRefEdges();
+    // Strategy 4: class cross-reference (Graphify-style) — run after scan.
+    // `changed` (incremental): when non-null, only re-read+scan those source
+    // files (their outgoing "uses" edges are the only ones whose source content
+    // changed). Null = full whole-graph xref (used by `graph scan`). Skipping
+    // the 7000-file re-read is the post-mem-sync `graph update` speedup.
+    void buildXRefEdges(const std::set<std::string>* changed = nullptr);
     // Visual Studio designer file grouping: treats .cs + .Designer.cs + .resx
     // as one logical entity by assigning them the same group_id.
     // Also inserts "companion" edges between the trio.

@@ -11,6 +11,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../savings_daily.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
@@ -67,6 +68,7 @@ public:
             "Usage: icmg savings [options]\n\n"
             "Options:\n"
             "  --window <Nd>      Time window (default 30d)\n"
+            "  --daily            Per-day saved-token breakdown (console)\n"
             "  --html [-o FILE]   Generate self-contained HTML dashboard\n"
             "  --ascii            ASCII sparkline (v1.20.0)\n"
             "  --json             Machine output\n"
@@ -351,6 +353,20 @@ public:
                   << "You saved:         $" << cost_saved
                   << "  (" << std::fixed << std::setprecision(1)
                   << pct(total.saved, total.raw_tokens) << "%)\n";
+
+        // Per-day saved-token breakdown (console). Mirrors the --html SVG chart
+        // via the shared aggregateDailySaved(); newest day first.
+        if (hasFlag(args, "--daily")) {
+            auto by_day = aggregateDailySaved(window_days);
+            std::cout << "\nDaily savings (last " << window_days
+                      << " days, newest first):\n";
+            auto rows = formatDailySavingsRows(by_day, window_days);
+            if (rows.empty()) {
+                std::cout << "  (no daily activity recorded in window)\n";
+            } else {
+                for (auto& row : rows) std::cout << row << "\n";
+            }
+        }
 
         // v1.5.0: real session total (aggregated across all project sessions).
         RealSessionData rsd = fetchRealSessionData();
@@ -836,17 +852,12 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
         return 0;
     }
 
-    // Phase 51: per-day saved-tokens bar chart, inline SVG, no JS dep.
-    void emitDailyChart(std::ostream& os, int window_days) {
+    // Per-day saved-token aggregation across all telemetry sources. Shared by
+    // the --html SVG chart (emitDailyChart) and the --daily console view, so
+    // both always agree. Returns date("YYYY-MM-DD") -> saved tokens.
+    std::map<std::string, int64_t> aggregateDailySaved(int window_days) {
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-        std::vector<std::pair<std::string, int64_t>> daily;  // (date, saved_tokens)
-        // Aggregate per day across the 3 telemetry tables.
-        // Each table has: created_at (epoch). Saved-token estimate per row varies.
-        // For uniform aggregation, use:
-        //   - filter telemetry: rows have raw_tokens - actual_tokens (cmd_runs table)
-        //   - compression_telemetry: tok_in - tok_out
-        //   - thinking_telemetry: 1500 per no_think=1 row (heuristic)
         std::map<std::string, int64_t> by_day;
         int64_t now_s = (int64_t)std::time(nullptr);
         int64_t cutoff = now_s - (int64_t)window_days * 86400;
@@ -888,11 +899,9 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                      });
         } catch (...) {}
 
-        // v1.27.3 (Bug 3 fix): include pack_recpt + strict_denials + bfs in
-        // daily chart so its sum matches the Total row. Previously omitted
-        // → user saw Total=942K but daily chart only ~120K. Each strict
-        // denial = 1500 tok (same heuristic as line 188); each BFS = 2000
-        // (same as line 245). Pack receipts from token_receipts table.
+        // v1.27.3 (Bug 3 fix): include pack_recpt + strict_denials + bfs so the
+        // daily sum matches the Total row. Each strict denial = 1500 tok; each
+        // BFS = 2000. Pack receipts from token_receipts table.
         try {
             db.query("SELECT date(ts,'unixepoch'), "
                      "       COALESCE(SUM(CASE WHEN raw_tokens>0 "
@@ -907,7 +916,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                          }
                      });
         } catch (...) {}
-        // Strict denials JSONL bucketed by day.
+        // Strict denials + BFS JSONL bucketed by day.
         {
             const char* home = std::getenv("USERPROFILE");
             if (!home) home = std::getenv("HOME");
@@ -960,7 +969,12 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                 }
             }
         }
+        return by_day;
+    }
 
+    // Phase 51: per-day saved-tokens bar chart, inline SVG, no JS dep.
+    void emitDailyChart(std::ostream& os, int window_days) {
+        std::map<std::string, int64_t> by_day = aggregateDailySaved(window_days);
         if (by_day.empty()) {
             os << "<div class='card' style='text-align:center;color:#8b949e;padding:40px'>"
                << "No daily activity recorded yet. Run `icmg run`, `icmg compress`, "

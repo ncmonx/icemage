@@ -1,5 +1,6 @@
 #include "../base_command.hpp"
 #include "../recall_json.hpp"   // v1.70.0 #176
+#include "../recall_index.hpp"  // 2026-06-15 progressive-disclosure
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -63,6 +64,10 @@ public:
             "  --no-dedup      Show nodes already returned this session (default: suppress)\n"
             "  --explain       Show score breakdown\n"
             "  --history       Show recent queries\n"
+            "  --index         Layer-1 index: #id|icon|title|~tok (progressive disclosure)\n"
+            "  --timeline      Layer-1 chronological view, grouped by day (newest first)\n"
+            "  --get IDS       Layer-2: fetch full content for comma-separated ids\n"
+            "  --by topic|file Group --index output (default: topic; file=by graph-node ref)\n"
             "  --json          JSON output\n";
     }
 
@@ -71,6 +76,15 @@ public:
             usage(); return 0;
         }
 
+        // 2026-06-15 progressive disclosure: --get <ids> fetches full detail for
+        // the IDs the agent picked from a prior --index view. No query needed.
+        {
+            std::string ids = flagValue(args, "--get");
+            if (!ids.empty()) return runGet(ids, hasFlag(args, "--json"));
+        }
+        bool index    = hasFlag(args, "--index");
+        bool timeline = hasFlag(args, "--timeline");
+        std::string by = flagValue(args, "--by", "topic");
         bool history  = hasFlag(args, "--history");
         bool json     = hasFlag(args, "--json");
         bool explain  = hasFlag(args, "--explain");
@@ -209,6 +223,10 @@ public:
 
         if (json) {
             printJson(results);
+        } else if (timeline) {
+            std::cout << formatTimeline(results);
+        } else if (index) {
+            std::cout << formatIndex(results, by);
         } else if (explain) {
             printExplain(query, results);
         } else {
@@ -216,6 +234,52 @@ public:
         }
 
         return 0;
+    }
+
+    // Layer-2 of progressive disclosure: given comma-separated ids (from a prior
+    // --index), fetch + print each node's FULL content. Missing ids -> stderr,
+    // fail-open (exit 0) so one bad id never blanks the rest.
+    int runGet(const std::string& ids, bool json) {
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+        imem::MemoryStore store(db);
+        std::vector<imem::MemoryNode> got;
+        size_t pos = 0;
+        while (pos <= ids.size()) {
+            size_t comma = ids.find(',', pos);
+            std::string tok = ids.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+            // trim spaces
+            while (!tok.empty() && tok.front() == ' ') tok.erase(tok.begin());
+            while (!tok.empty() && tok.back()  == ' ') tok.pop_back();
+            if (!tok.empty()) {
+                int64_t id = 0;
+                try { id = std::stoll(tok); } catch (...) { id = 0; }
+                if (id > 0) {
+                    imem::MemoryNode n = store.get(id);
+                    if (n.id != 0) got.push_back(std::move(n));
+                    else std::cerr << "[icmg recall --get] node #" << id << " not found\n";
+                }
+            }
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+        if (json) printJson(got);
+        else      printFull(got);
+        return 0;
+    }
+
+    // Layer-2 detail print: FULL content, untruncated (the whole point of
+    // --get is to pay for the bytes the agent deliberately chose to fetch).
+    void printFull(const std::vector<imem::MemoryNode>& nodes) const {
+        if (nodes.empty()) { std::cout << "No results.\n"; return; }
+        for (auto& n : nodes) {
+            std::cout << "#" << n.id << " [" << n.topic << "]\n";
+            std::cout << n.content << "\n";
+            if (!n.keywords.empty()) std::cout << "  Keywords: " << n.keywords << "\n";
+            std::cout << "  Used: " << n.frequency << "x, last: " << timeAgo(n.last_used);
+            if (!n.git_sha.empty()) std::cout << "  @" << n.git_sha;
+            std::cout << "\n\n";
+        }
     }
 
 private:
@@ -262,8 +326,11 @@ private:
     void printDefault(const std::vector<imem::MemoryNode>& nodes) const {
         if (nodes.empty()) { std::cout << "No results.\n"; return; }
         for (auto& n : nodes) {
-            std::cout << std::fixed << std::setprecision(1)
-                      << "[" << n.score << "] " << n.topic << "\n";
+            // Citable header: "[score] #id <icon> topic" so each result can be
+            // re-fetched (`recall --get <id>`) or cited by id.
+            std::ostringstream sc;
+            sc << std::fixed << std::setprecision(1) << n.score;
+            std::cout << formatCitationHeader(n, sc.str()) << "\n";
             std::cout << "  \"";
             // Truncate long content
             if (n.content.size() > 120)

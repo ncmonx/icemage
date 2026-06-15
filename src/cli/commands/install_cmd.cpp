@@ -11,6 +11,8 @@
 #include "../../core/registry.hpp"
 #include "../../core/path_utils.hpp"
 #include "../../core/service_install.hpp"
+#include "../../core/version.hpp"        // ICMG_VERSION
+#include "../install_version.hpp"        // 2026-06-15: smart-install version cache
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -46,6 +48,27 @@ static void writeSystemPath(const std::string& dir) {
     auto s = systemPathSentinel();
     std::ofstream f(s);
     f << dir << "\n";
+}
+
+// 2026-06-15 smart-install: ~/.icmg/system-version.txt records the version of
+// the binary currently installed system-wide, so a repeat install at the same
+// version is a cheap no-op.
+static fs::path systemVersionSentinel() {
+    std::string gdir = core::icmgGlobalDir();
+    return fs::path(gdir) / "system-version.txt";
+}
+static std::string readSystemVersion() {
+    auto s = systemVersionSentinel();
+    if (!fs::exists(s)) return "";
+    std::ifstream f(s);
+    std::string line; std::getline(f, line);
+    while (!line.empty() && (line.back()=='\n'||line.back()=='\r'||line.back()==' '))
+        line.pop_back();
+    return line;
+}
+static void writeSystemVersion(const std::string& ver) {
+    std::ofstream f(systemVersionSentinel());
+    f << ver << "\n";
 }
 
 static fs::path selfPath() {
@@ -91,6 +114,7 @@ public:
             "  --system          Copy binary (+ DLLs) to system install dir\n"
             "  --path <dir>      Override default system dir\n"
             "  --no-dlls         Skip DLL copy\n"
+            "  --force           Reinstall even if system version already matches\n"
             "  --status          Show system install info\n\n"
             "Default system dir:\n"
             "  Windows:  C:\\ProgramData\\icmg\\\n"
@@ -108,12 +132,13 @@ public:
         bool do_system = hasFlag(args, "--system");
         bool do_status = hasFlag(args, "--status");
         bool no_dlls   = hasFlag(args, "--no-dlls");
+        bool force     = hasFlag(args, "--force");
         std::string path_override = flagValue(args, "--path");
 
         if (do_status) return showStatus();
         if (!do_system) { usage(); return 1; }
 
-        return installSystem(path_override, no_dlls);
+        return installSystem(path_override, no_dlls, force);
     }
 
 private:
@@ -125,6 +150,14 @@ private:
             return 0;
         }
         std::cout << "System install path: " << sp << "\n";
+        std::string iv = readSystemVersion();
+        std::cout << "Installed version: " << (iv.empty() ? "(unknown)" : iv)
+                  << "   running: " << core::ICMG_VERSION;
+        if (!iv.empty() && iv != core::ICMG_VERSION)
+            std::cout << "   [stale -> run `icmg install --system`]";
+        else if (iv == core::ICMG_VERSION)
+            std::cout << "   [up to date]";
+        std::cout << "\n";
         fs::path bin = fs::path(sp) / binaryName();
         if (fs::exists(bin)) {
             std::cout << "Binary: " << bin.string() << "\n";
@@ -138,7 +171,19 @@ private:
         return 0;
     }
 
-    int installSystem(const std::string& path_override, bool no_dlls) {
+    int installSystem(const std::string& path_override, bool no_dlls, bool force) {
+        // 2026-06-15 smart-install: skip the copy when the system binary is
+        // already at the running version (unless --force). Cheap repeat installs.
+        {
+            InstallDecision dec = shouldReinstall(core::ICMG_VERSION,
+                                                  readSystemVersion(), force);
+            if (!dec.reinstall) {
+                std::cout << "icmg install: " << dec.reason << "\n"
+                          << "  (use --force to reinstall anyway)\n";
+                return 0;
+            }
+            std::cout << "icmg install: " << dec.reason << "\n";
+        }
         std::string dest_dir = path_override.empty() ? defaultSystemDir() : path_override;
         fs::path dest = fs::path(dest_dir);
 
@@ -187,6 +232,7 @@ private:
 
         // Save sentinel
         writeSystemPath(dest_dir);
+        writeSystemVersion(core::ICMG_VERSION);   // 2026-06-15 smart-install cache
         std::cout << "\nSystem install complete: " << dest_dir << "\n";
 
         // v1.1.1: register resident service + clean legacy autopilot schtasks.

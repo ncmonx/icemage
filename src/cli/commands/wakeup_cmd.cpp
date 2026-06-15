@@ -12,6 +12,9 @@
 #include "../../core/profile_store.hpp"
 #include "../resume_helpers.hpp"
 #include "../session_greeting.hpp"
+#include "../recall_index.hpp"     // iconFor — typed-icon decoration
+#include "../wakeup_format.hpp"    // iconLegend + briefingCostFooter
+#include "../../imem/memory_node.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
@@ -94,8 +97,10 @@ public:
         if (has_user) out << "[user: " << cur_user << "]\n";
         out << "(window: " << since << ")\n\n";
 
-        // Top high-importance recent memories
-        out << "Decisions (last 5):\n";
+        // Top high-importance recent memories. Each line prefixed with the
+        // typed icon (same vocab as `recall --index`) so the briefing speaks
+        // one consistent visual language. Legend printed once below.
+        out << "Decisions (last 5):  " << iconLegend() << "\n";
         int n = 0;
         db.query("SELECT id, topic, content, importance FROM memory_nodes "
                  "WHERE deleted_at IS NULL AND last_used > ? AND importance >= 2"
@@ -103,7 +108,11 @@ public:
                  userParams({std::to_string(cutoff)}),
                  [&](const core::Row& r){
                      if (r.size() < 4) return;
-                     out << "  [" << r[3] << "] " << trunc(r[1], 60) << "\n";
+                     imem::MemoryNode mn;
+                     mn.topic = r[1];
+                     try { mn.importance = std::stoi(r[3]); } catch (...) {}
+                     out << "  " << iconFor(mn) << " [" << r[3] << "] "
+                         << trunc(r[1], 60) << "\n";
                      ++n;
                  });
         if (n == 0) out << "  (none in window)\n";
@@ -200,6 +209,8 @@ public:
         if (s.size() > 2048) {
             s = s.substr(0, 2040) + "...\n";
         }
+        // Token-cost visibility: show what this briefing costs in context.
+        s += briefingCostFooter(s) + "\n";
 
         // luna idea ("context --resume"): append persona identity + recent moments so a
         // fresh session re-hydrates continuity in one command. Appended AFTER the 2KB cap

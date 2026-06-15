@@ -32,6 +32,12 @@ public:
         bool                     skip_stale   = true; // skip if hash unchanged
         bool                     resolve_edges = true; // run edge resolution after scan
         bool                     gitignore    = true;  // A9: respect .gitignore
+        // 2026-06-14: incremental xref. When true, the post-scan class
+        // cross-reference pass only re-reads the files this scan changed
+        // (updatedPaths()) instead of EVERY graph node (~7000 disk reads).
+        // `graph update` sets this; full `graph scan` leaves it false so the
+        // whole-graph xref still runs.
+        bool                     incremental_xref = false;
     };
 
     explicit Scanner(GraphStore& store);
@@ -40,8 +46,15 @@ public:
     int scan(const std::string& root);
     int scan(const std::string& root, const Options& opts);
 
+    // Paths of the files actually (re)written during the most recent scan().
+    // Lets callers sync ONLY changed files to memory instead of re-walking the
+    // whole graph (the `icmg graph update` mem-sync bottleneck). Canonical paths
+    // matching graph_node.path. Reset at the start of each scan().
+    const std::vector<std::string>& updatedPaths() const { return updated_paths_; }
+
 private:
     GraphStore& store_;
+    std::vector<std::string> updated_paths_;
 
     std::string md5File(const std::string& path) const;
     std::string detectLang(const std::string& ext) const;

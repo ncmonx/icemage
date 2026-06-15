@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.4.2 LANGUAGES CXX C)
+project(icmg VERSION 2.5.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -674,6 +674,12 @@ add_icmg_test(test_scan_tree     tests/core/test_scan_tree.cpp)              # v
 add_icmg_test(test_json_safe     tests/core/test_json_safe.cpp)              # v1.68.1
 add_icmg_test(test_run_args      tests/cli/test_run_args.cpp)                # v1.70 #178
 add_icmg_test(test_recall_json   tests/cli/test_recall_json.cpp)             # v1.70 #176
+add_icmg_test(test_recall_index  tests/cli/test_recall_index.cpp)            # 2026-06-15 progressive-disclosure
+add_icmg_test(test_private_filter tests/cli/test_private_filter.cpp)         # 2026-06-15 <private> redaction
+add_icmg_test(test_wakeup_format  tests/cli/test_wakeup_format.cpp)          # 2026-06-15 wake-up icon legend + token cost
+add_icmg_test(test_store_autokw   tests/cli/test_store_autokw.cpp)           # 2026-06-15 auto-keyword (semantic-title v2)
+add_icmg_test(test_serve_health   tests/cli/test_serve_health.cpp)          # 2026-06-15 serve /api/health probe
+add_icmg_test(test_install_version tests/cli/test_install_version.cpp)        # 2026-06-15 smart-install version cache
 add_icmg_test(test_llm_list_json tests/cli/test_llm_list_json.cpp)           # v1.70 #177
 add_icmg_test(test_pattern_pass tests/tkil/test_pattern_pass.cpp)
 add_icmg_test(test_outcome      tests/tkil/test_outcome.cpp)
@@ -717,6 +723,8 @@ add_icmg_test(test_mcp_toolset tests/mcp/test_mcp_toolset.cpp)  # v2.0.0 externa
 add_icmg_test(test_graph_edges  tests/graph/test_graph_edges.cpp)
 add_icmg_test(test_graph_report tests/graph/test_graph_report.cpp)        # v1.71 Graphify
 add_icmg_test(test_graph_centrality tests/graph/test_graph_centrality.cpp)  # PageRank 2026-06-12
+add_icmg_test(test_graph_sync_filter tests/graph/test_graph_sync_filter.cpp)  # incremental mem-sync 2026-06-14
+add_icmg_test(test_graph_xref_filter tests/graph/test_graph_xref_filter.cpp)  # incremental xref rebuild 2026-06-14
 add_icmg_test(test_defender_decision tests/cli/test_defender_decision.cpp) # v1.75 #187
 add_icmg_test(test_sqlcipher_spike tests/core/test_sqlcipher_spike.cpp) # v1.76 T1
 add_icmg_test(test_recall_cache tests/core/test_recall_cache.cpp) # ram-brain A
@@ -867,6 +875,8 @@ add_icmg_test(test_migration_0032       tests/core/test_migration_0032.cpp)
 add_icmg_test(test_approach_cmd         tests/cli/test_approach_cmd.cpp)
 add_icmg_test(test_hook_approach        tests/core/test_hook_approach.cpp)
 add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)
+add_icmg_test(test_content_status       tests/cli/test_content_status.cpp)  # P3: 0-byte file != path mismatch
+add_icmg_test(test_savings_daily        tests/cli/test_savings_daily.cpp)  # savings --daily console rows
 # v1.10.0 backlog burn:
 add_icmg_test(test_hookio_cmd           tests/cli/test_hookio_cmd.cpp)
 add_icmg_test(test_cleanup_cmd          tests/cli/test_cleanup_cmd.cpp)

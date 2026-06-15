@@ -13,6 +13,7 @@
 #include <ctime>
 #include <fstream>
 #include "../../graph/scanner.hpp"
+#include "../../graph/graph_sync_filter.hpp"  // incremental mem-sync (2026-06-14)
 #include "../../graph/daemon.hpp"
 #include "../../data/data_store.hpp"
 #include "../../imem/memory_store.hpp"
@@ -68,18 +69,29 @@ static void printNodeJson(std::ostream& o, const graph::GraphNode& n) {
 // Only syncs nodes with non-empty context. Uses force=true so rescan updates
 // existing memory nodes rather than creating duplicates.
 static int syncGraphToMemory(core::Db& db, graph::GraphStore& store,
-                              bool verbose = false) {
+                              bool verbose = false,
+                              const std::set<std::string>* changed = nullptr) {
     imem::MemoryStore mem(db);
 
     // Migrate old-format topics ("graph:<path>" with no spaces after "graph:")
     // to new space-separated format. Hard-delete old nodes so re-insert works.
     db.run("DELETE FROM memory_nodes WHERE topic LIKE 'graph:%' AND topic NOT LIKE 'graph %'", {});
 
+    // Incremental: when the caller passes the set of files the scan actually
+    // changed, sync ONLY those instead of re-walking + BM25-querying every file
+    // node (the multi-minute `icmg graph update` bottleneck). Empty/null set =
+    // full sync (used by `graph scan`).
+    bool incremental = (changed != nullptr);
+    std::set<std::string> empty_set;
+    const std::set<std::string>& changed_set = changed ? *changed : empty_set;
+
     auto nodes = store.all();
     int synced = 0;
     for (auto& n : nodes) {
-        // Phase 18: only sync file-kind nodes (skip child symbols)
-        if (n.kind != "file") continue;
+        // Phase 18 + 2026-06-14: file-kind only, and (when incremental) only
+        // files this scan touched. Pure predicate keeps the rule testable.
+        if (!graph::shouldSyncNode(n.path, n.kind == "file", changed_set, incremental))
+            continue;
         // Build searchable metadata
         namespace fs = std::filesystem;
         fs::path fp(n.path);
@@ -877,8 +889,18 @@ public:
         graph::Scanner scanner(store);
 
         if (!json_out) std::cout << "Updating graph for: " << path << "\n";
+        // 2026-06-14: incremental xref — only re-read files this scan changed
+        // (not all ~7000 nodes). Plain `graph update` is incremental; full
+        // `graph scan` keeps whole-graph xref.
+        opts.incremental_xref = true;
         int count = scanner.scan(path, opts);
-        int mem_synced = no_mem_sync ? 0 : syncGraphToMemory(db, store);
+        // Incremental mem-sync (2026-06-14): sync ONLY the files this scan
+        // actually changed, not all ~7000 file nodes. Eliminates the per-file
+        // BM25 storm that made plain `graph update` take minutes.
+        std::set<std::string> changed(scanner.updatedPaths().begin(),
+                                      scanner.updatedPaths().end());
+        int mem_synced = no_mem_sync ? 0
+                                     : syncGraphToMemory(db, store, false, &changed);
 
         if (json_out) {
             std::cout << "{\"updated\":" << count
