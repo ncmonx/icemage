@@ -10,8 +10,6 @@
 #include "../../graph/repo_skeleton.hpp"  // v2.0.0 externals (repo-compact)
 #include "../../graph/temporal.hpp"       // v2.0.0 externals (temporal KG)
 #include "../../graph/graph_centrality.hpp" // PageRank (2026-06-12)
-#include <ctime>
-#include <fstream>
 #include "../../graph/scanner.hpp"
 #include "../../graph/graph_sync_filter.hpp"  // incremental mem-sync (2026-06-14)
 #include "../../graph/daemon.hpp"
@@ -27,6 +25,7 @@
 #include <sstream>
 #include <fstream>
 #include <filesystem>
+#include <sys/stat.h>   // ::stat() for portable unix-epoch mtime (Gap #5 fix)
 #ifdef _WIN32
   #include <windows.h>
 #endif
@@ -130,7 +129,11 @@ static int syncGraphToMemory(core::Db& db, graph::GraphStore& store,
             db.run("UPDATE memory_nodes SET zone=? WHERE id=?",
                    {mn.zone, std::to_string(existing[0].id)});
         } else {
-            try { mem.store(mn, /*force=*/false); } catch (...) {}
+            try { mem.store(mn, /*force=*/false); } catch (const std::exception& e) {
+                std::cerr << "[syncGraphToMemory] store failed for '" << mn.topic << "': " << e.what() << "\n";
+            } catch (...) {
+                std::cerr << "[syncGraphToMemory] store failed for '" << mn.topic << "' (unknown error)\n";
+            }
         }
         ++synced;
     }
@@ -874,12 +877,16 @@ public:
         // because syncGraphToMemory walks every graph_node. Opt-out for fast
         // incremental updates; full `graph scan` still syncs by default.
         bool no_mem_sync = hasFlag(args, "--no-mem-sync") || hasFlag(args, "--no-embed");
+        bool force        = hasFlag(args, "--force");
         std::string since_str = flagValue(args, "--since");
 
         // Phase 28 T4: --since + --parallel — gather changed files first via
         // mtime filter, then fan-out single-file updates through `core::parallel`
         // (each spawned `icmg graph update <single-file>` reuses v0.12.2 fast-path).
         if (!since_str.empty() || parallel) {
+            // G6: warn if --parallel given without --since (no time filter = scans all)
+            if (parallel && since_str.empty() && !json_out)
+                std::cerr << "Warning: --parallel without --since scans ALL files (no time filter).\n";
             return runIncremental(path, since_str, parallel, json_out, no_mem_sync);
         }
 
@@ -892,7 +899,7 @@ public:
         // 2026-06-14: incremental xref — only re-read files this scan changed
         // (not all ~7000 nodes). Plain `graph update` is incremental; full
         // `graph scan` keeps whole-graph xref.
-        opts.incremental_xref = true;
+        opts.incremental_xref = !force;  // G8: --force = full xref rescan
         int count = scanner.scan(path, opts);
         // Incremental mem-sync (2026-06-14): sync ONLY the files this scan
         // actually changed, not all ~7000 file nodes. Eliminates the per-file
@@ -931,7 +938,7 @@ private:
 
     int runIncremental(const std::string& path, const std::string& since_str,
                         bool parallel, bool json_out, bool no_mem_sync = false) {
-        (void)no_mem_sync;  // propagated to spawned subprocs via flag below
+        // no_mem_sync used below at syncGraphToMemory call (Gap #4 fix)
         int64_t cutoff = parseSince(since_str);
         // Walk directory + collect changed files (mtime > cutoff if cutoff > 0).
         std::vector<std::string> changed;
@@ -957,8 +964,31 @@ private:
                 if (cutoff > 0) {
                     auto wt = std::filesystem::last_write_time(e, ec);
                     if (ec) { ec.clear(); continue; }
+                    // Gap #5 fix (2026-06-16): file_time_type uses a
+                    // platform-defined clock (NTFS epoch = 1601-01-01 on
+                    // Windows). Comparing wt.time_since_epoch() directly to a
+                    // unix-epoch cutoff (from std::time) gives a wrong result
+                    // on Windows (off by ~116 years / 11644473600 s).
+                    // Fix: convert via clock_cast (C++20) or the portable
+                    // duration-arithmetic trick: subtract the file_clock epoch
+                    // offset from system_clock.
+#if defined(__cpp_lib_clock_cast) && __cpp_lib_clock_cast >= 201902L
+                    auto sys_wt = std::chrono::clock_cast<std::chrono::system_clock>(wt);
                     auto sec = std::chrono::duration_cast<std::chrono::seconds>(
-                        wt.time_since_epoch()).count();
+                        sys_wt.time_since_epoch()).count();
+#else
+                    // Portable C++17 fallback: use stat() to get mtime as
+                    // time_t (unix epoch). file_time_type::time_since_epoch()
+                    // is not directly comparable to unix epoch on MSVC (NTFS
+                    // epoch = 1601-01-01), so we avoid it entirely.
+                    int64_t sec = 0;
+                    {
+                        struct stat st{};
+                        if (::stat(e.path().string().c_str(), &st) == 0)
+                            sec = static_cast<int64_t>(st.st_mtime);
+                        // stat fail (race/perm) -> sec=0 -> treated as old, skipped.
+                    }
+#endif
                     if (sec < cutoff) continue;
                 }
                 changed.push_back(e.path().string());
@@ -972,44 +1002,40 @@ private:
         std::cout << "graph update: " << changed.size() << " file(s) "
                   << (parallel ? "[parallel]" : "[serial]") << "\n";
 
-        if (!parallel) {
-            // Serial: single Scanner reused across files.
+        // Gap #4 fix (2026-06-16): previously `--parallel` spawned N subprocess
+        // writers (one per changed file) against the same SQLite DB. With WAL
+        // single-writer semantics and busy_timeout=30s, large change-sets (>32
+        // files) caused "database is locked" crashes when the write queue
+        // exceeded the timeout budget.
+        //
+        // Fix: collapse to a single in-process Scanner that batches all changed
+        // files sequentially. This eliminates all cross-process DB contention
+        // while preserving the mtime-filter + incremental-xref benefit of
+        // --parallel/--since. CPU-bound extraction (parse/hash) runs as fast
+        // as single-Scanner; only DB writes are serialized (which they must be
+        // in SQLite regardless of approach).
+        {
             auto& cfg = core::Config::instance();
             core::Db db(cfg.projectDbPath("."));
             graph::GraphStore store(db);
             graph::Scanner scanner(store);
+            graph::Scanner::Options scan_opts;
+            scan_opts.skip_stale       = true;   // honour hash-check
+            scan_opts.incremental_xref = true;   // only re-resolve changed edges
+            scan_opts.resolve_edges    = true;
             int count = 0;
-            for (auto& f : changed) count += scanner.scan(f);
-            std::cout << "  done. updated=" << count << "\n";
+            for (auto& f : changed) count += scanner.scan(f, scan_opts);
+            std::set<std::string> updated_set(
+                scanner.updatedPaths().begin(), scanner.updatedPaths().end());
+            int mem_synced = no_mem_sync ? 0
+                : syncGraphToMemory(db, store, false, &updated_set);
+            if (json_out) std::cout << "{\"changed\":" << changed.size()
+                                      << ",\"updated\":" << count
+                                      << ",\"memory_synced\":" << mem_synced << "}\n";
+            else          std::cout << "  done. updated=" << count
+                                      << " | memory+" << mem_synced << "\n";
             return 0;
         }
-
-        // Parallel: spawn `icmg graph update <file>` per file via core::parallel.
-        std::vector<core::ParallelTask> tasks;
-        std::string self;
-#ifdef _WIN32
-        char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
-        self = buf;
-#else
-        self = "icmg";
-#endif
-        for (auto& f : changed) {
-            core::ParallelTask t;
-            t.command = "\"" + self + "\" graph update \"" + f + "\"";
-            if (no_mem_sync) t.command += " --no-mem-sync";
-            t.id = f;
-            tasks.push_back(std::move(t));
-        }
-        auto results = core::parallel(tasks, /*max_concurrency=*/0, /*fail_fast=*/false);
-        int ok = 0, err = 0;
-        for (auto& r : results) {
-            if (r.exit_code == 0) ++ok;
-            else                  ++err;
-        }
-        if (json_out) std::cout << "{\"changed\":" << changed.size()
-                                  << ",\"ok\":" << ok << ",\"err\":" << err << "}\n";
-        else          std::cout << "  done. ok=" << ok << " err=" << err << "\n";
-        return err > 0 ? 1 : 0;
     }
 };
 
