@@ -274,7 +274,10 @@ public:
         std::string phase = flagValue(args, "--phase");
 
         auto t0 = std::chrono::steady_clock::now();
-        auto result = core::safeExec({"sh", "-c", command}, /*merge_stderr=*/true, /*timeout_ms=*/600000);
+        // Cross-platform shell dispatch: safeExecShell picks bash (MSYS), pwsh/
+        // cmd.exe (Windows), or /bin/sh (POSIX). The old hardcoded {"sh","-c"}
+        // fails on Windows where `sh` is not on PATH (gap #2, 2026-06-16).
+        auto result = core::safeExecShell(command, /*merge_stderr=*/true, /*timeout_ms=*/600000);
         auto t1 = std::chrono::steady_clock::now();
         int dur = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
