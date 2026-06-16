@@ -991,6 +991,68 @@ if __name__ == "__main__":
     sys.exit(main())
 )PY";
 
+static const char* GREP_HOOK_JS = R"JS(#!/usr/bin/env node
+// PreToolUse:Grep hook - graph search + icmg grep (token-efficient, injection-safe)
+const { spawnSync } = require('child_process')
+
+let raw = ''
+process.stdin.setEncoding('utf8')
+process.stdin.on('data', d => raw += d)
+process.stdin.on('end', () => {
+  let ti = {}
+  try { ti = JSON.parse(raw).tool_input || {} } catch(_) {}
+
+  const pattern = ti.pattern || ''
+  const searchPath = ti.path || '.'
+  const glob = ti.glob || ''
+  const safeInt = v => { const n = parseInt(v, 10); return isNaN(n) ? null : String(Math.abs(n)) }
+
+  const ICMG = process.env.ICMG_EXE || 'icmg'
+  function run(args) {
+    const res = spawnSync(ICMG, args, { encoding: 'utf8', maxBuffer: 4*1024*1024 })
+    return ((res.stdout || '') + (res.stderr || '')).trim()
+  }
+
+  // 1. Semantic layer: graph search (file/symbol refs)
+  let graphOut = ''
+  if (pattern && ti.output_mode !== 'count') {
+    graphOut = run(['graph', 'search', '--', pattern])
+  }
+
+  // 2. Literal layer: icmg grep (rg wrapper)
+  // Flags first, then -- to end options, then positional pattern+path
+  const grepArgs = ['grep']
+  if (ti['-i'] || ti.case_insensitive) grepArgs.push('-i')
+  if (ti.output_mode === 'files_with_matches') grepArgs.push('--files-with-matches')
+  if (ti.output_mode === 'count') grepArgs.push('--count')
+  if (glob) grepArgs.push('--glob', glob)
+  const ctx = safeInt(ti.context); if (ctx) grepArgs.push('-C', ctx)
+  const lA = safeInt(ti['-A']); if (lA) grepArgs.push('-A', lA)
+  const lB = safeInt(ti['-B']); if (lB) grepArgs.push('-B', lB)
+  grepArgs.push('-e', pattern, '--', searchPath)
+  const grepOut = run(grepArgs)
+
+  // Combine
+  let out = ''
+  if (graphOut && graphOut !== 'No results.') {
+    out += `[graph: ${pattern}]\n${graphOut}\n\n`
+  }
+  out += `[grep: ${pattern}]\n${grepOut}`
+
+  const MAX = 20000
+  if (out.length > MAX) out = out.slice(0, MAX) + '\n[output truncated to 20k chars]'
+
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      additionalContext: '[icmg grep+graph]\n' + out
+    },
+    decision: 'block',
+    reason: 'icmg graph+grep results are included in this tool result -- use them directly. Do NOT re-run the search via Select-String/findstr/Bash grep (it is blocked again and wastes turns).'
+  }))
+})
+)JS";
+
 static const char* AGENTS_BLOCK = R"MD(<!-- icmg:start -->
 ## icmg routing (auto-inserted by `icmg init`)
 
@@ -1762,6 +1824,74 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-compressed-write.sh",
                        COMPRESSED_WRITE_RULE_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-graph-update.sh", GRAPH_UPDATE_SH, true);
+        // v2.4.3: grep-hook.js — PreToolUse:Grep interceptor (graph search + icmg grep).
+        // Written to .claude/ (not hooks/) so `node .claude/grep-hook.js` resolves from cwd.
+        n += writeFile(root / ".claude" / "grep-hook.js", GREP_HOOK_JS, true);
+
+        // Ensure .claude/settings.json has PreToolUse:Grep entry for grep-hook.js.
+        // Create from scratch if absent; merge/deduplicate if already present.
+        {
+            fs::path gsPath = root / ".claude" / "settings.json";
+            std::error_code _gsec;
+            nlohmann::json gsCfg = nlohmann::json::object();
+            if (fs::exists(gsPath, _gsec)) {
+                try {
+                    std::ifstream gsf(gsPath);
+                    std::string gsBody((std::istreambuf_iterator<char>(gsf)),
+                                       std::istreambuf_iterator<char>());
+                    gsf.close();
+                    nlohmann::json parsed = nlohmann::json::parse(gsBody, nullptr, false);
+                    if (!parsed.is_discarded()) gsCfg = std::move(parsed);
+                } catch (...) {}
+            }
+            if (!gsCfg.contains("hooks") || !gsCfg["hooks"].is_object())
+                gsCfg["hooks"] = nlohmann::json::object();
+            auto& hooks = gsCfg["hooks"];
+            if (!hooks.contains("PreToolUse") || !hooks["PreToolUse"].is_array())
+                hooks["PreToolUse"] = nlohmann::json::array();
+            auto& ptu = hooks["PreToolUse"];
+            // Check whether a Grep entry with grep-hook.js already exists.
+            bool found = false;
+            for (auto& entry : ptu) {
+                if (entry.contains("matcher") && entry["matcher"] == "Grep") {
+                    // Ensure the grep-hook.js command is present in hooks array.
+                    bool cmdFound = false;
+                    if (entry.contains("hooks") && entry["hooks"].is_array()) {
+                        for (auto& h : entry["hooks"]) {
+                            if (h.contains("command") &&
+                                h["command"].get<std::string>().find("grep-hook.js") != std::string::npos) {
+                                cmdFound = true; break;
+                            }
+                        }
+                    }
+                    if (!cmdFound) {
+                        if (!entry.contains("hooks") || !entry["hooks"].is_array())
+                            entry["hooks"] = nlohmann::json::array();
+                        entry["hooks"].push_back({
+                            {"type",    "command"},
+                            {"command", "node .claude/grep-hook.js"},
+                            {"shell",   "bash"}
+                        });
+                    }
+                    found = true; break;
+                }
+            }
+            if (!found) {
+                ptu.push_back({
+                    {"matcher", "Grep"},
+                    {"hooks", nlohmann::json::array({{
+                        {"type",    "command"},
+                        {"command", "node .claude/grep-hook.js"},
+                        {"shell",   "bash"}
+                    }})}
+                });
+            }
+            try {
+                std::ofstream gsOut(gsPath);
+                gsOut << gsCfg.dump(2) << "\n";
+                std::cout << "  + .claude/settings.json: PreToolUse:Grep hook (grep-hook.js)\n";
+            } catch (...) { /* best-effort */ }
+        }
 
 #ifndef _WIN32
         // chmod +x on POSIX
