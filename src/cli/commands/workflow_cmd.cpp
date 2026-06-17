@@ -222,10 +222,10 @@ public:
     }
 
     int run(const std::vector<std::string>& args) override {
+        if (args.empty() || args[0] == "--help") { usage(); return 0; }
+
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
-
-        if (args.empty() || args[0] == "--help") { usage(); return 0; }
 
         if (args[0] == "show") {
             std::string phase = flagValue(args, "--phase");
