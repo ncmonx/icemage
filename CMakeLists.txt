@@ -808,6 +808,8 @@ add_icmg_test(test_backend_factory tests/embed/test_backend_factory.cpp)
 add_icmg_test(test_wordpiece tests/embed/test_wordpiece.cpp)
 add_icmg_test(test_treesitter_c tests/graph/test_treesitter_c.cpp)
 add_icmg_test(test_compressor tests/compress/test_compressor.cpp)
+add_icmg_test(test_learned_glossary tests/compress/test_learned_glossary.cpp)  # 2026-06-19 Adaptive Output Gate slice-1 (self-improving compress)
+add_icmg_test(test_output_gate tests/compress/test_output_gate.cpp)  # 2026-06-19 Adaptive Output Gate slice-2 (compress-before-cap)
 add_icmg_test(test_write_expander tests/compress/test_write_expander.cpp)  # v1.27.0 Phase 1.1
 add_icmg_test(test_port_artifact tests/cli/test_port_artifact.cpp)         # v1.27.0 Phase 1.2
 add_icmg_test(test_template_engine tests/compress/test_template_engine.cpp) # v1.27.0 Phase 2

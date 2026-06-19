@@ -11,6 +11,7 @@
 #include "../../core/tool_call_cache.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
+#include "../../compress/learned_glossary.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -116,6 +117,15 @@ public:
             core::Db db(cfg.projectDbPath("."));
             compress::GlossaryStore store(db);
             if (!cache_hit && !r.skipped) store.save(r.content_hash, r.glossary);
+            // Slice-1b: feed the cross-session LearnedGlossary so recurring
+            // aliases accumulate hits + token-savings (self-improving compress).
+            // Only real (non-cache, non-skipped) runs teach it.
+            if (!cache_hit && !r.skipped && !r.glossary.empty()) {
+                compress::LearnedGlossary lg(db);
+                int per = compress::LearnedGlossary::perEntrySaved(
+                    r.tok_in, r.tok_out, (int)r.glossary.size());
+                lg.recordUse(r.glossary, per);
+            }
             store.recordTelemetry("compress", r.bytes_in, r.bytes_out,
                                    r.tok_in, r.tok_out, r.elapsed_ms,
                                    cache_hit ? "cache-hit"
