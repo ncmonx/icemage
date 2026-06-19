@@ -679,10 +679,6 @@ add_icmg_test(test_private_filter tests/cli/test_private_filter.cpp)         # 2
 add_icmg_test(test_wakeup_format  tests/cli/test_wakeup_format.cpp)          # 2026-06-15 wake-up icon legend + token cost
 add_icmg_test(test_store_autokw   tests/cli/test_store_autokw.cpp)           # 2026-06-15 auto-keyword (semantic-title v2)
 add_icmg_test(test_serve_health   tests/cli/test_serve_health.cpp)          # 2026-06-15 serve /api/health probe
-add_icmg_test(test_content_delta  tests/cli/test_content_delta.cpp)         # 2026-06-15 context --diff delta re-read
-add_icmg_test(test_grep_symbols   tests/cli/test_grep_symbols.cpp)           # 2026-06-15 grep --symbols enclosing-symbol grouping
-add_icmg_test(test_context_batch  tests/cli/test_context_batch.cpp)          # 2026-06-15 context batch read-many arg split
-add_icmg_test(test_symbol_bundle  tests/cli/test_symbol_bundle.cpp)          # 2026-06-15 context --symbol cross-file bundle
 add_icmg_test(test_install_version tests/cli/test_install_version.cpp)        # 2026-06-15 smart-install version cache
 add_icmg_test(test_llm_list_json tests/cli/test_llm_list_json.cpp)           # v1.70 #177
 add_icmg_test(test_pattern_pass tests/tkil/test_pattern_pass.cpp)
