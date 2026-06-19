@@ -143,6 +143,11 @@ public:
                 int per = compress::LearnedGlossary::perEntrySaved(
                     r.tok_in, r.tok_out, (int)r.glossary.size());
                 lg.recordUse(r.glossary, per);
+                // Slice-4 durability: self-maintain by forgetting stale dead
+                // weight (old AND unproven) so the seeded vocabulary stays
+                // curated. Config compress.seed_prune_days (default 90, <=0 off).
+                int prune_days = cfg.getInt("compress.seed_prune_days", 90);
+                if (prune_days > 0) lg.prune(prune_days, /*min_hits*/ 2);
             }
             store.recordTelemetry("compress", r.bytes_in, r.bytes_out,
                                    r.tok_in, r.tok_out, r.elapsed_ms,

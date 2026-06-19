@@ -89,3 +89,55 @@ TEST("LG: perEntrySaved divides total savings across glossary entries") {
     // negative/no savings clamps to 0 (never reward a bad compress)
     ASSERT_EQ(compress::LearnedGlossary::perEntrySaved(500, 700, 4), 0);
 }
+
+// ---- Slice-4: durability (recency-decay + prune) ----------------------------
+// Append-only memory floods with stale noise; what makes it AWET (durable yet
+// relevant) is that recently-used vocab stays strong and dead weight fades.
+
+TEST("LG: decayedValue halves at one half-life, full when fresh") {
+    const int64_t day = 86400;
+    int64_t now = 1'000'000'000;
+    // fresh (last_seen == now) -> no decay
+    ASSERT_EQ((int)compress::LearnedGlossary::decayedValue(100, now, now, 10.0), 100);
+    // exactly one half-life old -> ~half
+    double half = compress::LearnedGlossary::decayedValue(100, now - 10 * day, now, 10.0);
+    ASSERT_TRUE(half > 49.0 && half < 51.0);
+    // halflife <= 0 disables decay (always full value)
+    ASSERT_EQ((int)compress::LearnedGlossary::decayedValue(100, now - 100 * day, now, 0.0), 100);
+}
+
+TEST("LG: recency re-ranks a fresh phrase above a stale high-value one") {
+    core::Db db(":memory:");
+    compress::LearnedGlossary lg(db);
+    const int64_t day = 86400;
+    int64_t now = (int64_t)::time(nullptr);
+    // STALE big-savings phrase (last used long ago).
+    lg.recordUse(g({{"A", "old expensive boilerplate header"}}), 100, now - 60 * day);
+    lg.recordUse(g({{"A", "old expensive boilerplate header"}}), 100, now - 60 * day);
+    // FRESH smaller-savings phrase (used just now).
+    lg.recordUse(g({{"B", "fresh recurring config key"}}), 40, now);
+    lg.recordUse(g({{"B", "fresh recurring config key"}}), 40, now);
+
+    // With a short half-life, recency dominates: fresh phrase ranks first.
+    auto ranked = lg.suggestRanked(/*minHits=*/2, /*limit=*/10, now, /*halflife_days=*/14.0);
+    ASSERT_TRUE(ranked.size() >= 2);
+    ASSERT_EQ(ranked.front().phrase, "fresh recurring config key");
+}
+
+TEST("LG: prune removes stale low-hit dead weight, keeps live signal") {
+    core::Db db(":memory:");
+    compress::LearnedGlossary lg(db);
+    const int64_t day = 86400;
+    int64_t now = (int64_t)::time(nullptr);
+    // dead weight: 1 hit, very old
+    lg.recordUse(g({{"A", "abandoned one off phrase"}}), 5, now - 120 * day);
+    // live: many hits, recent
+    lg.recordUse(g({{"B", "still useful recurring phrase"}}), 5, now);
+    lg.recordUse(g({{"B", "still useful recurring phrase"}}), 5, now);
+    lg.recordUse(g({{"B", "still useful recurring phrase"}}), 5, now);
+
+    int removed = lg.prune(/*max_age_days=*/90, /*min_hits=*/2, now);
+    ASSERT_EQ(removed, 1);
+    ASSERT_EQ(lg.hits("abandoned one off phrase"), 0);     // gone
+    ASSERT_EQ(lg.hits("still useful recurring phrase"), 3); // kept
+}

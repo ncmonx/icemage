@@ -31,8 +31,10 @@ public:
     // Record a produced glossary (alias -> phrase). Each entry bumps hits by 1
     // and adds tok_saved_per_entry to the phrase's accumulated savings.
     // Keyed by phrase (the original text); the first alias seen is kept stable.
+    // `now` overridable for deterministic tests (-1 -> wall clock).
     void recordUse(const std::map<std::string, std::string>& glossary,
-                   int tok_saved_per_entry = 0);
+                   int tok_saved_per_entry = 0,
+                   int64_t now = -1);
 
     // Hit count for a given phrase (0 if unknown).
     int hits(const std::string& phrase);
@@ -44,10 +46,27 @@ public:
     // Same selection as suggest(), but returns full ranked entries.
     std::vector<LearnedEntry> suggestRanked(int min_hits, int limit = 100);
 
+    // Recency-aware ranking (Slice-4 durability): candidates are re-ranked by
+    // decayedValue(now) so a freshly-used phrase outranks a stale high-savings
+    // one — keeps the seeded vocabulary RELEVANT over time, not just large.
+    std::vector<LearnedEntry> suggestRanked(int min_hits, int limit,
+                                            int64_t now, double halflife_days);
+
     // Per-entry token-savings attribution: a compress run saved (tok_in-tok_out)
     // tokens via n_entries glossary aliases; split evenly, clamped at 0 (never
     // credit a compress that grew the text). Pure helper — easy to unit test.
     static int perEntrySaved(int tok_in, int tok_out, int n_entries);
+
+    // Recency-decayed value of a phrase: tok_saved discounted by age (from
+    // last_seen) via an exponential half-life. halflife_days <= 0 disables
+    // decay (returns tok_saved). Pure/static — deterministic to unit-test.
+    static double decayedValue(int64_t tok_saved, int64_t last_seen,
+                               int64_t now, double halflife_days);
+
+    // Forget dead weight: delete entries not seen for > max_age_days AND below
+    // min_hits. Keeps the vocabulary curated so stale noise can't crowd out live
+    // signal. Returns rows removed. `now` overridable for tests (-1 -> clock).
+    int prune(int max_age_days, int min_hits, int64_t now = -1);
 
 private:
     core::Db& db_;

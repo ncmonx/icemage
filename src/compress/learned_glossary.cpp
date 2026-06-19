@@ -1,4 +1,6 @@
 #include "learned_glossary.hpp"
+#include <algorithm>
+#include <cmath>
 #include <ctime>
 
 namespace icmg::compress {
@@ -20,8 +22,9 @@ void LearnedGlossary::ensureSchema() {
 }
 
 void LearnedGlossary::recordUse(const std::map<std::string, std::string>& glossary,
-                                 int tok_saved_per_entry) {
-    int64_t now = (int64_t)::time(nullptr);
+                                 int tok_saved_per_entry,
+                                 int64_t now) {
+    if (now < 0) now = (int64_t)::time(nullptr);
     for (auto& kv : glossary) {
         const std::string& alias  = kv.first;
         const std::string& phrase = kv.second;
@@ -73,9 +76,33 @@ std::vector<LearnedEntry> LearnedGlossary::suggestRanked(int min_hits, int limit
     return out;
 }
 
+std::vector<LearnedEntry> LearnedGlossary::suggestRanked(int min_hits, int limit,
+                                                         int64_t now,
+                                                         double halflife_days) {
+    // Pull a generous candidate pool by raw value, then re-rank by recency-
+    // decayed score so freshly-used vocab rises and stale entries sink. The
+    // table is small; an over-fetch of limit*8 is cheap and keeps the live
+    // signal from being capped out by stale-but-high-savings rows.
+    int pool = limit > 0 ? limit * 8 : 100;
+    auto cands = suggestRanked(min_hits, pool);
+    if (now < 0) now = (int64_t)::time(nullptr);
+    std::stable_sort(cands.begin(), cands.end(),
+        [&](const LearnedEntry& a, const LearnedEntry& b) {
+            double va = decayedValue(a.tok_saved, a.last_seen, now, halflife_days);
+            double vb = decayedValue(b.tok_saved, b.last_seen, now, halflife_days);
+            if (va != vb) return va > vb;
+            return a.hits > b.hits;
+        });
+    if (limit > 0 && (int)cands.size() > limit) cands.resize(limit);
+    return cands;
+}
+
 std::map<std::string, std::string> LearnedGlossary::suggest(int min_hits, int limit) {
     std::map<std::string, std::string> out;
-    for (auto& e : suggestRanked(min_hits, limit)) out[e.alias] = e.phrase;
+    // Seed the live compressor with RECENCY-aware ranking (default 30-day
+    // half-life) so the vocabulary stays relevant, not just historically large.
+    for (auto& e : suggestRanked(min_hits, limit, (int64_t)::time(nullptr), 30.0))
+        out[e.alias] = e.phrase;
     return out;
 }
 
@@ -84,6 +111,32 @@ int LearnedGlossary::perEntrySaved(int tok_in, int tok_out, int n_entries) {
     int saved = tok_in - tok_out;
     if (saved <= 0) return 0;
     return saved / n_entries;
+}
+
+double LearnedGlossary::decayedValue(int64_t tok_saved, int64_t last_seen,
+                                     int64_t now, double halflife_days) {
+    if (halflife_days <= 0.0) return (double)tok_saved;   // decay disabled
+    double age_days = (double)(now - last_seen) / 86400.0;
+    if (age_days <= 0.0) return (double)tok_saved;        // fresh / future-stamped
+    double factor = std::pow(0.5, age_days / halflife_days);
+    return (double)tok_saved * factor;
+}
+
+int LearnedGlossary::prune(int max_age_days, int min_hits, int64_t now) {
+    if (now < 0) now = (int64_t)::time(nullptr);
+    int64_t cutoff = now - (int64_t)max_age_days * 86400;
+    int removed = 0;
+    try {
+        // Count first (best-effort metric), then delete dead weight: too old AND
+        // not proven (below min_hits). A high-hit phrase is never pruned by age.
+        db_.query("SELECT COUNT(*) FROM learned_glossary "
+                  "WHERE last_seen < ? AND hits < ?",
+                  {std::to_string(cutoff), std::to_string(min_hits)},
+                  [&](const core::Row& r){ if (!r.empty()) removed = std::stoi(r[0]); });
+        db_.run("DELETE FROM learned_glossary WHERE last_seen < ? AND hits < ?",
+                {std::to_string(cutoff), std::to_string(min_hits)});
+    } catch (...) { /* best-effort */ }
+    return removed;
 }
 
 } // namespace icmg::compress
