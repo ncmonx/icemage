@@ -49,6 +49,7 @@ void writeTokenReceipt(core::Db& db, const std::string& cmd,
 #include "../../core/token_counter.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
+#include "../../compress/output_gate.hpp"
 #include "../../imem/memory_store.hpp"
 #include <iostream>
 #include <iomanip>
@@ -107,6 +108,7 @@ public:
             "                    With NO file arg: cross-file bundle (definition + callers + callees via graph)\n"
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
+            "  --gate            Over-budget: lossless-compress first, truncate only as last resort\n"
             "  --no-cache        Bypass hot-context cache (force recompute)\n"
             "  --full            Re-emit full body even on a cache hit (skip dedup stub); also disables auto-diff\n"
             "  --diff            Force delta path (seeds baseline on first call). Auto-default once a baseline exists.\n"
@@ -806,9 +808,17 @@ public:
             }
         }
 
-        // Cap output
-        std::string spill;
-        std::string capped = core::capOutput(out.str(), cap, spill);
+        // Cap output. Default: plain truncate+spill (capOutput). With --gate:
+        // try a LOSSLESS compress before truncating, so an over-budget bundle
+        // keeps all content (reversible glossary) instead of losing the middle.
+        std::string capped;
+        if (hasFlag(args, "--gate")) {
+            auto gr = compress::gateOutput(out.str(), cap);
+            capped = gr.text;
+        } else {
+            std::string spill;
+            capped = core::capOutput(out.str(), cap, spill);
+        }
         std::cout << capped;
 
         // Phase 74 T5: store + boost. Cache 30min default. Hot file = high
