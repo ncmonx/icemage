@@ -56,6 +56,41 @@ TEST("compressor: builds glossary on big repetitive input") {
     ASSERT_TRUE(r.text.find("<icmg-body>") != std::string::npos);
 }
 
+TEST("compressor: seed phrases applied below per-call frequency") {
+    // Slice-3: cross-session learned vocab is substituted even at freq 1,
+    // closing the self-improving loop (LearnedGlossary.suggest -> seed_phrases).
+    CompressOptions o;
+    o.threshold_tok = 1;  // bypass size gate
+    o.seed_phrases = { "GloballyRecurringConfigKey" };
+    Compressor c(o);
+    // Phrase appears ONCE -> below min_ident_freq(5); only seed can catch it.
+    std::string body = "prefix GloballyRecurringConfigKey suffix\nplain tail line\n";
+    auto r = c.compress(body, "");
+    ASSERT_FALSE(r.skipped);
+    bool found = false;
+    for (auto& kv : r.glossary)
+        if (kv.second == "GloballyRecurringConfigKey") found = true;
+    ASSERT_TRUE(found);
+    // Original phrase gone from body (replaced by alias).
+    ASSERT_TRUE(r.body_only.find("GloballyRecurringConfigKey") == std::string::npos);
+    // Round-trips losslessly.
+    std::map<std::string,std::string> g2; std::string b2;
+    ASSERT_TRUE(Compressor::parsePreface(r.text, &g2, &b2));
+    std::string restored = Compressor::expand(b2, g2);
+    ASSERT_TRUE(restored.find("GloballyRecurringConfigKey") != std::string::npos);
+}
+
+TEST("compressor: seed phrase absent from body is a no-op") {
+    CompressOptions o;
+    o.threshold_tok = 1;
+    o.seed_phrases = { "NeverAppearsHere" };
+    Compressor c(o);
+    std::string body = "plain text line one\nplain text line two\n";
+    auto r = c.compress(body, "");
+    for (auto& kv : r.glossary)
+        ASSERT_TRUE(kv.second != std::string("NeverAppearsHere"));
+}
+
 TEST("compressor: round-trip lossless via parsePreface + expand") {
     Compressor c;
     std::string input = bigSample();

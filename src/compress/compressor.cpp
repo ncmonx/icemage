@@ -184,6 +184,20 @@ CompressResult Compressor::compress(const std::string& input,
     // Stage 1: line dedup.
     body = dedupLines(body);
 
+    // Stage 1.5: seed glossary (cross-session learned vocab). Applied before
+    // path/ident discovery so high-value recurring phrases are substituted even
+    // at per-call frequency 1. Distinct @S<n> namespace avoids @P/$I collisions.
+    {
+        int idx = 1;
+        for (const auto& phrase : opts_.seed_phrases) {
+            if (phrase.empty()) continue;
+            if (body.find(phrase) == std::string::npos) continue;  // no-op if absent
+            std::string alias = "@S" + std::to_string(idx++);
+            r.glossary[alias] = phrase;
+            body = replaceAll(body, phrase, alias);
+        }
+    }
+
     // Stage 2: path glossary (paths with /).
     {
         std::regex path_re(R"([A-Za-z0-9_./\-]*[/][A-Za-z0-9_./\-]+)");
@@ -268,8 +282,8 @@ std::string Compressor::expand(const std::string& text,
         out = replaceAll(out, kv.first, kv.second);
     }
     if (strict) {
-        // Detect any leftover @P\d+ or $I\d+.
-        std::regex leftover(R"((@P\d+|\$I\d+))");
+        // Detect any leftover @P\d+, $I\d+, or @S\d+ alias.
+        std::regex leftover(R"((@P\d+|\$I\d+|@S\d+))");
         std::smatch m;
         if (std::regex_search(out, m, leftover)) {
             if (err) *err = "unknown alias: " + m.str();

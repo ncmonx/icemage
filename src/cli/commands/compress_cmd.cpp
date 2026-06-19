@@ -37,6 +37,7 @@ public:
             "  --threshold N         Skip if est-tokens < N (default 8000)\n"
             "  --kind <ext>          Hint content kind (e.g., .log, .md, .cs)\n"
             "  --force               Compress even if shouldCompress() says no\n"
+            "  --no-seed             Skip LearnedGlossary seeding (per-call discovery only)\n"
             "  --stats               Print 30-day telemetry summary, exit\n"
             "  --json                Machine-readable summary\n"
             "  -o <file>             Write to file instead of stdout\n"
@@ -76,6 +77,22 @@ public:
 
         if (force) opts.threshold_tok = 0;
 
+        // Slice-3 (Adaptive Output Gate): SEED the compressor from the
+        // cross-session LearnedGlossary so high-value recurring phrases are
+        // substituted even at per-call frequency 1 — closing the self-improving
+        // loop (Slice-1b records hits; here we consume them). Best-effort: a DB
+        // failure simply yields no seed. min_hits gate keeps one-off noise out;
+        // config `compress.seed_min_hits` (default 3, <=0 disables seeding).
+        int seed_min_hits = cfg.getInt("compress.seed_min_hits", 3);
+        if (seed_min_hits > 0 && !hasFlag(args, "--no-seed")) {
+            try {
+                core::Db db(cfg.projectDbPath("."));
+                compress::LearnedGlossary lg(db);
+                auto learned = lg.suggest(seed_min_hits, /*limit*/ 64);
+                for (auto& kv : learned) opts.seed_phrases.push_back(kv.second);
+            } catch (...) { /* no DB / empty vocab: skip seeding */ }
+        }
+
         // Phase 74 T5: hot-context cache — same input + same opts within TTL → hit.
         // Saves recompression cost when Claude re-checks file mid-task.
         bool no_cache = hasFlag(args, "--no-cache") || std::getenv("ICMG_NO_CACHE");
@@ -84,6 +101,7 @@ public:
           + "|mode=" + (opts.mode == compress::Mode::Aggressive ? "agg" : "loss")
           + "|kind=" + kind
           + "|in_sz=" + std::to_string(input.size())
+          + "|seed=" + std::to_string(opts.seed_phrases.size())
           + "|in=" + input;  // FNV-1a inside makeKey hashes the whole thing
         std::optional<std::string> cached_text;
         compress::CompressResult r;
