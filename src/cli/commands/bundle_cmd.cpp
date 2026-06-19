@@ -23,6 +23,9 @@
 #include "../../core/output_cap.hpp"
 #include "../ref_registry.hpp"
 #include "../pack_delta.hpp"
+#include "../content_delta.hpp"
+#include "../context_batch.hpp"
+#include "../symbol_bundle.hpp"
 #include "../../core/secret_scanner.hpp"
 // v1.32.0 B4: pack --rerank via warm-pool LLM.
 #include "../../llm/warm_pool.hpp"
@@ -46,6 +49,7 @@ void writeTokenReceipt(core::Db& db, const std::string& cmd,
 #include "../../core/token_counter.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
+#include "../../compress/output_gate.hpp"
 #include "../../imem/memory_store.hpp"
 #include <iostream>
 #include <iomanip>
@@ -70,6 +74,15 @@ static std::string trunc(const std::string& s, size_t n) {
     return s.substr(0, n - 1) + "…";
 }
 
+// Per-file baseline path for `icmg context --diff` delta re-reads. A hash of the
+// resolved path keeps the filename stable + filesystem-safe across sessions.
+static std::filesystem::path ctxBaselinePath(const std::string& resolved) {
+    std::error_code ec;
+    std::filesystem::create_directories(".icmg", ec);
+    size_t h = std::hash<std::string>{}(resolved);
+    return std::filesystem::path(".icmg") / ("last-context-" + std::to_string(h) + ".txt");
+}
+
 // =============================================================================
 // icmg context <file>
 // =============================================================================
@@ -81,7 +94,8 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg context <file> [options]\n\n"
+            "Usage: icmg context <file> [<file2> ...] [options]\n\n"
+            "Give 2+ files to pull a bundle for each in one call (batch read-many).\n\n"
             "Options:\n"
             "  --depth N         Neighbor depth (default: 1)\n"
             "  --no-symbols      Skip child symbol list\n"
@@ -91,17 +105,155 @@ public:
             "                    no line-number guessing). Ignored when --lines is set.\n"
             "  --siblings        Also list test/doc/types sibling files (Phase 67)\n"
             "  --symbol NAME     Return only body of named symbol + immediate deps (80%+ token cut)\n"
+            "                    With NO file arg: cross-file bundle (definition + callers + callees via graph)\n"
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
+            "  --gate            Over-budget: lossless-compress first, truncate only as last resort\n"
             "  --no-cache        Bypass hot-context cache (force recompute)\n"
-            "  --full            Re-emit full body even on a cache hit (skip dedup stub)\n"
+            "  --full            Re-emit full body even on a cache hit (skip dedup stub); also disables auto-diff\n"
+            "  --diff            Force delta path (seeds baseline on first call). Auto-default once a baseline exists.\n"
+            "  --no-diff         Disable auto-diff: always emit the full body (still refreshes baseline)\n"
+            "  --diff-reset      Clear the stored diff baseline for this file (next read shows full)\n"
+            "  --changed         Bundle every file changed in the working tree (git diff --name-only HEAD)\n"
+            "  --staged          Bundle every staged file (git diff --cached) - pre-commit review\n"
             "  --json            JSON output\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || args[0] == "--help") { usage(); return 0; }
+
+        // Feature E (2026-06-15): --changed / --staged. Pull a bundle for every
+        // file changed in the working tree (git diff --name-only HEAD) or staged
+        // (git diff --cached --name-only), then dispatch the single-file path per
+        // file (auto-diff applies). --staged is the pre-commit review sibling.
+        {
+            const char* sel_flag = nullptr;   // the flag the user passed
+            for (auto& a : args) {
+                if (a == "--changed" || a == "--staged") { sel_flag = a.c_str(); break; }
+            }
+            if (sel_flag) {
+                auto r = core::safeExecShell(gitListCmdForFlag(sel_flag), false, 10000);
+                if (r.exit_code != 0) {
+                    std::cerr << "icmg context " << sel_flag
+                              << ": not a git repo (or git unavailable)\n";
+                    return 1;
+                }
+                auto sel_files = parseChangedFiles(r.out);
+                if (sel_files.empty()) {
+                    std::cout << (std::string("--staged") == sel_flag
+                                  ? "No staged files (nothing git-added).\n"
+                                  : "No changed files in the working tree.\n");
+                    return 0;
+                }
+                std::vector<std::string> base;
+                for (auto& a : args) if (a != sel_flag) base.push_back(a);
+                int rc = 0;
+                bool first = true;
+                for (const auto& fpath : sel_files) {
+                    if (!first) std::cout << "\n" << std::string(70, '=') << "\n";
+                    first = false;
+                    auto combined = base;
+                    combined.push_back(fpath);
+                    rc |= run(singleFileArgs(combined, fpath));
+                }
+                return rc;
+            }
+        }
+
+        // Feature D (2026-06-15): batch read-many. When 2+ file args are
+        // given, pull a bundle per file in one call (dispatch the single-file
+        // path per file, separated by a divider). Single-file path unchanged.
+        {
+            auto files = collectContextFiles(args);
+            if (files.size() > 1) {
+                int rc = 0;
+                bool first = true;
+                for (const auto& fpath : files) {
+                    if (!first) std::cout << "\n" << std::string(70, '=') << "\n";
+                    first = false;
+                    rc |= run(singleFileArgs(args, fpath));
+                }
+                return rc;
+            }
+        }
+
         std::string file;
-        for (auto& a : args) if (!a.empty() && a[0] != '-') { file = a; break; }
+        {
+            auto detected = collectContextFiles(args);
+            if (!detected.empty()) file = detected.front();
+        }
+
+        // Feature F (2026-06-15): --symbol NAME with NO file arg -> cross-file
+        // symbol bundle (definition + callers + callees) resolved via the graph.
+        // (When a file IS given, --symbol keeps its file-scoped slice behaviour.)
+        {
+            std::string sym_name = flagValue(args, "--symbol");
+            if (!sym_name.empty() && file.empty()) {
+                auto& cfg = core::Config::instance();
+                core::Db db(cfg.projectDbPath("."));
+                graph::GraphStore store(db);
+                auto syms = store.findSymbol(sym_name);
+                if (syms.empty()) {
+                    std::cerr << "icmg context --symbol: '" << sym_name
+                              << "' not found in graph\n";
+                    return 1;
+                }
+                const auto& def = syms[0];
+                // Symbol-node paths carry a "<file>#<qualified>" suffix; strip it
+                // for the on-disk body read and for a clean def label.
+                std::string def_file = def.path;
+                auto hashpos = def_file.find('#');
+                if (hashpos != std::string::npos) def_file = def_file.substr(0, hashpos);
+
+                SymbolBundleData bd;
+                bd.total_matches = (int)syms.size();
+                bd.def = { def.symbol_name, def.kind, def_file, def.line_start, def.line_end };
+
+                // Slice the definition body from the source file.
+                {
+                    std::ifstream sf(def_file, std::ios::binary);
+                    if (sf) {
+                        std::string ln; int cur = 0; std::ostringstream bo;
+                        while (std::getline(sf, ln)) {
+                            ++cur;
+                            if (def.line_start > 0 && cur < def.line_start) continue;
+                            if (def.line_end   > 0 && cur > def.line_end)   break;
+                            bo << cur << "\t" << ln << "\n";
+                        }
+                        bd.body = bo.str();
+                    }
+                }
+
+                auto refOf = [&](int64_t id) -> SymRef {
+                    SymRef r;
+                    db.query("SELECT path, COALESCE(symbol_name,''), kind, line_start, line_end "
+                             "FROM graph_nodes WHERE id=?",
+                             {std::to_string(id)},
+                             [&](const core::Row& row){
+                                 if (row.size() >= 5) {
+                                     r.path = row[0]; r.name = row[1]; r.kind = row[2];
+                                     try { r.line_start = std::stoi(row[3]); } catch (...) {}
+                                     try { r.line_end   = std::stoi(row[4]); } catch (...) {}
+                                     auto hp = r.path.find('#');
+                                     if (hp != std::string::npos) r.path = r.path.substr(0, hp);
+                                 }
+                             });
+                    return r;
+                };
+                for (auto& e : store.edgesTo(def.id))
+                    if (e.edge_type == "calls" && e.src > 0) bd.callers.push_back(refOf(e.src));
+                for (auto& e : store.edgesFrom(def.id))
+                    if (e.edge_type == "calls" && e.dst > 0) bd.callees.push_back(refOf(e.dst));
+
+                // Collapse name-collision fan-out (see dedupRefsByName).
+                dedupRefsByName(bd.callers);
+                dedupRefsByName(bd.callees);
+
+                std::cout << renderSymbolBundle(bd);
+                return 0;
+            }
+        }
+
         if (file.empty()) { std::cerr << "icmg context: requires <file>\n"; return 1; }
 
         // v1.28.0 #D fix: tolerate Windows drive-letter paths whose backslash
@@ -206,8 +358,22 @@ public:
         // same opts within TTL returns cached output instantly. Key includes
         // file mtime+size so on-disk edits invalidate naturally.
         bool no_cache = hasFlag(args, "--no-cache") || std::getenv("ICMG_NO_CACHE");
+        // Phase (2026-06-15): --diff delta re-read. Bypass the cache-stub early
+        // return so we recompute the body and diff it against the per-file
+        // baseline. Leaving ctx_cache_args empty also skips the store, so a
+        // delta is never persisted under the plain `context` cache key.
+        bool diff_reset = hasFlag(args, "--diff-reset");
+        bool explicit_diff = hasFlag(args, "--diff");
+        // Feature C (2026-06-15): auto-default delta. Once a per-file baseline
+        // exists, a re-read auto-emits only the delta unless the caller opts
+        // out (--no-diff / --full / env). Explicit --diff and --diff-reset
+        // still bypass the session cache so the body is recomputed + diffed.
+        bool no_diff    = hasFlag(args, "--no-diff") || hasFlag(args, "--full")
+                       || std::getenv("ICMG_CONTEXT_NO_AUTODIFF");
+        bool diff_mode  = explicit_diff || diff_reset;
+        bool emitted_delta = false;  // set when a delta (not full body) was emitted
         std::string ctx_cache_args;
-        if (!no_cache) {
+        if (!no_cache && !diff_mode) {
             namespace fs = std::filesystem;
             std::error_code ec;
             uintmax_t fsz = fs::exists(file, ec) ? fs::file_size(file, ec) : 0;
@@ -583,12 +749,58 @@ public:
                         if (truncated) out << "\n--- [slice truncated; raise --max-bytes] ---\n";
                     }
                 } else {
-                    bool truncated = body.size() > budget;
-                    if (truncated) body.resize(budget);
-                    out << "\n--- Content (" << resolved
-                        << (truncated ? "; truncated" : "")
-                        << ") ---\n" << body;
-                    if (truncated) out << "\n--- [content truncated; raise --max-bytes for more] ---\n";
+                    // Content emission with auto-default delta (Feature C,
+                    // 2026-06-15). Per-file baseline at .icmg/last-context-
+                    // <hash>.txt, refreshed every call. Once it exists, a
+                    // re-read auto-shows only the delta (no flag) unless the
+                    // caller opts out (--no-diff/--full/env). Explicit --diff
+                    // forces the diff path on the seed call; --diff-reset
+                    // clears the baseline and shows the full body again.
+                    namespace fs2 = std::filesystem;
+                    fs2::path base = ctxBaselinePath(resolved.empty() ? file : resolved);
+                    if (diff_reset) { std::error_code _rec; fs2::remove(base, _rec); }
+                    bool baseline_exists = !diff_reset && fs2::exists(base);
+                    std::string prev;
+                    if (baseline_exists) {
+                        std::ifstream bf(base, std::ios::binary);
+                        std::ostringstream bb; bb << bf.rdbuf(); prev = bb.str();
+                    }
+                    bool want_diff = shouldContextDiff(explicit_diff, no_diff,
+                                                       baseline_exists, diff_reset);
+                    if (want_diff && !prev.empty()) {
+                        auto d = computeContentDelta(prev, body, 2);
+                        emitted_delta = true;
+                        if (d.identical) {
+                            out << "\n--- Content (" << resolved
+                                << "; unchanged since last shown) ---\n";
+                        } else {
+                            std::string dt = d.text;
+                            bool truncated = dt.size() > budget;
+                            if (truncated) dt.resize(budget);
+                            out << "\n--- Delta (" << resolved << "; "
+                                << d.changed_lines << "/" << d.total_lines
+                                << " line(s) changed" << (truncated ? "; truncated" : "")
+                                << ") ---\n" << dt;
+                            if (truncated) out << "\n--- [delta truncated; raise --max-bytes] ---\n";
+                        }
+                    } else {
+                        std::string b2 = body;
+                        bool truncated = b2.size() > budget;
+                        if (truncated) b2.resize(budget);
+                        const char* why = explicit_diff ? "; --diff baseline seeded, full shown"
+                                        : diff_reset     ? "; baseline reset, full shown"
+                                                         : "";
+                        out << "\n--- Content (" << resolved << why
+                            << (truncated ? "; truncated" : "")
+                            << ") ---\n" << b2;
+                        if (truncated) out << "\n--- [content truncated; raise --max-bytes for more] ---\n";
+                    }
+                    // Refresh baseline with current full body for next call.
+                    try {
+                        std::error_code _ec;
+                        fs2::create_directories(base.parent_path(), _ec);
+                        std::ofstream of(base, std::ios::binary); of << body;
+                    } catch (...) {}
                 }
             } else {
                 out << "\n--- Content unavailable (graph path mismatch; try `icmg context "
@@ -596,14 +808,24 @@ public:
             }
         }
 
-        // Cap output
-        std::string spill;
-        std::string capped = core::capOutput(out.str(), cap, spill);
+        // Cap output. Default: plain truncate+spill (capOutput). With --gate:
+        // try a LOSSLESS compress before truncating, so an over-budget bundle
+        // keeps all content (reversible glossary) instead of losing the middle.
+        std::string capped;
+        if (hasFlag(args, "--gate")) {
+            auto gr = compress::gateOutput(out.str(), cap);
+            capped = gr.text;
+        } else {
+            std::string spill;
+            capped = core::capOutput(out.str(), cap, spill);
+        }
         std::cout << capped;
 
         // Phase 74 T5: store + boost. Cache 30min default. Hot file = high
-        // priority on next graph search.
-        if (!no_cache && !ctx_cache_args.empty()) {
+        // priority on next graph search. Skip the store when a delta was
+        // emitted (emitted_delta) so a partial body never gets cached under
+        // the full-context key.
+        if (!no_cache && !ctx_cache_args.empty() && !emitted_delta) {
             try {
                 core::ToolCallCache tcc(db);
                 tcc.store("context", ctx_cache_args, capped, /*ttl_sec*/ 1800);

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.5.1 LANGUAGES CXX C)
+project(icmg VERSION 2.6.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -679,6 +679,10 @@ add_icmg_test(test_private_filter tests/cli/test_private_filter.cpp)         # 2
 add_icmg_test(test_wakeup_format  tests/cli/test_wakeup_format.cpp)          # 2026-06-15 wake-up icon legend + token cost
 add_icmg_test(test_store_autokw   tests/cli/test_store_autokw.cpp)           # 2026-06-15 auto-keyword (semantic-title v2)
 add_icmg_test(test_serve_health   tests/cli/test_serve_health.cpp)          # 2026-06-15 serve /api/health probe
+add_icmg_test(test_content_delta  tests/cli/test_content_delta.cpp)         # 2026-06-15 context --diff delta re-read
+add_icmg_test(test_grep_symbols   tests/cli/test_grep_symbols.cpp)           # 2026-06-15 grep --symbols enclosing-symbol grouping
+add_icmg_test(test_context_batch  tests/cli/test_context_batch.cpp)          # 2026-06-15 context batch read-many arg split
+add_icmg_test(test_symbol_bundle  tests/cli/test_symbol_bundle.cpp)          # 2026-06-15 context --symbol cross-file bundle
 add_icmg_test(test_install_version tests/cli/test_install_version.cpp)        # 2026-06-15 smart-install version cache
 add_icmg_test(test_llm_list_json tests/cli/test_llm_list_json.cpp)           # v1.70 #177
 add_icmg_test(test_pattern_pass tests/tkil/test_pattern_pass.cpp)
@@ -804,6 +808,8 @@ add_icmg_test(test_backend_factory tests/embed/test_backend_factory.cpp)
 add_icmg_test(test_wordpiece tests/embed/test_wordpiece.cpp)
 add_icmg_test(test_treesitter_c tests/graph/test_treesitter_c.cpp)
 add_icmg_test(test_compressor tests/compress/test_compressor.cpp)
+add_icmg_test(test_learned_glossary tests/compress/test_learned_glossary.cpp)  # 2026-06-19 Adaptive Output Gate slice-1 (self-improving compress)
+add_icmg_test(test_output_gate tests/compress/test_output_gate.cpp)  # 2026-06-19 Adaptive Output Gate slice-2 (compress-before-cap)
 add_icmg_test(test_write_expander tests/compress/test_write_expander.cpp)  # v1.27.0 Phase 1.1
 add_icmg_test(test_port_artifact tests/cli/test_port_artifact.cpp)         # v1.27.0 Phase 1.2
 add_icmg_test(test_template_engine tests/compress/test_template_engine.cpp) # v1.27.0 Phase 2
@@ -868,6 +874,7 @@ add_icmg_test(test_hook_test_fail_context tests/core/test_hook_test_fail_context
 add_icmg_test(test_secret_scanner     tests/core/test_secret_scanner.cpp)
 add_icmg_test(test_target_disambiguator tests/core/test_target_disambiguator.cpp)
 add_icmg_test(test_target_verify_cmd    tests/cli/test_target_verify_cmd.cpp)
+add_icmg_test(test_verify_cmd           tests/cli/test_verify_cmd.cpp)
 add_icmg_test(test_safe_rollback_cmd    tests/cli/test_safe_rollback_cmd.cpp)
 add_icmg_test(test_hook_post_edit_sync  tests/core/test_hook_post_edit_sync.cpp)
 add_icmg_test(test_migration_0031     tests/core/test_migration_0031.cpp)
@@ -913,7 +920,6 @@ add_icmg_test(test_mine                  tests/cli/test_mine.cpp)               
 add_icmg_test(test_bugfix_v161           tests/core/test_bugfix_v161.cpp)         # v1.61 bugfix
 add_icmg_test(test_exec_timeout          tests/core/test_exec_timeout.cpp)        # v1.78.4 bug2: safeExecShell pipe-block
 add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)       # v1.78.4 bug1: updating.lock startup check
-add_icmg_test(test_verify_cmd            tests/cli/test_verify_cmd.cpp)           # v2.5.1: verify --help early-exit + DB-guard
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.

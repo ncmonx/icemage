@@ -11,6 +11,7 @@
 #include "../../core/tool_call_cache.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
+#include "../../compress/learned_glossary.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -36,6 +37,7 @@ public:
             "  --threshold N         Skip if est-tokens < N (default 8000)\n"
             "  --kind <ext>          Hint content kind (e.g., .log, .md, .cs)\n"
             "  --force               Compress even if shouldCompress() says no\n"
+            "  --no-seed             Skip LearnedGlossary seeding (per-call discovery only)\n"
             "  --stats               Print 30-day telemetry summary, exit\n"
             "  --json                Machine-readable summary\n"
             "  -o <file>             Write to file instead of stdout\n"
@@ -75,6 +77,22 @@ public:
 
         if (force) opts.threshold_tok = 0;
 
+        // Slice-3 (Adaptive Output Gate): SEED the compressor from the
+        // cross-session LearnedGlossary so high-value recurring phrases are
+        // substituted even at per-call frequency 1 — closing the self-improving
+        // loop (Slice-1b records hits; here we consume them). Best-effort: a DB
+        // failure simply yields no seed. min_hits gate keeps one-off noise out;
+        // config `compress.seed_min_hits` (default 3, <=0 disables seeding).
+        int seed_min_hits = cfg.getInt("compress.seed_min_hits", 3);
+        if (seed_min_hits > 0 && !hasFlag(args, "--no-seed")) {
+            try {
+                core::Db db(cfg.projectDbPath("."));
+                compress::LearnedGlossary lg(db);
+                auto learned = lg.suggest(seed_min_hits, /*limit*/ 64);
+                for (auto& kv : learned) opts.seed_phrases.push_back(kv.second);
+            } catch (...) { /* no DB / empty vocab: skip seeding */ }
+        }
+
         // Phase 74 T5: hot-context cache — same input + same opts within TTL → hit.
         // Saves recompression cost when Claude re-checks file mid-task.
         bool no_cache = hasFlag(args, "--no-cache") || std::getenv("ICMG_NO_CACHE");
@@ -83,6 +101,7 @@ public:
           + "|mode=" + (opts.mode == compress::Mode::Aggressive ? "agg" : "loss")
           + "|kind=" + kind
           + "|in_sz=" + std::to_string(input.size())
+          + "|seed=" + std::to_string(opts.seed_phrases.size())
           + "|in=" + input;  // FNV-1a inside makeKey hashes the whole thing
         std::optional<std::string> cached_text;
         compress::CompressResult r;
@@ -116,6 +135,20 @@ public:
             core::Db db(cfg.projectDbPath("."));
             compress::GlossaryStore store(db);
             if (!cache_hit && !r.skipped) store.save(r.content_hash, r.glossary);
+            // Slice-1b: feed the cross-session LearnedGlossary so recurring
+            // aliases accumulate hits + token-savings (self-improving compress).
+            // Only real (non-cache, non-skipped) runs teach it.
+            if (!cache_hit && !r.skipped && !r.glossary.empty()) {
+                compress::LearnedGlossary lg(db);
+                int per = compress::LearnedGlossary::perEntrySaved(
+                    r.tok_in, r.tok_out, (int)r.glossary.size());
+                lg.recordUse(r.glossary, per);
+                // Slice-4 durability: self-maintain by forgetting stale dead
+                // weight (old AND unproven) so the seeded vocabulary stays
+                // curated. Config compress.seed_prune_days (default 90, <=0 off).
+                int prune_days = cfg.getInt("compress.seed_prune_days", 90);
+                if (prune_days > 0) lg.prune(prune_days, /*min_hits*/ 2);
+            }
             store.recordTelemetry("compress", r.bytes_in, r.bytes_out,
                                    r.tok_in, r.tok_out, r.elapsed_ms,
                                    cache_hit ? "cache-hit"

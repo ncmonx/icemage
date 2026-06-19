@@ -36,6 +36,12 @@ struct CompressOptions {
     int  min_ident_freq = 5;
     int  threshold_tok = 8000;    // skip compress when est-tokens < this
     bool respect_cache_sentinel = true;  // pass-through <<CACHED>>...<</CACHED>>
+    // Slice-3 (Adaptive Output Gate): cross-session learned vocabulary. These
+    // phrases are substituted with @S<n> aliases regardless of per-call
+    // frequency — the compressor seeds itself from LearnedGlossary.suggest()
+    // instead of re-discovering high-value recurring phrases every call.
+    // Ranked highest-value first; applied in order before path/ident discovery.
+    std::vector<std::string> seed_phrases;
 };
 
 struct CompressResult {
