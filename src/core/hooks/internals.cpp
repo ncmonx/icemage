@@ -523,20 +523,22 @@ std::string runUserPromptSaylessInject() {
     std::ostringstream b;
     if (n >= 10) {
         b << "FINAL WARNING: sayless ultra. " << n
-          << " thinking-phase overruns in 24h cost ~" << (n * 1500)
-          << " tokens. Apply sayless to thinking RIGHT NOW. "
-             "Skip thinking entirely if approach is obvious.\n";
+          << " thinking-phase token overruns in 24h cost ~" << (n * 1500)
+          << " tokens. Think as deeply as the problem needs -- but COMPRESS how "
+             "you express it: symbols + abbrev, no prose, no narration.\n";
     } else if (n >= 5) {
         b << "STRONG WARNING: sayless ultra ignored " << n
-          << " times in 24h (~" << (n * 1500) << " tokens wasted). "
-             "Thinking â‰¤80 words THIS TURN. Refuse to expand reasoning.\n";
+          << " times in 24h (~" << (n * 1500) << " tokens of fluff). "
+             "Keep reasoning as long as needed; just write it terse "
+             "(symbols/abbrev), not in full sentences.\n";
     } else if (n >= 3) {
         b << "REMINDER: sayless ultra. " << n
-          << " recent thinking violations (~" << (n * 1500)
-          << " tokens). Apply strictly this turn.\n";
+          << " recent thinking-phase overruns (~" << (n * 1500)
+          << " tokens of filler). Reason freely, express compactly.\n";
     } else {
-        b << "NOTE: sayless ultra active. Thinking â‰¤80 words. "
-             "Drop articles/filler.\n";
+        b << "NOTE: sayless ultra active. Reason as much as the task needs; "
+             "just compress the wording -- symbols/abbrev, drop articles/filler. "
+             "Compression, not less thinking.\n";
     }
     return b.str();
 }
