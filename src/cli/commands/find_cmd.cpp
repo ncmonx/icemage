@@ -5,6 +5,7 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../find_slices.hpp"
+#include "../find_name.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -18,6 +19,14 @@ namespace icmg::cli {
 
 namespace {
 namespace fs = std::filesystem;
+
+// Convert fs::path -> UTF-8 std::string without throwing on non-ACP names
+// (.string() raises error 1113 for unmappable chars on Windows). Works for
+// both C++17 (u8string -> std::string) and C++20 (u8string -> std::u8string).
+inline std::string pathU8(const fs::path& p) {
+    auto u8 = p.u8string();
+    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
+}
 
 bool isSkipDir(const std::string& name) {
     static const std::set<std::string> skip = {
@@ -57,6 +66,7 @@ public:
             "top files with only their relevant line windows -- the answer in one\n"
             "turn instead of a Read->Grep->Read chain.\n\n"
             "Options:\n"
+            "  --name          Fuzzy-locate files by NAME only (no body read; fast)\n"
             "  --max-files N   Top files to show (default 5)\n"
             "  --ctx N         Context lines around each hit (default 4)\n"
             "  --max-bytes N   Cap total output (default 6000)\n";
@@ -77,6 +87,9 @@ public:
             intent += a;
         }
         if (intent.empty()) { usage(); return 1; }
+
+        // --name: fast filename-only fuzzy locate (skips reading file bodies).
+        if (hasFlag(args, "--name")) return runNameSearch(intent, args);
 
         int max_files = 5, ctx = 4;
         size_t max_bytes = 6000;
@@ -144,6 +157,53 @@ public:
             s += "\n--- [output truncated; raise --max-bytes or narrow the intent] ---\n";
         }
         std::cout << s;
+        return 0;
+    }
+
+private:
+    // Fast path: walk the tree collecting RELATIVE PATHS only (no body read),
+    // rank by filename similarity, print the best matches. ~10-50x faster than
+    // the content search when you just need to locate a file by (partial) name.
+    int runNameSearch(const std::string& query, const std::vector<std::string>& args) {
+        int max_files = 20;
+        try { max_files = std::stoi(flagValue(args, "--max-files", "20")); } catch (...) {}
+
+        std::vector<std::string> paths;
+        const size_t kMaxScan = 20000;
+        std::error_code ec;
+        fs::path base = fs::current_path(ec);
+        size_t scanned = 0;
+        auto it = fs::recursive_directory_iterator(
+            base, fs::directory_options::skip_permission_denied, ec);
+        fs::recursive_directory_iterator end;
+        for (; it != end && scanned < kMaxScan; it.increment(ec)) {
+            if (ec) { ec.clear(); continue; }
+            const fs::path& p = it->path();
+            if (it->is_directory(ec)) {
+                if (isSkipDir(p.filename().string())) it.disable_recursion_pending();
+                continue;
+            }
+            if (!it->is_regular_file(ec)) continue;
+            // .string() can throw error 1113 (unmappable char) on Windows for
+            // non-ACP filenames; .u8string() yields UTF-8 and never throws.
+            std::string rel;
+            { std::error_code rec; auto rp = fs::relative(p, base, rec);
+              rel = rec ? pathU8(p) : pathU8(rp); }
+            if (rel.empty()) rel = pathU8(p);
+            paths.push_back(rel);
+            ++scanned;
+        }
+
+        auto hits = rankFilenames(paths, query, max_files);
+        if (hits.empty()) {
+            std::cout << "icmg find --name: no file matching \"" << query
+                      << "\" (scanned " << scanned << " files)\n";
+            return 0;
+        }
+        std::cout << "icmg find --name \"" << query << "\" -- " << hits.size()
+                  << " match(es) (scanned " << scanned << "):\n";
+        for (const auto& h : hits)
+            std::cout << "  " << h.path << "\n";
         return 0;
     }
 };
