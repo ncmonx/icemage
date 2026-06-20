@@ -56,7 +56,7 @@ class FindCommand : public BaseCommand {
 public:
     std::string name()        const override { return "find"; }
     std::string description() const override {
-        return "One-shot multi-file intent search -> relevant code slices (fewer turns)";
+        return "Locate files fast: --name fuzzy filename search, or intent -> relevant code slices (fewer turns)";
     }
 
     void usage() const override {
