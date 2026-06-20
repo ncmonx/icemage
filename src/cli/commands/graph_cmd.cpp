@@ -1047,7 +1047,7 @@ private:
 class GraphSymbolCommand : public BaseCommand {
 public:
     std::string name()        const override { return "graph-symbol"; }
-    std::string description() const override { return "Find symbol (class/function/sp) by name"; }
+    std::string description() const override { return "Find symbol (class/function/sp) by name -- accepts partial/fuzzy names"; }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty()) { std::cerr << "icmg graph symbol: requires <name>\n"; return 1; }
