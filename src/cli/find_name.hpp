@@ -17,6 +17,8 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
+#include <sstream>
 
 namespace icmg::cli {
 
@@ -105,6 +107,45 @@ inline std::vector<NameHit> rankFilenames(const std::vector<std::string>& paths,
     });
     if ((int)out.size() > maxResults) out.resize(maxResults);
     return out;
+}
+
+// --recent: re-order name hits so recently-modified files rank first.
+// mtime maps path -> last-write epoch seconds (missing = 0 = oldest).
+// Primary key = mtime desc; ties fall back to existing name score, then path.
+inline void sortByRecency(std::vector<NameHit>& hits,
+                          const std::unordered_map<std::string, long long>& mtime) {
+    std::sort(hits.begin(), hits.end(), [&](const NameHit& x, const NameHit& y) {
+        long long mx = 0, my = 0;
+        auto ix = mtime.find(x.path); if (ix != mtime.end()) mx = ix->second;
+        auto iy = mtime.find(y.path); if (iy != mtime.end()) my = iy->second;
+        if (mx != my) return mx > my;          // newer first
+        if (x.score != y.score) return x.score > y.score;
+        return x.path < y.path;
+    });
+}
+
+// --open: render a file body with 1-based line numbers, capped at maxBytes.
+// Used to print the top match inline so locate+read is a single turn.
+inline std::string numberLines(const std::string& body, size_t maxBytes = 8000) {
+    std::ostringstream out;
+    std::istringstream is(body);
+    std::string ln;
+    int n = 0;
+    while (std::getline(is, ln)) {
+        ++n;
+        // strip a trailing CR (Windows line endings)
+        if (!ln.empty() && ln.back() == '\r') ln.pop_back();
+        std::ostringstream row;
+        row.width(6); row << n;
+        out << row.str() << "  " << ln << "\n";
+        if (out.str().size() > maxBytes) {
+            std::string s = out.str();
+            s.resize(maxBytes);
+            s += "\n--- [truncated; raise --max-bytes] ---\n";
+            return s;
+        }
+    }
+    return out.str();
 }
 
 }  // namespace icmg::cli

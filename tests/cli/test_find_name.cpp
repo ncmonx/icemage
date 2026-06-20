@@ -6,6 +6,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 using icmg::cli::rankFilenames;
 using icmg::cli::scoreFilename;
@@ -63,6 +64,47 @@ TEST("find_name: scoreFilename fuzzy subsequence matches scattered chars") {
     // 'scc' is a subsequence of 'skill_content' (s..c..c) -> nonzero
     double s = scoreFilename("src/cli/commands/skill_content.hpp", "sklc");
     ASSERT_TRUE(s > 0.0);
+}
+
+TEST("find_name: sortByRecency puts newest mtime first") {
+    std::vector<icmg::cli::NameHit> hits = {
+        {"old.cpp", 400.0}, {"new.cpp", 100.0}, {"mid.cpp", 200.0}};
+    std::unordered_map<std::string, long long> mt = {
+        {"old.cpp", 1000}, {"new.cpp", 3000}, {"mid.cpp", 2000}};
+    icmg::cli::sortByRecency(hits, mt);
+    ASSERT_EQ(hits[0].path, std::string("new.cpp"));
+    ASSERT_EQ(hits[1].path, std::string("mid.cpp"));
+    ASSERT_EQ(hits[2].path, std::string("old.cpp"));
+}
+
+TEST("find_name: sortByRecency tie falls back to name score") {
+    std::vector<icmg::cli::NameHit> hits = {
+        {"a.cpp", 100.0}, {"b.cpp", 500.0}};
+    std::unordered_map<std::string, long long> mt = {
+        {"a.cpp", 1000}, {"b.cpp", 1000}};  // same mtime
+    icmg::cli::sortByRecency(hits, mt);
+    ASSERT_EQ(hits[0].path, std::string("b.cpp"));  // higher score wins tie
+}
+
+TEST("find_name: numberLines adds 1-based line numbers") {
+    std::string out = icmg::cli::numberLines("alpha\nbeta\ngamma");
+    ASSERT_TRUE(out.find("     1  alpha") != std::string::npos);
+    ASSERT_TRUE(out.find("     2  beta") != std::string::npos);
+    ASSERT_TRUE(out.find("     3  gamma") != std::string::npos);
+}
+
+TEST("find_name: numberLines strips trailing CR") {
+    std::string out = icmg::cli::numberLines("line1\r\nline2\r\n");
+    ASSERT_TRUE(out.find("line1\r") == std::string::npos);
+    ASSERT_TRUE(out.find("     1  line1\n") != std::string::npos);
+}
+
+TEST("find_name: numberLines caps at maxBytes") {
+    std::string big;
+    for (int i = 0; i < 5000; ++i) big += "some line content\n";
+    std::string out = icmg::cli::numberLines(big, 1000);
+    ASSERT_TRUE(out.size() < 1200);
+    ASSERT_TRUE(out.find("truncated") != std::string::npos);
 }
 
 

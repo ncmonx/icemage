@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <unordered_map>
 
 namespace icmg::cli {
 
@@ -67,6 +68,8 @@ public:
             "turn instead of a Read->Grep->Read chain.\n\n"
             "Options:\n"
             "  --name          Fuzzy-locate files by NAME only (no body read; fast)\n"
+            "  --recent        With --name: rank newest-modified files first\n"
+            "  --open          With --name: also print the top match's contents (locate+read, 1 turn)\n"
             "  --max-files N   Top files to show (default 5)\n"
             "  --ctx N         Context lines around each hit (default 4)\n"
             "  --max-bytes N   Cap total output (default 6000)\n";
@@ -167,8 +170,13 @@ private:
     int runNameSearch(const std::string& query, const std::vector<std::string>& args) {
         int max_files = 20;
         try { max_files = std::stoi(flagValue(args, "--max-files", "20")); } catch (...) {}
+        const bool recent = hasFlag(args, "--recent");
+        const bool open   = hasFlag(args, "--open");
+        size_t max_bytes = 8000;
+        try { max_bytes = (size_t)std::stoul(flagValue(args, "--max-bytes", "8000")); } catch (...) {}
 
         std::vector<std::string> paths;
+        std::unordered_map<std::string, long long> mtime;  // only filled when --recent
         const size_t kMaxScan = 20000;
         std::error_code ec;
         fs::path base = fs::current_path(ec);
@@ -191,6 +199,11 @@ private:
               rel = rec ? pathU8(p) : pathU8(rp); }
             if (rel.empty()) rel = pathU8(p);
             paths.push_back(rel);
+            if (recent) {
+                std::error_code tec;
+                auto t = fs::last_write_time(p, tec);
+                if (!tec) mtime[rel] = (long long)t.time_since_epoch().count();
+            }
             ++scanned;
         }
 
@@ -200,10 +213,25 @@ private:
                       << "\" (scanned " << scanned << " files)\n";
             return 0;
         }
-        std::cout << "icmg find --name \"" << query << "\" -- " << hits.size()
+        if (recent) sortByRecency(hits, mtime);
+        std::cout << "icmg find --name \"" << query << "\""
+                  << (recent ? " (by recency)" : "") << " -- " << hits.size()
                   << " match(es) (scanned " << scanned << "):\n";
         for (const auto& h : hits)
             std::cout << "  " << h.path << "\n";
+
+        // --open: print the contents of the best match inline (locate + read).
+        if (open) {
+            const std::string& top = hits.front().path;
+            std::ifstream f(base / fs::u8path(top), std::ios::binary);
+            if (f) {
+                std::ostringstream ss; ss << f.rdbuf();
+                std::cout << "\n=== " << top << " ===\n"
+                          << numberLines(ss.str(), max_bytes);
+            } else {
+                std::cout << "\n(could not open " << top << " for --open)\n";
+            }
+        }
         return 0;
     }
 };
