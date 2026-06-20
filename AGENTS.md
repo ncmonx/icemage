@@ -104,7 +104,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Bundle staged files (pre-commit review) | `icmg context --staged` (git diff --cached → batch + auto-diff) |
 | Re-read a file after editing it | `icmg context <file>` (AUTO-diff: once shown, re-reads emit only changed lines; `--no-diff`/`--full` forces full; `--diff-reset` clears baseline) |
 | Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
-| Locate a file by (partial) name | `icmg find --name <partial>` (fuzzy, no body read -- fast) |
+| Locate a file by (partial) name | `icmg find --name <partial>` (fuzzy, no body read -- fast; add `--open` to also print the top match, `--recent` to rank newest first) |
 | Find where a thing lives across files | `icmg find "<intent>"` (ranked code slices, 1 turn vs Read->Grep->Read) |
 | Bundle a symbol: def + callers + callees | `icmg context --symbol <Name>` (no file arg → cross-file graph bundle) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |

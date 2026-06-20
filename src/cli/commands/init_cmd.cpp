@@ -1104,7 +1104,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default â€” see rule above) |
 | Read a large file | `icmg context <file>` (graph + symbols + memory) |
 | Find a function | `icmg graph symbol <Name>` (30 lines, not 800) |
-| Locate a file by (partial) name | `icmg find --name <partial>` (fuzzy, no body read -- fast) |
+| Locate a file by (partial) name | `icmg find --name <partial>` (fuzzy, no body read -- fast; add `--open` to also print the top match, `--recent` to rank newest first) |
 | Find where a thing lives across files | `icmg find "<intent>"` (ranked code slices, 1 turn vs Read->Grep->Read) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
 | Shortest path between files | `icmg graph path <from> <to>` |
