@@ -229,14 +229,15 @@ if [[ -n "$think" ]]; then
     tlevel=$(head -n1 ".icmg/sayless-think.flag" 2>/dev/null)
     [[ -z "$tlevel" ]] && tlevel=$(head -n1 "${HOME:-$USERPROFILE}/.icmg/sayless-think.flag" 2>/dev/null)
     [[ -z "$tlevel" ]] && tlevel=ultra
-    tmsg=$(printf '%s\n' "SAYLESS THINKING MODE - BRUTAL [level: ${tlevel}] (kill tokens in internal reasoning):" \
+    tmsg=$(printf '%s\n' "SAYLESS THINKING MODE - BRUTAL [level: ${tlevel}] (compress internal reasoning, do NOT think less):" \
+        "- Think as deeply as the problem needs. This caps WORDING, not reasoning depth." \
         "- Symbols + abbrev only. No prose, no full sentences, no narration." \
         "- Symbols: -> leads-to, = is, != not, & and, | or, w/ with, b/c because." \
         "- Abbrev: fn var ret err cfg dep impl req ctx repo db idx ptr." \
         "- Decision: 'X -> Y. pick Z.'  Problem: 'A bad b/c B. use C.'" \
         "- No 'Let me / Now I / Looking at'. No restating the question." \
-        "- If approach obvious -> skip thinking entirely. Every token earns place." \
-        "- Like a human: think internally, need not verbalize every thought.")
+        "- Hard problem -> reason fully, just terse. Easy -> short is fine. Never skip needed analysis." \
+        "- Like a human: think internally, need not verbalize every thought in prose.")
     if [[ "$tlevel" == "hyper" ]]; then
         tmsg="${tmsg}"$'\n'"- HYPER: stack symbols, 1-3 words per line, drop recoverable subject/verb."
     elif [[ "$tlevel" == "lite" ]]; then

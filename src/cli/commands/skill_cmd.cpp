@@ -24,6 +24,7 @@
 #include "../../imem/skill_chunker.hpp"
 #include "../../embed/embedder.hpp"
 #include "skill_recall.hpp"
+#include "skill_content.hpp"
 #include "../../wasm/wasm_skill.hpp"
 #include "../../wasm/wasm_runtime.hpp"
 #include "../../wasm/wasm_registry.hpp"
@@ -294,10 +295,16 @@ static int doIndex(ContextNodeStore& store, Db& db,
 
         std::string node_key = "skill-" + slugify(meta.name);
 
+        // Store the FULL skill body (not a 500-char summary) so reading a
+        // skill via `icmg context skill-<name>` shows everything.
+        std::string full_content = readFile(fpath);
+
         ContextNode node;
         node.node_key    = node_key;
         node.title       = meta.name;
-        node.content     = meta.description + "\n\n" + meta.content_summary;
+        node.content     = buildSkillNodeContent(
+            meta.description,
+            full_content.empty() ? meta.content_summary : full_content);
         node.source_file = fpath;
         node.tier        = "skill";
         node.tags        = meta.trigger_keywords;
@@ -306,7 +313,6 @@ static int doIndex(ContextNodeStore& store, Db& db,
         int64_t row_id = store.upsert(node);
 
         // Populate skill_chunks for this skill.
-        std::string full_content = readFile(fpath);
         if (!full_content.empty()) {
             upsertChunks(db, std::to_string(row_id), node_key, full_content);
         }

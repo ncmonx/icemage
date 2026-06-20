@@ -7,6 +7,10 @@
 //
 // Stop hook calls `compliance check-thinking` with assistant message text.
 // Violation = thinking section > N words (default 80) when sayless flag ON.
+// NOTE: word-count is a PROXY for uncompressed prose, not a cap on reasoning
+// depth. Sayless-think means "express reasoning compactly (symbols/abbrev)",
+// NOT "think less" -- a deep problem reasoned in fragments stays well under
+// the cap; the same reasoning narrated in full sentences trips it.
 // SessionStart hook prepends "X violations in last 24h — comply now" to
 // sayless directive, escalating language if pattern persists.
 
@@ -111,9 +115,9 @@ public:
             else severity = "NOTE";
             std::cout << severity << ": last 24h had " << last_24h
                       << " thinking-phase sayless violation(s). "
-                      << "Each instance burned ~500-2000 tokens. "
-                      << "Apply sayless ultra to thinking strictly THIS TURN. "
-                      << "If approach is obvious skip thinking entirely.";
+                      << "Each burned ~500-2000 tokens on prose/narration. "
+                      << "Reason as deeply as the task needs -- just COMPRESS the "
+                      << "wording (symbols/abbrev/fragments). Compression, not less thinking.";
             if (last_24h >= 5) {
                 std::cout << " User has noticed; further violations break trust.";
             }
