@@ -85,9 +85,24 @@ public:
 
     // Save query to history.
     void logQuery(const std::string& query, int result_count);
+    // Gap #5: overload that also records an estimated token metric for the
+    // recall result set, so memory-history is a meter not just a text log.
+    void logQuery(const std::string& query, int result_count, int64_t tokens);
 
-    // Recent queries.
+    // Recent queries (deduped by query text — collapses the hook+agent
+    // double-logging so the same recall isn't listed twice).
     std::vector<std::string> queryHistory(int limit = 20) const;
+
+    // Gap #5: deduped recall history with metrics. Each distinct query is one
+    // row carrying how many times it was logged (count) and the summed token
+    // metric, newest occurrence first.
+    struct QueryHistoryRow {
+        std::string query;
+        int64_t     count   = 0;   // how many times this query was logged
+        int64_t     tokens  = 0;   // summed estimated recall-result tokens
+        int64_t     last_ts = 0;   // most-recent created_at
+    };
+    std::vector<QueryHistoryRow> queryHistoryDetailed(int limit = 20) const;
 
 private:
     core::Db& db_;

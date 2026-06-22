@@ -777,6 +777,9 @@ CREATE INDEX IF NOT EXISTS idx_wss_session ON working_set_snapshot(session_id);
         {41, R"SQL(
 ALTER TABLE memory_nodes ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown';
 )SQL"},
+        {42, R"SQL(
+ALTER TABLE query_history ADD COLUMN tokens INTEGER NOT NULL DEFAULT 0;
+)SQL"},
 
     };
 }
