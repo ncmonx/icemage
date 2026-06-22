@@ -993,7 +993,7 @@ if __name__ == "__main__":
 )PY";
 
 static const char* GREP_HOOK_JS = R"JS(#!/usr/bin/env node
-// PreToolUse:Grep hook - graph search + icmg grep (token-efficient, injection-safe)
+// PreToolUse:Grep hook - intent + graph search + icmg grep (token-efficient, injection-safe)
 const { spawnSync } = require('child_process')
 
 let raw = ''
@@ -1012,6 +1012,25 @@ process.stdin.on('end', () => {
   function run(args) {
     const res = spawnSync(ICMG, args, { encoding: 'utf8', maxBuffer: 4*1024*1024 })
     return ((res.stdout || '') + (res.stderr || '')).trim()
+  }
+
+  // Intent heuristic: a multi-word phrase with no regex metachars is prose
+  // (the agent is hunting a CONCEPT, not a literal pattern). grep would miss
+  // it -> reword -> grep again (the loop). Route prose to `icmg find` instead.
+  function isIntentLike(p) {
+    const s = (p || '').trim()
+    if (!s) return false
+    const words = s.split(/\s+/).filter(Boolean)
+    if (words.length < 2) return false                       // single token => identifier/regex/path
+    if (/[\[\]\(\)\{\}\|\^\$\*\+\?\\]/.test(s)) return false  // regex metachars => literal grep
+    return true                                               // multi-word prose => intent search
+  }
+
+  // 0. Intent layer: ranked code slices for natural-language queries (1 turn,
+  //    not a grep->reword->grep loop). Only for prose patterns.
+  let findOut = ''
+  if (pattern && ti.output_mode !== 'count' && ti.output_mode !== 'files_with_matches' && isIntentLike(pattern)) {
+    findOut = run(['find', pattern, '--max-files', '5'])
   }
 
   // 1. Semantic layer: graph search (file/symbol refs)
@@ -1033,8 +1052,11 @@ process.stdin.on('end', () => {
   grepArgs.push('-e', pattern, '--', searchPath)
   const grepOut = run(grepArgs)
 
-  // Combine
+  // Combine: intent slices first (most useful for prose), then graph, then grep.
   let out = ''
+  if (findOut && !/^icmg find: no relevant lines/.test(findOut)) {
+    out += `[find: intent search "${pattern}"]\n${findOut}\n\n`
+  }
   if (graphOut && graphOut !== 'No results.') {
     out += `[graph: ${pattern}]\n${graphOut}\n\n`
   }
@@ -1046,10 +1068,10 @@ process.stdin.on('end', () => {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
-      additionalContext: '[icmg grep+graph]\n' + out
+      additionalContext: '[icmg find+grep+graph]\n' + out
     },
     decision: 'block',
-    reason: 'icmg graph+grep results are included in this tool result -- use them directly. Do NOT re-run the search via Select-String/findstr/Bash grep (it is blocked again and wastes turns).'
+    reason: 'icmg find(intent)+graph+grep results are included -- use them directly. For a CONCEPT/phrase, the [find] slices are usually what you want. Do NOT re-run the search via Select-String/findstr/Bash grep or reword-and-grep again (blocked again, wastes turns).'
   }))
 })
 )JS";

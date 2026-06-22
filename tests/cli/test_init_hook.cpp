@@ -123,6 +123,57 @@ TEST("init_hook: file round-trip preserves other keys") {
 }
 
 
+// ---------------------------------------------------------------------------
+// GREP_HOOK_JS intent-layer heuristic (v2.8.0).
+// The PreToolUse:Grep hook adds a 3rd "intent" layer: when the pattern looks
+// like a natural-language phrase (not a regex / identifier), the hook also
+// runs `icmg find "<pattern>"` so the agent gets ranked code slices in ONE
+// turn instead of looping grep->reword->grep on a phrase that never matches
+// verbatim. This mirrors the JS isIntentLike() in init_cmd.cpp GREP_HOOK_JS.
+static bool isIntentLike(const std::string& pat) {
+    // trim
+    size_t b = pat.find_first_not_of(" \t\r\n");
+    if (b == std::string::npos) return false;
+    size_t e = pat.find_last_not_of(" \t\r\n");
+    std::string s = pat.substr(b, e - b + 1);
+    if (s.empty()) return false;
+    // word count (split on whitespace runs)
+    int words = 0; bool in = false;
+    for (char c : s) {
+        bool ws = (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+        if (!ws && !in) { ++words; in = true; }
+        else if (ws) in = false;
+    }
+    if (words < 2) return false;                 // single token => identifier/regex/path
+    // any regex metachar => treat as literal grep, not prose
+    const std::string meta = "[](){}|^$*+?\\";
+    for (char c : s)
+        if (meta.find(c) != std::string::npos) return false;
+    return true;                                  // multi-word prose => intent search
+}
+
+TEST("grep_hook: multi-word prose is intent-like") {
+    ASSERT_TRUE(isIntentLike("where is the persona turn handled"));
+    ASSERT_TRUE(isIntentLike("handle login flow"));
+    ASSERT_TRUE(isIntentLike("two words"));
+}
+
+TEST("grep_hook: single token is NOT intent-like (identifier/regex/path)") {
+    ASSERT_TRUE(!isIntentLike("FindCommand"));
+    ASSERT_TRUE(!isIntentLike("src/main.cpp"));
+    ASSERT_TRUE(!isIntentLike("getUserById"));
+    ASSERT_TRUE(!isIntentLike(""));
+    ASSERT_TRUE(!isIntentLike("   "));
+}
+
+TEST("grep_hook: regex metachars disqualify intent (use literal grep)") {
+    ASSERT_TRUE(!isIntentLike("foo.*bar baz"));
+    ASSERT_TRUE(!isIntentLike("a\\|b cd"));
+    ASSERT_TRUE(!isIntentLike("class (Foo|Bar)"));
+    ASSERT_TRUE(!isIntentLike("end$ of line"));
+}
+
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
