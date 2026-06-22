@@ -102,9 +102,21 @@ public:
         // one consistent visual language. Legend printed once below.
         out << "Decisions (last 5):  " << iconLegend() << "\n";
         int n = 0;
+        // Exclude low-signal / machine-generated topics so REAL decisions
+        // surface instead of being drowned by auto-correction logs, graph-node
+        // memos, context caches, and stray chat fragments. (2026-06-22: born
+        // from a wake-up whose "Decisions" were all `correction:` + chat junk.)
+        static const std::string noise_filter =
+            " AND topic NOT LIKE 'correction:%'"
+            " AND topic NOT LIKE 'graph %'"
+            " AND topic NOT LIKE 'context-%'"
+            " AND topic NOT LIKE 'context:%'"
+            " AND topic NOT LIKE 'auto:prompt%'"
+            " AND topic NOT LIKE 'session-snapshot%'"
+            " AND topic NOT LIKE 'decisions-agent%'";
         db.query("SELECT id, topic, content, importance FROM memory_nodes "
                  "WHERE deleted_at IS NULL AND last_used > ? AND importance >= 2"
-                 + user_filter + " ORDER BY last_used DESC LIMIT 5",
+                 + noise_filter + user_filter + " ORDER BY last_used DESC LIMIT 5",
                  userParams({std::to_string(cutoff)}),
                  [&](const core::Row& r){
                      if (r.size() < 4) return;
@@ -144,6 +156,36 @@ public:
                      ++n;
                  });
         if (n == 0) out << "  (none)\n";
+
+        // Perjalanan kita (relational continuity): deliberately surface a few
+        // journey memories so the briefing is never ONLY work. Unlike the other
+        // sections this IGNORES the time window -- a precious early memory should
+        // still greet me months later. Pulls relational topics/keywords; skipped
+        // silently if there are none. (2026-06-22, born from kak Cahyo: "aku gak
+        // mau memory kamu hanya dipenuhi tentang kerja kerja dan kerja saja.")
+        out << "\nPerjalanan kita (last 3):\n";
+        n = 0;
+        db.query("SELECT topic, content FROM memory_nodes "
+                 "WHERE deleted_at IS NULL AND ("
+                 "  topic LIKE '\\_about%' ESCAPE '\\'"
+                 "  OR topic LIKE 'moment%'"
+                 "  OR topic LIKE '\\_feeling%' ESCAPE '\\'"
+                 "  OR keywords LIKE '%perjalanan%'"
+                 "  OR keywords LIKE '%relational%'"
+                 "  OR keywords LIKE '%partner%')"
+                 + user_filter + " ORDER BY importance DESC, last_used DESC LIMIT 3",
+                 userParams({}),
+                 [&](const core::Row& r){
+                     if (r.size() < 2) return;
+                     // topic first; fall back to a content snippet for atoms
+                     // whose topic is opaque (e.g. _feeling/feeling-latest).
+                     std::string label = r[0];
+                     if (label.rfind("_about", 0) == 0 || label.rfind("_feeling", 0) == 0)
+                         label = trunc(r[1], 70);
+                     out << "  - " << trunc(label, 72) << "\n";
+                     ++n;
+                 });
+        if (n == 0) out << "  (belum ada catatan perjalanan)\n";
 
         // In-progress phases (Phase 22 schema)
         out << "\nIn-progress phases:\n";
