@@ -12,6 +12,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cmath>
+#include <unordered_map>
 using namespace icmg::cli;
 
 // Compare $/MTok as integer cents to avoid double-eq fragility.
@@ -223,6 +224,57 @@ TEST("find: ranks files by intent density, drops misses, caps maxFiles") {
     ASSERT_EQ((int)icmg::cli::rankFileSlices(files, "rate", 1, 1, 3).size(), 1);
     // no intent terms / no match -> empty
     ASSERT_EQ((int)icmg::cli::rankFileSlices(files, "zzz", 1, 5, 3).size(), 0);
+}
+
+// --- find: working-set recency boost (v2.10.0) ----------------------------
+// A small, BOUNDED multiplier lifts files modified recently (the active
+// working set) so an ambiguous intent surfaces what you're editing NOW first.
+// It only boosts files that ALREADY match (sc>0) -- never injects an
+// irrelevant file -- and decays so a much-more-relevant old file still wins.
+TEST("find_recency: fresh file wins a relevance tie (boost breaks tie)") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"aaa.cpp", "int rate = 1;\n"},   // 1 hit, alphabetically first
+        {"zzz.cpp", "int rate = 2;\n"}     // 1 hit, alphabetically last
+    };
+    // Without recency: equal score -> alphabetical -> aaa.cpp first.
+    auto base = icmg::cli::rankFileSlices(files, "rate", 1, 5, 3);
+    ASSERT_EQ(base[0].file, std::string("aaa.cpp"));
+    // zzz.cpp is freshly modified (age 0), aaa.cpp is old (1e6 s).
+    std::unordered_map<std::string,double> age = {{"aaa.cpp", 1e6}, {"zzz.cpp", 0.0}};
+    auto boosted = icmg::cli::rankFileSlices(files, "rate", 1, 5, 3, &age);
+    ASSERT_EQ(boosted[0].file, std::string("zzz.cpp"));   // recency flips the tie
+}
+
+TEST("find_recency: boost is bounded -- strong relevance beats fresh weak hit") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"aaa.cpp", "int rate = 1;\n"},                                  // 1 hit, FRESH
+        {"zzz.cpp", "rate(); set_rate(); rate++; rate--; rate=0;\n"}      // 5 hits, OLD
+    };
+    std::unordered_map<std::string,double> age = {{"aaa.cpp", 0.0}, {"zzz.cpp", 1e6}};
+    auto r = icmg::cli::rankFileSlices(files, "rate", 1, 5, 3, &age);
+    ASSERT_EQ(r[0].file, std::string("zzz.cpp"));   // 5x relevance > 1.25x recency
+}
+
+TEST("find_recency: never injects an irrelevant file (sc=0 stays dropped)") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"hit.cpp",  "int rate = 1;\n"},
+        {"miss.cpp", "unrelated only\n"}    // 0 hits but freshly modified
+    };
+    std::unordered_map<std::string,double> age = {{"hit.cpp", 1e6}, {"miss.cpp", 0.0}};
+    auto r = icmg::cli::rankFileSlices(files, "rate", 1, 5, 3, &age);
+    ASSERT_EQ((int)r.size(), 1);                  // miss.cpp still dropped
+    ASSERT_EQ(r[0].file, std::string("hit.cpp"));
+}
+
+TEST("find_recency: nullptr age map == old behavior (backward compat)") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"a.cpp", "rate rate\n"}, {"b.cpp", "rate\n"}
+    };
+    auto a = icmg::cli::rankFileSlices(files, "rate", 1, 5, 3);
+    auto b = icmg::cli::rankFileSlices(files, "rate", 1, 5, 3, nullptr);
+    ASSERT_EQ(a.size(), b.size());
+    ASSERT_EQ(a[0].file, b[0].file);
+    ASSERT_EQ(a[0].file, std::string("a.cpp"));   // denser unchanged
 }
 
 // --- bench savings: reproducible read-reduction math ----------------------

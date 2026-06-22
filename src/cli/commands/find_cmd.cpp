@@ -15,6 +15,7 @@
 #include <vector>
 #include <set>
 #include <unordered_map>
+#include <chrono>
 
 namespace icmg::cli {
 
@@ -102,6 +103,8 @@ public:
 
         // Collect (relpath, body) for project source files; bounded.
         std::vector<std::pair<std::string, std::string>> files;
+        std::unordered_map<std::string, double> ageSec;  // relpath -> age (seconds)
+        const auto nowT = fs::file_time_type::clock::now();
         const size_t kMaxScan = 4000, kMaxFileBytes = 256 * 1024;
         std::error_code ec;
         fs::path base = fs::current_path(ec);
@@ -127,11 +130,19 @@ public:
             std::ostringstream ss; ss << f.rdbuf();
             std::string rel = fs::relative(p, base, ec).string();
             if (ec || rel.empty()) { rel = p.string(); ec.clear(); }
+            // Working-set recency: age in seconds (>=0) for the ranking boost.
+            std::error_code tec;
+            auto mt = fs::last_write_time(p, tec);
+            if (!tec) {
+                double age = std::chrono::duration<double>(nowT - mt).count();
+                if (age < 0.0) age = 0.0;
+                ageSec[rel] = age;
+            }
             files.emplace_back(rel, ss.str());
             ++scanned;
         }
 
-        auto hits = rankFileSlices(files, intent, ctx, max_files, /*maxWin*/3);
+        auto hits = rankFileSlices(files, intent, ctx, max_files, /*maxWin*/3, &ageSec);
         if (hits.empty()) {
             std::cout << "icmg find: no relevant lines for \"" << intent
                       << "\" (scanned " << scanned << " files)\n";
