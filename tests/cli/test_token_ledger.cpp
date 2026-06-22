@@ -56,3 +56,21 @@ TEST("token-ledger: window filter excludes out-of-window rows") {
     ASSERT_EQ((long long)all.input, 1099LL);
     ASSERT_EQ((long long)win.input, 100LL);    // old row excluded
 }
+
+TEST("token-ledger: cacheHitRate = cache_read / totalInput (0 when empty)") {
+    // Empty totals -> no divide-by-zero, rate is 0.
+    TokenLedgerTotals empty;
+    ASSERT_TRUE(empty.cacheHitRate() == 0.0);
+
+    // input=300, cache_read=50, cache_creation=15 -> totalInput=365.
+    // hit rate = 50/365 = 0.13698...
+    TokenLedgerTotals t;
+    t.input = 300; t.cache_read = 50; t.cache_creation = 15;
+    double r = t.cacheHitRate();
+    ASSERT_TRUE(r > 0.136 && r < 0.138);
+
+    // All-cache-read context -> rate ~1.0 (best case).
+    TokenLedgerTotals hot;
+    hot.cache_read = 1000;  // input=0, creation=0
+    ASSERT_TRUE(hot.cacheHitRate() > 0.999);
+}

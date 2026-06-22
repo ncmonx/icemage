@@ -37,6 +37,15 @@ struct TokenLedgerTotals {
     // Billed input = fresh input + cache-write (cache reads are ~10% priced but
     // we surface them separately; callers decide). Convenience sum:
     int64_t totalInput() const { return input + cache_read + cache_creation; }
+    // Cache-hit rate: fraction of the input context served from cache (read).
+    // KV-cache hits are billed at ~10% of fresh input, so a higher rate = a
+    // cheaper, more cache-friendly prompt. 0 when there is no input at all
+    // (guards divide-by-zero). Range 0..1.
+    double cacheHitRate() const {
+        int64_t denom = totalInput();
+        if (denom <= 0) return 0.0;
+        return (double)cache_read / (double)denom;
+    }
 };
 
 // Guarded CREATE so fixtures / un-migrated DBs gain the table. Idempotent.

@@ -328,7 +328,9 @@ public:
                           << ",\"input\":" << tl.input
                           << ",\"output\":" << tl.output
                           << ",\"cache_read\":" << tl.cache_read
-                          << ",\"cache_creation\":" << tl.cache_creation << "}";
+                          << ",\"cache_creation\":" << tl.cache_creation
+                          << ",\"cache_hit_rate\":" << std::fixed
+                          << std::setprecision(4) << tl.cacheHitRate() << "}";
             }
             std::cout << "}\n";
             return 0;
@@ -385,6 +387,20 @@ public:
                           << "  est. real spend: $" << std::fixed
                           << std::setprecision(4) << api_cost
                           << "  (actual usage block, not an estimate)\n";
+                  // Cache-hit rate: fraction of input context served from cache
+                  // (billed ~10% of fresh). Higher = more cache-friendly prompt;
+                  // the cache saved us the other ~90% on those read tokens.
+                  {
+                      double cache_saved =
+                          (double)tl.cache_read * rate_in * 0.9 / 1'000'000.0;
+                      std::cout << "  cache-hit rate: " << std::fixed
+                                << std::setprecision(1)
+                                << (tl.cacheHitRate() * 100.0)
+                                << "%  (KV-cache served " << tl.cache_read
+                                << " of " << tl.totalInput()
+                                << " input tok; saved ~$" << std::setprecision(4)
+                                << cache_saved << ")\n";
+                  }
             }
         }
 
