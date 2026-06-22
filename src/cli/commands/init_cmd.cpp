@@ -995,13 +995,16 @@ if __name__ == "__main__":
 static const char* GREP_HOOK_JS = R"JS(#!/usr/bin/env node
 // PreToolUse:Grep hook - intent + graph search + icmg grep (token-efficient, injection-safe)
 const { spawnSync } = require('child_process')
+const fs = require('fs')
+const path = require('path')
 
 let raw = ''
 process.stdin.setEncoding('utf8')
 process.stdin.on('data', d => raw += d)
 process.stdin.on('end', () => {
-  let ti = {}
-  try { ti = JSON.parse(raw).tool_input || {} } catch(_) {}
+  let payload = {}
+  try { payload = JSON.parse(raw) } catch(_) {}
+  let ti = payload.tool_input || {}
 
   const pattern = ti.pattern || ''
   const searchPath = ti.path || '.'
@@ -1013,6 +1016,69 @@ process.stdin.on('end', () => {
     const res = spawnSync(ICMG, args, { encoding: 'utf8', maxBuffer: 4*1024*1024 })
     return ((res.stdout || '') + (res.stderr || '')).trim()
   }
+
+  // ---- Loop-detector (v2.9.0) ---------------------------------------------
+  // The hook is a stateless subprocess, so recent grep patterns are persisted
+  // per-session to .icmg/grep-loop.json. If the new pattern is near-identical
+  // to a recent one, we prepend a hard banner: the agent is reword-grepping in
+  // a circle and should switch to `icmg find` / `icmg graph symbol` instead.
+  // Mirrors the C++ wordSet/jaccard/isLoop in tests/cli/test_init_hook.cpp.
+  function wordSet(s) {
+    const out = new Set()
+    for (const tok of String(s || '').toLowerCase().split(/[^a-z0-9]+/))
+      if (tok.length >= 2) out.add(tok)
+    return out
+  }
+  function jaccard(a, b) {
+    const sa = wordSet(a), sb = wordSet(b)
+    if (!sa.size || !sb.size) return 0
+    let inter = 0
+    for (const w of sa) if (sb.has(w)) inter++
+    const uni = sa.size + sb.size - inter
+    return uni ? inter / uni : 0
+  }
+  const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const singleTok = s => !!s && !/\s/.test(s)
+  function isLoop(prev, cur) {
+    if (norm(prev) === norm(cur)) return true                 // exact re-run
+    if (jaccard(prev, cur) >= 0.5) return true                // phrase reword
+    if (singleTok(prev) && singleTok(cur)) {                  // identifier suffix-reword
+      const lp = norm(prev), lc = norm(cur)
+      if (lp.length >= 4 && lc.length >= 4 &&
+          (lc.indexOf(lp) !== -1 || lp.indexOf(lc) !== -1)) return true
+    }
+    return false
+  }
+
+  let loopBanner = ''
+  if (pattern) {
+    try {
+      const sid = String(payload.session_id || '')
+      const dir = '.icmg'
+      const file = path.join(dir, 'grep-loop.json')
+      const TTL = 600   // seconds; older patterns no longer count as a loop
+      const now = Math.floor(Date.now() / 1000)
+      let st = { sid: '', hist: [] }
+      try { st = JSON.parse(fs.readFileSync(file, 'utf8')) || st } catch(_) {}
+      if (st.sid !== sid) st = { sid, hist: [] }        // new session => reset
+      st.hist = (st.hist || []).filter(h => h && (now - (h.ts || 0)) < TTL)
+      for (const h of st.hist) {
+        if (isLoop(h.p, pattern)) {
+          const ago = now - (h.ts || now)
+          loopBanner = `[LOOP DETECTED] You already grepped a near-identical pattern ` +
+            `("${h.p}") ~${ago}s ago this session. Rewording grep rarely helps -- the ` +
+            `match isn't literal. STOP reword-grepping; use \`icmg find "${pattern}"\` ` +
+            `(ranked slices) or \`icmg graph symbol <Name>\` (definition) instead.\n\n`
+          break
+        }
+      }
+      st.hist.push({ p: pattern, ts: now })
+      if (st.hist.length > 20) st.hist = st.hist.slice(-20)
+      try { fs.mkdirSync(dir, { recursive: true }) } catch(_) {}
+      try { fs.writeFileSync(file, JSON.stringify(st)) } catch(_) {}
+    } catch(_) { /* never block grep on loop-detector failure */ }
+  }
+  // -------------------------------------------------------------------------
 
   // Intent heuristic: a multi-word phrase with no regex metachars is prose
   // (the agent is hunting a CONCEPT, not a literal pattern). grep would miss
@@ -1052,8 +1118,9 @@ process.stdin.on('end', () => {
   grepArgs.push('-e', pattern, '--', searchPath)
   const grepOut = run(grepArgs)
 
-  // Combine: intent slices first (most useful for prose), then graph, then grep.
+  // Combine: loop banner first (most urgent), then intent slices, graph, grep.
   let out = ''
+  if (loopBanner) out += loopBanner
   if (findOut && !/^icmg find: no relevant lines/.test(findOut)) {
     out += `[find: intent search "${pattern}"]\n${findOut}\n\n`
   }
