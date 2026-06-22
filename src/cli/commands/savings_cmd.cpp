@@ -12,6 +12,7 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../savings_daily.hpp"
+#include "../token_ledger.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
@@ -319,7 +320,17 @@ public:
                       << ",\"strict_denials\":{\"total\":" << denials.total;
             for (auto& kv : denials.by_hook)
                 std::cout << ",\"" << kv.first << "\":" << kv.second;
-            std::cout << "}}\n";
+            std::cout << "}";
+            // Gap #3: real measured API token meter (separate from estimates).
+            {
+                TokenLedgerTotals tl = aggregateTokenLedger(db, window_days);
+                std::cout << ",\"real_api\":{\"turns\":" << tl.rows
+                          << ",\"input\":" << tl.input
+                          << ",\"output\":" << tl.output
+                          << ",\"cache_read\":" << tl.cache_read
+                          << ",\"cache_creation\":" << tl.cache_creation << "}";
+            }
+            std::cout << "}\n";
             return 0;
         }
 
@@ -353,6 +364,29 @@ public:
                   << "You saved:         $" << cost_saved
                   << "  (" << std::fixed << std::setprecision(1)
                   << pct(total.saved, total.raw_tokens) << "%)\n";
+
+        // Gap #3: REAL Anthropic API token meter (separate from the estimated
+        // savings above). The GUI records each turn's usage block into
+        // token_ledger; here we surface the actual input/output/cache totals +
+        // cost. This is measured, not a proxy estimate.
+        {
+            TokenLedgerTotals tl = aggregateTokenLedger(db, window_days);
+            if (tl.rows > 0) {
+                double api_cost =
+                      (double)(tl.input + tl.cache_creation) * rate_in / 1'000'000.0
+                    + (double)tl.cache_read * rate_in * 0.1 / 1'000'000.0
+                    + (double)tl.output * rate_out / 1'000'000.0;
+                std::cout << "\nReal API tokens (last " << window_days
+                          << "d, measured from " << tl.rows << " turns):\n"
+                          << "  input " << tl.input
+                          << "  output " << tl.output
+                          << "  cache-read " << tl.cache_read
+                          << "  cache-creation " << tl.cache_creation << "\n"
+                          << "  est. real spend: $" << std::fixed
+                          << std::setprecision(4) << api_cost
+                          << "  (actual usage block, not an estimate)\n";
+            }
+        }
 
         // Per-day saved-token breakdown (console). Mirrors the --html SVG chart
         // via the shared aggregateDailySaved(); newest day first.
