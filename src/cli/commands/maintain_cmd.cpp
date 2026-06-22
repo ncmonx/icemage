@@ -46,6 +46,17 @@
 
 namespace fs = std::filesystem;
 
+// fs::path::string() throws system error 1113 on Windows when a filename has
+// chars outside the active code page (e.g. a unicode-named .cab/backup file).
+// recursive_directory_iterator below walks EVERY file under the project root,
+// so one such name aborted the whole `maintain` run. .u8string() yields UTF-8
+// and never throws -- same fix as #35441 (find_cmd.cpp). ASCII dir-name compares
+// downstream are unaffected.
+static inline std::string pathU8(const fs::path& p) {
+    auto u8 = p.u8string();
+    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
+}
+
 namespace icmg::cli {
 
 class MaintainCommand : public BaseCommand {
@@ -133,7 +144,7 @@ private:
         {
             if (ec) { ec.clear(); continue; }
             const auto& p = it->path();
-            std::string name = p.filename().string();
+            std::string name = pathU8(p.filename());
             if (name == ".icmg" || name == ".git" || name == "build"
                 || name == "node_modules" || name == "third_party") {
                 if (it->is_directory()) it.disable_recursion_pending();
