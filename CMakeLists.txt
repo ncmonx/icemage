@@ -701,6 +701,7 @@ add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomiz
 add_icmg_test(test_memory_source tests/imem/test_memory_source.cpp)  # provenance: memory source (ctor guarded-ALTER)
 add_icmg_test(test_memory_history tests/imem/test_memory_history.cpp)  # Gap #5: dedup + token metric
 add_icmg_test(test_token_ledger tests/cli/test_token_ledger.cpp)  # Gap #3: real API token ledger
+add_icmg_test(test_session_dedup tests/cli/test_session_dedup.cpp)  # Cache-hit optimizer #2: TTL recall dedup
 add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
 add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 smart-bisect
 add_icmg_test(test_atomize_cmd  tests/cli/test_atomize_cmd.cpp)   # v1.80 atomize T7

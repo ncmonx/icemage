@@ -9,6 +9,7 @@
 #include "../../imem/atom_store.hpp"
 #include "../../imem/scorer.hpp"
 #include "../ref_registry.hpp"
+#include "../session_dedup.hpp"   // Cache-hit optimizer #2: TTL-aware recall dedup
 #include "../../core/persona_db.hpp"        // #moments: merge persona _moments
 #include "../../core/profile_store.hpp"
 #include "../../core/user_identity.hpp"
@@ -188,17 +189,23 @@ public:
             }
         }
 
-        // Phase 82 T4: in-session recall dedup — suppress nodes already returned
-        // this session. Prevents identical results flooding multi-turn context.
-        // Bypass with --no-dedup.
+        // Phase 82 T4 + Cache-hit optimizer #2: in-session recall dedup — suppress
+        // nodes already returned recently. Prevents identical results flooding
+        // multi-turn context. Switched from RefRegistry (calendar-day scoped, which
+        // over-suppressed memory for a long-lived GUI across separate conversations)
+        // to a TTL window (session_dedup): re-injection within an active conversation
+        // is suppressed, but a later conversation re-surfaces the memory once the TTL
+        // lapses. Bypass with --no-dedup.
         if (!no_dedup && !json) {
             try {
-                RefRegistry refs(std::filesystem::current_path().string());
+                std::string ddpath =
+                    (std::filesystem::current_path() / ".icmg" / "recall-dedup.txt").string();
+                int64_t ttl = recallDedupTTL();
                 std::vector<imem::MemoryNode> deduped;
                 for (auto& n : results) {
                     std::string key = std::to_string(n.id);
-                    if (!refs.seen("RECALL", key)) {
-                        refs.getOrAssign("RECALL", key);
+                    if (!wasInjectedRecently(ddpath, key, ttl)) {
+                        markInjected(ddpath, key);
                         deduped.push_back(std::move(n));
                     }
                 }
