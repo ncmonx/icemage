@@ -139,6 +139,15 @@ MemoryStore::MemoryStore(core::Db& db) : db_(db) {
               [&](const core::Row& r) { ++cols; if (r.size() > 1 && r[1] == "source") hasSource = true; });
     if (cols > 0 && !hasSource)
         db_.run("ALTER TABLE memory_nodes ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown'");
+
+    // Gap #5: ensure query_history has a tokens metric column (guarded -- covers
+    // hand-created fixtures + DBs that skipped the migrator). Only ALTERs an
+    // EXISTING table.
+    int qhCols = 0; bool hasTokens = false;
+    db_.query("PRAGMA table_info(query_history)", {},
+              [&](const core::Row& r) { ++qhCols; if (r.size() > 1 && r[1] == "tokens") hasTokens = true; });
+    if (qhCols > 0 && !hasTokens)
+        db_.run("ALTER TABLE query_history ADD COLUMN tokens INTEGER NOT NULL DEFAULT 0");
 }
 
 void MemoryStore::syncKeywords(int64_t id, const std::string& keywords) {
@@ -461,8 +470,13 @@ std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
     // Bump frequency for top result
     if (!ranked.empty()) bumpFrequency(ranked[0].id);
 
-    // Log query
-    logQuery(effective_query, (int)ranked.size());
+    // Log query with an estimated token metric for the returned result set
+    // (content bytes / 4 ~= tokens) so memory-history is a meter, not just text.
+    {
+        int64_t est = 0;
+        for (const auto& n : ranked) est += (int64_t)n.content.size();
+        logQuery(effective_query, (int)ranked.size(), est / 4);
+    }
 
     // Fire POST_RECALL
     ctx.set<int>("result_count", (int)ranked.size());
@@ -687,12 +701,39 @@ void MemoryStore::logQuery(const std::string& query, int result_count) {
             {query, std::to_string(result_count)});
 }
 
+void MemoryStore::logQuery(const std::string& query, int result_count, int64_t tokens) {
+    db_.run("INSERT INTO query_history(query, matched_ids, tokens) VALUES(?,?,?)",
+            {query, std::to_string(result_count), std::to_string(tokens)});
+}
+
 std::vector<std::string> MemoryStore::queryHistory(int limit) const {
+    // Gap #5: dedup by query text so the hook+agent double-logging of the same
+    // recall collapses to one entry. Newest occurrence first.
     std::vector<std::string> result;
-    db_.query("SELECT query FROM query_history ORDER BY created_at DESC LIMIT ?",
+    db_.query("SELECT query, MAX(created_at) AS ts FROM query_history "
+              "GROUP BY query ORDER BY ts DESC LIMIT ?",
               {std::to_string(limit)},
               [&](const core::Row& r) { if (!r.empty()) result.push_back(r[0]); });
     return result;
+}
+
+std::vector<MemoryStore::QueryHistoryRow>
+MemoryStore::queryHistoryDetailed(int limit) const {
+    std::vector<QueryHistoryRow> out;
+    db_.query("SELECT query, COUNT(*) AS n, "
+              "       COALESCE(SUM(tokens),0) AS tok, MAX(created_at) AS ts "
+              "FROM query_history GROUP BY query ORDER BY ts DESC LIMIT ?",
+              {std::to_string(limit)},
+              [&](const core::Row& r) {
+                  if (r.size() < 4) return;
+                  QueryHistoryRow row;
+                  row.query = r[0];
+                  try { row.count   = std::stoll(r[1]); } catch (...) {}
+                  try { row.tokens  = std::stoll(r[2]); } catch (...) {}
+                  try { row.last_ts = std::stoll(r[3]); } catch (...) {}
+                  out.push_back(std::move(row));
+              });
+    return out;
 }
 
 } // namespace icmg::imem
