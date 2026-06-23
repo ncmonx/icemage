@@ -12,6 +12,8 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../savings_daily.hpp"
+#include "../token_ledger.hpp"
+#include "../cache_advisor.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
@@ -319,7 +321,19 @@ public:
                       << ",\"strict_denials\":{\"total\":" << denials.total;
             for (auto& kv : denials.by_hook)
                 std::cout << ",\"" << kv.first << "\":" << kv.second;
-            std::cout << "}}\n";
+            std::cout << "}";
+            // Gap #3: real measured API token meter (separate from estimates).
+            {
+                TokenLedgerTotals tl = aggregateTokenLedger(db, window_days);
+                std::cout << ",\"real_api\":{\"turns\":" << tl.rows
+                          << ",\"input\":" << tl.input
+                          << ",\"output\":" << tl.output
+                          << ",\"cache_read\":" << tl.cache_read
+                          << ",\"cache_creation\":" << tl.cache_creation
+                          << ",\"cache_hit_rate\":" << std::fixed
+                          << std::setprecision(4) << tl.cacheHitRate() << "}";
+            }
+            std::cout << "}\n";
             return 0;
         }
 
@@ -353,6 +367,82 @@ public:
                   << "You saved:         $" << cost_saved
                   << "  (" << std::fixed << std::setprecision(1)
                   << pct(total.saved, total.raw_tokens) << "%)\n";
+
+        // Gap #3: REAL Anthropic API token meter (separate from the estimated
+        // savings above). The GUI records each turn's usage block into
+        // token_ledger; here we surface the actual input/output/cache totals +
+        // cost. This is measured, not a proxy estimate.
+        {
+            TokenLedgerTotals tl = aggregateTokenLedger(db, window_days);
+            if (tl.rows > 0) {
+                double api_cost =
+                      (double)(tl.input + tl.cache_creation) * rate_in / 1'000'000.0
+                    + (double)tl.cache_read * rate_in * 0.1 / 1'000'000.0
+                    + (double)tl.output * rate_out / 1'000'000.0;
+                std::cout << "\nReal API tokens (last " << window_days
+                          << "d, measured from " << tl.rows << " turns):\n"
+                          << "  input " << tl.input
+                          << "  output " << tl.output
+                          << "  cache-read " << tl.cache_read
+                          << "  cache-creation " << tl.cache_creation << "\n"
+                          << "  est. real spend: $" << std::fixed
+                          << std::setprecision(4) << api_cost
+                          << "  (actual usage block, not an estimate)\n";
+                  // Cache-hit rate: fraction of input context served from cache
+                  // (billed ~10% of fresh). Higher = more cache-friendly prompt;
+                  // the cache saved us the other ~90% on those read tokens.
+                  {
+                      double cache_saved =
+                          (double)tl.cache_read * rate_in * 0.9 / 1'000'000.0;
+                      std::cout << "  cache-hit rate: " << std::fixed
+                                << std::setprecision(1)
+                                << (tl.cacheHitRate() * 100.0)
+                                << "%  (KV-cache served " << tl.cache_read
+                                << " of " << tl.totalInput()
+                                << " input tok; saved ~$" << std::setprecision(4)
+                                << cache_saved << ")\n";
+                  }
+                  // #1b cache-hit ADVISOR: trend, not snapshot. Pull per-turn
+                  // samples, split prior/recent, flag a degrading cache-hit (the
+                  // tell that volatile content leaked into the cached prefix).
+                  // Always computed; the actionable line only prints when there
+                  // is a verdict to give (--cache-advisor forces the detail).
+                  {
+                      std::vector<CacheSample> samples;
+                      std::string sql =
+                          "SELECT ts, input_tokens, cache_read_tokens,"
+                          " cache_creation_tokens FROM token_ledger";
+                      std::vector<std::string> params;
+                      if (window_days > 0) {
+                          int64_t cutoff = (int64_t)std::time(nullptr) -
+                                           (int64_t)window_days * 86400;
+                          sql += " WHERE ts > ?";
+                          params.push_back(std::to_string(cutoff));
+                      }
+                      sql += " ORDER BY ts ASC";
+                      db.query(sql, params, [&](const core::Row& r) {
+                          if (r.size() < 4) return;
+                          try {
+                              CacheSample s;
+                              s.ts = std::stoll(r[0]);
+                              s.input = std::stoll(r[1]);
+                              s.cache_read = std::stoll(r[2]);
+                              s.cache_creation = std::stoll(r[3]);
+                              samples.push_back(s);
+                          } catch (...) {}
+                      });
+                      CacheTrend tr = analyzeCacheTrend(samples);
+                      std::string advice = formatCacheAdvice(tr);
+                      // Print on degrade always; on stable/improve only with the
+                      // explicit flag (keeps the default meter terse).
+                      const bool want = hasFlag(args, "--cache-advisor");
+                      if (!advice.empty() &&
+                          (tr.verdict == CacheTrend::Degrading || want)) {
+                          std::cout << "  cache advisor: " << advice << "\n";
+                      }
+                  }
+            }
+        }
 
         // Per-day saved-token breakdown (console). Mirrors the --html SVG chart
         // via the shared aggregateDailySaved(); newest day first.

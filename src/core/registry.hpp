@@ -1,9 +1,11 @@
 #pragma once
+#include <algorithm>
 #include <string>
 #include <unordered_map>
 #include <functional>
 #include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace icmg::core {
 
@@ -35,10 +37,18 @@ public:
         return it->second();
     }
 
+    // Sorted (deterministic) key order. The underlying unordered_map iterates in
+    // an implementation/hash-defined order that can vary between builds or runs;
+    // sorting makes every enumeration stable. This matters most for the MCP
+    // server's tools/list -- the advertised tool definitions sit in an AI
+    // client's cached prompt prefix, so a reshuffled list busts its KV-cache
+    // (cached input ~10% price re-billed as fresh ~100%). Stable by default;
+    // callers that already std::sort (e.g. mcp-list) become harmless no-ops.
     std::vector<std::string> keys() const {
         std::vector<std::string> ks;
         ks.reserve(map_.size());
         for (auto& [k, _] : map_) ks.push_back(k);
+        std::sort(ks.begin(), ks.end());
         return ks;
     }
 

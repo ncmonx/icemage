@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.7.0 LANGUAGES CXX C)
+project(icmg VERSION 2.8.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -633,6 +633,8 @@ add_icmg_test(test_filters      tests/tkil/test_filters.cpp)
 add_icmg_test(test_lang_filters tests/tkil/test_lang_filters.cpp)  # v1.21.5
 add_icmg_test(test_dedup_pass   tests/tkil/test_dedup_pass.cpp)
 add_icmg_test(test_db_mmap      tests/core/test_db_mmap.cpp)
+add_icmg_test(test_registry_stable tests/core/test_registry_stable.cpp)  # #4: deterministic keys() (KV-cache stable tool list)
+add_icmg_test(test_output_cap tests/core/test_output_cap.cpp)  # #5: actionable spill reference (filesystem-as-context)
 add_icmg_test(test_exec_context tests/core/test_exec_context.cpp)
 add_icmg_test(test_smart_router tests/llm/test_smart_router.cpp)
 add_icmg_test(test_agent_local  tests/cli/test_agent_local.cpp)
@@ -679,10 +681,11 @@ add_icmg_test(test_private_filter tests/cli/test_private_filter.cpp)         # 2
 add_icmg_test(test_wakeup_format  tests/cli/test_wakeup_format.cpp)          # 2026-06-15 wake-up icon legend + token cost
 add_icmg_test(test_store_autokw   tests/cli/test_store_autokw.cpp)           # 2026-06-15 auto-keyword (semantic-title v2)
 add_icmg_test(test_serve_health   tests/cli/test_serve_health.cpp)          # 2026-06-15 serve /api/health probe
-add_icmg_test(test_install_version tests/cli/test_install_version.cpp)        # 2026-06-15 smart-install version cache
-add_icmg_test(test_content_delta  tests/cli/test_content_delta.cpp)          # 2026-06-15 context --diff delta re-read
+add_icmg_test(test_content_delta  tests/cli/test_content_delta.cpp)         # 2026-06-15 context --diff delta re-read
+add_icmg_test(test_grep_symbols   tests/cli/test_grep_symbols.cpp)           # 2026-06-15 grep --symbols enclosing-symbol grouping
 add_icmg_test(test_context_batch  tests/cli/test_context_batch.cpp)          # 2026-06-15 context batch read-many arg split
 add_icmg_test(test_symbol_bundle  tests/cli/test_symbol_bundle.cpp)          # 2026-06-15 context --symbol cross-file bundle
+add_icmg_test(test_install_version tests/cli/test_install_version.cpp)        # 2026-06-15 smart-install version cache
 add_icmg_test(test_llm_list_json tests/cli/test_llm_list_json.cpp)           # v1.70 #177
 add_icmg_test(test_pattern_pass tests/tkil/test_pattern_pass.cpp)
 add_icmg_test(test_outcome      tests/tkil/test_outcome.cpp)
@@ -698,6 +701,10 @@ add_icmg_test(test_semantic_dedup tests/imem/test_semantic_dedup.cpp)
 add_icmg_test(test_importance_decay tests/imem/test_importance_decay.cpp)  # v1.23.0 (TDD: M2)
 add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomize T1
 add_icmg_test(test_memory_source tests/imem/test_memory_source.cpp)  # provenance: memory source (ctor guarded-ALTER)
+add_icmg_test(test_memory_history tests/imem/test_memory_history.cpp)  # Gap #5: dedup + token metric
+add_icmg_test(test_token_ledger tests/cli/test_token_ledger.cpp)  # Gap #3: real API token ledger
+add_icmg_test(test_cache_advisor tests/cli/test_cache_advisor.cpp)  # #1b: cache-hit TREND advisor (prefix-stability)
+add_icmg_test(test_session_dedup tests/cli/test_session_dedup.cpp)  # Cache-hit optimizer #2: TTL recall dedup
 add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
 add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 smart-bisect
 add_icmg_test(test_atomize_cmd  tests/cli/test_atomize_cmd.cpp)   # v1.80 atomize T7
