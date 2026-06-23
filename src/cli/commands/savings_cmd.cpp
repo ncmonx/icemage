@@ -13,6 +13,7 @@
 #include "../../core/registry.hpp"
 #include "../savings_daily.hpp"
 #include "../token_ledger.hpp"
+#include "../cache_advisor.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
@@ -400,6 +401,45 @@ public:
                                 << " of " << tl.totalInput()
                                 << " input tok; saved ~$" << std::setprecision(4)
                                 << cache_saved << ")\n";
+                  }
+                  // #1b cache-hit ADVISOR: trend, not snapshot. Pull per-turn
+                  // samples, split prior/recent, flag a degrading cache-hit (the
+                  // tell that volatile content leaked into the cached prefix).
+                  // Always computed; the actionable line only prints when there
+                  // is a verdict to give (--cache-advisor forces the detail).
+                  {
+                      std::vector<CacheSample> samples;
+                      std::string sql =
+                          "SELECT ts, input_tokens, cache_read_tokens,"
+                          " cache_creation_tokens FROM token_ledger";
+                      std::vector<std::string> params;
+                      if (window_days > 0) {
+                          int64_t cutoff = (int64_t)std::time(nullptr) -
+                                           (int64_t)window_days * 86400;
+                          sql += " WHERE ts > ?";
+                          params.push_back(std::to_string(cutoff));
+                      }
+                      sql += " ORDER BY ts ASC";
+                      db.query(sql, params, [&](const core::Row& r) {
+                          if (r.size() < 4) return;
+                          try {
+                              CacheSample s;
+                              s.ts = std::stoll(r[0]);
+                              s.input = std::stoll(r[1]);
+                              s.cache_read = std::stoll(r[2]);
+                              s.cache_creation = std::stoll(r[3]);
+                              samples.push_back(s);
+                          } catch (...) {}
+                      });
+                      CacheTrend tr = analyzeCacheTrend(samples);
+                      std::string advice = formatCacheAdvice(tr);
+                      // Print on degrade always; on stable/improve only with the
+                      // explicit flag (keeps the default meter terse).
+                      const bool want = hasFlag(args, "--cache-advisor");
+                      if (!advice.empty() &&
+                          (tr.verdict == CacheTrend::Degrading || want)) {
+                          std::cout << "  cache advisor: " << advice << "\n";
+                      }
                   }
             }
         }

@@ -633,6 +633,7 @@ add_icmg_test(test_filters      tests/tkil/test_filters.cpp)
 add_icmg_test(test_lang_filters tests/tkil/test_lang_filters.cpp)  # v1.21.5
 add_icmg_test(test_dedup_pass   tests/tkil/test_dedup_pass.cpp)
 add_icmg_test(test_db_mmap      tests/core/test_db_mmap.cpp)
+add_icmg_test(test_registry_stable tests/core/test_registry_stable.cpp)  # #4: deterministic keys() (KV-cache stable tool list)
 add_icmg_test(test_exec_context tests/core/test_exec_context.cpp)
 add_icmg_test(test_smart_router tests/llm/test_smart_router.cpp)
 add_icmg_test(test_agent_local  tests/cli/test_agent_local.cpp)
@@ -701,6 +702,7 @@ add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomiz
 add_icmg_test(test_memory_source tests/imem/test_memory_source.cpp)  # provenance: memory source (ctor guarded-ALTER)
 add_icmg_test(test_memory_history tests/imem/test_memory_history.cpp)  # Gap #5: dedup + token metric
 add_icmg_test(test_token_ledger tests/cli/test_token_ledger.cpp)  # Gap #3: real API token ledger
+add_icmg_test(test_cache_advisor tests/cli/test_cache_advisor.cpp)  # #1b: cache-hit TREND advisor (prefix-stability)
 add_icmg_test(test_session_dedup tests/cli/test_session_dedup.cpp)  # Cache-hit optimizer #2: TTL recall dedup
 add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
 add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 smart-bisect
