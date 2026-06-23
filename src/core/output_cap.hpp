@@ -41,11 +41,26 @@ inline std::string capOutput(const std::string& full, size_t cap, std::string& s
         spill_path.clear();   // spill unavailable — truncate in memory only
     }
 
-    // Keep head + small tail so tool callers don't lose footer info
+    // Keep head + small tail so tool callers don't lose footer info. The footer
+    // is a JUST-IN-TIME reference (filesystem-as-context): name the spill path,
+    // state the scale (bytes + line count), and tell the caller HOW to retrieve
+    // it (a Read offset/limit hint) so a large observation lives on disk while
+    // the context holds only a cheap, actionable pointer -- not a dead end.
     size_t head = cap > 256 ? cap - 256 : cap;
     std::string out = full.substr(0, head);
-    out += "\n... [truncated, " + std::to_string(full.size() - cap) + " bytes spilled to "
-         + (spill_path.empty() ? "<spill failed>" : spill_path) + "]\n";
+    if (spill_path.empty()) {
+        out += "\n... [truncated, " + std::to_string(full.size() - cap) +
+               " bytes dropped (spill unavailable)]\n";
+    } else {
+        // Count lines once so the caller knows the file's scale for paging.
+        size_t lines = 1;
+        for (char c : full) if (c == '\n') ++lines;
+        out += "\n... [truncated, " + std::to_string(full.size() - cap) +
+               " bytes spilled to " + spill_path + "\n" +
+               "    full output = " + std::to_string(lines) +
+               " lines; retrieve with: Read " + spill_path +
+               " (use offset/limit to page) -- do NOT re-run the command]\n";
+    }
     if (full.size() > 256) out += full.substr(full.size() - 256);
     return out;
 }

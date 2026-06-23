@@ -634,6 +634,7 @@ add_icmg_test(test_lang_filters tests/tkil/test_lang_filters.cpp)  # v1.21.5
 add_icmg_test(test_dedup_pass   tests/tkil/test_dedup_pass.cpp)
 add_icmg_test(test_db_mmap      tests/core/test_db_mmap.cpp)
 add_icmg_test(test_registry_stable tests/core/test_registry_stable.cpp)  # #4: deterministic keys() (KV-cache stable tool list)
+add_icmg_test(test_output_cap tests/core/test_output_cap.cpp)  # #5: actionable spill reference (filesystem-as-context)
 add_icmg_test(test_exec_context tests/core/test_exec_context.cpp)
 add_icmg_test(test_smart_router tests/llm/test_smart_router.cpp)
 add_icmg_test(test_agent_local  tests/cli/test_agent_local.cpp)
