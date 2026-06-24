@@ -99,9 +99,9 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 |---|---|
 | **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default â€” see rule above) |
 | Read a large file | `icmg context <file>` (graph + symbols + memory) |
+| Re-read only what changed | `icmg context <file> --diff` (pack_delta: sends only lines changed since last context read -- saves 60-80% on re-reads) |
 | Find a function | `icmg graph symbol <Name>` (accepts PARTIAL names -- `FindComm` -> FindCommand; shows file+lines, 30 lines not 800) |
 | Locate a file by (partial) name | `icmg find --name <partial>` (fuzzy, no body read -- fast; add `--open` to also print the top match, `--recent` to rank newest first) |
-| Edit file tolerant ws/indent diff | `icmg fuzzy-edit <file> --old <str> --new <str>` (3-level: exact→ws-norm→anchor; `--dry-run` to preview) |
 | Find where a thing lives across files | `icmg find "<intent>"` (ranked code slices, 1 turn vs Read->Grep->Read) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
 | Shortest path between files | `icmg graph path <from> <to>` |
@@ -187,6 +187,7 @@ Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM
 
 Full reference: run `icmg --help` or see https://github.com/ncmonx/icemage
 <!-- icmg:end -->
+
 
 
 
@@ -353,6 +354,7 @@ git push private restore/private-main:main --force
 | `icmg sayless [on/off/status]` | Toggle sayless mode |
 | `icmg chat` | Interactive REPL |
 <!-- icmg:commands:end -->
+
 
 
 

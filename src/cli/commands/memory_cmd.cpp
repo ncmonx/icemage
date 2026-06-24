@@ -425,6 +425,7 @@ public:
         else if (sub == "consolidate")     registered = "memory-consolidate";
         else if (sub == "extract-patterns")registered = "memory-extract-patterns";
         else if (sub == "atomize")  registered = "memory-atomize";
+        else if (sub == "export")  registered = "memory-export";
         else if (sub == "forget")  registered = "forget";   // existing top-level
         else if (sub == "restore") registered = "restore";  // existing top-level
         else {
