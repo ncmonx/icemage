@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.8.2 LANGUAGES CXX C)
+project(icmg VERSION 2.8.4 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -710,6 +710,10 @@ add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 sm
 add_icmg_test(test_fuzzy_edit   tests/cli/test_fuzzy_edit.cpp)    # v2.8.1 fuzzy-edit ws-tolerant
 add_icmg_test(test_patch_cmd          tests/cli/test_patch_cmd.cpp)          # v2.8.2 icmg patch unified-diff apply
 add_icmg_test(test_memory_export_cmd  tests/cli/test_memory_export_cmd.cpp)  # v2.8.2 icmg memory export
+add_icmg_test(test_batch_read_cmd     tests/cli/test_batch_read_cmd.cpp)     # v2.8.3 icmg batch-read
+add_icmg_test(test_smart_read_cmd     tests/cli/test_smart_read_cmd.cpp)     # v2.8.3 icmg smart-read
+add_icmg_test(test_compact_cmd        tests/cli/test_compact_cmd.cpp)        # v2.8.4 icmg compact
+add_icmg_test(test_context_vcs_cmd    tests/cli/test_context_vcs_cmd.cpp)    # v2.8.4 context-commit/branch/merge
 add_icmg_test(test_atomize_cmd  tests/cli/test_atomize_cmd.cpp)   # v1.80 atomize T7
 add_icmg_test(test_cron_tick    tests/core/test_cron_tick.cpp)    # v1.82 M6 cron-tick
 add_icmg_test(test_cache_metrics       tests/core/test_cache_metrics.cpp)       # v1.84 M8 T9

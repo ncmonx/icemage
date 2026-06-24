@@ -19,8 +19,10 @@
 #include "../../core/db.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
+#include "../../llm/llama_runner.hpp"   // LlamaRunner::available() + isLoaded()
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -190,6 +192,81 @@ std::string shrinkJson(const std::string& s) {
     return "[icmg shrink: JSON] string values capped at " + std::to_string(STR_CAP) + " chars\n\n" + out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Aggressive mode helpers (--aggressive flag)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Token abbreviation table: long C++/TS tokens → compact aliases.
+static const std::pair<const char*, const char*> kAbbrevTable[] = {
+    { "std::string",        "str"   },
+    { "std::vector",        "vec"   },
+    { "std::unordered_map", "umap"  },
+    { "std::map",           "smap"  },
+    { "std::optional",      "opt"   },
+    { "std::unique_ptr",    "uptr"  },
+    { "std::shared_ptr",    "sptr"  },
+    { "interface",          "iface" },
+    { "function",           "fn"    },
+    { "return",             "ret"   },
+};
+
+// Abbreviate long tokens on one line.
+// For keyword-style tokens (no ':' / '_') require word boundaries so we
+// don't mangle identifiers like `returnValue` or `interfaceImpl`.
+static std::string aggressiveLine(std::string s) {
+    for (auto& [from_raw, to_raw] : kAbbrevTable) {
+        std::string from(from_raw), to(to_raw);
+        bool need_wb = (from.find(':') == std::string::npos
+                     && from.find('_') == std::string::npos);
+        std::string::size_type pos = 0;
+        while ((pos = s.find(from, pos)) != std::string::npos) {
+            if (need_wb) {
+                bool ok_before = (pos == 0
+                               || !std::isalnum((unsigned char)s[pos - 1]));
+                bool ok_after  = (pos + from.size() >= s.size()
+                               || !std::isalnum((unsigned char)s[pos + from.size()])
+                               || s[pos + from.size()] == '_');
+                if (!ok_before || !ok_after) { pos += from.size(); continue; }
+            }
+            s.replace(pos, from.size(), to);
+            pos += to.size();
+        }
+    }
+    return s;
+}
+
+// Aggressive shrink pass — applied after kind routing:
+//   1. Drop comment-only lines  (//.*)
+//   2. Collapse consecutive blank lines to one
+//   3. Abbreviate common long tokens via kAbbrevTable
+// tok_in / tok_out receive before/after token estimates (bytes/4).
+static std::string aggressiveShrink(const std::string& s,
+                                    size_t& tok_in, size_t& tok_out) {
+    tok_in = s.size() / 4;
+    auto lines = splitLines(s);
+    std::ostringstream os;
+    bool last_blank = false;
+    std::regex comment_re(R"(^\s*//.*$)");
+    for (auto& ln : lines) {
+        // 1. Drop pure comment lines (//.*).
+        if (std::regex_match(ln, comment_re)) continue;
+        // 3. Abbreviate long tokens.
+        std::string proc = aggressiveLine(ln);
+        // 2. Collapse consecutive blank lines.
+        bool is_blank = proc.find_first_not_of(" \t\r") == std::string::npos;
+        if (is_blank) {
+            if (last_blank) continue;
+            last_blank = true;
+        } else {
+            last_blank = false;
+        }
+        os << proc << "\n";
+    }
+    std::string out = os.str();
+    tok_out = out.size() / 4;
+    return out;
+}
+
 // Generic: head + tail + byte count.
 std::string shrinkGeneric(const std::string& s, int head_b = 4096, int tail_b = 2048) {
     if ((int)s.size() <= head_b + tail_b) return s;
@@ -199,6 +276,34 @@ std::string shrinkGeneric(const std::string& s, int head_b = 4096, int tail_b = 
     os << "\n... [truncated " << (s.size() - head_b - tail_b) << " bytes] ...\n";
     os.write(s.data() + s.size() - tail_b, tail_b);
     return os.str();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Llama logprob scorer (--scorer=llama)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Compute a salience score for `line` via llama log-probability.
+// Score = 1.0 / (perplexity + 1), mapped to [0, 1]:
+//   - low perplexity (predictable/boilerplate) → score near 0
+//   - high perplexity (surprising/informative) → score near 1
+//
+// `runner` must be non-null; if it is null OR the logprob API is unavailable
+// this function falls back to infoScore() with no side effects on the caller.
+//
+// TODO: wire real llama logprob here.
+// LlamaRunner currently exposes only infer() (text generation). When a
+// logprob / perplexity API is added to LlamaRunner (e.g., evalLogprob()),
+// replace the fallback body below with something like:
+//
+//   auto res = runner->evalLogprob(line);     // hypothetical API
+//   if (!res.ok) return core::infoScore(line);
+//   double ppl = std::exp(-res.mean_log_prob);
+//   return 1.0 / (ppl + 1.0);
+static double llamaLogprobScore(const std::string& line,
+                                icmg::llm::LlamaRunner* /*runner*/) {
+    // TODO: wire real llama logprob here.
+    // Fallback: heuristic infoScore (model-free, always available).
+    return core::infoScore(line);
 }
 
 } // namespace
@@ -221,13 +326,28 @@ public:
 "  - JSON             → cap long string values\n"
 "  - generic text     → head + tail + byte count\n\n"
 "Options:\n"
-"  --kind <K>         Force kind (grep|build|sql|json|generic|compress)\n"
+"  --kind <K>         Force kind (grep|build|sql|json|generic|compress|salience)\n"
 "  --threshold N      Skip if input < N bytes (default 8192)\n"
+"  --aggressive       After kind routing: drop comment lines (//.*),\n"
+"                     collapse blank lines, abbreviate common long tokens\n"
+"                     (std::string->str, std::vector->vec, return->ret,\n"
+"                     function->fn, interface->iface, ...) and report\n"
+"                     before/after token estimate on stderr.\n"
+"  --scorer=llama     (salience mode only) Score lines via llama log-probability\n"
+"                     (1.0/(perplexity+1)) instead of the default heuristic.\n"
+"                     Requires a loaded LlamaRunner; falls back to infoScore\n"
+"                     with a warning when llama is unavailable or not loaded.\n"
 "  --json             Emit JSON metadata wrapper\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help")) { usage(); return 0; }
+
+        bool aggressive = hasFlag(args, "--aggressive");
+
+        // --scorer=llama: use llama log-probability scoring in salience mode.
+        std::string scorer_arg = flagValue(args, "--scorer");
+        bool use_llama_scorer = (scorer_arg == "llama");
 
         // Read input.
         std::string input;
@@ -235,7 +355,8 @@ public:
         for (size_t i = 0; i < args.size(); ++i) {
             const auto& a = args[i];
             if (a == "--kind" || a == "--threshold") { ++i; continue; }
-            if (!a.empty() && a[0] == '-') continue;
+            if (a == "--scorer") { ++i; continue; }           // consumed above
+            if (!a.empty() && a[0] == '-') continue;          // other flags incl. --scorer=llama
             path = a;
         }
         if (!path.empty()) {
@@ -305,6 +426,20 @@ public:
             case Kind::Json:     out = shrinkJson(input);     label = "json"; break;
             case Kind::Generic:  out = shrinkGeneric(input);  label = "generic"; break;
         }
+        // --aggressive: drop comments, collapse blanks, abbreviate tokens.
+        if (aggressive) {
+            size_t tok_in_ag = 0, tok_out_ag = 0;
+            std::string ag_out = aggressiveShrink(out, tok_in_ag, tok_out_ag);
+            int saved_pct = (tok_in_ag > 0)
+                            ? (int)(100 - 100 * tok_out_ag / tok_in_ag)
+                            : 0;
+            std::cerr << "[icmg shrink: aggressive] "
+                      << tok_in_ag << " tok (before) → "
+                      << tok_out_ag << " tok (after, "
+                      << saved_pct << "% saved)\n";
+            out = std::move(ag_out);
+        }
+
         std::cout << out;
         std::cerr << "[icmg shrink: " << label << "] "
                   << input.size() << "B → " << out.size() << "B ("

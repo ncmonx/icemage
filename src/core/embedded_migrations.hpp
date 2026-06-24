@@ -777,6 +777,24 @@ CREATE INDEX IF NOT EXISTS idx_wss_session ON working_set_snapshot(session_id);
         {41, R"SQL(
 ALTER TABLE memory_nodes ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown';
 )SQL"},
+        {42, R"SQL(
+ALTER TABLE query_history ADD COLUMN tokens INTEGER NOT NULL DEFAULT 0;
+)SQL"},
+        {43, R"SQL(
+CREATE TABLE IF NOT EXISTS token_ledger (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    session_id            TEXT    NOT NULL DEFAULT '',
+    model                 TEXT    NOT NULL DEFAULT '',
+    source                TEXT    NOT NULL DEFAULT 'gui',
+    input_tokens          INTEGER NOT NULL DEFAULT 0,
+    output_tokens         INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+    cache_creation_tokens INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_token_ledger_ts ON token_ledger(ts);
+CREATE INDEX IF NOT EXISTS idx_token_ledger_session ON token_ledger(session_id);
+)SQL"},
 
     };
 }

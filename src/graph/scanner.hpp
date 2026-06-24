@@ -60,11 +60,21 @@ private:
     std::string detectLang(const std::string& ext) const;
     BaseExtractor* getExtractor(const std::string& lang) const;
 
-    // A9: gitignore loading
+    // A9: gitignore loading (supports *, **, ?, !negation, trailing /, leading /)
     struct GitIgnore {
-        std::vector<std::string> patterns;
+        struct Pattern {
+            std::string raw;       // original (post-strip) pattern text
+            bool        negate;    // '!' prefix → un-ignore
+            bool        dir_only;  // trailing '/' → directories only
+            bool        anchored;  // leading '/'  → relative to root
+        };
+        std::vector<Pattern> patterns;
         void load(const std::string& path);
         bool matches(const std::string& relpath) const;
+
+    private:
+        static bool globMatch(const std::string& pattern,
+                              const std::string& path);
     };
 };
 

@@ -1,0 +1,10 @@
+# Build outputs and third-party assets - huge minified files, never useful to search
+src/gui/web/
+src/gui/web-legacy/
+src/gui/web-app/node_modules/
+src/gui/web-app/dist/
+src/gui/web-app/public/dx-theme/
+build/
+*.min.js
+*.min.css
+webview2_sdk/

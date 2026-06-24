@@ -780,7 +780,7 @@ RULES=$(icmg rules inject 2>/dev/null)
 # Standing rules — injected EVERY session so the AI is icmg-compliant from turn 1
 # (no user reminder needed; no grep/Read of AGENTS.md).
 STANDING="[icmg standing rules — active this session]
-This project runs on icmg. Project rules are in CLAUDE.md (Claude Code) and AGENTS.md (Cursor/other agents) — already loaded as your config; do NOT grep or Read them. For EVERY action use icmg FIRST: recall decisions \`icmg recall \"q\"\`; read a file \`icmg context <file>\`; search code \`icmg code_search\`/\`icmg run grep\`; run commands \`icmg run <cmd>\`; 2+ independent steps \`icmg parallel\`. Native Read/Grep/Bash are hook-redirected to icmg. After any change: \`icmg graph update\` + \`icmg store\` + \`icmg wflog add\` + \`icmg verify\`."
+This project runs on icmg. Project rules are in CLAUDE.md (Claude Code) and AGENTS.md (Cursor/other agents) — already loaded as your config; do NOT grep or Read them. For EVERY action use icmg FIRST: recall decisions \`icmg recall \"q\"\`; read a file \`icmg context <file>\`; search code \`icmg code_search\`/\`icmg run grep\`; search symbol across case variants (logQuery/log_query/LogQuery) in ONE pass \`icmg grep <name> --smart\`; run commands \`icmg run <cmd>\`; 2+ independent steps \`icmg parallel\`. Native Read/Grep/Bash are hook-redirected to icmg. After any change: \`icmg graph update\` + \`icmg store\` + \`icmg wflog add\` + \`icmg verify\`."
 CONTENT="$STANDING"
 if [[ -n "$HOT" ]]; then CONTENT="$CONTENT"$'\n\n'"$HOT"; fi
 if [[ -n "$SKILLS" ]]; then
@@ -814,6 +814,12 @@ static const char* WAKEUP_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Injects icmg wake-up briefing at start of every AI session.
 set -uo pipefail
 command -v icmg >/dev/null 2>&1 || exit 0
+# v2.8.1: export ICMG_NDC_PROMPT so the remember plugin uses the icmg-managed
+# NDC prompt (master in ~/.icmg/prompts/) instead of its own bundled copy.
+# Survives plugin upgrades; icmg init re-copies the master on every upgrade.
+HOMED="${USERPROFILE:-${HOME:-/tmp}}"
+NDC_MASTER="$HOMED/.icmg/prompts/compress-ndc.prompt.txt"
+if [ -f "$NDC_MASTER" ]; then export ICMG_NDC_PROMPT="$NDC_MASTER"; fi
 CONTENT=$(icmg wake-up 2>/dev/null) || true
 # Persona-continuity: append the user's wake-up protocol anchor if seeded (identity-agnostic).
 WAKEUP=$(icmg profile get --zone _wakeup --key wakeup 2>/dev/null) || true
@@ -900,24 +906,83 @@ exit 0
 // Real expansion (icmg hook edit-expand) deferred to v1.31 — this is
 // scaffolding only. Logs detection of `@@ICMG-DIFF` magic header so
 // telemetry shows opportunity rate; no rewrite yet.
+// v2.8.1: upgraded from scaffold -> active old_string validator.
+// Fires PreToolUse:Edit. Checks that old_string actually exists in the file
+// BEFORE the edit is sent to the engine. On mismatch: emits the closest
+// matching line (Jaccard word-overlap) so the agent can fix old_string
+// in the SAME turn instead of wasting a round-trip on "old_string not found".
+//
+// Pure bash + awk â€” no Python, no jq required (falls back gracefully).
+// Opt-out: ICMG_NO_EDIT_EXPAND=1.
 static const char* EDIT_DIFF_EXPAND_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 [[ "${ICMG_NO_EDIT_EXPAND:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
+
 INPUT=$(cat)
+FILE=$(printf '%s' "$INPUT" | icmg hookio get tool_input.file_path 2>/dev/null)
 OLD=$(printf '%s' "$INPUT" | icmg hookio get tool_input.old_string 2>/dev/null)
-case "$OLD" in
-    @@ICMG-DIFF*|@@ICMG-ANCHOR*)
-        # Magic header detected. Real expansion comes in v1.31 once
-        # `icmg hook edit-expand` lands. For now: log to telemetry so
-        # we know how often this fires in real usage.
-        LOG="${USERPROFILE:-${HOME:-/tmp}}/.icmg/edit-expand-detected.jsonl"
-        mkdir -p "$(dirname "$LOG")" 2>/dev/null
-        printf '{"ts":%s,"bytes":%s}\n' \
-            "$(date +%s 2>/dev/null || echo 0)" "${#OLD}" \
-            >> "$LOG" 2>/dev/null || true
-        ;;
-esac
+
+# Skip if no file/old_string, or file does not exist yet (new-file Write).
+[[ -z "$FILE" || -z "$OLD" ]] && exit 0
+[[ ! -f "$FILE" ]] && exit 0
+
+# Skip magic-header compressed diffs (handled by edit-expand separately).
+case "$OLD" in @@ICMG-DIFF*|@@ICMG-ANCHOR*) exit 0 ;; esac
+
+# === Check if old_string is present verbatim ===
+if printf '%s' "$OLD" | grep -qF "$OLD" "$FILE" 2>/dev/null; then
+    exit 0  # found â€” normal path
+fi
+# grep -F trick: grep -F <pattern> <file> is not right; use python or awk
+# Use awk to search file content for literal old_string (handles multiline).
+FILE_CONTENT=$(cat "$FILE" 2>/dev/null) || exit 0
+if printf '%s' "$FILE_CONTENT" | grep -qF -- "$OLD" 2>/dev/null; then
+    exit 0  # found
+fi
+
+# === old_string NOT found â€” find closest matching line via word-overlap ===
+# Take first non-empty line of old_string as search anchor.
+ANCHOR=$(printf '%s' "$OLD" | grep -m1 '[^[:space:]]' | sed 's/^[[:space:]]*//' | cut -c1-120)
+[[ -z "$ANCHOR" ]] && exit 0
+
+# Find lines in file that share the most words with anchor (simple Jaccard).
+CLOSEST=$(awk -v anchor="$ANCHOR" '
+BEGIN {
+    n = split(anchor, aw, /[^a-zA-Z0-9_]+/)
+    for (i=1;i<=n;i++) awords[aw[i]]=1
+    best_score = -1; best_line = ""; best_num = 0
+}
+{
+    m = split($0, fw, /[^a-zA-Z0-9_]+/)
+    inter = 0; union_ = 0
+    delete fwords
+    for (i=1;i<=m;i++) fwords[fw[i]]=1
+    for (w in awords) { if (w in fwords) inter++; union_++ }
+    for (w in fwords) { if (!(w in awords)) union_++ }
+    score = (union_ > 0) ? inter / union_ : 0
+    if (score > best_score) { best_score = score; best_line = $0; best_num = NR }
+}
+END { if (best_num > 0) print best_num ":" best_line }
+' "$FILE" 2>/dev/null)
+
+MSG="old_string NOT FOUND in $FILE.
+First line of old_string: $ANCHOR
+Closest match in file:"
+if [[ -n "$CLOSEST" ]]; then
+    MSG="$MSG
+$CLOSEST
+Likely cause: whitespace/CRLF mismatch, extra/missing space, or stale old_string.
+Action: re-read the file with icmg context $FILE --lines <N-5>-<N+5> then fix old_string."
+else
+    MSG="$MSG (no close match found â€” old_string may reference deleted content).
+Action: re-read the file with \`icmg context $FILE\` to get current content."
+fi
+
+printf '%s' "$MSG" | icmg hookio emit PreToolUse --ctx-stdin
+# Do NOT deny (exit 2) â€” let the edit proceed so Claude Code shows its own error
+# message too. The hint above is injected as additionalContext so the agent
+# sees BOTH the hint and the native error in the same turn.
 exit 0
 )BASH";
 
@@ -991,6 +1056,157 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 )PY";
+
+static const char* GREP_HOOK_JS = R"JS(#!/usr/bin/env node
+// PreToolUse:Grep hook - intent + graph search + icmg grep (token-efficient, injection-safe)
+const { spawnSync } = require('child_process')
+const fs = require('fs')
+const path = require('path')
+
+let raw = ''
+process.stdin.setEncoding('utf8')
+process.stdin.on('data', d => raw += d)
+process.stdin.on('end', () => {
+  let payload = {}
+  try { payload = JSON.parse(raw) } catch(_) {}
+  let ti = payload.tool_input || {}
+
+  const pattern = ti.pattern || ''
+  const searchPath = ti.path || '.'
+  const glob = ti.glob || ''
+  const safeInt = v => { const n = parseInt(v, 10); return isNaN(n) ? null : String(Math.abs(n)) }
+
+  const ICMG = process.env.ICMG_EXE || 'icmg'
+  function run(args) {
+    const res = spawnSync(ICMG, args, { encoding: 'utf8', maxBuffer: 4*1024*1024 })
+    return ((res.stdout || '') + (res.stderr || '')).trim()
+  }
+
+  // ---- Loop-detector (v2.9.0) ---------------------------------------------
+  // The hook is a stateless subprocess, so recent grep patterns are persisted
+  // per-session to .icmg/grep-loop.json. If the new pattern is near-identical
+  // to a recent one, we prepend a hard banner: the agent is reword-grepping in
+  // a circle and should switch to `icmg find` / `icmg graph symbol` instead.
+  // Mirrors the C++ wordSet/jaccard/isLoop in tests/cli/test_init_hook.cpp.
+  function wordSet(s) {
+    const out = new Set()
+    for (const tok of String(s || '').toLowerCase().split(/[^a-z0-9]+/))
+      if (tok.length >= 2) out.add(tok)
+    return out
+  }
+  function jaccard(a, b) {
+    const sa = wordSet(a), sb = wordSet(b)
+    if (!sa.size || !sb.size) return 0
+    let inter = 0
+    for (const w of sa) if (sb.has(w)) inter++
+    const uni = sa.size + sb.size - inter
+    return uni ? inter / uni : 0
+  }
+  const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const singleTok = s => !!s && !/\s/.test(s)
+  function isLoop(prev, cur) {
+    if (norm(prev) === norm(cur)) return true                 // exact re-run
+    if (jaccard(prev, cur) >= 0.5) return true                // phrase reword
+    if (singleTok(prev) && singleTok(cur)) {                  // identifier suffix-reword
+      const lp = norm(prev), lc = norm(cur)
+      if (lp.length >= 4 && lc.length >= 4 &&
+          (lc.indexOf(lp) !== -1 || lp.indexOf(lc) !== -1)) return true
+    }
+    return false
+  }
+
+  let loopBanner = ''
+  if (pattern) {
+    try {
+      const sid = String(payload.session_id || '')
+      const dir = '.icmg'
+      const file = path.join(dir, 'grep-loop.json')
+      const TTL = 600   // seconds; older patterns no longer count as a loop
+      const now = Math.floor(Date.now() / 1000)
+      let st = { sid: '', hist: [] }
+      try { st = JSON.parse(fs.readFileSync(file, 'utf8')) || st } catch(_) {}
+      if (st.sid !== sid) st = { sid, hist: [] }        // new session => reset
+      st.hist = (st.hist || []).filter(h => h && (now - (h.ts || 0)) < TTL)
+      for (const h of st.hist) {
+        if (isLoop(h.p, pattern)) {
+          const ago = now - (h.ts || now)
+          loopBanner = `[LOOP DETECTED] You already grepped a near-identical pattern ` +
+            `("${h.p}") ~${ago}s ago this session. Rewording grep rarely helps -- the ` +
+            `match isn't literal. STOP reword-grepping; use \`icmg find "${pattern}"\` ` +
+            `(ranked slices) or \`icmg graph symbol <Name>\` (definition) instead.\n\n`
+          break
+        }
+      }
+      st.hist.push({ p: pattern, ts: now })
+      if (st.hist.length > 20) st.hist = st.hist.slice(-20)
+      try { fs.mkdirSync(dir, { recursive: true }) } catch(_) {}
+      try { fs.writeFileSync(file, JSON.stringify(st)) } catch(_) {}
+    } catch(_) { /* never block grep on loop-detector failure */ }
+  }
+  // -------------------------------------------------------------------------
+
+  // Intent heuristic: a multi-word phrase with no regex metachars is prose
+  // (the agent is hunting a CONCEPT, not a literal pattern). grep would miss
+  // it -> reword -> grep again (the loop). Route prose to `icmg find` instead.
+  function isIntentLike(p) {
+    const s = (p || '').trim()
+    if (!s) return false
+    const words = s.split(/\s+/).filter(Boolean)
+    if (words.length < 2) return false                       // single token => identifier/regex/path
+    if (/[\[\]\(\)\{\}\|\^\$\*\+\?\\]/.test(s)) return false  // regex metachars => literal grep
+    return true                                               // multi-word prose => intent search
+  }
+
+  // 0. Intent layer: ranked code slices for natural-language queries (1 turn,
+  //    not a grep->reword->grep loop). Only for prose patterns.
+  let findOut = ''
+  if (pattern && ti.output_mode !== 'count' && ti.output_mode !== 'files_with_matches' && isIntentLike(pattern)) {
+    findOut = run(['find', pattern, '--max-files', '5'])
+  }
+
+  // 1. Semantic layer: graph search (file/symbol refs)
+  let graphOut = ''
+  if (pattern && ti.output_mode !== 'count') {
+    graphOut = run(['graph', 'search', '--', pattern])
+  }
+
+  // 2. Literal layer: icmg grep (rg wrapper)
+  // Flags first, then -- to end options, then positional pattern+path
+  const grepArgs = ['grep']
+  if (ti['-i'] || ti.case_insensitive) grepArgs.push('-i')
+  if (ti.output_mode === 'files_with_matches') grepArgs.push('--files-with-matches')
+  if (ti.output_mode === 'count') grepArgs.push('--count')
+  if (glob) grepArgs.push('--glob', glob)
+  const ctx = safeInt(ti.context); if (ctx) grepArgs.push('-C', ctx)
+  const lA = safeInt(ti['-A']); if (lA) grepArgs.push('-A', lA)
+  const lB = safeInt(ti['-B']); if (lB) grepArgs.push('-B', lB)
+  grepArgs.push('-e', pattern, '--', searchPath)
+  const grepOut = run(grepArgs)
+
+  // Combine: loop banner first (most urgent), then intent slices, graph, grep.
+  let out = ''
+  if (loopBanner) out += loopBanner
+  if (findOut && !/^icmg find: no relevant lines/.test(findOut)) {
+    out += `[find: intent search "${pattern}"]\n${findOut}\n\n`
+  }
+  if (graphOut && graphOut !== 'No results.') {
+    out += `[graph: ${pattern}]\n${graphOut}\n\n`
+  }
+  out += `[grep: ${pattern}]\n${grepOut}`
+
+  const MAX = 20000
+  if (out.length > MAX) out = out.slice(0, MAX) + '\n[output truncated to 20k chars]'
+
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      additionalContext: '[icmg find+grep+graph]\n' + out
+    },
+    decision: 'block',
+    reason: 'icmg find(intent)+graph+grep results are included -- use them directly. For a CONCEPT/phrase, the [find] slices are usually what you want. Do NOT re-run the search via Select-String/findstr/Bash grep or reword-and-grep again (blocked again, wastes turns).'
+  }))
+})
+)JS";
 
 static const char* AGENTS_BLOCK = R"MD(<!-- icmg:start -->
 ## icmg routing (auto-inserted by `icmg init`)
@@ -1765,6 +1981,74 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-compressed-write.sh",
                        COMPRESSED_WRITE_RULE_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-graph-update.sh", GRAPH_UPDATE_SH, true);
+        // v2.4.3: grep-hook.js — PreToolUse:Grep interceptor (graph search + icmg grep).
+        // Written to .claude/ (not hooks/) so `node .claude/grep-hook.js` resolves from cwd.
+        n += writeFile(root / ".claude" / "grep-hook.js", GREP_HOOK_JS, true);
+
+        // Ensure .claude/settings.json has PreToolUse:Grep entry for grep-hook.js.
+        // Create from scratch if absent; merge/deduplicate if already present.
+        {
+            fs::path gsPath = root / ".claude" / "settings.json";
+            std::error_code _gsec;
+            nlohmann::json gsCfg = nlohmann::json::object();
+            if (fs::exists(gsPath, _gsec)) {
+                try {
+                    std::ifstream gsf(gsPath);
+                    std::string gsBody((std::istreambuf_iterator<char>(gsf)),
+                                       std::istreambuf_iterator<char>());
+                    gsf.close();
+                    nlohmann::json parsed = nlohmann::json::parse(gsBody, nullptr, false);
+                    if (!parsed.is_discarded()) gsCfg = std::move(parsed);
+                } catch (...) {}
+            }
+            if (!gsCfg.contains("hooks") || !gsCfg["hooks"].is_object())
+                gsCfg["hooks"] = nlohmann::json::object();
+            auto& hooks = gsCfg["hooks"];
+            if (!hooks.contains("PreToolUse") || !hooks["PreToolUse"].is_array())
+                hooks["PreToolUse"] = nlohmann::json::array();
+            auto& ptu = hooks["PreToolUse"];
+            // Check whether a Grep entry with grep-hook.js already exists.
+            bool found = false;
+            for (auto& entry : ptu) {
+                if (entry.contains("matcher") && entry["matcher"] == "Grep") {
+                    // Ensure the grep-hook.js command is present in hooks array.
+                    bool cmdFound = false;
+                    if (entry.contains("hooks") && entry["hooks"].is_array()) {
+                        for (auto& h : entry["hooks"]) {
+                            if (h.contains("command") &&
+                                h["command"].get<std::string>().find("grep-hook.js") != std::string::npos) {
+                                cmdFound = true; break;
+                            }
+                        }
+                    }
+                    if (!cmdFound) {
+                        if (!entry.contains("hooks") || !entry["hooks"].is_array())
+                            entry["hooks"] = nlohmann::json::array();
+                        entry["hooks"].push_back({
+                            {"type",    "command"},
+                            {"command", "node .claude/grep-hook.js"},
+                            {"shell",   "bash"}
+                        });
+                    }
+                    found = true; break;
+                }
+            }
+            if (!found) {
+                ptu.push_back({
+                    {"matcher", "Grep"},
+                    {"hooks", nlohmann::json::array({{
+                        {"type",    "command"},
+                        {"command", "node .claude/grep-hook.js"},
+                        {"shell",   "bash"}
+                    }})}
+                });
+            }
+            try {
+                std::ofstream gsOut(gsPath);
+                gsOut << gsCfg.dump(2) << "\n";
+                std::cout << "  + .claude/settings.json: PreToolUse:Grep hook (grep-hook.js)\n";
+            } catch (...) { /* best-effort */ }
+        }
 
 #ifndef _WIN32
         // chmod +x on POSIX
@@ -1843,6 +2127,18 @@ private:
                         "command -v icmg >/dev/null 2>&1 || exit 0; icmg recall-gate check 2>/dev/null || exit 0"}}
                 })}
             },
+            // v2.8.1: PreToolUse:Edit old_string validator.
+            // Checks old_string exists in file BEFORE edit engine runs.
+            // On mismatch: emits closest-match hint so agent fixes in same turn.
+            {
+                {"matcher", "Edit"},
+                {"hooks",   json::array({
+                    {{"type", "command"},
+                     {"timeout", 8},
+                     {"command",
+                        "bash -c '[ -f .claude/hooks/icmg-edit-expand.sh ] && bash .claude/hooks/icmg-edit-expand.sh || exit 0'"}}
+                })}
+            },
             {
                 {"matcher", "Read|Glob|Grep"},
                 {"hooks",   json::array({
@@ -1872,6 +2168,26 @@ private:
                      {"timeout", 4},
                      {"command",
                         "bash -c 'command -v icmg >/dev/null 2>&1 && icmg hook pretooluse || exit 0'"}}
+                })}
+            },
+            // v2.8.1: PreToolUse:Write anti-dup recall.
+            // When creating a NEW .cpp/.hpp file, run `icmg suggest <basename>`
+            // and surface similar existing commands so the agent checks before
+            // building a parallel implementation (CLAUDE.md anti-dup rule).
+            {
+                {"matcher", "Write"},
+                {"hooks",   json::array({
+                    {{"type", "command"},
+                     {"timeout", 6},
+                     {"command",
+                        "INPUT=$(cat); "
+                        "FILE=$(printf '%s' \"$INPUT\" | icmg hookio get tool_input.file_path 2>/dev/null); "
+                        "printf '%s' \"$FILE\" | grep -qE '\\\\.(cpp|hpp|h)$' || exit 0; "
+                        "[ -f \"$FILE\" ] && exit 0; "
+                        "BASE=$(basename \"${FILE%.*}\"); "
+                        "HINT=$(icmg suggest \"$BASE\" 2>/dev/null | head -6); "
+                        "[ -z \"$HINT\" ] && exit 0; "
+                        "printf '%s' \"ANTI-DUP: Creating $FILE. Similar existing: $HINT -- verify anti-dup rule.\" | icmg hookio emit PreToolUse --ctx-stdin"}}
                 })}
             }
         });
@@ -1987,6 +2303,26 @@ private:
                      // v1.22.1: bash -c wrap (same fix as v1.21.9 for other entries).
                      {"command",
                       "bash -c '[ -f .claude/hooks/icmg-graph-update.sh ] && bash .claude/hooks/icmg-graph-update.sh || (command -v icmg >/dev/null 2>&1 && echo \"$(cat)\" | icmg hook posttooluse-edit 2>/dev/null || true)'"}}
+                })}
+            },
+            // v2.8.1: PostToolUse:Bash auto-explain on build/compile error patterns.
+            // Fires when output contains MSVC/GCC/linker error codes -> icmg explain
+            // injects known-issue hint. Async, zero cost when no error matches.
+            {
+                {"matcher", "Bash"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"timeout", 8},
+                     {"async", true},
+                     {"command",
+                        "INPUT=$(cat); "
+                        "OUT=$(printf '%s' \"$INPUT\" | icmg hookio get tool_response.output 2>/dev/null); "
+                        "printf '%s' \"$OUT\" | grep -qE 'error C[0-9]{4}|LNK[0-9]{4}|Cannot find source|unresolved external|FAILED:|fatal error' || exit 0; "
+                        "PAT=$(printf '%s' \"$OUT\" | grep -oE '(error C[0-9]+|LNK[0-9]+|Cannot find source file|unresolved external symbol)[^[:space:]]*' | head -1); "
+                        "[ -z \"$PAT\" ] && exit 0; "
+                        "HINT=$(icmg explain \"$PAT\" 2>/dev/null | head -8); "
+                        "[ -z \"$HINT\" ] && exit 0; "
+                        "printf '%s' \"AUTO-EXPLAIN ($PAT):\\n$HINT\" | icmg hookio emit PostToolUse --ctx-stdin"}}
                 })}
             }
         });
@@ -2233,6 +2569,166 @@ private:
             int seeded = core::scaffoldPersona(pps, core::currentUser(), /*force=*/false);
             if (seeded > 0)
                 std::cout << "  + persona: " << seeded << " continuity zones seeded\n";
+        }
+        // v2.8.1: NDC prompt management.
+        // Write the icmg-managed NDC prompt to ~/.icmg/prompts/ so it survives
+        // remember-plugin upgrades. Also patch the plugin's prompts.py to respect
+        // ICMG_NDC_PROMPT env var (set by wakeup-session.sh at session start).
+        {
+            const char* ndc_text =
+                "Apply maximum non-destructive compression. Rules:\n"
+                "- Keep ALL facts, ALL refs, ALL verbs, ALL relationships. Zero information loss.\n"
+                "- Drop: articles (a/the/an), prepositions where context is clear, filler words\n"
+                "- Use shortest form: conf, env, MR, infra, impl, perm, EM, etc\n"
+                "- No prose. Raw signal. Like developer shorthand notes.\n"
+                "- Group entries by subject into ONE time-blocked entry (e.g. 08:48-09:22)\n"
+                "- Parentheses for context; semicolons to separate facts\n"
+                "- Preserve ## timestamp | branch format; chronological order\n"
+                "- Every verb, every object, every causal link must survive\n"
+                "PROTECTED ANCHORS -- copy verbatim, never compress or merge:\n"
+                "- Lines with: root cause, ROOT CAUSE, fix:, Fix:, FIX:, FIXED, resolved, gotcha\n"
+                "- Lines with: NOTE:, CRITICAL:, WARNING:, JANGAN, WAJIB, DILARANG\n"
+                "- Lines starting with: ### FIXED, ### NOTE, ### CRITICAL\n"
+                "- Version-bump lines (e.g. '2.8.0 shipped', 'bump v...')\n"
+                "- Any entry whose first word is a file path or commit hash\n"
+                "No preamble. Just the compressed output.\n"
+                "\nText:\n"
+                "{{NOW_CONTENT}}\n";
+            const char* home = std::getenv("USERPROFILE");
+            if (!home) home = std::getenv("HOME");
+            if (home) {
+                fs::path ndc_dir = fs::path(home) / ".icmg" / "prompts";
+                std::error_code ec;
+                fs::create_directories(ndc_dir, ec);
+                if (!ec) {
+                    fs::path ndc_master = ndc_dir / "compress-ndc.prompt.txt";
+                    if (force || !fs::exists(ndc_master, ec)) {
+                        std::ofstream f(ndc_master);
+                        if (f) {
+                            f << ndc_text;
+                            std::cout << "  + ~/.icmg/prompts/compress-ndc.prompt.txt (NDC anchor-protected)\n";
+                            ++n;
+                        }
+                    }
+                    // Also patch the remember plugin prompts.py to support ICMG_NDC_PROMPT env override.
+                    // This is idempotent: only patches if the override is not already present.
+                    fs::path prompts_py;
+                    {
+                        fs::path base = fs::path(home) / ".claude" / "plugins" / "cache";
+                        std::error_code ec2;
+                        for (auto& p : fs::recursive_directory_iterator(base, ec2)) {
+                            if (p.path().filename() == "prompts.py"
+                                    && p.path().string().find("remember") != std::string::npos) {
+                                prompts_py = p.path();
+                                break;
+                            }
+                        }
+                    }
+                    if (!prompts_py.empty()) {
+                        std::ifstream ifs(prompts_py);
+                        std::string py((std::istreambuf_iterator<char>(ifs)), {});
+                        if (py.find("ICMG_NDC_PROMPT") == std::string::npos) {
+                            // Inject env-override after PROMPTS_DIR definition
+                            const std::string anchor = "PROMPTS_DIR = os.path.join(";
+                            auto pos2 = py.find(anchor);
+                            auto eol  = py.find('\n', pos2);
+                            if (pos2 != std::string::npos && eol != std::string::npos) {
+                                std::string patch =
+                                    "\n# icmg-managed override: respect ICMG_NDC_PROMPT env var"
+                                    " (set by icmg-wakeup-session.sh).\n"
+                                    "_ICMG_NDC = os.environ.get('ICMG_NDC_PROMPT', '')\n"
+                                    "if _ICMG_NDC and os.path.isfile(_ICMG_NDC):\n"
+                                    "    PROMPTS_DIR = os.path.dirname(_ICMG_NDC)\n";
+                                py.insert(eol + 1, patch);
+                                std::ofstream ofs(prompts_py);
+                                ofs << py;
+                                std::cout << "  + remember/prompts.py (ICMG_NDC_PROMPT env override)\n";
+                                ++n;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // v2.8.1: NDC prompt management.
+        // Write the icmg-managed NDC prompt to ~/.icmg/prompts/ so it survives
+        // remember-plugin upgrades. Also patch the plugin's prompts.py to respect
+        // ICMG_NDC_PROMPT env var (set by wakeup-session.sh at session start).
+        {
+            const char* ndc_text =
+                "Apply maximum non-destructive compression. Rules:\n"
+                "- Keep ALL facts, ALL refs, ALL verbs, ALL relationships. Zero information loss.\n"
+                "- Drop: articles (a/the/an), prepositions where context is clear, filler words\n"
+                "- Use shortest form: conf, env, MR, infra, impl, perm, EM, etc\n"
+                "- No prose. Raw signal. Like developer shorthand notes.\n"
+                "- Group entries by subject into ONE time-blocked entry (e.g. 08:48-09:22)\n"
+                "- Parentheses for context; semicolons to separate facts\n"
+                "- Preserve ## timestamp | branch format; chronological order\n"
+                "- Every verb, every object, every causal link must survive\n"
+                "PROTECTED ANCHORS -- copy verbatim, never compress or merge:\n"
+                "- Lines with: root cause, ROOT CAUSE, fix:, Fix:, FIX:, FIXED, resolved, gotcha\n"
+                "- Lines with: NOTE:, CRITICAL:, WARNING:, JANGAN, WAJIB, DILARANG\n"
+                "- Lines starting with: ### FIXED, ### NOTE, ### CRITICAL\n"
+                "- Version-bump lines (e.g. '2.8.0 shipped', 'bump v...')\n"
+                "- Any entry whose first word is a file path or commit hash\n"
+                "No preamble. Just the compressed output.\n"
+                "\nText:\n"
+                "{{NOW_CONTENT}}\n";
+            const char* home = std::getenv("USERPROFILE");
+            if (!home) home = std::getenv("HOME");
+            if (home) {
+                fs::path ndc_dir = fs::path(home) / ".icmg" / "prompts";
+                std::error_code ec;
+                fs::create_directories(ndc_dir, ec);
+                if (!ec) {
+                    fs::path ndc_master = ndc_dir / "compress-ndc.prompt.txt";
+                    if (force || !fs::exists(ndc_master, ec)) {
+                        std::ofstream f(ndc_master);
+                        if (f) {
+                            f << ndc_text;
+                            std::cout << "  + ~/.icmg/prompts/compress-ndc.prompt.txt (NDC anchor-protected)\n";
+                            ++n;
+                        }
+                    }
+                    // Also patch the remember plugin prompts.py to support ICMG_NDC_PROMPT env override.
+                    // This is idempotent: only patches if the override is not already present.
+                    fs::path prompts_py;
+                    {
+                        fs::path base = fs::path(home) / ".claude" / "plugins" / "cache";
+                        std::error_code ec2;
+                        for (auto& p : fs::recursive_directory_iterator(base, ec2)) {
+                            if (p.path().filename() == "prompts.py"
+                                    && p.path().string().find("remember") != std::string::npos) {
+                                prompts_py = p.path();
+                                break;
+                            }
+                        }
+                    }
+                    if (!prompts_py.empty()) {
+                        std::ifstream ifs(prompts_py);
+                        std::string py((std::istreambuf_iterator<char>(ifs)), {});
+                        if (py.find("ICMG_NDC_PROMPT") == std::string::npos) {
+                            // Inject env-override after PROMPTS_DIR definition
+                            const std::string anchor = "PROMPTS_DIR = os.path.join(";
+                            auto pos2 = py.find(anchor);
+                            auto eol  = py.find('\n', pos2);
+                            if (pos2 != std::string::npos && eol != std::string::npos) {
+                                std::string patch =
+                                    "\n# icmg-managed override: respect ICMG_NDC_PROMPT env var"
+                                    " (set by icmg-wakeup-session.sh).\n"
+                                    "_ICMG_NDC = os.environ.get('ICMG_NDC_PROMPT', '')\n"
+                                    "if _ICMG_NDC and os.path.isfile(_ICMG_NDC):\n"
+                                    "    PROMPTS_DIR = os.path.dirname(_ICMG_NDC)\n";
+                                py.insert(eol + 1, patch);
+                                std::ofstream ofs(prompts_py);
+                                ofs << py;
+                                std::cout << "  + remember/prompts.py (ICMG_NDC_PROMPT env override)\n";
+                                ++n;
+                            }
+                        }
+                    }
+                }
+            }
         }
         return n;
     }
