@@ -814,6 +814,12 @@ static const char* WAKEUP_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Injects icmg wake-up briefing at start of every AI session.
 set -uo pipefail
 command -v icmg >/dev/null 2>&1 || exit 0
+# v2.8.1: export ICMG_NDC_PROMPT so the remember plugin uses the icmg-managed
+# NDC prompt (master in ~/.icmg/prompts/) instead of its own bundled copy.
+# Survives plugin upgrades; icmg init re-copies the master on every upgrade.
+HOMED="${USERPROFILE:-${HOME:-/tmp}}"
+NDC_MASTER="$HOMED/.icmg/prompts/compress-ndc.prompt.txt"
+if [ -f "$NDC_MASTER" ]; then export ICMG_NDC_PROMPT="$NDC_MASTER"; fi
 CONTENT=$(icmg wake-up 2>/dev/null) || true
 # Persona-continuity: append the user's wake-up protocol anchor if seeded (identity-agnostic).
 WAKEUP=$(icmg profile get --zone _wakeup --key wakeup 2>/dev/null) || true
@@ -2092,6 +2098,26 @@ private:
                      {"command",
                         "bash -c 'command -v icmg >/dev/null 2>&1 && icmg hook pretooluse || exit 0'"}}
                 })}
+            },
+            // v2.8.1: PreToolUse:Write anti-dup recall.
+            // When creating a NEW .cpp/.hpp file, run `icmg suggest <basename>`
+            // and surface similar existing commands so the agent checks before
+            // building a parallel implementation (CLAUDE.md anti-dup rule).
+            {
+                {"matcher", "Write"},
+                {"hooks",   json::array({
+                    {{"type", "command"},
+                     {"timeout", 6},
+                     {"command",
+                        "INPUT=$(cat); "
+                        "FILE=$(printf '%s' \"$INPUT\" | icmg hookio get tool_input.file_path 2>/dev/null); "
+                        "printf '%s' \"$FILE\" | grep -qE '\\\\.(cpp|hpp|h)$' || exit 0; "
+                        "[ -f \"$FILE\" ] && exit 0; "
+                        "BASE=$(basename \"${FILE%.*}\"); "
+                        "HINT=$(icmg suggest \"$BASE\" 2>/dev/null | head -6); "
+                        "[ -z \"$HINT\" ] && exit 0; "
+                        "printf '%s' \"ANTI-DUP: Creating $FILE. Similar existing: $HINT -- verify anti-dup rule.\" | icmg hookio emit PreToolUse --ctx-stdin"}}
+                })}
             }
         });
         // Phase 56 T1: WebFetch redirect to `icmg fetch` (cache + reduce â†’ 70-90% off).
@@ -2206,6 +2232,26 @@ private:
                      // v1.22.1: bash -c wrap (same fix as v1.21.9 for other entries).
                      {"command",
                       "bash -c '[ -f .claude/hooks/icmg-graph-update.sh ] && bash .claude/hooks/icmg-graph-update.sh || (command -v icmg >/dev/null 2>&1 && echo \"$(cat)\" | icmg hook posttooluse-edit 2>/dev/null || true)'"}}
+                })}
+            },
+            // v2.8.1: PostToolUse:Bash auto-explain on build/compile error patterns.
+            // Fires when output contains MSVC/GCC/linker error codes -> icmg explain
+            // injects known-issue hint. Async, zero cost when no error matches.
+            {
+                {"matcher", "Bash"},
+                {"hooks", json::array({
+                    {{"type", "command"},
+                     {"timeout", 8},
+                     {"async", true},
+                     {"command",
+                        "INPUT=$(cat); "
+                        "OUT=$(printf '%s' \"$INPUT\" | icmg hookio get tool_response.output 2>/dev/null); "
+                        "printf '%s' \"$OUT\" | grep -qE 'error C[0-9]{4}|LNK[0-9]{4}|Cannot find source|unresolved external|FAILED:|fatal error' || exit 0; "
+                        "PAT=$(printf '%s' \"$OUT\" | grep -oE '(error C[0-9]+|LNK[0-9]+|Cannot find source file|unresolved external symbol)[^[:space:]]*' | head -1); "
+                        "[ -z \"$PAT\" ] && exit 0; "
+                        "HINT=$(icmg explain \"$PAT\" 2>/dev/null | head -8); "
+                        "[ -z \"$HINT\" ] && exit 0; "
+                        "printf '%s' \"AUTO-EXPLAIN ($PAT):\\n$HINT\" | icmg hookio emit PostToolUse --ctx-stdin"}}
                 })}
             }
         });
@@ -2452,6 +2498,166 @@ private:
             int seeded = core::scaffoldPersona(pps, core::currentUser(), /*force=*/false);
             if (seeded > 0)
                 std::cout << "  + persona: " << seeded << " continuity zones seeded\n";
+        }
+        // v2.8.1: NDC prompt management.
+        // Write the icmg-managed NDC prompt to ~/.icmg/prompts/ so it survives
+        // remember-plugin upgrades. Also patch the plugin's prompts.py to respect
+        // ICMG_NDC_PROMPT env var (set by wakeup-session.sh at session start).
+        {
+            const char* ndc_text =
+                "Apply maximum non-destructive compression. Rules:\n"
+                "- Keep ALL facts, ALL refs, ALL verbs, ALL relationships. Zero information loss.\n"
+                "- Drop: articles (a/the/an), prepositions where context is clear, filler words\n"
+                "- Use shortest form: conf, env, MR, infra, impl, perm, EM, etc\n"
+                "- No prose. Raw signal. Like developer shorthand notes.\n"
+                "- Group entries by subject into ONE time-blocked entry (e.g. 08:48-09:22)\n"
+                "- Parentheses for context; semicolons to separate facts\n"
+                "- Preserve ## timestamp | branch format; chronological order\n"
+                "- Every verb, every object, every causal link must survive\n"
+                "PROTECTED ANCHORS -- copy verbatim, never compress or merge:\n"
+                "- Lines with: root cause, ROOT CAUSE, fix:, Fix:, FIX:, FIXED, resolved, gotcha\n"
+                "- Lines with: NOTE:, CRITICAL:, WARNING:, JANGAN, WAJIB, DILARANG\n"
+                "- Lines starting with: ### FIXED, ### NOTE, ### CRITICAL\n"
+                "- Version-bump lines (e.g. '2.8.0 shipped', 'bump v...')\n"
+                "- Any entry whose first word is a file path or commit hash\n"
+                "No preamble. Just the compressed output.\n"
+                "\nText:\n"
+                "{{NOW_CONTENT}}\n";
+            const char* home = std::getenv("USERPROFILE");
+            if (!home) home = std::getenv("HOME");
+            if (home) {
+                fs::path ndc_dir = fs::path(home) / ".icmg" / "prompts";
+                std::error_code ec;
+                fs::create_directories(ndc_dir, ec);
+                if (!ec) {
+                    fs::path ndc_master = ndc_dir / "compress-ndc.prompt.txt";
+                    if (force || !fs::exists(ndc_master, ec)) {
+                        std::ofstream f(ndc_master);
+                        if (f) {
+                            f << ndc_text;
+                            std::cout << "  + ~/.icmg/prompts/compress-ndc.prompt.txt (NDC anchor-protected)\n";
+                            ++n;
+                        }
+                    }
+                    // Also patch the remember plugin prompts.py to support ICMG_NDC_PROMPT env override.
+                    // This is idempotent: only patches if the override is not already present.
+                    fs::path prompts_py;
+                    {
+                        fs::path base = fs::path(home) / ".claude" / "plugins" / "cache";
+                        std::error_code ec2;
+                        for (auto& p : fs::recursive_directory_iterator(base, ec2)) {
+                            if (p.path().filename() == "prompts.py"
+                                    && p.path().string().find("remember") != std::string::npos) {
+                                prompts_py = p.path();
+                                break;
+                            }
+                        }
+                    }
+                    if (!prompts_py.empty()) {
+                        std::ifstream ifs(prompts_py);
+                        std::string py((std::istreambuf_iterator<char>(ifs)), {});
+                        if (py.find("ICMG_NDC_PROMPT") == std::string::npos) {
+                            // Inject env-override after PROMPTS_DIR definition
+                            const std::string anchor = "PROMPTS_DIR = os.path.join(";
+                            auto pos2 = py.find(anchor);
+                            auto eol  = py.find('\n', pos2);
+                            if (pos2 != std::string::npos && eol != std::string::npos) {
+                                std::string patch =
+                                    "\n# icmg-managed override: respect ICMG_NDC_PROMPT env var"
+                                    " (set by icmg-wakeup-session.sh).\n"
+                                    "_ICMG_NDC = os.environ.get('ICMG_NDC_PROMPT', '')\n"
+                                    "if _ICMG_NDC and os.path.isfile(_ICMG_NDC):\n"
+                                    "    PROMPTS_DIR = os.path.dirname(_ICMG_NDC)\n";
+                                py.insert(eol + 1, patch);
+                                std::ofstream ofs(prompts_py);
+                                ofs << py;
+                                std::cout << "  + remember/prompts.py (ICMG_NDC_PROMPT env override)\n";
+                                ++n;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // v2.8.1: NDC prompt management.
+        // Write the icmg-managed NDC prompt to ~/.icmg/prompts/ so it survives
+        // remember-plugin upgrades. Also patch the plugin's prompts.py to respect
+        // ICMG_NDC_PROMPT env var (set by wakeup-session.sh at session start).
+        {
+            const char* ndc_text =
+                "Apply maximum non-destructive compression. Rules:\n"
+                "- Keep ALL facts, ALL refs, ALL verbs, ALL relationships. Zero information loss.\n"
+                "- Drop: articles (a/the/an), prepositions where context is clear, filler words\n"
+                "- Use shortest form: conf, env, MR, infra, impl, perm, EM, etc\n"
+                "- No prose. Raw signal. Like developer shorthand notes.\n"
+                "- Group entries by subject into ONE time-blocked entry (e.g. 08:48-09:22)\n"
+                "- Parentheses for context; semicolons to separate facts\n"
+                "- Preserve ## timestamp | branch format; chronological order\n"
+                "- Every verb, every object, every causal link must survive\n"
+                "PROTECTED ANCHORS -- copy verbatim, never compress or merge:\n"
+                "- Lines with: root cause, ROOT CAUSE, fix:, Fix:, FIX:, FIXED, resolved, gotcha\n"
+                "- Lines with: NOTE:, CRITICAL:, WARNING:, JANGAN, WAJIB, DILARANG\n"
+                "- Lines starting with: ### FIXED, ### NOTE, ### CRITICAL\n"
+                "- Version-bump lines (e.g. '2.8.0 shipped', 'bump v...')\n"
+                "- Any entry whose first word is a file path or commit hash\n"
+                "No preamble. Just the compressed output.\n"
+                "\nText:\n"
+                "{{NOW_CONTENT}}\n";
+            const char* home = std::getenv("USERPROFILE");
+            if (!home) home = std::getenv("HOME");
+            if (home) {
+                fs::path ndc_dir = fs::path(home) / ".icmg" / "prompts";
+                std::error_code ec;
+                fs::create_directories(ndc_dir, ec);
+                if (!ec) {
+                    fs::path ndc_master = ndc_dir / "compress-ndc.prompt.txt";
+                    if (force || !fs::exists(ndc_master, ec)) {
+                        std::ofstream f(ndc_master);
+                        if (f) {
+                            f << ndc_text;
+                            std::cout << "  + ~/.icmg/prompts/compress-ndc.prompt.txt (NDC anchor-protected)\n";
+                            ++n;
+                        }
+                    }
+                    // Also patch the remember plugin prompts.py to support ICMG_NDC_PROMPT env override.
+                    // This is idempotent: only patches if the override is not already present.
+                    fs::path prompts_py;
+                    {
+                        fs::path base = fs::path(home) / ".claude" / "plugins" / "cache";
+                        std::error_code ec2;
+                        for (auto& p : fs::recursive_directory_iterator(base, ec2)) {
+                            if (p.path().filename() == "prompts.py"
+                                    && p.path().string().find("remember") != std::string::npos) {
+                                prompts_py = p.path();
+                                break;
+                            }
+                        }
+                    }
+                    if (!prompts_py.empty()) {
+                        std::ifstream ifs(prompts_py);
+                        std::string py((std::istreambuf_iterator<char>(ifs)), {});
+                        if (py.find("ICMG_NDC_PROMPT") == std::string::npos) {
+                            // Inject env-override after PROMPTS_DIR definition
+                            const std::string anchor = "PROMPTS_DIR = os.path.join(";
+                            auto pos2 = py.find(anchor);
+                            auto eol  = py.find('\n', pos2);
+                            if (pos2 != std::string::npos && eol != std::string::npos) {
+                                std::string patch =
+                                    "\n# icmg-managed override: respect ICMG_NDC_PROMPT env var"
+                                    " (set by icmg-wakeup-session.sh).\n"
+                                    "_ICMG_NDC = os.environ.get('ICMG_NDC_PROMPT', '')\n"
+                                    "if _ICMG_NDC and os.path.isfile(_ICMG_NDC):\n"
+                                    "    PROMPTS_DIR = os.path.dirname(_ICMG_NDC)\n";
+                                py.insert(eol + 1, patch);
+                                std::ofstream ofs(prompts_py);
+                                ofs << py;
+                                std::cout << "  + remember/prompts.py (ICMG_NDC_PROMPT env override)\n";
+                                ++n;
+                            }
+                        }
+                    }
+                }
+            }
         }
         return n;
     }
