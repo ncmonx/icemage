@@ -10,6 +10,7 @@
 // so we can capture output without spawning a subprocess.
 
 #include "../test_main.hpp"
+#include <climits>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
