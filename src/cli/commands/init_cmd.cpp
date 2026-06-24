@@ -906,24 +906,83 @@ exit 0
 // Real expansion (icmg hook edit-expand) deferred to v1.31 — this is
 // scaffolding only. Logs detection of `@@ICMG-DIFF` magic header so
 // telemetry shows opportunity rate; no rewrite yet.
+// v2.8.1: upgraded from scaffold -> active old_string validator.
+// Fires PreToolUse:Edit. Checks that old_string actually exists in the file
+// BEFORE the edit is sent to the engine. On mismatch: emits the closest
+// matching line (Jaccard word-overlap) so the agent can fix old_string
+// in the SAME turn instead of wasting a round-trip on "old_string not found".
+//
+// Pure bash + awk â€” no Python, no jq required (falls back gracefully).
+// Opt-out: ICMG_NO_EDIT_EXPAND=1.
 static const char* EDIT_DIFF_EXPAND_SH = R"BASH(#!/usr/bin/env bash
 set -uo pipefail
 [[ "${ICMG_NO_EDIT_EXPAND:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
+
 INPUT=$(cat)
+FILE=$(printf '%s' "$INPUT" | icmg hookio get tool_input.file_path 2>/dev/null)
 OLD=$(printf '%s' "$INPUT" | icmg hookio get tool_input.old_string 2>/dev/null)
-case "$OLD" in
-    @@ICMG-DIFF*|@@ICMG-ANCHOR*)
-        # Magic header detected. Real expansion comes in v1.31 once
-        # `icmg hook edit-expand` lands. For now: log to telemetry so
-        # we know how often this fires in real usage.
-        LOG="${USERPROFILE:-${HOME:-/tmp}}/.icmg/edit-expand-detected.jsonl"
-        mkdir -p "$(dirname "$LOG")" 2>/dev/null
-        printf '{"ts":%s,"bytes":%s}\n' \
-            "$(date +%s 2>/dev/null || echo 0)" "${#OLD}" \
-            >> "$LOG" 2>/dev/null || true
-        ;;
-esac
+
+# Skip if no file/old_string, or file does not exist yet (new-file Write).
+[[ -z "$FILE" || -z "$OLD" ]] && exit 0
+[[ ! -f "$FILE" ]] && exit 0
+
+# Skip magic-header compressed diffs (handled by edit-expand separately).
+case "$OLD" in @@ICMG-DIFF*|@@ICMG-ANCHOR*) exit 0 ;; esac
+
+# === Check if old_string is present verbatim ===
+if printf '%s' "$OLD" | grep -qF "$OLD" "$FILE" 2>/dev/null; then
+    exit 0  # found â€” normal path
+fi
+# grep -F trick: grep -F <pattern> <file> is not right; use python or awk
+# Use awk to search file content for literal old_string (handles multiline).
+FILE_CONTENT=$(cat "$FILE" 2>/dev/null) || exit 0
+if printf '%s' "$FILE_CONTENT" | grep -qF -- "$OLD" 2>/dev/null; then
+    exit 0  # found
+fi
+
+# === old_string NOT found â€” find closest matching line via word-overlap ===
+# Take first non-empty line of old_string as search anchor.
+ANCHOR=$(printf '%s' "$OLD" | grep -m1 '[^[:space:]]' | sed 's/^[[:space:]]*//' | cut -c1-120)
+[[ -z "$ANCHOR" ]] && exit 0
+
+# Find lines in file that share the most words with anchor (simple Jaccard).
+CLOSEST=$(awk -v anchor="$ANCHOR" '
+BEGIN {
+    n = split(anchor, aw, /[^a-zA-Z0-9_]+/)
+    for (i=1;i<=n;i++) awords[aw[i]]=1
+    best_score = -1; best_line = ""; best_num = 0
+}
+{
+    m = split($0, fw, /[^a-zA-Z0-9_]+/)
+    inter = 0; union_ = 0
+    delete fwords
+    for (i=1;i<=m;i++) fwords[fw[i]]=1
+    for (w in awords) { if (w in fwords) inter++; union_++ }
+    for (w in fwords) { if (!(w in awords)) union_++ }
+    score = (union_ > 0) ? inter / union_ : 0
+    if (score > best_score) { best_score = score; best_line = $0; best_num = NR }
+}
+END { if (best_num > 0) print best_num ":" best_line }
+' "$FILE" 2>/dev/null)
+
+MSG="old_string NOT FOUND in $FILE.
+First line of old_string: $ANCHOR
+Closest match in file:"
+if [[ -n "$CLOSEST" ]]; then
+    MSG="$MSG
+$CLOSEST
+Likely cause: whitespace/CRLF mismatch, extra/missing space, or stale old_string.
+Action: re-read the file with icmg context $FILE --lines <N-5>-<N+5> then fix old_string."
+else
+    MSG="$MSG (no close match found â€” old_string may reference deleted content).
+Action: re-read the file with \`icmg context $FILE\` to get current content."
+fi
+
+printf '%s' "$MSG" | icmg hookio emit PreToolUse --ctx-stdin
+# Do NOT deny (exit 2) â€” let the edit proceed so Claude Code shows its own error
+# message too. The hint above is injected as additionalContext so the agent
+# sees BOTH the hint and the native error in the same turn.
 exit 0
 )BASH";
 
@@ -2066,6 +2125,18 @@ private:
                      {"timeout", 5},
                      {"command",
                         "command -v icmg >/dev/null 2>&1 || exit 0; icmg recall-gate check 2>/dev/null || exit 0"}}
+                })}
+            },
+            // v2.8.1: PreToolUse:Edit old_string validator.
+            // Checks old_string exists in file BEFORE edit engine runs.
+            // On mismatch: emits closest-match hint so agent fixes in same turn.
+            {
+                {"matcher", "Edit"},
+                {"hooks",   json::array({
+                    {{"type", "command"},
+                     {"timeout", 8},
+                     {"command",
+                        "bash -c '[ -f .claude/hooks/icmg-edit-expand.sh ] && bash .claude/hooks/icmg-edit-expand.sh || exit 0'"}}
                 })}
             },
             {
