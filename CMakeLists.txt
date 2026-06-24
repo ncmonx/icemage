@@ -707,6 +707,7 @@ add_icmg_test(test_cache_advisor tests/cli/test_cache_advisor.cpp)  # #1b: cache
 add_icmg_test(test_session_dedup tests/cli/test_session_dedup.cpp)  # Cache-hit optimizer #2: TTL recall dedup
 add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
 add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 smart-bisect
+add_icmg_test(test_fuzzy_edit   tests/cli/test_fuzzy_edit.cpp)    # v2.8.1 fuzzy-edit ws-tolerant
 add_icmg_test(test_atomize_cmd  tests/cli/test_atomize_cmd.cpp)   # v1.80 atomize T7
 add_icmg_test(test_cron_tick    tests/core/test_cron_tick.cpp)    # v1.82 M6 cron-tick
 add_icmg_test(test_cache_metrics       tests/core/test_cache_metrics.cpp)       # v1.84 M8 T9
