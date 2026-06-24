@@ -86,47 +86,188 @@ BaseExtractor* Scanner::getExtractor(const std::string& lang) const {
     return nullptr;  // caller falls back to generic
 }
 
-// A9: simple .gitignore parser
+// ── A9: .gitignore / .icmgignore parser ──────────────────────────────────────
+//
+// Supports the full gitignore feature set:
+//   !pattern   → negation (un-ignore a previously ignored path)
+//   /prefix    → anchored to repo root
+//   suffix/    → match directories only
+//   *          → any sequence of chars within one path segment
+//   **         → match zero-or-more path segments (recursive wildcard)
+//   ?          → any single char within one path segment
+//
+// Last-matching rule wins (gitignore semantics).
+
 void Scanner::GitIgnore::load(const std::string& path) {
     std::ifstream f(path);
     if (!f) return;
     std::string line;
     while (std::getline(f, line)) {
+        // Strip CR and trailing spaces
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+            line.pop_back();
         if (line.empty() || line[0] == '#') continue;
-        // Strip trailing whitespace
-        while (!line.empty() && (line.back() == ' ' || line.back() == '\r')) line.pop_back();
-        if (!line.empty()) patterns.push_back(line);
+
+        Pattern p;
+        p.negate   = false;
+        p.dir_only = false;
+        p.anchored = false;
+
+        // '!' prefix → negation
+        if (line[0] == '!') {
+            p.negate = true;
+            line = line.substr(1);
+            if (line.empty()) continue;
+        }
+
+        // trailing '/' → dir-only
+        if (line.back() == '/') {
+            p.dir_only = true;
+            line.pop_back();
+            if (line.empty()) continue;
+        }
+
+        // leading '/' → anchored to root
+        if (line[0] == '/') {
+            p.anchored = true;
+            line = line.substr(1);
+            if (line.empty()) continue;
+        } else if (line.find('/') != std::string::npos) {
+            // gitignore: a pattern containing '/' (but not only at the end)
+            // is always treated as anchored to the root.
+            p.anchored = true;
+        }
+
+        p.raw = line;
+        patterns.push_back(std::move(p));
     }
 }
 
-bool Scanner::GitIgnore::matches(const std::string& relpath) const {
-    for (auto& pat : patterns) {
-        // Simple glob: if pat ends with /, match directory prefix
-        // Otherwise match anywhere in path
-        std::string p = pat;
-        if (!p.empty() && p[0] == '/') p = p.substr(1);
-        bool dir_only = (!p.empty() && p.back() == '/');
-        if (dir_only) p.pop_back();
+// globMatch — match a single gitignore pattern against a normalized relative
+// path (forward-slash separated, no leading slash).
+//
+// Rules:
+//   ?    matches any single character except '/'
+//   *    matches any sequence of characters except '/'
+//   **   in segment position matches zero or more path segments
+bool Scanner::GitIgnore::globMatch(const std::string& pattern,
+                                   const std::string& path) {
+    // Split helpers
+    auto splitPath = [](const std::string& s, char sep) {
+        std::vector<std::string> parts;
+        std::string cur;
+        for (char c : s) {
+            if (c == sep) { if (!cur.empty()) { parts.push_back(cur); cur.clear(); } }
+            else cur += c;
+        }
+        if (!cur.empty()) parts.push_back(cur);
+        return parts;
+    };
 
-        // Wildcard: * matches any segment
-        if (p.find('*') != std::string::npos) {
-            // Convert to simple match: only support *.ext and dir/*
-            if (p.rfind("*.", 0) == 0) {
-                std::string suffix = p.substr(1); // e.g. ".pyc"
-                if (relpath.size() >= suffix.size() &&
-                    relpath.substr(relpath.size() - suffix.size()) == suffix) return true;
+    // Single-segment glob (no '/' in pattern): use character-level matching
+    // against each individual path segment (match anywhere in path).
+    // Multi-segment pattern: split both and do segment-by-segment matching.
+
+    // Segment-glob: matches a single segment string against a single pattern
+    // segment (which must not contain **).
+    std::function<bool(const std::string&, size_t,
+                       const std::string&, size_t)> segMatch;
+    segMatch = [&](const std::string& pat, size_t pi,
+                   const std::string& str, size_t si) -> bool {
+        while (pi < pat.size() && si < str.size()) {
+            char pc = pat[pi];
+            if (pc == '*') {
+                // Consume all consecutive '*' (single-segment: * never matches /)
+                while (pi < pat.size() && pat[pi] == '*') ++pi;
+                if (pi == pat.size()) return true; // trailing * matches rest of segment
+                // Try matching the remainder of the pattern from every position
+                for (size_t k = si; k <= str.size(); ++k)
+                    if (segMatch(pat, pi, str, k)) return true;
+                return false;
+            } else if (pc == '?') {
+                // matches exactly one char
+                ++pi; ++si;
+            } else {
+                if (pc != str[si]) return false;
+                ++pi; ++si;
             }
-        } else {
-            // Literal: match as path component.
-            // Guard against unsigned underflow: relpath.size() - p.size() - 1 wraps
-            // when p.size() >= relpath.size(), producing a false npos==npos match.
-            bool tail_match = (p.size() < relpath.size()) &&
-                              (relpath.rfind("/" + p) == relpath.size() - p.size() - 1);
-            if (relpath == p || relpath.find(p + "/") != std::string::npos ||
-                relpath.find(p + "\\") != std::string::npos || tail_match) return true;
+        }
+        // Skip trailing '*'s
+        while (pi < pat.size() && pat[pi] == '*') ++pi;
+        return pi == pat.size() && si == str.size();
+    };
+
+    // Split pattern into segments on '/'
+    std::vector<std::string> patSegs = splitPath(pattern, '/');
+
+    // Normalize path: use '/' uniformly
+    std::string normPath = path;
+    for (char& c : normPath) if (c == '\\') c = '/';
+
+    std::vector<std::string> pathSegs = splitPath(normPath, '/');
+
+    // Recursive segment-path matcher that handles **
+    std::function<bool(size_t, size_t)> matchSegs;
+    matchSegs = [&](size_t pi, size_t si) -> bool {
+        while (pi < patSegs.size()) {
+            if (patSegs[pi] == "**") {
+                ++pi; // consume **
+                if (pi == patSegs.size()) return true; // ** at end → match anything remaining
+                // Try matching the rest of the pattern from every remaining position
+                for (size_t k = si; k <= pathSegs.size(); ++k)
+                    if (matchSegs(pi, k)) return true;
+                return false;
+            }
+            if (si >= pathSegs.size()) return false;
+            if (!segMatch(patSegs[pi], 0, pathSegs[si], 0)) return false;
+            ++pi; ++si;
+        }
+        return si == pathSegs.size();
+    };
+
+    bool hasSlash = (pattern.find('/') != std::string::npos);
+
+    if (hasSlash) {
+        // Anchored multi-segment: must match path from the root
+        return matchSegs(0, 0);
+    } else {
+        // No slash in pattern: match against any suffix of path segments
+        // (i.e., the pattern can appear anywhere in the directory tree).
+        // Also try matching just the filename (last segment) for *.ext style.
+        // Try matching against each possible starting position in the path
+        for (size_t start = 0; start <= pathSegs.size(); ++start) {
+            if (matchSegs(0, start)) return true;
+        }
+        return false;
+    }
+}
+
+// matches() — gitignore semantics: iterate ALL patterns, apply globMatch,
+// track the last match; if that last match is a negation, the path is NOT
+// ignored. Returns true if path is ignored.
+bool Scanner::GitIgnore::matches(const std::string& relpath) const {
+    // Normalize separators once
+    std::string norm = relpath;
+    for (char& c : norm) if (c == '\\') c = '/';
+
+    bool ignored = false;
+    for (auto& pat : patterns) {
+        std::string matchPat = pat.raw;
+        // For anchored patterns the raw is already stripped of leading '/';
+        // globMatch handles the slash-in-pattern anchoring logic.
+        // Re-attach leading '/' to force anchored matching inside globMatch.
+        if (pat.anchored && matchPat.find('/') == std::string::npos) {
+            // If there's no slash in the raw (e.g. "foo" with anchored=true
+            // because user wrote "/foo"), synthesize one so globMatch treats
+            // it as anchored.
+            matchPat = "/" + matchPat;
+        }
+
+        if (globMatch(matchPat, norm)) {
+            ignored = !pat.negate;
         }
     }
-    return false;
+    return ignored;
 }
 
 // Build JSON symbols string from ExtractResult

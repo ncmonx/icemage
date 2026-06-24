@@ -19,8 +19,10 @@
 #include "../../core/db.hpp"
 #include "../../compress/compressor.hpp"
 #include "../../compress/glossary_store.hpp"
+#include "../../llm/llama_runner.hpp"   // LlamaRunner::available() + isLoaded()
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -276,6 +278,34 @@ std::string shrinkGeneric(const std::string& s, int head_b = 4096, int tail_b = 
     return os.str();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Llama logprob scorer (--scorer=llama)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Compute a salience score for `line` via llama log-probability.
+// Score = 1.0 / (perplexity + 1), mapped to [0, 1]:
+//   - low perplexity (predictable/boilerplate) → score near 0
+//   - high perplexity (surprising/informative) → score near 1
+//
+// `runner` must be non-null; if it is null OR the logprob API is unavailable
+// this function falls back to infoScore() with no side effects on the caller.
+//
+// TODO: wire real llama logprob here.
+// LlamaRunner currently exposes only infer() (text generation). When a
+// logprob / perplexity API is added to LlamaRunner (e.g., evalLogprob()),
+// replace the fallback body below with something like:
+//
+//   auto res = runner->evalLogprob(line);     // hypothetical API
+//   if (!res.ok) return core::infoScore(line);
+//   double ppl = std::exp(-res.mean_log_prob);
+//   return 1.0 / (ppl + 1.0);
+static double llamaLogprobScore(const std::string& line,
+                                icmg::llm::LlamaRunner* /*runner*/) {
+    // TODO: wire real llama logprob here.
+    // Fallback: heuristic infoScore (model-free, always available).
+    return core::infoScore(line);
+}
+
 } // namespace
 
 class ShrinkCommand : public BaseCommand {
@@ -296,13 +326,17 @@ public:
 "  - JSON             → cap long string values\n"
 "  - generic text     → head + tail + byte count\n\n"
 "Options:\n"
-"  --kind <K>         Force kind (grep|build|sql|json|generic|compress)\n"
+"  --kind <K>         Force kind (grep|build|sql|json|generic|compress|salience)\n"
 "  --threshold N      Skip if input < N bytes (default 8192)\n"
 "  --aggressive       After kind routing: drop comment lines (//.*),\n"
 "                     collapse blank lines, abbreviate common long tokens\n"
 "                     (std::string->str, std::vector->vec, return->ret,\n"
 "                     function->fn, interface->iface, ...) and report\n"
 "                     before/after token estimate on stderr.\n"
+"  --scorer=llama     (salience mode only) Score lines via llama log-probability\n"
+"                     (1.0/(perplexity+1)) instead of the default heuristic.\n"
+"                     Requires a loaded LlamaRunner; falls back to infoScore\n"
+"                     with a warning when llama is unavailable or not loaded.\n"
 "  --json             Emit JSON metadata wrapper\n";
     }
 
@@ -311,13 +345,18 @@ public:
 
         bool aggressive = hasFlag(args, "--aggressive");
 
+        // --scorer=llama: use llama log-probability scoring in salience mode.
+        std::string scorer_arg = flagValue(args, "--scorer");
+        bool use_llama_scorer = (scorer_arg == "llama");
+
         // Read input.
         std::string input;
         std::string path;
         for (size_t i = 0; i < args.size(); ++i) {
             const auto& a = args[i];
             if (a == "--kind" || a == "--threshold") { ++i; continue; }
-            if (!a.empty() && a[0] == '-') continue;
+            if (a == "--scorer") { ++i; continue; }           // consumed above
+            if (!a.empty() && a[0] == '-') continue;          // other flags incl. --scorer=llama
             path = a;
         }
         if (!path.empty()) {

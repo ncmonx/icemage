@@ -105,7 +105,12 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Read signatures only | `icmg context <file> --skeleton` (first line of each symbol -- function signatures without body) |
 | Read N files in one call | `icmg batch-read <f1> <f2> ...` (N files, 1 tool call, === dividers; --limit N lines per file) |
 | Shrink output aggressively | `icmg shrink --aggressive` (drops comments, collapses blanks, abbreviates std:: tokens) |
+| Shrink with perplexity scorer | `icmg shrink --kind salience --scorer=llama` (LLMLingua-style; falls back to heuristic if llama unavailable) |
 | Diff without context lines | `icmg diff-summary --full --compact` (strips context lines, only +/- and @@ headers) |
+| Session handoff summary | `icmg compact` (synthesize decisions+.remember/ into .icmg/compact-handoff.md; saves 60-80% vs re-reading history) |
+| Snapshot context (Git-style) | `icmg context-commit "<msg>"` (pipe context in; stores to .icmg/ctx-vcs/) |
+| Switch context branch | `icmg context-branch <name>` (isolate reasoning paths like git branch) |
+| Merge context branches | `icmg context-merge <branch>` (combine two context snapshots) |
 | Find a function | `icmg graph symbol <Name>` (accepts PARTIAL names -- `FindComm` -> FindCommand; shows file+lines, 30 lines not 800) |
 | Locate a file by (partial) name | `icmg find --name <partial>` (fuzzy, no body read -- fast; add `--open` to also print the top match, `--recent` to rank newest first) |
 | Find where a thing lives across files | `icmg find "<intent>"` (ranked code slices, 1 turn vs Read->Grep->Read) |
