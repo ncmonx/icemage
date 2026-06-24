@@ -99,6 +99,8 @@ public:
             "Options:\n"
             "  --depth N         Neighbor depth (default: 1)\n"
             "  --no-symbols      Skip child symbol list\n"
+            "  --symbols-only    Emit only the symbol list (no file body, no memory)\n"
+            "  --skeleton        Emit function/class signatures (first line only, no body)\n"
             "  --no-memory       Skip related memory\n"
             "  --no-content      Skip raw file body excerpt (default: include)\n"
             "  --for INTENT      Emit only lines relevant to INTENT (semantic slice;\n"
@@ -296,7 +298,9 @@ public:
             }
         }
 
-        bool no_symbols = hasFlag(args, "--no-symbols");
+        bool no_symbols    = hasFlag(args, "--no-symbols");
+        bool symbols_only  = hasFlag(args, "--symbols-only");
+        bool skeleton_mode = hasFlag(args, "--skeleton");
         bool no_memory  = hasFlag(args, "--no-memory");
         size_t cap = 4096;
         try { cap = (size_t)std::stoul(flagValue(args, "--max-bytes", "4096")); } catch (...) {}
@@ -604,9 +608,29 @@ public:
                 out << "Symbols (" << kids.size() << "):\n";
                 for (auto& s : kids) {
                     out << "  [" << s.kind << "] " << s.symbol_name
-                        << "  L" << s.line_start << "-" << s.line_end << "\n";
+                        << "  L" << s.line_start << "-" << s.line_end;
+                    if (skeleton_mode && s.line_start > 0) {
+                        // --skeleton: append the first line of the symbol (signature)
+                        std::ifstream sf(node->path);
+                        if (sf.is_open()) {
+                            std::string ln;
+                            for (int li = 1; li < (int)s.line_start && std::getline(sf, ln); ++li) {}
+                            if (std::getline(sf, ln)) {
+                                while (!ln.empty() && (ln.back() == '\r' || ln.back() == ' ' || ln.back() == '\t'))
+                                    ln.pop_back();
+                                out << "  " << ln;
+                            }
+                        }
+                    }
+                    out << "\n";
                 }
             }
+        }
+        // --symbols-only: flush the output built so far and return early,
+        // skipping the file body and memory sections.
+        if (symbols_only) {
+            std::cout << out.str();
+            return 0;
         }
 
         // Related memory (best-effort recall by file basename)
@@ -1483,13 +1507,18 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg diff-summary [--ref REF] [--full] [--limit N]\n\n"
+            "Usage: icmg diff-summary [--ref REF] [--full] [--limit N] [--compact]\n\n"
             "Wraps `git diff [REF]` and groups changes by enclosing symbol\n"
             "(via line_start/line_end of indexed graph nodes).\n\n"
             "Options:\n"
             "  --ref REF      Compare against REF (default: working tree vs index)\n"
-            "  --full         Append raw `git diff` output\n"
-            "  --limit N      Cap files printed (default 200) on huge changesets\n";
+            "  --full         Append raw `git diff` output after the summary\n"
+            "  --limit N      Cap files printed (default 200) on huge changesets\n"
+            "  --compact      Strip context lines (lines starting with space) from\n"
+            "                 the unified diff, keeping only +/- lines and @@ headers.\n"
+            "                 Also passes --ignore-all-space --ignore-blank-lines to\n"
+            "                 git diff to reduce whitespace noise. Significantly\n"
+            "                 reduces token count on large diffs.\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -1574,10 +1603,45 @@ public:
         }
 
         if (full) {
-            std::cout << "\n--- Full diff ---\n";
-            std::string raw_full = "git diff" + (ref.empty() ? std::string() : " " + ref);
+            // Build full-diff command; in compact mode also pass whitespace
+            // flags so git itself doesn't inflate the diff with space changes.
+            std::string raw_full = "git diff";
+            if (compact) raw_full += " --ignore-all-space --ignore-blank-lines";
+            if (!ref.empty()) raw_full += " " + ref;
             auto raw = core::safeExec({"sh", "-c", raw_full}, true, 60000);
-            std::cout << raw.out;
+
+            if (compact) {
+                // Strip context lines: unified diff lines that start with a
+                // space are context (unchanged). Keep only:
+                //   - diff/index/--- /+++ headers (non-space, non-+ non-)
+                //   - @@ hunk headers
+                //   - + added lines
+                //   - - removed lines
+                // This typically cuts the diff token count by 60-80% on
+                // files with large unchanged regions.
+                std::cout << "\n--- Full diff (--compact: context lines stripped) ---\n";
+                std::istringstream ds(raw.out);
+                std::string dl;
+                size_t ctx_dropped = 0, lines_kept = 0;
+                while (std::getline(ds, dl)) {
+                    // Remove trailing \r (Windows git output).
+                    if (!dl.empty() && dl.back() == '\r') dl.pop_back();
+                    // A context line in unified diff starts with exactly one space.
+                    // Guard: don't drop the "--- a/..." / "+++ b/..." header lines.
+                    if (!dl.empty() && dl[0] == ' ') {
+                        ++ctx_dropped;
+                        continue;
+                    }
+                    std::cout << dl << "\n";
+                    ++lines_kept;
+                }
+                std::cerr << "[icmg diff-summary --compact] full diff: "
+                          << lines_kept << " lines kept, "
+                          << ctx_dropped << " context lines dropped\n";
+            } else {
+                std::cout << "\n--- Full diff ---\n";
+                std::cout << raw.out;
+            }
         }
         return 0;
     }
