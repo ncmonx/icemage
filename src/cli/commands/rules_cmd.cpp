@@ -12,8 +12,8 @@
 //   sync                   Walk .icmgrules/ and upsert all *.md files
 //   inject                 Emit active rules as markdown (used by SessionStart hook)
 //
-// .icmgignore note: minimal glob support — exact paths and simple *.ext patterns.
-// For complex patterns (negations, double-stars) use .gitignore instead.
+// .icmgignore note: supports *, **, ?, and !negation glob patterns
+// (same feature set as .gitignore — last matching rule wins).
 //
 // Opt-out: ICMG_RULES_QUIET=1 → `inject` emits nothing.
 
@@ -56,8 +56,8 @@ public:
             "  inject            Emit active rules as markdown for SessionStart\n\n"
             "Env:\n"
             "  ICMG_RULES_QUIET=1   inject returns empty (silent opt-out)\n\n"
-            "Note: .icmgignore supports exact paths and simple *.ext globs.\n"
-            "      Complex patterns (negations, **) are not supported — use .gitignore.\n";
+            "Note: .icmgignore supports *, **, ?, and !negation glob patterns.\n"
+            "      Last matching rule wins (gitignore semantics).\n";
     }
 
     int run(const std::vector<std::string>& args) override {
