@@ -9,6 +9,7 @@
 #include "../../imem/atom_store.hpp"
 #include "../../imem/scorer.hpp"
 #include "../ref_registry.hpp"
+#include "../session_dedup.hpp"   // Cache-hit optimizer #2: TTL-aware recall dedup
 #include "../../core/persona_db.hpp"        // #moments: merge persona _moments
 #include "../../core/profile_store.hpp"
 #include "../../core/user_identity.hpp"
@@ -68,7 +69,9 @@ public:
             "  --timeline      Layer-1 chronological view, grouped by day (newest first)\n"
             "  --get IDS       Layer-2: fetch full content for comma-separated ids\n"
             "  --by topic|file Group --index output (default: topic; file=by graph-node ref)\n"
-            "  --json          JSON output\n";
+            "  --json          JSON output\n"
+            "  --since EPOCH   Only return nodes created at or after EPOCH (unix seconds).\n"
+            "                  Accepts relative durations: 7d, 24h, 30m (from now).\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -111,6 +114,32 @@ public:
         std::string at_commit = flagValue(args, "--at-commit");
         int limit = 10;
         try { limit = std::stoi(flagValue(args, "--limit", "10")); } catch (...) {}
+
+        // --since: filter nodes by creation time.  Accepts a unix epoch (seconds) or
+        // relative durations like "7d", "24h", "30m" measured backwards from now.
+        int64_t since_epoch = 0;
+        {
+            std::string since_raw = flagValue(args, "--since", "");
+            if (!since_raw.empty()) {
+                // Try relative duration first: <N>d / <N>h / <N>m
+                auto tryRelative = [&]() -> bool {
+                    if (since_raw.size() < 2) return false;
+                    char unit = since_raw.back();
+                    if (unit != 'd' && unit != 'h' && unit != 'm') return false;
+                    try {
+                        int64_t n = std::stoll(since_raw.substr(0, since_raw.size() - 1));
+                        int64_t now_sec = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
+                        int64_t mul = (unit == 'd') ? 86400 : (unit == 'h') ? 3600 : 60;
+                        since_epoch = now_sec - n * mul;
+                        return true;
+                    } catch (...) { return false; }
+                };
+                if (!tryRelative()) {
+                    try { since_epoch = std::stoll(since_raw); } catch (...) {}
+                }
+            }
+        }
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
@@ -169,12 +198,21 @@ public:
             results = store.recall(query, limit, fuzzy);
         }
 
+        // --since post-filter: erase nodes created before the requested cutoff epoch.
+        if (since_epoch > 0) {
+            results.erase(
+                std::remove_if(results.begin(), results.end(),
+                    [&](const imem::MemoryNode& n){ return n.created_at < since_epoch; }),
+                results.end());
+        }
+
         // 2026-06-06 (#moments): auto-merge persona _moments on the DEFAULT query path
         // (cross-project, fail-open). Skipped for topic/zone/semantic/all-projects/unseen/
         // atom/at-commit special modes to avoid double-counting. De-dup by content.
         {
             bool mergeMoments = !query.empty() && topic.empty() && zone.empty()
-                && !semantic && !all_projects && !unseen && !atoms && at_commit.empty();
+                && !semantic && !all_projects && !unseen && !atoms && at_commit.empty()
+                && since_epoch == 0;
             if (mergeMoments && core::personaDbAvailable()) {
                 try {
                     core::ProfileStore ps(core::personaDb());
@@ -188,17 +226,23 @@ public:
             }
         }
 
-        // Phase 82 T4: in-session recall dedup — suppress nodes already returned
-        // this session. Prevents identical results flooding multi-turn context.
-        // Bypass with --no-dedup.
+        // Phase 82 T4 + Cache-hit optimizer #2: in-session recall dedup — suppress
+        // nodes already returned recently. Prevents identical results flooding
+        // multi-turn context. Switched from RefRegistry (calendar-day scoped, which
+        // over-suppressed memory for a long-lived GUI across separate conversations)
+        // to a TTL window (session_dedup): re-injection within an active conversation
+        // is suppressed, but a later conversation re-surfaces the memory once the TTL
+        // lapses. Bypass with --no-dedup.
         if (!no_dedup && !json) {
             try {
-                RefRegistry refs(std::filesystem::current_path().string());
+                std::string ddpath =
+                    (std::filesystem::current_path() / ".icmg" / "recall-dedup.txt").string();
+                int64_t ttl = recallDedupTTL();
                 std::vector<imem::MemoryNode> deduped;
                 for (auto& n : results) {
                     std::string key = std::to_string(n.id);
-                    if (!refs.seen("RECALL", key)) {
-                        refs.getOrAssign("RECALL", key);
+                    if (!wasInjectedRecently(ddpath, key, ttl)) {
+                        markInjected(ddpath, key);
                         deduped.push_back(std::move(n));
                     }
                 }

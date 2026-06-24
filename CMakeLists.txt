@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.8.0 LANGUAGES CXX C)
+project(icmg VERSION 2.8.2 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -707,6 +707,9 @@ add_icmg_test(test_cache_advisor tests/cli/test_cache_advisor.cpp)  # #1b: cache
 add_icmg_test(test_session_dedup tests/cli/test_session_dedup.cpp)  # Cache-hit optimizer #2: TTL recall dedup
 add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
 add_icmg_test(test_bisect_logic  tests/cli/test_bisect_logic.cpp)  # v1.79 M5 smart-bisect
+add_icmg_test(test_fuzzy_edit   tests/cli/test_fuzzy_edit.cpp)    # v2.8.1 fuzzy-edit ws-tolerant
+add_icmg_test(test_patch_cmd          tests/cli/test_patch_cmd.cpp)          # v2.8.2 icmg patch unified-diff apply
+add_icmg_test(test_memory_export_cmd  tests/cli/test_memory_export_cmd.cpp)  # v2.8.2 icmg memory export
 add_icmg_test(test_atomize_cmd  tests/cli/test_atomize_cmd.cpp)   # v1.80 atomize T7
 add_icmg_test(test_cron_tick    tests/core/test_cron_tick.cpp)    # v1.82 M6 cron-tick
 add_icmg_test(test_cache_metrics       tests/core/test_cache_metrics.cpp)       # v1.84 M8 T9

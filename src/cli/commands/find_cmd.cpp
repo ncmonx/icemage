@@ -4,6 +4,10 @@
 // a Read -> Grep -> Read chain into a single turn.
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/config.hpp"
+#include "../../core/db.hpp"
+#include "../../graph/graph_store.hpp"
+#include "../../graph/graph_centrality.hpp"
 #include "../find_slices.hpp"
 #include "../find_name.hpp"
 #include <filesystem>
@@ -15,6 +19,8 @@
 #include <vector>
 #include <set>
 #include <unordered_map>
+#include <chrono>
+#include <cmath>
 
 namespace icmg::cli {
 
@@ -102,6 +108,8 @@ public:
 
         // Collect (relpath, body) for project source files; bounded.
         std::vector<std::pair<std::string, std::string>> files;
+        std::unordered_map<std::string, double> ageSec;  // relpath -> age (seconds)
+        const auto nowT = fs::file_time_type::clock::now();
         const size_t kMaxScan = 4000, kMaxFileBytes = 256 * 1024;
         std::error_code ec;
         fs::path base = fs::current_path(ec);
@@ -127,11 +135,66 @@ public:
             std::ostringstream ss; ss << f.rdbuf();
             std::string rel = fs::relative(p, base, ec).string();
             if (ec || rel.empty()) { rel = p.string(); ec.clear(); }
+            // Working-set recency: age in seconds (>=0) for the ranking boost.
+            std::error_code tec;
+            auto mt = fs::last_write_time(p, tec);
+            if (!tec) {
+                double age = std::chrono::duration<double>(nowT - mt).count();
+                if (age < 0.0) age = 0.0;
+                ageSec[rel] = age;
+            }
             files.emplace_back(rel, ss.str());
             ++scanned;
         }
 
-        auto hits = rankFileSlices(files, intent, ctx, max_files, /*maxWin*/3);
+        auto hits = rankFileSlices(files, intent, ctx, max_files, /*maxWin*/3, &ageSec);
+
+        // v2.8.2: PageRank blend -- boost hits by graph centrality.
+        // Graph authority is a structural signal (high in-degree files = important).
+        // Blend: score *= (1 + pr_alpha * pr_norm) where pr_norm in [0,1].
+        // Graceful: if graph DB unavailable, hits are unmodified.
+        if (!hits.empty() && !hasFlag(args, "--no-pr")) {
+            try {
+                core::Config& cfg = core::Config::instance();
+                core::Db gdb(cfg.projectDbPath("."));
+                graph::GraphStore gstore(gdb);
+                auto nodes = gstore.all();
+                std::vector<graph::GraphEdge> edges;
+                for (auto& n : nodes) {
+                    auto ef = gstore.edgesFrom(n.id);
+                    edges.insert(edges.end(), ef.begin(), ef.end());
+                }
+                if (!nodes.empty()) {
+                    auto pr = graph::pageRank(nodes, edges);
+                    // Build relpath -> PR score map (normalise by max)
+                    double pr_max = 0.0;
+                    std::unordered_map<std::string, double> pr_map;
+                    for (auto& n : nodes) {
+                        auto it = pr.find(n.id);
+                        double s = it != pr.end() ? it->second : 0.0;
+                        // use the file path relative to cwd as key
+                        std::string key = n.path;
+                        // normalise path separators
+                        for (auto& c : key) if (c == '\\') c = '/';
+                        pr_map[key] = s;
+                        if (s > pr_max) pr_max = s;
+                    }
+                    const double pr_blend = 0.3; // max 30% boost from PageRank
+                    for (auto& h : hits) {
+                        std::string hkey = h.file;
+                        for (auto& c : hkey) if (c == '\\') c = '/';
+                        auto it = pr_map.find(hkey);
+                        if (it != pr_map.end() && pr_max > 0.0) {
+                            double pr_norm = it->second / pr_max;
+                            h.score *= (1.0 + pr_blend * pr_norm);
+                        }
+                    }
+                    // Re-sort after blend
+                    std::sort(hits.begin(), hits.end(),
+                        [](const FileSlice& a, const FileSlice& b){ return a.score > b.score; });
+                }
+            } catch (...) { /* graph unavailable -- proceed without PR */ }
+        }
         if (hits.empty()) {
             std::cout << "icmg find: no relevant lines for \"" << intent
                       << "\" (scanned " << scanned << " files)\n";

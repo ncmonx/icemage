@@ -293,14 +293,26 @@ public:
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
         imem::MemoryStore store(db);
-        auto history = store.queryHistory(limit);
+        auto history = store.queryHistoryDetailed(limit);
         if (history.empty()) {
             std::cout << "No query history.\n";
             return 0;
         }
+        // Gap #5: deduped history with metrics. Each row is one distinct query
+        // (hook+agent double-logs collapsed), showing how many times it ran and
+        // the summed token metric.
+        int64_t tot_runs = 0, tot_tokens = 0;
         for (size_t i = 0; i < history.size(); ++i) {
-            std::cout << "  " << (i + 1) << ". " << history[i] << "\n";
+            const auto& h = history[i];
+            tot_runs   += h.count;
+            tot_tokens += h.tokens;
+            std::cout << "  " << (i + 1) << ". " << truncStr(h.query, 56);
+            if (h.count > 1) std::cout << "  (x" << h.count << ")";
+            if (h.tokens > 0) std::cout << "  ~" << h.tokens << " tok";
+            std::cout << "  " << mTimeAgo(h.last_ts) << "\n";
         }
+        std::cout << "  -- " << history.size() << " distinct / "
+                  << tot_runs << " total recalls, ~" << tot_tokens << " tok\n";
         return 0;
     }
 };
@@ -413,6 +425,7 @@ public:
         else if (sub == "consolidate")     registered = "memory-consolidate";
         else if (sub == "extract-patterns")registered = "memory-extract-patterns";
         else if (sub == "atomize")  registered = "memory-atomize";
+        else if (sub == "export")  registered = "memory-export";
         else if (sub == "forget")  registered = "forget";   // existing top-level
         else if (sub == "restore") registered = "restore";  // existing top-level
         else {
