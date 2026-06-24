@@ -99,14 +99,9 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 |---|---|
 | **Run 2+ independent steps** | `icmg parallel --task "..." --task "..."` (default â€” see rule above) |
 | Read a large file | `icmg context <file>` (graph + symbols + memory) |
-| Read several files at once | `icmg context <f1> <f2> <f3>` (batch read-many — one bundle per file, one call) |
-| Bundle every file you just changed | `icmg context --changed` (git diff --name-only HEAD → batch + auto-diff) |
-| Bundle staged files (pre-commit review) | `icmg context --staged` (git diff --cached → batch + auto-diff) |
-| Re-read a file after editing it | `icmg context <file>` (AUTO-diff: once shown, re-reads emit only changed lines; `--no-diff`/`--full` forces full; `--diff-reset` clears baseline) |
 | Find a function | `icmg graph symbol <Name>` (accepts PARTIAL names -- `FindComm` -> FindCommand; shows file+lines, 30 lines not 800) |
 | Locate a file by (partial) name | `icmg find --name <partial>` (fuzzy, no body read -- fast; add `--open` to also print the top match, `--recent` to rank newest first) |
 | Find where a thing lives across files | `icmg find "<intent>"` (ranked code slices, 1 turn vs Read->Grep->Read) |
-| Bundle a symbol: def + callers + callees | `icmg context --symbol <Name>` (no file arg → cross-file graph bundle) |
 | Trace impact | `icmg graph reverse-impact <Name> --depth 5` |
 | Shortest path between files | `icmg graph path <from> <to>` |
 | BFS layers by distance | `icmg graph layers <file> [--reverse]` |
@@ -117,12 +112,10 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Filter by edge type | `icmg graph impact <file> --edge-type imports` |
 | Search code | `icmg run grep ...` (auto-filtered) |
 | Search code, grouped by enclosing function/class | `icmg grep <pat> --symbols` (graph-resolved, compact) |
+| Search symbol across ALL case variants (logQuery/log_query/LogQuery/...) | `icmg grep <name> --smart` -- auto-expands to alternation, 1 pass instead of N retries |
 | Recall past decision | `icmg recall "<query>"` |
 | Paraphrase recall | `icmg recall "<query>" --semantic` |
 | Recall across projects | `icmg cross-recall "<query>"` |
-| Recall as a cheap index (titles only) | `icmg recall "<q>" --index` then `--get <id>[,id]` for full (progressive disclosure) |
-| Recall grouped by file/graph-node | `icmg recall "<q>" --index --by file` |
-| Recall as a chronological timeline | `icmg recall "<q>" --timeline` (grouped by day, newest first) |
 | Start new task | `icmg pack "<task>"` (4KB context bundle) |
 | Delegate to LLM | `icmg agent "<task>"` (packâ†’promptâ†’user-CLI) |
 | Run noisy command | `icmg run <cmd>` (Tkil filter â€” 60-90% smaller) |
@@ -134,7 +127,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 | Shrink to token budget | `icmg shrink` |
 | Expand compressed text | `icmg expand` |
 | View token savings | `icmg savings` |
-| Session-start briefing | `icmg wake-up` (decisions + phases + fixes; typed-icon legend + `~N tok` cost footer) |
+| Session-start briefing | `icmg wake-up` (decisions + phases + fixes) |
 | Browse/manage memories | `icmg memory list/forget/purge` |
 | Anti-pattern recall | `icmg fail recall "<task>"` / `icmg fail store "<task>" "<approach>" "<reason>"` |
 | Cross-session awareness | `icmg session claim/clear/list` |
@@ -163,7 +156,7 @@ After EVERY change (edit / fix / feature / refactor / doc), run all five before 
 1. `icmg graph update` — refresh the graph (nodes/edges/symbols)
 2. `icmg store --topic decisions-<area> "<what+why>"` — persist the decision/learning
 3. `icmg zone add <path> --zone <subsystem>` — tag the touched subsystem
-4. `icmg wflog save --goal "<summary>" --decisions "<what+why>"` — record the workflow step
+4. `icmg wflog add "<summary>"` — record the workflow step
 5. `icmg verify --command "<test/build>"` — record verification in the audit trail
 Run independent ones together via `icmg parallel`. Checklist: graph ✓ store ✓ zone ✓ wflog ✓ verify ✓ — not all five means the change is incomplete.
 
@@ -195,6 +188,12 @@ Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM
 
 Full reference: run `icmg --help` or see https://github.com/ncmonx/icemage
 <!-- icmg:end -->
+
+
+
+
+
+
 
 
 
@@ -278,7 +277,6 @@ git push private restore/private-main:main --force
 | `icmg graph neighbors <file> [--reverse]` | Direct 1-hop neighbors |
 | `icmg graph common <fileA> <fileB>` | Shared upstream dependencies |
 | `icmg graph symbol <Name>` | Find symbol definition |
-| `icmg context --symbol <Name>` | Cross-file symbol bundle: definition body + callers + callees in one shot (no file arg). With a file arg, --symbol keeps its file-scoped body slice. Same-name fan-out deduped |
 | `icmg graph callers <symbol>` | Who calls this symbol |
 | `icmg graph callees <symbol>` | What this symbol calls |
 | `icmg graph related <file>` | Related files by edge proximity |
@@ -296,11 +294,8 @@ git push private restore/private-main:main --force
 |---|---|
 | `icmg recall "<query>"` | BM25 memory recall |
 | `icmg recall "<query>" --semantic` | Semantic (ONNX) recall |
-| `icmg recall "<query>" --index` / `--get <id>` | Progressive disclosure: cheap title index, then fetch chosen ids |
-| `icmg recall "<query>" --timeline` | Chronological recall, grouped by day (newest first) |
-| `icmg recall "<query>" --index --by file` | Group the index by file / graph-node reference |
 | `icmg cross-recall "<query>"` | Recall across all projects |
-| `icmg store --topic T "<text>"` | Store a memory node (auto-derives keywords when `--kw` omitted; redacts `<private>..</private>`) |
+| `icmg store --topic T "<text>"` | Store a memory node |
 | `icmg memory list` | List memory nodes |
 | `icmg memory forget <id>` | Soft-delete a memory |
 | `icmg fail store "<task>" "<approach>" "<reason>"` | Record failed approach |
@@ -311,11 +306,6 @@ git push private restore/private-main:main --force
 | Command | Description |
 |---|---|
 | `icmg context <file>` | Graph + symbols + memory (80%+ smaller than raw read) |
-| `icmg context <f1> <f2> ...` | Batch read-many: one bundle per file in a single call (value-flags like `--lines` apply to all) |
-| `icmg context --changed` | Bundle every file changed in the working tree (`git diff --name-only HEAD`); batch + per-file auto-diff. Errors if not a git repo; "no changed files" when clean |
-| `icmg context --staged` | Bundle every staged file (`git diff --cached --name-only`); pre-commit review sibling of --changed. "No staged files" when index is empty |
-| `icmg context <file>` (auto-diff) | Delta re-read by DEFAULT: after a file is shown once, subsequent reads emit only changed lines. `--no-diff`/`--full` = always full body; `--diff` = force/seed; `--diff-reset` = clear baseline |
-| `icmg grep <pat> --symbols` | Symbol-aware search: matches grouped under their enclosing function/class (graph-resolved) |
 | `icmg pack "<task>"` | 4KB context bundle for new tasks |
 | `icmg parallel --task "..." --task "..."` | Run 2+ tasks concurrently (3-6Ã— speedup) |
 | `icmg run <cmd>` | Run noisy command through Tkil filter |
@@ -356,8 +346,6 @@ git push private restore/private-main:main --force
 | Command | Description |
 |---|---|
 | `icmg update` | Self-upgrade |
-| `icmg install --system [--force] [--status]` | Install binary system-wide; skips re-copy when version matches (smart cache), `--status` shows installed vs running |
-| `icmg serve [--port N]` | Read-only dashboard server; `GET /api/health` is a machine-readable probe (status, uptime, db_ok, counts, version) |
 | `icmg whats-new` | Release notes |
 | `icmg doctor` | Diagnose icmg issues |
 | `icmg health` | System health check |
@@ -365,6 +353,12 @@ git push private restore/private-main:main --force
 | `icmg sayless [on/off/status]` | Toggle sayless mode |
 | `icmg chat` | Interactive REPL |
 <!-- icmg:commands:end -->
+
+
+
+
+
+
 
 
 
