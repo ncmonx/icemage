@@ -1062,6 +1062,65 @@ void GraphStore::resolveAndInsertEdges(
             continue;
         }
 
+        // Markdown/doc prefix tags: links: wikilinks: sources:
+        // Target is the path/label after the colon; resolve via path suffix match.
+        // All are EXTRACTED (directly parsed from source syntax, no guessing).
+        {
+            std::string etype;
+            size_t      plen = 0;
+            if      (import_name.compare(0, 6, "links:") == 0)      { etype = "links";      plen = 6; }
+            else if (import_name.compare(0, 10, "wikilinks:") == 0)  { etype = "wikilinks";  plen = 10; }
+            else if (import_name.compare(0, 8, "sources:") == 0)     { etype = "sources";    plen = 8; }
+
+            if (!etype.empty()) {
+                std::string tgt = import_name.substr(plen);
+                if (!tgt.empty()) {
+                    auto pit = path2id.find(tgt);
+                    if (pit != path2id.end() && pit->second != src_id) {
+                        GraphEdge e; e.src = src_id; e.dst = pit->second;
+                        e.edge_type = etype; e.weight = 1.0; e.confidence = "EXTRACTED";
+                        upsertEdge(e);
+                    } else {
+                        std::string tgt_lower = tgt;
+                        std::replace(tgt_lower.begin(), tgt_lower.end(), '\\', '/');
+                        std::transform(tgt_lower.begin(), tgt_lower.end(), tgt_lower.begin(), ::tolower);
+                        for (auto& ni : nodes) {
+                            if (ni.id == src_id) continue;
+                            // try full norm match
+                            bool matched = false;
+                            if (ni.norm.size() >= tgt_lower.size()) {
+                                size_t off = ni.norm.size() - tgt_lower.size();
+                                if (ni.norm.substr(off) == tgt_lower &&
+                                    (off == 0 || ni.norm[off-1] == '/'))
+                                    matched = true;
+                            }
+                            // try norm without extension (for wikilinks)
+                            if (!matched) {
+                                std::string ne = ni.norm;
+                                auto dot = ne.rfind('.');
+                                auto sl  = ne.rfind('/');
+                                if (dot != std::string::npos && (sl == std::string::npos || dot > sl))
+                                    ne = ne.substr(0, dot);
+                                if (ne.size() >= tgt_lower.size()) {
+                                    size_t off = ne.size() - tgt_lower.size();
+                                    if (ne.substr(off) == tgt_lower &&
+                                        (off == 0 || ne[off-1] == '/'))
+                                        matched = true;
+                                }
+                            }
+                            if (matched) {
+                                GraphEdge e; e.src = src_id; e.dst = ni.id;
+                                e.edge_type = etype; e.weight = 1.0; e.confidence = "EXTRACTED";
+                                upsertEdge(e);
+                                break;
+                            }
+                        }
+                    }
+                }
+                continue; // prefix handled, skip strategy 1-3
+            }
+        }
+
         // Collect all resolved destination node IDs for this import
         std::unordered_set<int64_t> resolved;
 
