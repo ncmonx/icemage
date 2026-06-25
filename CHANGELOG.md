@@ -4,6 +4,10 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.9.0
+
+**Graph-traversal find, graph clustering `--project` mode, and Leiden community detection.** (1) **`icmg find --depends-on <file>`:** BFS forward-closure via GraphStore — lists all files that `<file>` transitively depends on. (2) **`icmg find --used-by <file>`:** BFS reverse-closure — lists all files that transitively depend on `<file>`. Both support `--depth N` (default 10). (3) **`icmg graph-cluster --project`:** pulls live edges from GraphStore and runs Leiden clustering, grouping files into communities with `--top-n` and `--json` output. (4) **Tree-sitter C++ extractor:** namespace-qualified symbol names, struct `kind='struct'`, full AST coverage. 5 new TDD tests each. **1983/1983 ctest (Windows + Linux).**
+
 ## v2.8.4
 
 **Context versioning, compact handoff, perplexity salience scorer, and full gitignore-style `.icmgignore`.** (1) **`icmg compact`:** synthesizes a compact session-handoff summary from recent memory nodes + `.remember/now.md` / `.remember/recent.md` into `.icmg/compact-handoff.md` (and stdout); saves 60–80% tokens vs re-reading full history on session resume. (2) **`icmg context-commit / context-branch / context-merge`:** Git-style context versioning stored in `.icmg/ctx-vcs/` — snapshot the current context bundle as a timestamped JSON commit, switch to a named branch to isolate a reasoning path, then merge two branch snapshots; inspired by the GCC-paper finding that structured context versioning improves SWE-Bench scores 80%+. (3) **`icmg shrink --scorer=llama`:** LLMLingua-style perplexity salience scoring slot; routes through the local llama backend when available, falls back to heuristic. (4) **`.icmgignore` full glob support:** upgraded from exact-path + `*.ext` only to full gitignore semantics — `**`, `?`, `!negation`, `dir/*` — with last-rule-wins matching, same feature set as `.gitignore`. 10/10 new tests. **1962/1962 ctest (Windows + Linux).**
