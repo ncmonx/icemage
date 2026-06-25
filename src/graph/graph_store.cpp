@@ -147,10 +147,11 @@ GraphNode GraphStore::rowToNode(const core::Row& row) const {
 
 GraphEdge GraphStore::rowToEdge(const core::Row& row) const {
     GraphEdge e;
-    if (row.size() > 0) try { e.src       = std::stoll(row[0]); } catch (...) {}
-    if (row.size() > 1) try { e.dst       = std::stoll(row[1]); } catch (...) {}
-    if (row.size() > 2) e.edge_type = row[2];
-    if (row.size() > 3) try { e.weight    = std::stod(row[3]);  } catch (...) {}
+    if (row.size() > 0) try { e.src        = std::stoll(row[0]); } catch (...) {}
+    if (row.size() > 1) try { e.dst        = std::stoll(row[1]); } catch (...) {}
+    if (row.size() > 2) e.edge_type  = row[2];
+    if (row.size() > 3) try { e.weight     = std::stod(row[3]);  } catch (...) {}
+    if (row.size() > 4 && !row[4].empty()) e.confidence = row[4];
     return e;
 }
 
@@ -694,14 +695,14 @@ void GraphStore::upsertEdge(const GraphEdge& edge) {
     // Skip unresolved edges (dst == -1) — FK requires valid node id
     if (edge.dst < 0) return;
     db_.run(
-        "INSERT OR REPLACE INTO graph_edges(src,dst,edge_type,weight) VALUES(?,?,?,?)",
+        "INSERT OR REPLACE INTO graph_edges(src,dst,edge_type,weight,confidence) VALUES(?,?,?,?,?)",
         {std::to_string(edge.src), std::to_string(edge.dst),
-         edge.edge_type, std::to_string(edge.weight)});
+         edge.edge_type, std::to_string(edge.weight), edge.confidence});
 }
 
 std::vector<GraphEdge> GraphStore::edgesFrom(int64_t nodeId) {
     std::vector<GraphEdge> result;
-    db_.query("SELECT src,dst,edge_type,weight FROM graph_edges WHERE src=?",
+    db_.query("SELECT src,dst,edge_type,weight,confidence FROM graph_edges WHERE src=?",
               {std::to_string(nodeId)},
               [&](const core::Row& r) { result.push_back(rowToEdge(r)); });
     return result;
@@ -709,7 +710,7 @@ std::vector<GraphEdge> GraphStore::edgesFrom(int64_t nodeId) {
 
 std::vector<GraphEdge> GraphStore::edgesTo(int64_t nodeId) {
     std::vector<GraphEdge> result;
-    db_.query("SELECT src,dst,edge_type,weight FROM graph_edges WHERE dst=?",
+    db_.query("SELECT src,dst,edge_type,weight,confidence FROM graph_edges WHERE dst=?",
               {std::to_string(nodeId)},
               [&](const core::Row& r) { result.push_back(rowToEdge(r)); });
     return result;
@@ -1040,6 +1041,7 @@ void GraphStore::resolveAndInsertEdges(
                 // that inflated unrelated/third_party centrality.
                 for (int64_t dst : filterCallTargets(it->second, src_id)) {
                     GraphEdge e; e.src = src_id; e.dst = dst; e.edge_type = "calls"; e.weight = 1.5;
+                    e.confidence = "INFERRED"; // heuristic name-match, not direct parse
                     upsertEdge(e);
                 }
             }
@@ -1053,6 +1055,7 @@ void GraphStore::resolveAndInsertEdges(
                 for (int64_t dst : it->second) {
                     if (dst == src_id) continue;
                     GraphEdge e; e.src = src_id; e.dst = dst; e.edge_type = "extends"; e.weight = 2.0;
+                    e.confidence = "INFERRED"; // symbol name-match heuristic
                     upsertEdge(e);
                 }
             }
@@ -1142,13 +1145,17 @@ void GraphStore::resolveAndInsertEdges(
             }
         }
 
-        // Insert one edge per resolved destination
+        // Insert one edge per resolved destination.
+        // All strategy 1-3 resolutions are heuristic (path suffix / namespace / segment
+        // matching), so mark them INFERRED. Direct AST-parsed imports from extractors
+        // arrive with confidence=EXTRACTED (the GraphEdge default) via upsertEdge.
         for (int64_t dst_id : resolved) {
             GraphEdge edge;
-            edge.src       = src_id;
-            edge.dst       = dst_id;
-            edge.edge_type = "imports";
-            edge.weight    = 1.0;
+            edge.src        = src_id;
+            edge.dst        = dst_id;
+            edge.edge_type  = "imports";
+            edge.weight     = 1.0;
+            edge.confidence = "INFERRED";
             upsertEdge(edge);
         }
     }
@@ -1234,10 +1241,11 @@ void GraphStore::buildXRefEdges(const std::set<std::string>* changed) {
                 if (dec_id == ni.id) continue;  // no self-edges
                 if (isWordPresent(content, cls_name)) {
                     GraphEdge edge;
-                    edge.src       = ni.id;
-                    edge.dst       = dec_id;
-                    edge.edge_type = "uses";
-                    edge.weight    = 1.5;
+                    edge.src        = ni.id;
+                    edge.dst        = dec_id;
+                    edge.edge_type  = "uses";
+                    edge.weight     = 1.5;
+                    edge.confidence = "AMBIGUOUS"; // word-presence heuristic, lowest certainty
                     upsertEdge(edge);
                 }
             }
