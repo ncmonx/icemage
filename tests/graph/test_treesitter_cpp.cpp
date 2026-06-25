@@ -111,7 +111,7 @@ TEST("treesitter-cpp: template class") {
         "};\n";
 
     auto syms = e->extractSymbols("container.cpp", src);
-    (void)found_class;  // template extraction varies by grammar version
+    // template class extraction varies by grammar version -- just verify no crash
     ASSERT_TRUE(!syms.empty());
 }
 
