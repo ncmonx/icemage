@@ -73,16 +73,25 @@ public:
             "top files with only their relevant line windows -- the answer in one\n"
             "turn instead of a Read->Grep->Read chain.\n\n"
             "Options:\n"
-            "  --name          Fuzzy-locate files by NAME only (no body read; fast)\n"
-            "  --recent        With --name: rank newest-modified files first\n"
-            "  --open          With --name: also print the top match's contents (locate+read, 1 turn)\n"
-            "  --max-files N   Top files to show (default 5)\n"
-            "  --ctx N         Context lines around each hit (default 4)\n"
-            "  --max-bytes N   Cap total output (default 6000)\n";
+            "  --name            Fuzzy-locate files by NAME only (no body read; fast)\n"
+            "  --recent          With --name: rank newest-modified files first\n"
+            "  --open            With --name: also print the top match's contents (locate+read, 1 turn)\n"
+            "  --depends-on F    List all files that F transitively depends on (forward BFS)\n"
+            "  --used-by F       List all files that transitively depend on F (reverse BFS)\n"
+            "  --depth N         BFS max depth for --depends-on / --used-by (default 10)\n"
+            "  --max-files N     Top files to show (default 5)\n"
+            "  --ctx N           Context lines around each hit (default 4)\n"
+            "  --max-bytes N     Cap total output (default 6000)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help") || hasFlag(args, "-h")) { usage(); return 0; }
+
+        // --depends-on / --used-by: graph-traversal mode
+        if (hasFlag(args, "--depends-on"))
+            return runTraverse(flagValue(args, "--depends-on", ""), false, args);
+        if (hasFlag(args, "--used-by"))
+            return runTraverse(flagValue(args, "--used-by", ""), true, args);
 
         // Join positional words into the intent; skip flags AND their values
         // (so `--max-files 3` does not leak "3" into the query).
@@ -227,6 +236,61 @@ public:
     }
 
 private:
+    // Graph-traversal mode: BFS forward (depends-on) or reverse (used-by).
+    // reverse=false → what does `target` depend on?
+    // reverse=true  → what depends on `target`?
+    int runTraverse(const std::string& target, bool reverse,
+                    const std::vector<std::string>& args) {
+        if (target.empty()) {
+            std::cerr << "icmg find: --"
+                      << (reverse ? "used-by" : "depends-on")
+                      << " requires a file path argument\n";
+            return 1;
+        }
+        int depth = 10;
+        try { depth = std::stoi(flagValue(args, "--depth", "10")); } catch (...) {}
+
+        try {
+            core::Config& cfg = core::Config::instance();
+            const char* env_db = std::getenv("ICMG_PROJECT_DB");
+            std::string db_path = (env_db && *env_db)
+                ? std::string(env_db)
+                : cfg.projectDbPath(".");
+            core::Db db(db_path);
+            graph::GraphStore gs(db);
+
+            auto node = gs.getNode(target);
+            if (!node) {
+                std::cout << "icmg find: node not found in graph: " << target << "\n";
+                return 1;
+            }
+
+            auto ids = gs.closure(node->id, {}, depth, reverse);
+            if (ids.empty()) {
+                std::cout << "icmg find --"
+                          << (reverse ? "used-by" : "depends-on")
+                          << " " << target << ": no results\n";
+                return 0;
+            }
+
+            std::cout << "icmg find --"
+                      << (reverse ? "used-by" : "depends-on")
+                      << " " << target << " (" << ids.size() << "):\n";
+            // Build id->path map from all nodes (bounded; graph is local)
+            auto allNodes = gs.all();
+            std::unordered_map<int64_t, std::string> id2path;
+            for (auto& n : allNodes) id2path[n.id] = n.path;
+            for (int64_t id : ids) {
+                auto it = id2path.find(id);
+                std::cout << "  " << (it != id2path.end() ? it->second : "(id:" + std::to_string(id) + ")") << "\n";
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "icmg find traverse error: " << e.what() << "\n";
+            return 1;
+        }
+    }
+
     // Fast path: walk the tree collecting RELATIVE PATHS only (no body read),
     // rank by filename similarity, print the best matches. ~10-50x faster than
     // the content search when you just need to locate a file by (partial) name.

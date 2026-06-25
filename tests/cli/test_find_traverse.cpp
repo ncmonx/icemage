@@ -15,6 +15,7 @@
 #include "../../src/core/registry.hpp"
 #include "../../src/cli/base_command.hpp"
 #include "../../src/core/db.hpp"
+#include "../../src/core/config.hpp"
 #include "../../src/graph/graph_store.hpp"
 #include <filesystem>
 #include <sstream>
@@ -31,6 +32,8 @@ struct TraverseDbGuard {
     fs::path tmp;
     TraverseDbGuard() {
         tmp = fs::temp_directory_path() / "test_find_traverse.db";
+        fs::remove(tmp);  // clean slate
+        icmg::core::ensureProjectDb(tmp.string());  // bootstrap full schema
         icmg::core::Db db(tmp.string());
         GraphStore gs(db);
         // a.cpp -> b.cpp -> c.cpp
@@ -44,25 +47,22 @@ struct TraverseDbGuard {
         GraphEdge ebc; ebc.src = ib; ebc.dst = ic; ebc.edge_type = "imports";
         gs.upsertEdge(eab);
         gs.upsertEdge(ebc);
-        setenv_compat(tmp.string());
-    }
-    ~TraverseDbGuard() {
-        unsetenv_compat();
-        fs::remove(tmp);
-    }
-    static void setenv_compat(const std::string& p) {
+        // Route find_cmd to our temp DB via env var (same pattern as graph_cluster tests)
+        icmg::core::Config::instance().setProjectDbOverride(tmp.string());
 #ifdef _WIN32
-        _putenv_s("ICMG_PROJECT_DB", p.c_str());
+        _putenv_s("ICMG_PROJECT_DB", tmp.string().c_str());
 #else
-        setenv("ICMG_PROJECT_DB", p.c_str(), 1);
+        setenv("ICMG_PROJECT_DB", tmp.string().c_str(), 1);
 #endif
     }
-    static void unsetenv_compat() {
+    ~TraverseDbGuard() {
+        icmg::core::Config::instance().clearProjectDbOverride();
 #ifdef _WIN32
         _putenv_s("ICMG_PROJECT_DB", "");
 #else
         unsetenv("ICMG_PROJECT_DB");
 #endif
+        fs::remove(tmp);
     }
 };
 
