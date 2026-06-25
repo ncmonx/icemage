@@ -84,14 +84,14 @@ TEST("find --depends-on: empty graph no crash") {
     auto cmd = Reg::instance().create("find");
     ASSERT_TRUE(cmd != nullptr);
     int rc = cmd->run({"--depends-on", "some_file.cpp"});
-    ASSERT_TRUE(rc == 0 || rc == 1);
+    ASSERT_TRUE(rc == 0 || rc == 1);  // 1 = node not found or DB error, both OK
 }
 
 TEST("find --used-by: empty graph no crash") {
     auto cmd = Reg::instance().create("find");
     ASSERT_TRUE(cmd != nullptr);
     int rc = cmd->run({"--used-by", "some_file.cpp"});
-    ASSERT_TRUE(rc == 0 || rc == 1);
+    ASSERT_TRUE(rc == 0 || rc == 1);  // 1 = node not found or DB error, both OK
 }
 
 TEST("find --depends-on: transitive deps a.cpp -> b.cpp -> c.cpp") {
