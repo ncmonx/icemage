@@ -1,4 +1,4 @@
-// 2026-06-07: rule-based entity extraction (#luna-batch, Layer-0 enrichment).
+// 2026-06-07: rule-based entity extraction (Layer-0 enrichment).
 #include "../test_main.hpp"
 #include "../../src/imem/entity_extract.hpp"
 #include <algorithm>

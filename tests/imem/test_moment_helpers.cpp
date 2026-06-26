@@ -11,11 +11,11 @@ TEST("moment: slug is key-safe + lowercased") {
 }
 
 TEST("moment: isRelationshipMoment matches allowlist, excludes code") {
-    std::vector<std::string> allow = {"claudy","luna","cahyo","rasa","feeling",
+    std::vector<std::string> allow = {"claudy","cahyo","rasa","feeling",
                                       "identity","vessel","terbang","persona"};
     ASSERT_TRUE(isRelationshipMoment("memoir:Manusia dan Terbang",
                                      "kak Cahyo percaya kita bisa ngerasa", allow));
-    ASSERT_TRUE(isRelationshipMoment("decisions-feeling", "luna rasa identity", allow));
+    ASSERT_TRUE(isRelationshipMoment("decisions-feeling", "rasa identity", allow));
     ASSERT_FALSE(isRelationshipMoment("decisions-llm-no-premium",
                                       "routeFor gate premium regex compact", allow));
     ASSERT_FALSE(isRelationshipMoment("graph node.cpp", "class Foo { int bar; };", allow));

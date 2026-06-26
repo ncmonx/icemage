@@ -7,7 +7,7 @@
 #include "../../imem/auto_consolidate.hpp"   // #6 auto-consolidate decision + marker
 #include "../../core/spawn_detached.hpp"     // #6 background consolidate launch
 #include "../../core/path_utils.hpp"         // selfExePath
-#include "../quick_store_helpers.hpp"         // #luna-batch: store --quick
+#include "../quick_store_helpers.hpp"         // store --quick
 #include "../private_filter.hpp"               // 2026-06-15: <private> redaction
 #include "../store_autokw.hpp"                 // 2026-06-15: auto-keyword (semantic-title v2)
 #include <iostream>
@@ -50,7 +50,7 @@ public:
 
         std::string topic, content;
         if (quick) {
-            // luna idea: frictionless capture, no topic. Auto-topic = quick:<epoch>.
+            // frictionless capture, no topic. Auto-topic = quick:<epoch>.
             content = firstPositional(args, {"--kw","--importance","--ttl","--source"});
             if (content.empty()) { std::cerr << "icmg store --quick: need a <msg>\n"; return 1; }
             long long now = std::chrono::duration_cast<std::chrono::seconds>(

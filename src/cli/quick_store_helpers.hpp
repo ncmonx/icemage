@@ -1,4 +1,4 @@
-// 2026-06-07: pure helpers for `icmg store --quick` (luna idea: no-topic frictionless capture).
+// 2026-06-07: pure helpers for `icmg store --quick` (no-topic frictionless capture).
 // No DB/IO. quickTopic() makes a deterministic timestamped topic; firstPositional() picks the
 // message arg, skipping flags and their values so `store --quick "msg"` needs no topic.
 #pragma once

@@ -1,4 +1,4 @@
-// 2026-06-07: Layer-0 rule-based auto-extract classifier (#luna-batch, STANDOUT).
+// 2026-06-07: Layer-0 rule-based auto-extract classifier (STANDOUT).
 #include "../test_main.hpp"
 #include "../../src/imem/layer0_extract.hpp"
 

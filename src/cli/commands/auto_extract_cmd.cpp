@@ -1,4 +1,4 @@
-// 2026-06-07: `icmg auto-extract` — Layer-0 rule-based memory capture (luna idea, STANDOUT).
+// 2026-06-07: `icmg auto-extract` — Layer-0 rule-based memory capture.
 // Zero-LLM: a PostToolUse hook pipes a tool's output on stdin and passes --cmd/--exit; the
 // pure classifier decides whether to persist (git commit -> auto:wflog, error -> auto:error).
 // Low-importance (decays faster); clearly namespaced so it never masquerades as a human note.
@@ -10,7 +10,7 @@
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include "../../imem/layer0_extract.hpp"
-#include "../../imem/entity_extract.hpp"   // #luna-batch: Layer-0 entity enrichment
+#include "../../imem/entity_extract.hpp"   // Layer-0 entity enrichment
 #include <iostream>
 #include <string>
 

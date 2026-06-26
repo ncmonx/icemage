@@ -1,4 +1,4 @@
-// 2026-06-07: Layer-0 rule-based auto-extract (luna idea, STANDOUT: zero-LLM memory capture
+// 2026-06-07: Layer-0 rule-based auto-extract (STANDOUT: zero-LLM memory capture
 // from tool events). Pure classifier — no DB/IO. A PostToolUse hook feeds (cmd, output, exit);
 // this decides whether to persist and as what. Cheap: pure string rules, no model call.
 #pragma once

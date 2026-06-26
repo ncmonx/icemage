@@ -90,7 +90,7 @@ public:
                 if (args[i] == "--topic") topics.push_back(args[i+1]);
             bool curated = !topics.empty();
             core::Db proj(core::Config::instance().projectDbPath("."));
-            std::vector<std::string> allow = {"claudy","luna","cahyo","rasa","feeling",
+            std::vector<std::string> allow = {"claudy","cahyo","rasa","feeling",
                 "identity","vessel","terbang","persona","jiwa","kapten"};
             int n_cand = 0, n_done = 0;
             std::string sql = "SELECT topic, content FROM memory_nodes WHERE deleted_at IS NULL "
