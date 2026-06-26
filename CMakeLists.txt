@@ -904,6 +904,8 @@ add_icmg_test(test_markdown_extractor   tests/graph/test_markdown_extractor.cpp)
 add_icmg_test(test_shell_extractor      tests/graph/test_shell_extractor.cpp)
 add_icmg_test(test_graph_query_engine   tests/cli/test_graph_query_engine.cpp)
 add_icmg_test(test_graph_clean_alias    tests/cli/test_graph_clean_alias.cpp)
+add_icmg_test(test_covenant_cmd         tests/cli/test_covenant_cmd.cpp)        # v2.11.0 covenant store
+add_icmg_test(test_task_cmd             tests/cli/test_task_cmd.cpp)            # v2.11.0 task store
 add_icmg_test(test_approach_cmd         tests/cli/test_approach_cmd.cpp)
 add_icmg_test(test_hook_approach        tests/core/test_hook_approach.cpp)
 add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)
