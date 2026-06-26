@@ -119,50 +119,19 @@ public:
 class GraphCleanCommand : public BaseCommand {
 public:
     std::string name()        const override { return "graph-clean"; }
-    std::string description() const override { return "Remove nodes for files no longer on disk"; }
+    std::string description() const override { return "Remove nodes for files no longer on disk (alias for graph-prune)"; }
 
+    // graph-clean was a byte-for-byte duplicate of graph-prune. Consolidated:
+    // this is now a thin backward-compat alias delegating to graph-prune (single
+    // source of truth). Flags (--dry-run/--json) pass straight through.
     int run(const std::vector<std::string>& args) override {
-        bool json_out = hasFlag(args, "--dry-run") ? false : hasFlag(args, "--json");
-        bool dry_run  = hasFlag(args, "--dry-run");
-        if (hasFlag(args, "--json") && !dry_run) json_out = true;
-
-        auto& cfg = core::Config::instance();
-        core::Db db(cfg.projectDbPath("."));
-        graph::GraphStore store(db);
-
-        auto nodes = store.all();
-        int removed = 0;
-        std::vector<std::string> stale;
-
-        for (auto& node : nodes) {
-            std::error_code ec;
-            bool exists = fs::exists(node.path, ec);
-            if (!exists) {
-                stale.push_back(node.path);
-                if (!dry_run) store.removeNode(node.path);
-                removed++;
-            }
+        auto& reg = core::Registry<BaseCommand>::instance();
+        auto prune = reg.create("graph-prune");
+        if (!prune) {
+            std::cerr << "icmg graph-clean: graph-prune unavailable\n";
+            return 1;
         }
-
-        if (json_out) {
-            std::cout << "{\"removed\":" << removed
-                      << ",\"dry_run\":" << (dry_run ? "true" : "false")
-                      << ",\"paths\":[";
-            for (size_t i = 0; i < stale.size(); ++i) {
-                if (i) std::cout << ",";
-                std::cout << "\"" << stale[i] << "\"";
-            }
-            std::cout << "]}\n";
-        } else {
-            std::string prefix = dry_run ? "[dry-run] Would remove" : "Removed";
-            if (removed == 0)
-                std::cout << "Graph is clean — no stale nodes.\n";
-            else {
-                std::cout << prefix << " " << removed << " stale node(s):\n";
-                for (auto& p : stale) std::cout << "  " << p << "\n";
-            }
-        }
-        return 0;
+        return prune->run(args);
     }
 };
 
