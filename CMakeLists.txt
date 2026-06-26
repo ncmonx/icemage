@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.10.0 LANGUAGES CXX C)
+project(icmg VERSION 2.11.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -904,6 +904,8 @@ add_icmg_test(test_markdown_extractor   tests/graph/test_markdown_extractor.cpp)
 add_icmg_test(test_shell_extractor      tests/graph/test_shell_extractor.cpp)
 add_icmg_test(test_graph_query_engine   tests/cli/test_graph_query_engine.cpp)
 add_icmg_test(test_graph_clean_alias    tests/cli/test_graph_clean_alias.cpp)
+add_icmg_test(test_covenant_cmd         tests/cli/test_covenant_cmd.cpp)        # v2.11.0 covenant store
+add_icmg_test(test_task_cmd             tests/cli/test_task_cmd.cpp)            # v2.11.0 task store
 add_icmg_test(test_approach_cmd         tests/cli/test_approach_cmd.cpp)
 add_icmg_test(test_hook_approach        tests/core/test_hook_approach.cpp)
 add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)

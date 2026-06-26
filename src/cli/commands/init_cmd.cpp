@@ -1,4 +1,4 @@
-// `icmg init` â€” bootstrap a project for icmg-aware AI agents.
+﻿// `icmg init` â€” bootstrap a project for icmg-aware AI agents.
 //
 // Creates / updates:
 //   .claude/settings.local.json  â€” installs Bash-rewrite + Read-shrink hooks
@@ -850,6 +850,21 @@ ${WHO:+User: ${WHO}}
 Recalled rules/conventions from icmg memory:
 ${RULES:-(none stored yet -- persist rules via: icmg store --topic decisions-<area>)}"
 printf '%s' "$CONTENT" | icmg hookio emit SessionStart --ctx-stdin
+)BASH";
+
+// v2.11.0: covenant + task deterministic inject (SessionStart + post-compact).
+static const char* COVENANT_TASK_SESSION_SH = R"BASH(#!/usr/bin/env bash
+# Auto-installed by `icmg init`. Fires on SessionStart.
+# Emits ALL active covenants + ALL open tasks (full-enumeration, never sampled).
+# Empty stores emit nothing (quiet). Runs on every session start + post-compact.
+[[ "${ICMG_NO_COVENANT_TASK:-0}" = "1" ]] && exit 0
+command -v icmg >/dev/null 2>&1 || exit 0
+CT=$(
+    icmg covenant inject 2>/dev/null
+    echo
+    icmg task inject 2>/dev/null
+)
+[ -n "$CT" ] && printf '%s' "$CT" | icmg hookio emit SessionStart --ctx-stdin
 )BASH";
 
 // v0.42.0: UserPromptSubmit â€” BM25-match cold context_nodes + skill index per prompt.
@@ -1972,6 +1987,8 @@ private:
         n += writeFile(root / ".claude" / "hooks" / "icmg-wakeup-session.sh", WAKEUP_SESSION_SH, true);
         // v1.73.0: post-compaction memory/rules re-anchor.
         n += writeFile(root / ".claude" / "hooks" / "icmg-postcompact-memory.sh", POSTCOMPACT_MEMORY_SH, true);
+        // v2.11.0: covenant + task deterministic inject.
+        n += writeFile(root / ".claude" / "hooks" / "icmg-covenant-task-session.sh", COVENANT_TASK_SESSION_SH, true);
         // v0.42.0: rule enforcement hook.
         n += writeFile(root / ".claude" / "hooks" / "icmg-rule-enforce.sh", RULE_ENFORCE_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-presence-heartbeat.sh", PRESENCE_HEARTBEAT_SH, true);  // me-everywhere
@@ -2352,7 +2369,11 @@ private:
                      {"command", "bash -c '[ -f .claude/hooks/icmg-wakeup-session.sh ] && bash .claude/hooks/icmg-wakeup-session.sh || exit 0'"}},
                     {{"type", "command"},
                      {"timeout", 12},
-                     {"command", "bash -c '[ -f .claude/hooks/icmg-postcompact-memory.sh ] && bash .claude/hooks/icmg-postcompact-memory.sh || exit 0'"}}
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-postcompact-memory.sh ] && bash .claude/hooks/icmg-postcompact-memory.sh || exit 0'"}},
+                    // v2.11.0: covenant + task deterministic inject.
+                    {{"type", "command"},
+                     {"timeout", 5},
+                     {"command", "bash -c '[ -f .claude/hooks/icmg-covenant-task-session.sh ] && bash .claude/hooks/icmg-covenant-task-session.sh || exit 0'"}}
                 })}
             }
         });
