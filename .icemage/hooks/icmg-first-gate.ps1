@@ -124,9 +124,19 @@ if ($scan -match '(?i)(^|[\s|;&(])(Get-ChildItem|gci|ls|dir|find)(\s|$)') {
 }
 
 # --- READ family -> icmg context (return file bundle) ---
+# Exception: Get-Content used in assignment ($x = Get-Content ...) or complex
+# pipeline (followed by ; for/if/foreach/while) = real scripting, not bare read.
+# Let those through so PowerShell scripts using Get-Content work correctly.
 if ($scan -match '(?i)(^|[\s|;&(])(cat|head|tail|less|more|type|Get-Content|gc)(\s|$)') {
+  # Complex usage patterns -- pass through:
+  # 1. Assignment: $var = Get-Content ...
+  # 2. Piped into non-display commands (ForEach, Where, Select-Object -First/Last, etc.)
+  # 3. Followed by semicolon + for/if/foreach/while (scripting context)
+  if ($cmd -match '(?i)\$\w+\s*=\s*(Get-Content|gc)\b') { Allow }  # assignment
+  if ($cmd -match '(?i)(Get-Content|gc)\s+[^|;]+\|\s*(ForEach|Where|Select-Object|Sort|Group|Measure|ConvertFrom|ConvertTo|Out-File|Set-Content|Add-Content|Tee|%|ft|fl)') { Allow }  # pipe to process
+  if ($cmd -match '(?i)(Get-Content|gc)[^;]*;\s*(for|foreach|if|while|do|switch)\b') { Allow }  # scripting
   $file = $null
-  if ($cmd -match '(?i)(?:cat|head|tail|less|more|type|Get-Content|gc)\s+(?:-\S+\s+)*["'']?([^\s"''|]+)') { $file = $Matches[1] }
+  if ($cmd -match '(?i)(?:cat|head|tail|less|more|type|Get-Content|gc)\s+(?:-\S+\s+)*["'']?([^\s"''|;]+)') { $file = $Matches[1] }
   if ($file) { Emit 'icmg context' (RunIcmg @('context',$file)) }
   Deny 'Read (line numbers, offset/limit) instead of cat/head/tail/Get-Content'
 }
