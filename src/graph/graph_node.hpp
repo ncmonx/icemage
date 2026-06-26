@@ -32,6 +32,7 @@ struct GraphEdge {
     int64_t     dst         = 0;        // -1 = unresolved
     std::string edge_type;              // imports|calls|inherits|includes
     double      weight      = 1.0;
+    std::string confidence  = "EXTRACTED"; // EXTRACTED|INFERRED|AMBIGUOUS
 };
 
 

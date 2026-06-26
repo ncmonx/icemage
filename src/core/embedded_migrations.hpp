@@ -796,6 +796,14 @@ CREATE INDEX IF NOT EXISTS idx_token_ledger_ts ON token_ledger(ts);
 CREATE INDEX IF NOT EXISTS idx_token_ledger_session ON token_ledger(session_id);
 )SQL"},
 
+        {44, R"SQL(
+-- 0044_edge_confidence (v2.10.0 Phase 1 graphify parity)
+-- graph_edges.confidence: how trustworthy each edge is.
+--   EXTRACTED = direct source parse | INFERRED = name-match heuristic
+--   AMBIGUOUS = conflicting / low-confidence resolution
+ALTER TABLE graph_edges ADD COLUMN confidence TEXT NOT NULL DEFAULT 'EXTRACTED';
+)SQL"},
+
     };
 }
 

@@ -54,6 +54,7 @@ static core::Db makeGraphDb() {
         " dst INTEGER NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,"
         " edge_type TEXT NOT NULL,"
         " weight REAL NOT NULL DEFAULT 1.0,"
+        " confidence TEXT NOT NULL DEFAULT 'EXTRACTED',"
         " PRIMARY KEY(src,dst,edge_type)"
         ")"
     );
