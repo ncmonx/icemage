@@ -13,7 +13,7 @@
 
 namespace icmg::core {
 
-struct CmdDoc { std::string name, desc; };
+struct CmdDoc { std::string name, desc, keywords; };
 struct CmdHit { std::string name; double score = 0.0; };
 
 // Significant tokens of a string (slug split on '-', tokens len>=2 so short command
@@ -54,7 +54,12 @@ inline std::vector<CmdHit> rankCommands(const std::string& intent,
     std::vector<CmdHit> hits;
     hits.reserve(docs.size());
     for (const auto& d : docs) {
-        double s = promptJaccard(intent, d.name + " " + d.desc) + nameRecall(intent, d.name);
+        // Match against name + description + optional synonym keywords. The
+        // keywords carry intent synonyms (e.g. "who calls" -> graph-callers)
+        // so routing is precise without changing the displayed description.
+        std::string corpus = d.name + " " + d.desc;
+        if (!d.keywords.empty()) corpus += " " + d.keywords;
+        double s = promptJaccard(intent, corpus) + nameRecall(intent, d.name);
         if (s > 0.0) hits.push_back({d.name, s});
     }
     std::stable_sort(hits.begin(), hits.end(),

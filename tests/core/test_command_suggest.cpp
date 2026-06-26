@@ -62,3 +62,26 @@ TEST("rankCommands: empty docs yields no hits") {
     auto hits = rankCommands("anything at all", none, 5);
     ASSERT_TRUE(hits.empty());
 }
+
+// Synonym/keywords routing: "who calls X" must reach the CALLERS command even
+// though its description says "callers" (token != "calls"). The keywords field
+// carries the synonyms so the intent matches without polluting the displayed
+// description. This is the router-precision fix.
+TEST("rankCommands: keywords route synonym intent to the right command") {
+    std::vector<CmdDoc> docs = {
+        {"graph-callees", "Show what a symbol calls", "callees outbound invokes what-it-calls"},
+        {"graph-callers", "Show callers of a symbol", "who calls invoked-by inbound used-by-function"},
+    };
+    auto hits = rankCommands("who calls this function", docs, 2);
+    ASSERT_TRUE(!hits.empty());
+    ASSERT_EQ(hits[0].name, std::string("graph-callers"));
+}
+
+TEST("rankCommands: keywords are optional (back-compat 2-field docs)") {
+    std::vector<CmdDoc> docs = {
+        {"compress", "Shrink large output into a glossary"},  // no keywords field
+    };
+    auto hits = rankCommands("compress large output", docs, 2);
+    ASSERT_TRUE(!hits.empty());
+    ASSERT_EQ(hits[0].name, std::string("compress"));
+}
