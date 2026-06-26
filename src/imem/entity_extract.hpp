@@ -1,4 +1,4 @@
-// 2026-06-07: rule-based entity extraction (luna idea: enrich Layer-0, zero-LLM). Pure, no IO.
+// 2026-06-07: rule-based entity extraction (enrich Layer-0, zero-LLM). Pure, no IO.
 // Pulls URLs / IPv4 / env-vars / @mentions from free text via regex so auto-captured memory
 // is searchable by the entities it references. Returns "type:value" tokens (keyword-ready).
 #pragma once

@@ -1,4 +1,4 @@
-// 2026-06-07: pure formatter for `icmg wake-up --resume` (luna idea "context --resume":
+// 2026-06-07: pure formatter for `icmg wake-up --resume` ("context --resume":
 // wake briefing + persona identity + moments in one shot). No DB/IO — caller passes rows.
 #pragma once
 #include <string>

@@ -1,4 +1,4 @@
-// 2026-06-07: pure helpers for `icmg store --quick` (#luna-batch).
+// 2026-06-07: pure helpers for `icmg store --quick`.
 #include "../test_main.hpp"
 #include "../../src/cli/quick_store_helpers.hpp"
 

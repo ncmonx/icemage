@@ -1,4 +1,4 @@
-// 2026-06-07: pure formatter for `icmg wake-up --resume` (#luna-batch).
+// 2026-06-07: pure formatter for `icmg wake-up --resume`.
 #include "../test_main.hpp"
 #include "../../src/cli/resume_helpers.hpp"
 

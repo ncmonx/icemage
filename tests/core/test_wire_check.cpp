@@ -1,4 +1,4 @@
-// 2026-06-07: pure helpers for `icmg msg check` (#luna-batch).
+// 2026-06-07: pure helpers for `icmg msg check`.
 #include "../test_main.hpp"
 #include "../../src/core/wire_check_helpers.hpp"
 

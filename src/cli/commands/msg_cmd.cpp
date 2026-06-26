@@ -7,7 +7,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/msg.hpp"
 #include "../../core/path_utils.hpp"   // icmgGlobalDir
-#include "../../core/wire_check_helpers.hpp"  // #luna-batch: msg check (unread cursor)
+#include "../../core/wire_check_helpers.hpp"  // msg check (unread cursor)
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -90,7 +90,7 @@ public:
         }
 
         if (sub == "check") {
-            // luna idea ("wire --check"): peek unread since a persisted cursor, then advance it.
+            // "wire --check": peek unread since a persisted cursor, then advance it.
             // No manual --since; the marker remembers where you left off, per identity.
             std::string mk = core::wireDir() + "/" + core::seenMarkerName(me);
             int64_t since = 0;

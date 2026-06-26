@@ -1,4 +1,4 @@
-// 2026-06-07: pure helpers for `icmg msg check` (luna idea "wire --check": peek unread
+// 2026-06-07: pure helpers for `icmg msg check` ("wire --check": peek unread
 // without manual --since). No IO. Marker stores the last-seen ts per session identity.
 #pragma once
 #include <string>

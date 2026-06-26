@@ -8,7 +8,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/user_identity.hpp"
-#include "../../core/persona_db.hpp"          // #luna-batch: wake-up --resume
+#include "../../core/persona_db.hpp"          // wake-up --resume
 #include "../../core/profile_store.hpp"
 #include "../resume_helpers.hpp"
 #include "../session_greeting.hpp"
@@ -254,7 +254,7 @@ public:
         // Token-cost visibility: show what this briefing costs in context.
         s += briefingCostFooter(s) + "\n";
 
-        // luna idea ("context --resume"): append persona identity + recent moments so a
+        // "context --resume": append persona identity + recent moments so a
         // fresh session re-hydrates continuity in one command. Appended AFTER the 2KB cap
         // so the persona block is never truncated. Fail-open (persona DB optional).
         if (hasFlag(args, "--resume") && core::personaDbAvailable()) {
