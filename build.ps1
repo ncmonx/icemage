@@ -42,6 +42,13 @@ $BuildDir = 'C:\icmg-build\build-msvc-full'
 
 Set-Location $PSScriptRoot
 
+# Suppress MSYS/Git-Bash path-conversion so cmd.exe children never get a
+# B:/ "insert disk" modal. Must be set BEFORE vcvars + ninja launch so
+# all grandchild processes inherit these. (icmg main.cpp sets them too,
+# but that only covers icmg-spawned children, not the build chain itself.)
+$env:MSYS_NO_PATHCONV    = '1'
+$env:MSYS2_ARG_CONV_EXCL = '*'
+
 # ”” auto-read version from CMakeLists.txt (single source of truth) ””””””””””””
 function Get-IcmgVersion {
     $line = Get-Content 'CMakeLists.txt' | Select-String 'project\(icmg VERSION' | Select-Object -First 1
