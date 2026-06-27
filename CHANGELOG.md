@@ -4,6 +4,10 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.11.1
+
+**Fix: disable popup-killer auto-start in hooks.** The B:/ MSYS drive-letter popup is now prevented at source via `MSYS_NO_PATHCONV=1` + `MSYS2_ARG_CONV_EXCL=*` in `build.ps1`, so the popup-killer daemon is no longer needed on startup. Two auto-invocations of `icmg popup-killer ensure` (in `SessionStart` and `UserPromptSubmit` hooks) have been commented out. This eliminates the risk of the daemon auto-dismissing legitimate Win32 dialogs (Save As, Print, etc.) from Firefox, Edge, SSMS, and other apps. Manual invocation via `icmg popup-killer run` remains available if ever needed.
+
 ## v2.11.0
 
 **Covenant + task store: deterministic cross-session injection.** (1) **`icmg covenant add/list/inject`:** a must-hold rule store that emits ALL active covenants on every SessionStart and post-compact â€” full enumeration, never BM25-sampled, never silently truncated. `--max-items` cap always emits a visible `[+N more]` marker. Empty store emits nothing. (2) **`icmg task add/list/doing/done/reopen/inject`:** a parked-work-item store that survives across sessions and compaction. `inject` outputs open tasks (`todo`+`doing`) with `doing` listed first; done tasks are silent. (3) **Hook wiring:** `icmg-covenant-task-session.sh` fires on every SessionStart and post-compact. Opt-out via `ICMG_NO_COVENANT_TASK=1`. Migration `0045` adds `covenant` + `task` tables with zone partitioning, priority ordering, and soft-enable/disable. **2027/2027 ctest (Windows + Linux), +17 new tests.**
