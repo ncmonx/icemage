@@ -764,9 +764,9 @@ static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Pre-warms binary, clears session-reads dedup, injects hot context_nodes
 # plus skill discovery manifest (v1.2.0+).
 command -v icmg >/dev/null 2>&1 || exit 0
-# Start B:/ drive-not-found popup-killer daemon (single-instance). A blocked modal
-# dialog hangs a hook subprocess => hangs Claude; auto-dismiss it within ~100ms.
-icmg popup-killer ensure >/dev/null 2>&1 || true
+# [disabled 2026-06-27: B:/ popup fixed at source via MSYS_NO_PATHCONV in build.ps1]
+# [disabled] icmg popup-killer ensure >/dev/null 2>&1 || true
+# (was: Start B:/ drive-not-found popup-killer daemon)
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
@@ -873,9 +873,9 @@ static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Injects relevant cold context_nodes + skill suggestions via BM25 match.
 [[ "${ICMG_NO_CONTEXT_HOOK:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
-# Self-heal: keep the B:/ drive-popup killer daemon alive (idempotent, ~0 cost when
-# already running — a dead daemon lets a modal drive dialog hang the agent).
-icmg popup-killer ensure >/dev/null 2>&1 || true
+# [disabled 2026-06-27: B:/ popup fixed at source via MSYS_NO_PATHCONV in build.ps1]
+# [disabled] icmg popup-killer ensure >/dev/null 2>&1 || true
+# (was: Self-heal keep the B:/ drive-popup killer daemon alive)
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | icmg hookio get message // .prompt 2>/dev/null)
 [[ -z "$PROMPT" ]] && exit 0
