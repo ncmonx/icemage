@@ -22,7 +22,8 @@ namespace icmg::cli {
 // form). The `--key=value` form is self-contained and needs no skip.
 inline const std::set<std::string>& contextValueFlags() {
     static const std::set<std::string> v = {
-        "--max-bytes", "--lines", "--for", "--symbol"
+        "--max-bytes", "--lines", "--for", "--symbol",
+        "--head", "--tail"   // v2.11.2: consume their N value (not a file token)
     };
     return v;
 }

@@ -183,6 +183,22 @@ if [[ "$CMD_MATCH" =~ $PATTERN ]]; then
         fi
     fi
     log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
+    # v2.11.2: command-aware redirect -- point the model at the SPECIFIC icmg
+    # tool that replaces the native one, not just the generic `icmg run`. Born
+    # from the 2026-06-28 RAW=1 escape audit (sed/python/tail were escaping
+    # because the generic message did not surface the existing icmg equivalent).
+    FIRST_TOK=$(echo "$CMD_MATCH" | sed -E 's/^[[:space:]]*//' | awk '{print $1}')
+    case "$FIRST_TOK" in
+        sed)
+            icmg hookio emit PreToolUse --deny "For in-place edits use \`icmg fuzzy-edit <file> --old <text> --new <text>\` (tolerant of indent/CRLF drift). For stream filtering wrap with \`icmg run $CMD\`. Bypass: RAW=1."
+            exit 2 ;;
+        python|python3|py|node|deno|bun)
+            icmg hookio emit PreToolUse --deny "If this is a quick calculation use \`icmg calc \"<expr>\"\` (offline, no interpreter). Otherwise wrap with \`icmg run $CMD\` for filtered output. Bypass: RAW=1."
+            exit 2 ;;
+        tail|head)
+            icmg hookio emit PreToolUse --deny "For first/last N lines of a file use \`icmg context <file> --head N\` / \`--tail N\` (line-numbered, memory-aware). Bypass: RAW=1."
+            exit 2 ;;
+    esac
     icmg hookio emit PreToolUse --deny "Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix."
     exit 2
 fi

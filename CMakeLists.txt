@@ -906,6 +906,9 @@ add_icmg_test(test_graph_query_engine   tests/cli/test_graph_query_engine.cpp)
 add_icmg_test(test_graph_clean_alias    tests/cli/test_graph_clean_alias.cpp)
 add_icmg_test(test_covenant_cmd         tests/cli/test_covenant_cmd.cpp)        # v2.11.0 covenant store
 add_icmg_test(test_task_cmd             tests/cli/test_task_cmd.cpp)            # v2.11.0 task store
+add_icmg_test(test_calc                 tests/cli/test_calc.cpp)               # v2.11.2 calc evaluator (closes python RAW=1 hole)
+add_icmg_test(test_headtail_range       tests/cli/test_headtail_range.cpp)     # v2.11.2 context --head/--tail (closes head/tail RAW=1 hole)
+add_icmg_test(test_context_args         tests/cli/test_context_args.cpp)       # v2.11.2 context value-flag arg parsing (regression guard)
 add_icmg_test(test_approach_cmd         tests/cli/test_approach_cmd.cpp)
 add_icmg_test(test_hook_approach        tests/core/test_hook_approach.cpp)
 add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)
