@@ -20,6 +20,7 @@
 // Design: every step here uses in-process Db/MemoryStore/etc â€” no subprocess.
 
 #include "../base_command.hpp"
+#include "../bash_redirect.hpp"   // v2.11.2 pipe-aware redirect classifier
 #include "../context_budget.hpp"   // v2.x: passive context-budget meter
 #include "../../core/registry.hpp"
 #include "../../core/stdin_util.hpp"
@@ -141,6 +142,27 @@ public:
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         const std::string& event = args[0];
+
+        // v2.11.2: bash-advice -- pure pipe-aware redirect classifier. Takes the
+        // command either as argv (`icmg hook bash-advice "<cmd>"`) or on stdin.
+        // Prints the deny message (and exits 2) for Redirect kinds; exits 0 silently
+        // for Exempt (pipe already self-filtered). No DB, no cache.
+        if (event == "bash-advice") {
+            std::string cmd;
+            for (size_t i = 1; i < args.size(); ++i) {
+                if (!cmd.empty()) cmd += ' ';
+                cmd += args[i];
+            }
+            if (cmd.empty()) {  // read from stdin
+                std::ostringstream ss; ss << std::cin.rdbuf(); cmd = ss.str();
+                while (!cmd.empty() && (cmd.back() == '\n' || cmd.back() == '\r')) cmd.pop_back();
+            }
+            if (cmd.empty()) return 0;
+            RedirectDecision d = classifyBashRedirect(cmd);
+            if (d.kind == RedirectKind::Exempt) return 0;
+            std::cout << d.message << "\n";
+            return 2;
+        }
 
         // v2.0.13: input-dependent hook events (per-file / per-tool decisions)
         // MUST bypass the event-name injection cache. That cache is keyed by
@@ -285,6 +307,7 @@ public:
         if (event == "pretooluseedit")      return cmdPreToolUseEditDisambig();
         if (event == "posttooluse-edit")    return cmdPostToolUseEditAutoSync();
         if (event == "pretooluse-write")    return cmdPreToolUseWrite();
+        // bash-advice handled directly in run() (needs the command arg).
         std::cerr << "icmg hook: unknown event '" << event << "'\n";
         return 0;
     }

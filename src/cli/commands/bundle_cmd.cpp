@@ -8,6 +8,7 @@
 #include "../base_command.hpp"
 #include "../cache_emitter.hpp"
 #include "../content_status.hpp"
+#include "../headtail_range.hpp"
 #include "../think_directive.hpp"
 #include "../auto_zone.hpp"
 #include "../model_pricing.hpp"
@@ -109,6 +110,8 @@ public:
             "  --symbol NAME     Return only body of named symbol + immediate deps (80%+ token cut)\n"
             "                    With NO file arg: cross-file bundle (definition + callers + callees via graph)\n"
             "  --lines A-B       Slice content to lines A-B (with line numbers — replaces Read offset/limit)\n"
+            "  --head N          First N lines (replaces native `head`)\n"
+            "  --tail N          Last N lines (replaces native `tail`)\n"
             "  --max-bytes N     Cap output (default 4096)\n"
             "  --gate            Over-budget: lossless-compress first, truncate only as last resort\n"
             "  --no-cache        Bypass hot-context cache (force recompute)\n"
@@ -690,6 +693,13 @@ public:
         bool no_content = hasFlag(args, "--no-content");
         std::string lines_arg = flagValue(args, "--lines");
         std::string for_intent = flagValue(args, "--for");  // semantic single-file slice
+        // 2026-06-28: --head N / --tail N close the head/tail RAW=1 escape -- the
+        // model no longer shells out to `head`/`tail` for a quick top/bottom peek.
+        // Resolved into line_start/line_end AFTER the body is read (tail needs the
+        // total line count). -1 = not requested.
+        int head_n = -1, tail_n = -1;
+        { std::string hv = flagValue(args, "--head"); if (!hv.empty()) { try { head_n = std::stoi(hv); } catch (...) {} } }
+        { std::string tv = flagValue(args, "--tail"); if (!tv.empty()) { try { tail_n = std::stoi(tv); } catch (...) {} } }
         int line_start = 0, line_end = 0;
         if (!lines_arg.empty()) {
             auto dash = lines_arg.find('-');
@@ -723,6 +733,17 @@ public:
                 break;
             }
             if (classifyContent(resolved, body) != ContentStatus::Unavailable) {
+                // 2026-06-28: resolve --head/--tail now that body (and its line
+                // count) is known. Only when an explicit --lines slice was NOT given.
+                if (line_start == 0 && (head_n > 0 || tail_n > 0)) {
+                    int total = body.empty() ? 0 : 1;
+                    for (char ch : body) if (ch == '\n') ++total;
+                    if (!body.empty() && body.back() == '\n') --total;  // no phantom trailing line
+                    if (total < 1) total = 1;
+                    LineRange ht = resolveHeadTail(total, head_n, tail_n);
+                    line_start = ht.start;
+                    line_end   = ht.end;
+                }
                 if (body.empty()) {
                     // Opened fine, but the file is 0 bytes (e.g. now.md right
                     // after NDC rotation, a fresh empty file). NOT a path

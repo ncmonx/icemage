@@ -182,8 +182,21 @@ if [[ "$CMD_MATCH" =~ $PATTERN ]]; then
             exit 0
         fi
     fi
+    # v2.11.2: delegate the redirect DECISION to the C++ pure classifier
+    # (single source of truth, unit-tested in test_bash_redirect.cpp). It is
+    # pipe-aware: a pipe ending in a self-filter (grep/head/tail/wc) is EXEMPT
+    # (the model already reduced output), a non-filter pipe gets a QUOTED
+    # `icmg run "<pipe>"` redirect (unquoted leaks the tail stage to native),
+    # and single commands get per-tool advice (sed->fuzzy-edit, python->calc,
+    # tail/head->context). ADVICE=output, rc=2 means deny, rc=0 means exempt.
+    ADVICE=$(printf '%s' "$CMD_MATCH" | icmg hook bash-advice 2>/dev/null)
+    ADVICE_RC=$?
+    if [[ $ADVICE_RC -eq 0 ]]; then
+        # Exempt (e.g. `ls | grep foo` -- already self-filtered). Allow native.
+        exit 0
+    fi
     log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
-    icmg hookio emit PreToolUse --deny "Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix."
+    icmg hookio emit PreToolUse --deny "${ADVICE:-Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix.}"
     exit 2
 fi
 exit 0
@@ -764,9 +777,9 @@ static const char* CONTEXT_SESSION_SH = R"BASH(#!/usr/bin/env bash
 # Pre-warms binary, clears session-reads dedup, injects hot context_nodes
 # plus skill discovery manifest (v1.2.0+).
 command -v icmg >/dev/null 2>&1 || exit 0
-# Start B:/ drive-not-found popup-killer daemon (single-instance). A blocked modal
-# dialog hangs a hook subprocess => hangs Claude; auto-dismiss it within ~100ms.
-icmg popup-killer ensure >/dev/null 2>&1 || true
+# [disabled 2026-06-27: B:/ popup fixed at source via MSYS_NO_PATHCONV in build.ps1]
+# [disabled] icmg popup-killer ensure >/dev/null 2>&1 || true
+# (was: Start B:/ drive-not-found popup-killer daemon)
 # Clear session dedup file â€” new session, fresh slate.
 ICMG_HOME="${USERPROFILE:-$HOME}/.icmg"
 [[ -d "$ICMG_HOME" ]] && > "$ICMG_HOME/session-reads.txt" 2>/dev/null || true
@@ -873,9 +886,9 @@ static const char* CONTEXT_PROMPT_SH = R"BASH(#!/usr/bin/env bash
 # Injects relevant cold context_nodes + skill suggestions via BM25 match.
 [[ "${ICMG_NO_CONTEXT_HOOK:-0}" = "1" ]] && exit 0
 command -v icmg >/dev/null 2>&1 || exit 0
-# Self-heal: keep the B:/ drive-popup killer daemon alive (idempotent, ~0 cost when
-# already running — a dead daemon lets a modal drive dialog hang the agent).
-icmg popup-killer ensure >/dev/null 2>&1 || true
+# [disabled 2026-06-27: B:/ popup fixed at source via MSYS_NO_PATHCONV in build.ps1]
+# [disabled] icmg popup-killer ensure >/dev/null 2>&1 || true
+# (was: Self-heal keep the B:/ drive-popup killer daemon alive)
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | icmg hookio get message // .prompt 2>/dev/null)
 [[ -z "$PROMPT" ]] && exit 0

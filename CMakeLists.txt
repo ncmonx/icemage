@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.11.1 LANGUAGES CXX C)
+project(icmg VERSION 2.11.2 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -906,6 +906,10 @@ add_icmg_test(test_graph_query_engine   tests/cli/test_graph_query_engine.cpp)
 add_icmg_test(test_graph_clean_alias    tests/cli/test_graph_clean_alias.cpp)
 add_icmg_test(test_covenant_cmd         tests/cli/test_covenant_cmd.cpp)        # v2.11.0 covenant store
 add_icmg_test(test_task_cmd             tests/cli/test_task_cmd.cpp)            # v2.11.0 task store
+add_icmg_test(test_calc                 tests/cli/test_calc.cpp)               # v2.11.2 calc evaluator (closes python RAW=1 hole)
+add_icmg_test(test_headtail_range       tests/cli/test_headtail_range.cpp)     # v2.11.2 context --head/--tail (closes head/tail RAW=1 hole)
+add_icmg_test(test_context_args         tests/cli/test_context_args.cpp)       # v2.11.2 context value-flag arg parsing (regression guard)
+add_icmg_test(test_bash_redirect        tests/cli/test_bash_redirect.cpp)      # v2.11.2 pipe-aware redirect (closes 82% search-escape)
 add_icmg_test(test_approach_cmd         tests/cli/test_approach_cmd.cpp)
 add_icmg_test(test_hook_approach        tests/core/test_hook_approach.cpp)
 add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)
