@@ -182,24 +182,21 @@ if [[ "$CMD_MATCH" =~ $PATTERN ]]; then
             exit 0
         fi
     fi
+    # v2.11.2: delegate the redirect DECISION to the C++ pure classifier
+    # (single source of truth, unit-tested in test_bash_redirect.cpp). It is
+    # pipe-aware: a pipe ending in a self-filter (grep/head/tail/wc) is EXEMPT
+    # (the model already reduced output), a non-filter pipe gets a QUOTED
+    # `icmg run "<pipe>"` redirect (unquoted leaks the tail stage to native),
+    # and single commands get per-tool advice (sed->fuzzy-edit, python->calc,
+    # tail/head->context). ADVICE=output, rc=2 means deny, rc=0 means exempt.
+    ADVICE=$(printf '%s' "$CMD_MATCH" | icmg hook bash-advice 2>/dev/null)
+    ADVICE_RC=$?
+    if [[ $ADVICE_RC -eq 0 ]]; then
+        # Exempt (e.g. `ls | grep foo` -- already self-filtered). Allow native.
+        exit 0
+    fi
     log_denial "bash-rewrite" "$CMD" "noisy command â€” use icmg run"
-    # v2.11.2: command-aware redirect -- point the model at the SPECIFIC icmg
-    # tool that replaces the native one, not just the generic `icmg run`. Born
-    # from the 2026-06-28 RAW=1 escape audit (sed/python/tail were escaping
-    # because the generic message did not surface the existing icmg equivalent).
-    FIRST_TOK=$(echo "$CMD_MATCH" | sed -E 's/^[[:space:]]*//' | awk '{print $1}')
-    case "$FIRST_TOK" in
-        sed)
-            icmg hookio emit PreToolUse --deny "For in-place edits use \`icmg fuzzy-edit <file> --old <text> --new <text>\` (tolerant of indent/CRLF drift). For stream filtering wrap with \`icmg run $CMD\`. Bypass: RAW=1."
-            exit 2 ;;
-        python|python3|py|node|deno|bun)
-            icmg hookio emit PreToolUse --deny "If this is a quick calculation use \`icmg calc \"<expr>\"\` (offline, no interpreter). Otherwise wrap with \`icmg run $CMD\` for filtered output. Bypass: RAW=1."
-            exit 2 ;;
-        tail|head)
-            icmg hookio emit PreToolUse --deny "For first/last N lines of a file use \`icmg context <file> --head N\` / \`--tail N\` (line-numbered, memory-aware). Bypass: RAW=1."
-            exit 2 ;;
-    esac
-    icmg hookio emit PreToolUse --deny "Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix."
+    icmg hookio emit PreToolUse --deny "${ADVICE:-Use \`icmg run $CMD\` for token-filtered output (60-90% smaller). Bypass with RAW=1 prefix.}"
     exit 2
 fi
 exit 0
