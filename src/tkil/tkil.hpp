@@ -26,11 +26,13 @@ public:
     // top of the per-cmd BaseFilter (Stage 1). Auto-trigger fires
     // regardless of the flag when output > 5 KB AND dup-ratio > 0.4.
     int runFiltered(const std::string& command,
-                    bool raw    = false,
-                    bool json   = false,
-                    bool dry_run = false,   // A7
-                    bool stream = false,    // A2
-                    bool ultra  = false);   // v1.56 T1
+                    bool raw      = false,
+                    bool json     = false,
+                    bool dry_run  = false,   // A7
+                    bool stream   = false,   // A2
+                    bool ultra    = false,   // v1.56 T1
+                    bool no_delta = false,   // delta-only: bypass delta
+                    bool last_full= false);  // delta-only: print prev snapshot
 
     // Suggest commands by score (freq × recency)
     std::vector<CmdRecord> suggest(const std::string& prefix = "", int limit = 10);
@@ -45,7 +47,15 @@ private:
     core::Db& db_;
     Detector  detector_;
 
-    void recordCommand(const std::string& cmd, int orig_lines, int filt_lines);
+    void recordCommand(const std::string& cmd, int orig_lines, int filt_lines,
+                         const std::string& filtered_output = "");
+
+    struct LastRunSnapshot {
+        std::string output;
+        std::string hash;
+        bool        exists = false;
+    };
+    LastRunSnapshot loadLastOutput(const std::string& cmd);
     BaseFilter* getFilter(CmdType type) const;
     double computeScore(int freq, int64_t last_used) const;
 };
