@@ -99,7 +99,7 @@ public:
         RunArgs ra = parseRunArgs(args);   // v1.70.0 #178: leading-flag-only + "--" passthrough
         bool raw = ra.raw, json_out = ra.json_out, dry_run = ra.dry_run,
              stream = ra.stream, yes = ra.yes, ultra = ra.ultra,
-             no_delta = ra.no_delta, last_full = ra.last_full;
+             no_delta = ra.no_delta, last_full = ra.last_full, no_tier = ra.no_tier;
         if (const char* e = std::getenv("ICMG_TKIL_ULTRA"); e && *e && *e != '0')
             ultra = true;                                                         // env opt-in
         std::vector<std::string> cmd_args = ra.cmd_args;  // raw child tokens
@@ -155,7 +155,7 @@ public:
         }
 
         return executor.runFiltered(command, raw, json_out, dry_run, stream, ultra,
-                                      no_delta, last_full);
+                                      no_delta, last_full, no_tier);
     }
 };
 

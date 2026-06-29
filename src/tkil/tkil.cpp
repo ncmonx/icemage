@@ -5,6 +5,7 @@
 #include "ultra_pipeline.hpp"   // v1.56 T1
 #include "filters/wasm_filter.hpp"   // v2.x WASM skill filter
 #include "output_delta.hpp"          // Delta-only: diff vs previous run
+#include "output_tier.hpp"           // Auto-tier: classify output by urgency
 #include "../wasm/wasm_registry.hpp"
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
@@ -79,7 +80,7 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
 
 int Tkil::runFiltered(const std::string& command, bool raw, bool json,
                       bool dry_run, bool stream, bool ultra,
-                      bool no_delta, bool last_full) {
+                      bool no_delta, bool last_full, bool no_tier) {
     CmdType type = detector_.detect(command);
 
     // A7: dry-run mode
@@ -278,13 +279,20 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             << ",\"output\":\"" << escaped << "\""
             << "}\n";
     } else {
-        // --- Delta-only logic (default-on, transparent) ---
-        // Skip delta for: --raw, --json, --no-delta, ICMG_NO_DELTA=1
+        // --- Auto-tier (classify first) + Delta-only (sub-renderer of SUCCESS) ---
+        // Composition (advisor-validated): classify() consumes FULL output;
+        // delta runs ONLY inside the SUCCESS tier. A warn keyword in an
+        // unchanged line still bumps to WARNING (delta can't demote it).
         bool delta_env_off = [] {
             const char* e = std::getenv("ICMG_NO_DELTA");
             return e && *e && *e != '0';
         }();
+        bool tier_env_off = [] {
+            const char* e = std::getenv("ICMG_NO_TIER");
+            return e && *e && *e != '0';
+        }();
         bool use_delta = !raw && !json && !no_delta && !delta_env_off;
+        bool use_tier  = !raw && !json && !no_tier && !tier_env_off;
 
         if (last_full) {
             // --last-full: print previous snapshot instead of current output
@@ -299,51 +307,59 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             return result.exit_code;
         }
 
-        if (use_delta) {
-            auto prev_snap = loadLastOutput(command);
-            bool exit_ok = (result.exit_code == 0);
-            auto delta = icmg::tkil::computeOutputDelta(
-                prev_snap.output,  // empty string = first run
-                fr.output,
-                exit_ok,
-                /*sacred_always=*/true);
+        // Classify the FULL output first (tier is a property of the result).
+        icmg::tkil::OutputTier tier =
+            use_tier ? icmg::tkil::classifyTier(result.exit_code, fr.output)
+                     : icmg::tkil::OutputTier::Error;  // tier off → treat as full-output path
 
-            recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
-
-            if (delta.first_run) {
-                // First run: full output
-                std::cout << fr.output;
-                if (fr.was_truncated)
-                    std::cout << "[" << fr.filtered_lines << "/"
-                              << fr.original_lines << " lines shown]\n";
-            } else if (!exit_ok) {
-                // Command failed: always full
-                std::cout << fr.output;
-                if (fr.was_truncated)
-                    std::cout << "[" << fr.filtered_lines << "/"
-                              << fr.original_lines << " lines shown]\n";
-            } else if (delta.hash_only) {
-                std::cout << "[delta] output too large for text diff. "
-                             "Use --no-delta for full output.\n";
-            } else if (delta.identical) {
-                std::cout << "[delta] no change since last run. (saved "
-                          << fr.filtered_lines << " lines)\n"
-                          << "[icmg run --no-delta] for full output\n";
-            } else {
-                std::cout << "[delta +" << delta.added_lines << " line(s) new";
-                if (delta.removed_lines > 0)
-                    std::cout << " / -" << delta.removed_lines << " removed";
-                std::cout << "]\n" << delta.text;
-                if (!delta.text.empty() && delta.text.back() != '\n') std::cout << '\n';
-                std::cout << "[icmg run --no-delta] for full output\n";
-            }
-        } else {
-            // No delta: original behavior
+        auto emitFull = [&]() {
             std::cout << fr.output;
             if (!raw && fr.was_truncated)
                 std::cout << "[" << fr.filtered_lines << "/"
                           << fr.original_lines << " lines shown]\n";
+        };
+
+        if (tier == icmg::tkil::OutputTier::Error) {
+            // ERROR tier (exit!=0 or sacred keyword) → always full output.
+            // (Also the path when tiering is disabled entirely.)
+            emitFull();
             recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+        } else if (tier == icmg::tkil::OutputTier::Warning) {
+            // WARNING tier → head summary + count (delta disabled here).
+            auto ws = icmg::tkil::renderWarningSummary(fr.output, /*head_lines=*/3);
+            std::cout << "[tier:warn " << ws.shown_lines << "/" << ws.total_lines
+                      << " lines]\n" << ws.text;
+            recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+        } else {
+            // SUCCESS tier → delta sub-render.
+            if (use_delta) {
+                auto prev_snap = loadLastOutput(command);
+                auto delta = icmg::tkil::computeOutputDelta(
+                    prev_snap.output, fr.output, /*exit_ok=*/true,
+                    /*sacred_always=*/false);  // sacred handled by tier already
+                recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+
+                if (delta.first_run) {
+                    emitFull();
+                } else if (delta.hash_only) {
+                    std::cout << "[tier:ok] output too large for delta. "
+                                 "Use --no-delta for full output.\n";
+                } else if (delta.identical) {
+                    std::cout << ".\n";  // no change → 1-token marker
+                } else {
+                    // changed-but-success: marker preserves the "moved" signal
+                    std::cout << "~ ok (" << fr.filtered_lines << " lines, +"
+                              << delta.added_lines;
+                    if (delta.removed_lines > 0)
+                        std::cout << " -" << delta.removed_lines;
+                    std::cout << " changed)\n" << delta.text;
+                    if (!delta.text.empty() && delta.text.back() != '\n') std::cout << '\n';
+                    std::cout << "[icmg run --no-delta] for full output\n";
+                }
+            } else {
+                emitFull();
+                recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+            }
         }
     }
 

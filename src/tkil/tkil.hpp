@@ -32,7 +32,8 @@ public:
                     bool stream   = false,   // A2
                     bool ultra    = false,   // v1.56 T1
                     bool no_delta = false,   // delta-only: bypass delta
-                    bool last_full= false);  // delta-only: print prev snapshot
+                    bool last_full= false,   // delta-only: print prev snapshot
+                    bool no_tier  = false);  // auto-tier: bypass tier (full output)
 
     // Suggest commands by score (freq × recency)
     std::vector<CmdRecord> suggest(const std::string& prefix = "", int limit = 10);
