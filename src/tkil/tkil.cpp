@@ -450,20 +450,39 @@ void Tkil::recordCommand(const std::string& cmd, int orig, int filt,
                                     static_cast<unsigned long long>(h));
         hash_str = buf;
     }
-    // Upsert: bump frequency + update last_used + accumulate line stats + REPLACE snapshot
-    db_.run(
-        "INSERT INTO commands(command,frequency,last_used,total_original_lines,"
-        "total_filtered_lines,last_filtered_output,last_filtered_hash)"
-        " VALUES(?,1,?,?,?,?,?)"
-        " ON CONFLICT(command) DO UPDATE SET"
-        " frequency=frequency+1,"
-        " last_used=excluded.last_used,"
-        " total_original_lines=total_original_lines+excluded.total_original_lines,"
-        " total_filtered_lines=total_filtered_lines+excluded.total_filtered_lines,"
-        " last_filtered_output=excluded.last_filtered_output,"
-        " last_filtered_hash=excluded.last_filtered_hash",
-        {cmd, std::to_string(now), std::to_string(orig), std::to_string(filt),
-         snap, hash_str});
+    // Upsert: bump frequency + update last_used + accumulate line stats + REPLACE snapshot.
+    // Defensive: on a deployed binary running from a dir without the migrations/
+    // folder, the embedded-migration fallback may predate 0046 (last_filtered_*
+    // columns). In that case fall back to the basic upsert so `icmg run` never
+    // crashes — delta/tier silently degrade to full output.
+    try {
+        db_.run(
+            "INSERT INTO commands(command,frequency,last_used,total_original_lines,"
+            "total_filtered_lines,last_filtered_output,last_filtered_hash)"
+            " VALUES(?,1,?,?,?,?,?)"
+            " ON CONFLICT(command) DO UPDATE SET"
+            " frequency=frequency+1,"
+            " last_used=excluded.last_used,"
+            " total_original_lines=total_original_lines+excluded.total_original_lines,"
+            " total_filtered_lines=total_filtered_lines+excluded.total_filtered_lines,"
+            " last_filtered_output=excluded.last_filtered_output,"
+            " last_filtered_hash=excluded.last_filtered_hash",
+            {cmd, std::to_string(now), std::to_string(orig), std::to_string(filt),
+             snap, hash_str});
+    } catch (...) {
+        // Columns missing (pre-0046 schema) — record without snapshot.
+        try {
+            db_.run(
+                "INSERT INTO commands(command,frequency,last_used,total_original_lines,"
+                "total_filtered_lines) VALUES(?,1,?,?,?)"
+                " ON CONFLICT(command) DO UPDATE SET"
+                " frequency=frequency+1,"
+                " last_used=excluded.last_used,"
+                " total_original_lines=total_original_lines+excluded.total_original_lines,"
+                " total_filtered_lines=total_filtered_lines+excluded.total_filtered_lines",
+                {cmd, std::to_string(now), std::to_string(orig), std::to_string(filt)});
+        } catch (...) { /* commands table missing entirely — skip */ }
+    }
 }
 
 void Tkil::recordManual(const std::string& cmd) {
@@ -472,17 +491,22 @@ void Tkil::recordManual(const std::string& cmd) {
 
 Tkil::LastRunSnapshot Tkil::loadLastOutput(const std::string& cmd) {
     LastRunSnapshot snap;
-    db_.query(
-        "SELECT last_filtered_output, last_filtered_hash "
-        "FROM commands WHERE command=? LIMIT 1",
-        {cmd},
-        [&](const std::vector<std::string>& row) {
-            if (!row.empty()) {
-                snap.output = row.size() > 0 ? row[0] : "";
-                snap.hash   = row.size() > 1 ? row[1] : "";
-                snap.exists = true;
-            }
-        });
+    // Defensive: pre-0046 schema (deployed binary, embedded-migration fallback)
+    // lacks last_filtered_* columns. A failed query must NOT crash icmg run —
+    // return exists=false so the SUCCESS tier falls back to full output.
+    try {
+        db_.query(
+            "SELECT last_filtered_output, last_filtered_hash "
+            "FROM commands WHERE command=? LIMIT 1",
+            {cmd},
+            [&](const std::vector<std::string>& row) {
+                if (!row.empty()) {
+                    snap.output = row.size() > 0 ? row[0] : "";
+                    snap.hash   = row.size() > 1 ? row[1] : "";
+                    snap.exists = true;
+                }
+            });
+    } catch (...) { snap.exists = false; }
     return snap;
 }
 
