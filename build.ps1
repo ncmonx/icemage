@@ -113,6 +113,37 @@ function Protect-VulkanObjs {
     logline '[vulkan-guard] done'
 }
 
+
+# -- Install live bin (rename-kill-replace) ----------------------------------
+# Windows cannot overwrite an exe that is open. Safe sequence:
+#   1. Rename old -> .old  (NTFS allows rename on open handle)
+#   2. Copy new  -> icmg.exe  (slot is now free)
+#   3. Kill any running icmg processes
+#   4. Delete .old  (safe now that processes are gone)
+function Install-LiveBin([string]$src) {
+    $dest = "$env:USERPROFILE\bin\icmg.exe"
+    $old  = "$env:USERPROFILE\bin\icmg.exe.old"
+    if (-not (Test-Path (Split-Path $dest))) { return }
+
+    if (Test-Path $dest) {
+        if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
+        Rename-Item $dest $old -Force
+        logline '[install] renamed old -> icmg.exe.old'
+    }
+
+    Copy-Item $src $dest -Force
+    logline "[install] copied new exe -> $dest"
+
+    $procs = Get-Process -Name icmg -ErrorAction SilentlyContinue
+    if ($procs) {
+        $procs | Stop-Process -Force
+        logline "[install] killed $($procs.Count) running icmg process(es)"
+    }
+
+    Remove-Item $old -Force -ErrorAction SilentlyContinue
+    logline '[install] live bin updated'
+}
+
 # ”” main ”””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””
 $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
 logline "=== icemage v$Version MSVC2026 [$ts] target=$Target jobs=$Jobs ==="
@@ -198,6 +229,7 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
         Copy-Item -Destination $relDir -Force
     $dllCount = (Get-ChildItem "$relDir\*.dll" -ErrorAction SilentlyContinue).Count
     logline "copied $dllCount runtime DLL(s) next to exe"
+    Install-LiveBin $exeSrc
     # NOTE: do NOT clean $BuildDir here. It lives on C:\ (no D: clutter) and
     # wiping it forces a full recompile next build + races icmg_test link
     # (LNK1104). Incremental artifacts stay; third_party Vulkan .obj preserved.
