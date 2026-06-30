@@ -130,11 +130,12 @@ public:
             if (ec) { ec.clear(); continue; }
             const fs::path& p = it->path();
             if (it->is_directory(ec)) {
-                if (isSkipDir(p.filename().string())) it.disable_recursion_pending();
+                // pathU8: avoids Win32 error 1113 on non-ACP dir names
+                if (isSkipDir(pathU8(p.filename()))) it.disable_recursion_pending();
                 continue;
             }
             if (!it->is_regular_file(ec)) continue;
-            std::string ext = p.extension().string();
+            std::string ext = pathU8(p.extension());
             for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
             if (!isSourceExt(ext)) continue;
             std::uintmax_t sz = it->file_size(ec);
@@ -142,8 +143,11 @@ public:
             std::ifstream f(p, std::ios::binary);
             if (!f) continue;
             std::ostringstream ss; ss << f.rdbuf();
-            std::string rel = fs::relative(p, base, ec).string();
-            if (ec || rel.empty()) { rel = p.string(); ec.clear(); }
+            // pathU8: avoids Win32 error 1113 on non-ACP path names
+            std::error_code rec2;
+            auto rp2 = fs::relative(p, base, rec2);
+            std::string rel = rec2 ? pathU8(p) : pathU8(rp2);
+            if (rel.empty()) { rel = pathU8(p); }
             // Working-set recency: age in seconds (>=0) for the ranking boost.
             std::error_code tec;
             auto mt = fs::last_write_time(p, tec);
@@ -315,11 +319,12 @@ private:
             if (ec) { ec.clear(); continue; }
             const fs::path& p = it->path();
             if (it->is_directory(ec)) {
-                if (isSkipDir(p.filename().string())) it.disable_recursion_pending();
+                // pathU8: avoids Win32 error 1113 on non-ACP dir names
+                if (isSkipDir(pathU8(p.filename()))) it.disable_recursion_pending();
                 continue;
             }
             if (!it->is_regular_file(ec)) continue;
-            // .string() can throw error 1113 (unmappable char) on Windows for
+            // pathU8: avoids Win32 error 1113 (unmappable char) on Windows for
             // non-ACP filenames; .u8string() yields UTF-8 and never throws.
             std::string rel;
             { std::error_code rec; auto rp = fs::relative(p, base, rec);
