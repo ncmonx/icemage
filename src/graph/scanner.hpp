@@ -1,6 +1,7 @@
 #pragma once
 #include "graph_store.hpp"
 #include "extractor/base_extractor.hpp"
+#include "../wasm/wasm_extractor.hpp"
 #include <string>
 #include <vector>
 
@@ -55,6 +56,9 @@ public:
 private:
     GraphStore& store_;
     std::vector<std::string> updated_paths_;
+    // WASM extractors registered in the persona DB, loaded once per scan().
+    // Empty when none registered / no persona DB (the common case = no overhead).
+    std::vector<icmg::wasm::WasmExtractor> wasm_extractors_;
 
     std::string md5File(const std::string& path) const;
     std::string detectLang(const std::string& ext) const;

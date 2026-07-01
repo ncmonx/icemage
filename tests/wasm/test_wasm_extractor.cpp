@@ -159,3 +159,29 @@ TEST("wasm_extractor: adapter fail-open on missing module -> empty result") {
     ASSERT_TRUE(r.imports.empty());   // no crash, empty degrade
     ASSERT_TRUE(r.functions.empty());
 }
+
+TEST("wasm_extractor: wasmLangForExtension resolves ext -> language") {
+    std::vector<WasmExtractor> all = { mk("zig",0), mk("rust",0) };
+    ASSERT_EQ(wasmLangForExtension(all, ".zig"), std::string("zig"));
+    ASSERT_EQ(wasmLangForExtension(all, ".rust"), std::string("rust"));
+    ASSERT_EQ(wasmLangForExtension(all, ".unknown"), std::string(""));
+}
+
+TEST("wasm_extractor: wasmLangForExtension highest priority wins shared ext") {
+    WasmExtractor lo = mk("langA",1); lo.extensions = {".x"};
+    WasmExtractor hi = mk("langB",9); hi.extensions = {".x"};
+    std::vector<WasmExtractor> all = { lo, hi };
+    ASSERT_EQ(wasmLangForExtension(all, ".x"), std::string("langB"));  // prio 9 wins
+}
+
+TEST("wasm_extractor: pickWasmExtractor honours arbitration") {
+    std::vector<WasmExtractor> all = { mk("zig",0), mk("kotlin",10) };
+    // zig: no builtin -> fills gap -> picked
+    ASSERT_TRUE(pickWasmExtractor(all, "zig", /*builtinExists=*/false) >= 0);
+    // kotlin prio 10 > builtin 0 -> overrides -> picked
+    ASSERT_TRUE(pickWasmExtractor(all, "kotlin", /*builtinExists=*/true, 0) >= 0);
+    // unknown language -> -1
+    ASSERT_EQ(pickWasmExtractor(all, "haskell", false), -1);
+    // zig prio 0 but builtin exists -> defer -> -1
+    ASSERT_EQ(pickWasmExtractor(all, "zig", /*builtinExists=*/true, 0), -1);
+}

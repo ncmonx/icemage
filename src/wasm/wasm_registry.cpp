@@ -19,4 +19,19 @@ std::optional<WasmSkill> matchWasmSkill(const std::string& command) {
     return std::nullopt;
 }
 
+std::vector<WasmExtractor> loadWasmExtractors() {
+    std::vector<WasmExtractor> out;
+    try {
+        if (!icmg::core::personaDbAvailable()) return out;
+        std::string user = icmg::core::currentUser();
+        icmg::core::ProfileStore ps(icmg::core::personaDb());
+        for (auto& row : ps.listZone(user, WASM_ZONE)) {
+            std::string err;
+            auto e = parseExtractorManifest(row.content, err);  // rejects filter-v1 (needs language+extractor-v1 abi)
+            if (e) out.push_back(*e);
+        }
+    } catch (...) { /* fail-open */ }
+    return out;
+}
+
 } // namespace icmg::wasm

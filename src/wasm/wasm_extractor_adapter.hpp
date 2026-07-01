@@ -34,6 +34,30 @@ inline int selectWasmExtractor(const std::vector<WasmExtractor>& all,
     return best;
 }
 
+// Pure: which registered WASM extractor's language should a file extension map
+// to? Returns the language, or "" if no registered extractor claims `ext`.
+// Among extractors sharing an extension, the highest-priority one wins.
+inline std::string wasmLangForExtension(const std::vector<WasmExtractor>& all,
+                                        const std::string& ext) {
+    int best = -1;
+    for (int i = 0; i < (int)all.size(); ++i)
+        for (const auto& x : all[i].extensions)
+            if (x == ext && (best < 0 || all[i].priority > all[best].priority))
+                best = i;
+    return best < 0 ? std::string() : all[best].language;
+}
+
+// Pure: pick the WASM extractor to USE for `language`, honouring arbitration
+// against a built-in. Returns index into `all`, or -1 (defer to built-in /
+// none). Combines selectWasmExtractor + wasmExtractorWins.
+inline int pickWasmExtractor(const std::vector<WasmExtractor>& all,
+                             const std::string& language, bool builtinExists,
+                             int builtinPriority = 0) {
+    int idx = selectWasmExtractor(all, language);
+    if (idx < 0) return -1;
+    return wasmExtractorWins(all[idx], builtinExists, builtinPriority) ? idx : -1;
+}
+
 // BaseExtractor adapter: runs a WASM module under extractor-v1 and maps its
 // JSON output to ExtractResult. Fail-open: on any runtime error returns an empty
 // result (never throws) so a broken skill degrades to "no symbols", not a crash.

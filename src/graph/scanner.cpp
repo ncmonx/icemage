@@ -3,6 +3,8 @@
 #include "symbol_extractor/base_symbol_extractor.hpp"
 #include "../core/registry.hpp"
 #include "../core/zone_resolver.hpp"
+#include "../wasm/wasm_registry.hpp"
+#include "../wasm/wasm_extractor_adapter.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -76,13 +78,25 @@ std::string Scanner::detectLang(const std::string& ext) const {
     for (auto& e : EXT_MAP) {
         if (ext == e.ext) return e.lang;
     }
+    // No built-in mapping: a registered WASM extractor may claim this extension.
+    if (!wasm_extractors_.empty()) {
+        std::string wl = icmg::wasm::wasmLangForExtension(wasm_extractors_, ext);
+        if (!wl.empty()) return wl;
+    }
     return "generic";
 }
 
 BaseExtractor* Scanner::getExtractor(const std::string& lang) const {
     // Try registered extractor via Registry<graph::BaseExtractor>
     auto& reg = core::Registry<graph::BaseExtractor>::instance();
-    if (reg.has(lang)) return reg.create(lang).release();
+    bool builtinExists = reg.has(lang);
+    // A registered WASM extractor may fill a gap (no built-in) or, with higher
+    // priority, override the built-in. Built-ins have implicit priority 0.
+    if (!wasm_extractors_.empty()) {
+        int idx = icmg::wasm::pickWasmExtractor(wasm_extractors_, lang, builtinExists);
+        if (idx >= 0) return new icmg::wasm::WasmExtractorAdapter(wasm_extractors_[idx]);
+    }
+    if (builtinExists) return reg.create(lang).release();
     return nullptr;  // caller falls back to generic
 }
 
@@ -288,6 +302,10 @@ int Scanner::scan(const std::string& root) {
 }
 
 int Scanner::scan(const std::string& root, const Options& opts) {
+    // Load persona-DB WASM extractors once per scan (fail-open -> {} if none).
+    // Cheap when unused: getExtractor/detectLang guard on emptiness.
+    wasm_extractors_ = icmg::wasm::loadWasmExtractors();
+
     // A9: load gitignore
     GitIgnore gi;
     if (opts.gitignore) gi.load(root + "/.gitignore");
