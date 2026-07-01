@@ -190,11 +190,18 @@ public:
         auto nodes = store.all();
 
         int by_imp[4] = {0,0,0,0};
+        int by_tier[3] = {0,0,0};  // A1: hot/warm/cold distribution
+        int64_t tnow = (int64_t)std::time(nullptr);
         int total_freq = 0;
         std::map<std::string,int> by_topic_prefix;
         for (auto& n : nodes) {
             int imp = std::max(0, std::min(3, n.importance));
             ++by_imp[imp];
+            switch (imem::memoryTier(n.last_used, n.frequency, n.importance, tnow)) {
+                case imem::MemTier::Hot:  ++by_tier[0]; break;
+                case imem::MemTier::Warm: ++by_tier[1]; break;
+                default:                  ++by_tier[2]; break;
+            }
             total_freq += n.frequency;
             // First word of topic = prefix bucket
             auto sp = n.topic.find_first_of(" :");
@@ -208,6 +215,10 @@ public:
                   << "  high           : " << by_imp[2] << "\n"
                   << "  medium         : " << by_imp[1] << "\n"
                   << "  low            : " << by_imp[0] << "\n"
+                  << "Tier (hot/warm/cold):\n"
+                  << "  hot            : " << by_tier[0] << "\n"
+                  << "  warm           : " << by_tier[1] << "\n"
+                  << "  cold           : " << by_tier[2] << "\n"
                   << "Total frequency  : " << total_freq << "\n";
 
         if (!by_topic_prefix.empty()) {
@@ -465,6 +476,8 @@ public:
             "  --importance-max N         Only prune importance ≤ N (default 1).\n"
             "                             Importance ≥2 always protected.\n"
             "  --topic-prefix <P>         Restrict to topic LIKE 'P%'.\n"
+            "  --tier <hot|warm|cold>     Only prune nodes in this tier\n"
+            "                             (cold = old+rare, evict first).\n"
             "  --keep-recent-uses N       Keep nodes with last_used within N days.\n"
             "                             Default 30d.\n"
             "  --yes                      Commit (default is dry-run).\n";
@@ -491,6 +504,13 @@ public:
             if (!m.empty()) imp_max = std::stoi(m);
         } catch (...) {}
         std::string topic_prefix = flagValue(args, "--topic-prefix");
+        // A1 wiring: optional tier gate (hot/warm/cold). Empty = no gate.
+        std::string tier_filter = flagValue(args, "--tier");
+        if (!tier_filter.empty() && tier_filter != "hot" &&
+            tier_filter != "warm" && tier_filter != "cold") {
+            std::cerr << "icmg memory prune: --tier must be hot|warm|cold\n";
+            return 1;
+        }
 
         if (imp_max >= 2) {
             std::cerr << "icmg memory prune: --importance-max must be ≤1 "
@@ -509,7 +529,7 @@ public:
         // Build query: not deleted, age beyond cutoff, importance ≤ N,
         // last_used <=cutoff_recent OR null, optional topic LIKE.
         std::string sql =
-            "SELECT id, topic, importance, created_at, last_used FROM memory_nodes "
+            "SELECT id, topic, importance, created_at, last_used, frequency FROM memory_nodes "
             "WHERE deleted_at IS NULL "
             "  AND created_at < ? "
             "  AND importance <= ? "
@@ -529,7 +549,12 @@ public:
         std::vector<std::string> sample_topics;
         try {
             db.query(sql, params, [&](const core::Row& r){
-                if (r.size() < 2) return;
+                if (r.size() < 6) return;
+                // A1 tier gate: skip candidates whose tier != requested tier.
+                int   imp      = r[2].empty() ? 0 : std::stoi(r[2]);
+                int64_t lastu  = r[4].empty() ? 0 : std::stoll(r[4]);
+                int   freq     = r[5].empty() ? 0 : std::stoi(r[5]);
+                if (!imem::tierPasses(tier_filter, lastu, freq, imp, now)) return;
                 ids.push_back(std::stoi(r[0]));
                 if (sample_topics.size() < 5) sample_topics.push_back(r[1]);
             });
@@ -542,6 +567,8 @@ public:
                   << "  age threshold:     " << age_days << "d (created before)\n"
                   << "  importance max:    " << imp_max << " (≥2 protected)\n"
                   << "  last_used recent:  " << recent_days << "d\n";
+        if (!tier_filter.empty())
+            std::cout << "  tier gate:         " << tier_filter << " (cold evicted first)\n";
         if (!topic_prefix.empty())
             std::cout << "  topic prefix:      " << topic_prefix << "\n";
         if (!sample_topics.empty()) {

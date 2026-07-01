@@ -37,4 +37,14 @@ inline MemTier memTierFromName(const std::string& s) {
     return MemTier::Warm;
 }
 
+// A1 wiring: gate predicate for tier-aware eviction (`memory prune --tier`).
+// Empty filter = no gate (every node passes). Non-empty = pass only when the
+// node's computed tier name equals the filter. Keeps the tier policy in one
+// pure, testable place so prune/consolidate share the same "cold first" logic.
+inline bool tierPasses(const std::string& tier_filter, int64_t last_used,
+                       int frequency, int importance, int64_t now) {
+    if (tier_filter.empty()) return true;
+    return memTierName(memoryTier(last_used, frequency, importance, now)) == tier_filter;
+}
+
 }  // namespace icmg::imem
