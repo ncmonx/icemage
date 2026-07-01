@@ -1,0 +1,11 @@
+{
+  "name": "demo-extractor",
+  "kind": "extractor",
+  "abi": "extractor-v1",
+  "language": "demolang",
+  "extensions": [".demo"],
+  "wasm": "examples/wasm-skills/demo-extractor.wat",
+  "sha256": "",
+  "priority": 0,
+  "min_icmg": "2.12.0"
+}

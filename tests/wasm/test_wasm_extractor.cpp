@@ -2,6 +2,7 @@
 // output mapper (PURE helpers, no wasmtime). Phase 1 of WASM extractor modules.
 #include "../test_main.hpp"
 #include "../../src/wasm/wasm_extractor.hpp"
+#include "../../src/wasm/wasm_extractor_adapter.hpp"
 #include "../../src/graph/extractor/base_extractor.hpp"
 using namespace icmg::wasm;
 
@@ -105,4 +106,56 @@ TEST("wasm_extractor: non-string array entries skipped defensively") {
     bool ok = parseExtractorOutput(R"({"imports":["ok",42,null,"also"]})", r, err);
     ASSERT_TRUE(ok);
     ASSERT_EQ(r.imports.size(), (size_t)2);  // 42 + null dropped
+}
+
+// ── Phase 4: priority arbitration + adapter ──────────────────────────────────
+
+static WasmExtractor mk(const std::string& lang, int prio) {
+    WasmExtractor e; e.name=lang+"-ext"; e.abi="extractor-v1"; e.language=lang;
+    e.priority=prio; e.extensions={"."+lang};
+    return e;
+}
+
+TEST("wasm_extractor: fills gap when no builtin exists") {
+    ASSERT_TRUE(wasmExtractorWins(mk("zig",0), /*builtinExists=*/false));
+    ASSERT_TRUE(wasmExtractorWins(mk("zig",5), /*builtinExists=*/false));
+}
+
+TEST("wasm_extractor: priority 0 defers to existing builtin") {
+    ASSERT_FALSE(wasmExtractorWins(mk("kotlin",0), /*builtinExists=*/true, 0));
+}
+
+TEST("wasm_extractor: higher priority overrides builtin") {
+    ASSERT_TRUE(wasmExtractorWins(mk("kotlin",10), /*builtinExists=*/true, 0));
+    ASSERT_FALSE(wasmExtractorWins(mk("kotlin",3), /*builtinExists=*/true, 5));
+    ASSERT_TRUE(wasmExtractorWins(mk("kotlin",6), /*builtinExists=*/true, 5));
+}
+
+TEST("wasm_extractor: select highest-priority among same language") {
+    std::vector<WasmExtractor> all = { mk("zig",1), mk("rust",9), mk("zig",7), mk("zig",3) };
+    int idx = selectWasmExtractor(all, "zig");
+    ASSERT_TRUE(idx >= 0);
+    ASSERT_EQ(all[idx].priority, 7);   // the zig with prio 7 wins
+}
+
+TEST("wasm_extractor: select returns -1 for unknown language") {
+    std::vector<WasmExtractor> all = { mk("zig",1) };
+    ASSERT_EQ(selectWasmExtractor(all, "haskell"), -1);
+}
+
+TEST("wasm_extractor: adapter exposes extensions from manifest") {
+    WasmExtractorAdapter ad(mk("zig",0));
+    auto exts = ad.extensions();
+    ASSERT_EQ(exts.size(), (size_t)1);
+    ASSERT_EQ(exts[0], std::string(".zig"));
+    ASSERT_EQ(ad.def().language, std::string("zig"));
+}
+
+TEST("wasm_extractor: adapter fail-open on missing module -> empty result") {
+    WasmExtractor e = mk("zig",0);
+    e.wasmPath = "Z:/nope/extract.wasm";
+    WasmExtractorAdapter ad(e);
+    auto r = ad.extract("foo.zig", "const std = @import(\"std\");");
+    ASSERT_TRUE(r.imports.empty());   // no crash, empty degrade
+    ASSERT_TRUE(r.functions.empty());
 }

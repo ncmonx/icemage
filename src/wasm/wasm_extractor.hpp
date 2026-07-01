@@ -3,13 +3,13 @@
 // PURE — no I/O, no wasmtime. Phase 1 of WASM extractor modules (2026-07-01).
 //
 // A registered WASM extractor = this manifest (profile-store entry, kind="extractor")
-// + the .wasm bytes. extractor-v1 ABI (module exports):
-//     void*   icmg_alloc(int32 size)           - alloc input buffer
-//     void    icmg_extract(int32 ptr, int32 len)
-//     int32   icmg_result_ptr()                - ptr to output JSON in linear memory
-//     int32   icmg_result_len()
+// + the .wasm bytes. extractor-v1 ABI (module exports, mirrors filter-v1):
+//     (memory)                                  - exported linear memory
+//     int32   icmg_alloc(int32 size)            - alloc input buffer, returns ptr
+//     int64   icmg_extract(int32 ptr, int32 len)- run; returns packed (outPtr<<32 | outLen)
+// Output at [outPtr, outPtr+outLen) in linear memory is a UTF-8 JSON string.
 // Host imports exposed to the sandbox (pure + observability only):
-//     void    icmg_log(int32 msg_ptr, int32 msg_len)
+//     void    icmg_log(int32 msg_ptr, int32 msg_len)   [optional]
 // Output JSON contract (maps 1:1 to graph::ExtractResult):
 //     { "context":str, "imports":[str], "namespaces":[str],
 //       "classes":[str], "functions":[str], "tables":[str] }

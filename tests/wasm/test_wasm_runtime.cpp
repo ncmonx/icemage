@@ -129,3 +129,53 @@ TEST("wasm_filter: fail-open passthrough on bad module") {
     auto r = f.filter("untouched", "x");
     ASSERT_EQ(r.output, std::string("untouched"));   // raw passes through
 }
+
+// extractor-v1 fixture: ignores input, writes a fixed JSON blob at offset 2048,
+// returns packed (2048<<32 | len). Proves icmg_extract ABI + output->ExtractResult.
+// JSON: {"imports":["fmt","std"],"functions":["main"]}
+static const char* EXTRACT_WAT = R"WAT(
+(module
+  (memory (export "memory") 2)
+  (data (i32.const 2048) "{\22imports\22:[\22fmt\22,\22std\22],\22functions\22:[\22main\22]}")
+  (global $bump (mut i32) (i32.const 1024))
+  (func (export "icmg_alloc") (param $n i32) (result i32)
+    (local $p i32)
+    (local.set $p (global.get $bump))
+    (global.set $bump (i32.add (global.get $bump) (local.get $n)))
+    (local.get $p))
+  (func (export "icmg_extract") (param $ptr i32) (param $len i32) (result i64)
+    (i64.or (i64.shl (i64.extend_i32_u (i32.const 2048)) (i64.const 32))
+            (i64.extend_i32_u (i32.const 48)))))
+)WAT";
+
+TEST("wasm_extractor runtime: emits JSON mapped to ExtractResult") {
+    std::string err; if (!wasmRuntimeAvailable(err)) return;   // skip if runtime absent
+    WasmExtractor e; e.name="zig"; e.abi="extractor-v1"; e.language="zig";
+    e.wasmPath = writeTemp("icmg-extract.wat", EXTRACT_WAT);
+    icmg::graph::ExtractResult r; std::string rerr;
+    bool ok = runWasmExtractor(e, "const std = @import(\"std\");", WasmLimits{}, r, rerr);
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(r.imports.size(), (size_t)2);
+    ASSERT_EQ(r.imports[0], std::string("fmt"));
+    ASSERT_EQ(r.functions.size(), (size_t)1);
+    ASSERT_EQ(r.functions[0], std::string("main"));
+}
+
+TEST("wasm_extractor runtime: missing file -> fail, no crash") {
+    std::string err; if (!wasmRuntimeAvailable(err)) return;
+    WasmExtractor e; e.name="x"; e.abi="extractor-v1"; e.language="x";
+    e.wasmPath = "Z:/nope/extract.wasm";
+    icmg::graph::ExtractResult r; std::string rerr;
+    ASSERT_FALSE(runWasmExtractor(e, "x", WasmLimits{}, r, rerr));
+    ASSERT_TRUE(!rerr.empty());
+}
+
+TEST("wasm_extractor runtime: sha256 mismatch refused") {
+    std::string err; if (!wasmRuntimeAvailable(err)) return;
+    WasmExtractor e; e.name="zig"; e.abi="extractor-v1"; e.language="zig";
+    e.wasmPath = writeTemp("icmg-extract-sha.wat", EXTRACT_WAT);
+    e.sha256 = "deadbeef";   // wrong on purpose
+    icmg::graph::ExtractResult r; std::string rerr;
+    ASSERT_FALSE(runWasmExtractor(e, "x", WasmLimits{}, r, rerr));
+    ASSERT_CONTAINS(rerr, "sha");
+}
