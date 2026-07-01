@@ -179,3 +179,50 @@ TEST("wasm_extractor runtime: sha256 mismatch refused") {
     ASSERT_FALSE(runWasmExtractor(e, "x", WasmLimits{}, r, rerr));
     ASSERT_CONTAINS(rerr, "sha");
 }
+
+// host-caps fixture: imports icmg.log, writes "hi" at offset 0, calls
+// icmg.log(0, 2), then acts as an identity filter (returns input unchanged).
+static const char* HOSTLOG_WAT = R"WAT(
+(module
+  (import "icmg" "log" (func $log (param i32 i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "hi")
+  (global $bump (mut i32) (i32.const 1024))
+  (func (export "icmg_alloc") (param $n i32) (result i32)
+    (local $p i32)
+    (local.set $p (global.get $bump))
+    (global.set $bump (i32.add (global.get $bump) (local.get $n)))
+    (local.get $p))
+  (func (export "icmg_filter") (param $ptr i32) (param $len i32) (result i64)
+    (call $log (i32.const 0) (i32.const 2))   ;; emit "hi" to the host
+    (i64.or (i64.shl (i64.extend_i32_u (local.get $ptr)) (i64.const 32))
+            (i64.extend_i32_u (local.get $len)))))
+)WAT";
+
+TEST("wasm_hostcaps: availability is queryable") {
+    std::string err; if (!wasmRuntimeAvailable(err)) return;
+    // Just assert it does not crash and returns a bool; value depends on the DLL.
+    bool hc = wasmHostCapsAvailable();
+    ASSERT_TRUE(hc || !hc);
+}
+
+TEST("wasm_hostcaps: module calls icmg.log, host captures the message") {
+    std::string err; if (!wasmRuntimeAvailable(err)) return;
+    if (!wasmHostCapsAvailable()) return;   // skip on an older wasmtime.dll
+    WasmSkill s; s.name="logger"; s.abi="filter-v1";
+    s.wasmPath = writeTemp("icmg-hostlog.wat", HOSTLOG_WAT);
+    std::string out, hostLog, rerr;
+    bool ok = runWasmFilterCapture(s, "payload", WasmLimits{}, out, hostLog, rerr);
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(hostLog, std::string("hi"));      // host observed the module's log
+    ASSERT_EQ(out, std::string("payload"));     // identity filter passthrough
+}
+
+TEST("wasm_hostcaps: import-less module still runs on the host-caps path") {
+    std::string err; if (!wasmRuntimeAvailable(err)) return;
+    // UPPER_WAT declares NO imports; it must instantiate fine either way.
+    WasmSkill s; s.name="up"; s.abi="filter-v1"; s.wasmPath=writeTemp("icmg-up.wat", UPPER_WAT);
+    std::string out, rerr;
+    ASSERT_TRUE(runWasmFilter(s, "abc", WasmLimits{}, out, rerr));
+    ASSERT_EQ(out, std::string("ABC"));
+}

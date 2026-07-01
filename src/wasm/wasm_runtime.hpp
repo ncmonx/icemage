@@ -34,4 +34,16 @@ bool runWasmExtractor(const WasmExtractor& ext, const std::string& content,
                       const WasmLimits& lim, graph::ExtractResult& result,
                       std::string& rerr);
 
+// True if the loaded wasmtime supports host-caps (linker path is available).
+// When false, modules that IMPORT host funcs (icmg.log) cannot instantiate,
+// but import-less filter/extractor modules still run via the legacy path.
+bool wasmHostCapsAvailable();
+
+// Test/diagnostic: run a filter module and ALSO capture whatever it wrote via
+// the `icmg.log(ptr,len)` host-cap. `hostLog` receives the concatenated
+// messages. Behaves exactly like runWasmFilter otherwise.
+bool runWasmFilterCapture(const WasmSkill& skill, const std::string& input,
+                          const WasmLimits& lim, std::string& out,
+                          std::string& hostLog, std::string& rerr);
+
 } // namespace icmg::wasm

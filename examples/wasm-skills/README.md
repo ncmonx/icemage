@@ -65,6 +65,28 @@ icmg skill wasm remove uppercase
 Capability imports (`read_memory` / `read_graph`) are **not** available yet
 (default `[]`); they are a future opt-in behind an allowlist.
 
+### Host-caps (v2.12+): `icmg.log`
+
+Both ABIs may now optionally IMPORT a read-only host function:
+
+```wat
+(import "icmg" "log" (func $log (param i32 i32)))   ;; icmg.log(ptr, len)
+```
+
+`icmg.log(ptr,len)` sends `len` bytes of the module's memory at `ptr` to the
+host (observability / debugging). It is defined via a wasmtime **linker**, so:
+
+- Modules that DON'T import it instantiate exactly as before (fully
+  backward-compatible — no module change needed).
+- On an older `wasmtime.dll` lacking the linker symbols, host-caps silently
+  disables and import-less modules still run (graceful degrade). Check support:
+  the runtime exposes `wasmHostCapsAvailable()` internally; a module that
+  imports `icmg.log` simply won't instantiate if unsupported.
+
+This is the seam for richer read-only host calls later (e.g. `icmg.recall`,
+`icmg.graph_symbol`) — the sandbox stays strict; only explicitly-defined,
+read-only functions are reachable.
+
 ---
 
 ## `extractor-v1` — WASM language extractors (add a language, no rebuild)
