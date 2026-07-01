@@ -214,13 +214,29 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
     logline "copied: $exeDest"
     # Auto-copy runtime DLLs next to the shipped exe so it runs standalone
     # (no more manual copy-the-13-DLLs step before running the fresh build).
-    # Fresh build emits 8 DLLs under $BuildDir; 5 third-party DLLs
-    # (libcrypto / tree-sitter / zstd / vulkan-1 / wasmtime) live only in the
+    # Fresh build emits most DLLs under $BuildDir (vcpkg applocal). wasmtime.dll
+    # + libzstd.dll normally land there too, but wasmtime needs libzstd resolved
+    # at LoadLibrary time or the WASM skill runtime reports "unavailable". Some
+    # DLLs (libcrypto / tree-sitter / vulkan-1 / ggml-vulkan) live only in the
     # install dir. Layer install-dir DLLs first (baseline), then overlay the
     # fresh build DLLs so a just-rebuilt DLL always wins. Guarded: skip a
     # source silently if it is absent.
     $relDir  = "$PSScriptRoot\build-msvc-full\Release"
     $instBin = "$env:USERPROFILE\bin"
+    # WASM safety-net: ensure wasmtime.dll + its libzstd.dll dependency sit next
+    # to the raw $BuildDir exe (Ninja: exe at $BuildDir root, no Release subdir).
+    # vcpkg applocal usually drops them; if it ever misses, WASM skill filters go
+    # dark. Idempotent: only copy from install dir when absent in $BuildDir.
+    foreach ($wdll in 'wasmtime.dll','libzstd.dll') {
+        $wdst = Join-Path $BuildDir $wdll
+        if (-not (Test-Path $wdst)) {
+            $wsrc = Join-Path $instBin $wdll
+            if (Test-Path $wsrc) {
+                Copy-Item $wsrc $wdst -Force
+                logline "[wasm] safety-net copied $wdll -> `$BuildDir"
+            }
+        }
+    }
     if (Test-Path $instBin) {
         Get-ChildItem "$instBin\*.dll" -ErrorAction SilentlyContinue |
             Copy-Item -Destination $relDir -Force
