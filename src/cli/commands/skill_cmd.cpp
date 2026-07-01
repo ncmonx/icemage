@@ -26,8 +26,10 @@
 #include "skill_recall.hpp"
 #include "skill_content.hpp"
 #include "../../wasm/wasm_skill.hpp"
+#include "../../wasm/wasm_extractor.hpp"
 #include "../../wasm/wasm_runtime.hpp"
 #include "../../wasm/wasm_registry.hpp"
+#include "../../core/version.hpp"
 #include "../../core/persona_db.hpp"
 #include "../../core/profile_store.hpp"
 #include "../../core/user_identity.hpp"
@@ -877,12 +879,23 @@ static int doSearch(ContextNodeStore& store, const std::vector<std::string>& arg
 // ---- add -------------------------------------------------------------------
 
 // v1.51.0: write a user-authored skill .md to ~/.icmg/skills/<name>.md
-// v2.x: `icmg skill wasm add/list/remove/run` -- register/run WASM filter skills
-// in the persona DB (zone "wasm"). add validates the manifest; run pipes stdin
-// through the module (test a filter without a real command).
+// v2.x: `icmg skill wasm add/list/remove/run/test` -- register/run WASM skills
+// in the persona DB (zone "wasm"). Handles TWO ABIs:
+//   filter-v1    (kind!="extractor") -- Tkil filter, run pipes stdin->module
+//   extractor-v1 (kind=="extractor") -- language extractor, test runs a source file
+// add validates the manifest by kind; list shows both; test exercises an extractor.
+static bool manifestIsExtractor(const std::string& js) {
+    // cheap kind sniff without a full parse commitment
+    try {
+        auto j = nlohmann::json::parse(js);
+        return j.contains("kind") && j["kind"].is_string()
+            && j["kind"].get<std::string>() == "extractor";
+    } catch (...) { return false; }
+}
+
 static int doWasm(const std::vector<std::string>& a) {
     if (a.empty()) {
-        std::cerr << "usage: icmg skill wasm <add <manifest.json>|list|remove <name>|run <name>>\n";
+        std::cerr << "usage: icmg skill wasm <add <manifest.json>|list|remove <name>|run <name>|test <name> --file <src>>\n";
         return 1;
     }
     if (!icmg::core::personaDbAvailable()) { std::cerr << "wasm: persona DB unavailable\n"; return 1; }
@@ -894,6 +907,24 @@ static int doWasm(const std::vector<std::string>& a) {
         if (a.size() < 2) { std::cerr << "usage: icmg skill wasm add <manifest.json>\n"; return 1; }
         std::ifstream f(a[1]); if (!f) { std::cerr << "cannot open " << a[1] << "\n"; return 1; }
         std::ostringstream ss; ss << f.rdbuf(); std::string js = ss.str();
+        if (manifestIsExtractor(js)) {
+            std::string err; auto e = icmg::wasm::parseExtractorManifest(js, err);
+            if (!e) { std::cerr << "invalid extractor manifest: " << err << "\n"; return 1; }
+            if (!icmg::wasm::icmgVersionAtLeast(icmg::core::ICMG_VERSION, e->minIcmg)) {
+                std::cerr << "skill requires icmg >= " << e->minIcmg << " (have " << icmg::core::ICMG_VERSION << ")\n";
+                return 1;
+            }
+            std::string actual = icmg::core::sha256OfFile(e->wasmPath);
+            if (!e->sha256.empty() && !actual.empty() && actual != e->sha256)
+                std::cerr << "WARN: manifest sha256 != actual file (" << actual << ")\n";
+            std::cout << "extractor '" << e->name << "' language=" << e->language
+                      << " abi=" << e->abi << " priority=" << e->priority << " exts=[";
+            for (auto& x : e->extensions) std::cout << x << " ";
+            std::cout << "]\n";
+            ps.put(user, icmg::wasm::WASM_ZONE, e->name, "wasm", js, "wasm-cli");
+            std::cout << "registered wasm extractor: " << e->name << "\n";
+            return 0;
+        }
         std::string err; auto s = icmg::wasm::parseSkillManifest(js, err);
         if (!s) { std::cerr << "invalid manifest: " << err << "\n"; return 1; }
         std::string actual = icmg::core::sha256OfFile(s->wasmPath);
@@ -910,8 +941,15 @@ static int doWasm(const std::vector<std::string>& a) {
         auto rows = ps.listZone(user, icmg::wasm::WASM_ZONE);
         if (rows.empty()) { std::cout << "(no wasm skills registered)\n"; return 0; }
         for (auto& r : rows) {
+            if (manifestIsExtractor(r.content)) {
+                std::string e2; auto e = icmg::wasm::parseExtractorManifest(r.content, e2);
+                std::cout << r.key << (e ? "  [extractor] language=" + e->language
+                                            + " priority=" + std::to_string(e->priority)
+                                          : "  (unparseable extractor manifest)") << "\n";
+                continue;
+            }
             std::string e; auto s = icmg::wasm::parseSkillManifest(r.content, e);
-            std::cout << r.key << (s ? "  match=" + s->match + " abi=" + s->abi
+            std::cout << r.key << (s ? "  [filter] match=" + s->match + " abi=" + s->abi
                                      : "  (unparseable manifest)") << "\n";
         }
         return 0;
@@ -938,7 +976,45 @@ static int doWasm(const std::vector<std::string>& a) {
         std::cout << out;
         return 0;
     }
-    std::cerr << "unknown: icmg skill wasm " << op << " (add|list|remove|run)\n";
+    if (op == "test") {
+        // icmg skill wasm test <name> --file <src>  -- run an extractor over a file
+        std::string name, srcPath;
+        for (size_t i = 1; i < a.size(); ++i) {
+            if (a[i] == "--file" && i + 1 < a.size()) srcPath = a[++i];
+            else if (name.empty()) name = a[i];
+        }
+        if (name.empty() || srcPath.empty()) {
+            std::cerr << "usage: icmg skill wasm test <name> --file <src>\n"; return 1;
+        }
+        std::string content, kind;
+        if (!ps.get(user, icmg::wasm::WASM_ZONE, name, content, kind)) {
+            std::cerr << "no such wasm skill: " << name << "\n"; return 1;
+        }
+        if (!manifestIsExtractor(content)) {
+            std::cerr << "'" << name << "' is a filter skill; use `run` with stdin instead\n"; return 1;
+        }
+        std::string err; auto e = icmg::wasm::parseExtractorManifest(content, err);
+        if (!e) { std::cerr << "bad stored manifest: " << err << "\n"; return 1; }
+        std::ifstream sf(srcPath, std::ios::binary);
+        if (!sf) { std::cerr << "cannot open " << srcPath << "\n"; return 1; }
+        std::ostringstream sbuf; sbuf << sf.rdbuf();
+        icmg::graph::ExtractResult r; std::string rerr;
+        if (!icmg::wasm::runWasmExtractor(*e, sbuf.str(), icmg::wasm::WasmLimits{}, r, rerr)) {
+            std::cerr << "extract failed: " << rerr << "\n"; return 1;
+        }
+        auto dump = [](const char* label, const std::vector<std::string>& v) {
+            std::cout << label << " (" << v.size() << "):";
+            for (auto& s : v) std::cout << " " << s;
+            std::cout << "\n";
+        };
+        if (!r.context.empty()) std::cout << "context: " << r.context << "\n";
+        dump("imports",    r.imports);
+        dump("namespaces", r.namespaces);
+        dump("classes",    r.classes);
+        dump("functions",  r.functions);
+        return 0;
+    }
+    std::cerr << "unknown: icmg skill wasm " << op << " (add|list|remove|run|test)\n";
     return 1;
 }
 
@@ -1059,11 +1135,13 @@ public:
             "      --alpha F    Blend weight: 0.0=pure BM25, 1.0=pure cosine (default 0.5).\n"
             "      --json       JSON output: [{path, heading, skill, score, content_excerpt}].\n"
             "      --skill KEY  Restrict search to chunks of a single skill.\n"
-            "  wasm <add <manifest.json> | list | remove <name> | run <name>>\n"
-            "      Sandboxed WASM filter skills (persona DB). add validates +\n"
-            "      registers a manifest; run pipes stdin through the module.\n"
-            "      A registered skill whose `match` fits a command auto-applies\n"
-            "      in `icmg run` (fail-open). Requires bundled wasmtime runtime.\n";
+            "  wasm <add <manifest.json> | list | remove <name> | run <name> | test <name> --file <src>>\n"
+            "      Sandboxed WASM skills (persona DB). Two ABIs by manifest kind:\n"
+            "      - filter-v1 (Tkil filter): run pipes stdin through the module;\n"
+            "        a skill whose `match` fits a command auto-applies in `icmg run`.\n"
+            "      - extractor-v1 (language extractor): add a language by dropping a\n"
+            "        .wasm (no rebuild); `test <name> --file <src>` runs it on a file.\n"
+            "      add validates + registers; list shows both. Requires wasmtime.\n";
     }
 
     int run(const std::vector<std::string>& args) override {

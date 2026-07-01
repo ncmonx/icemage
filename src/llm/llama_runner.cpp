@@ -10,6 +10,7 @@
 #include "vulkan_probe.hpp"   // headless Vulkan-ICD gate (err126 #32877)
 
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <thread>
 #include <vector>
@@ -332,6 +333,56 @@ InferResult LlamaRunner::infer(const std::string& prompt,
     return r;
 }
 
+// A3: per-token surprisal (-log p) under the loaded model. Decodes the prompt
+// one token at a time; after decoding token i, the context's last-position
+// logits predict token i+1, so surprisal[i+1] = -log softmax(logits)[tok[i+1]].
+// surprisal[0]=0 (first token has no left context to be predicted from).
+std::vector<float> LlamaRunner::tokenSurprisals(const std::string& prompt) {
+    std::vector<float> out;
+    if (!isLoaded()) { impl_->last_err = "tokenSurprisals without load()"; return out; }
+
+    // Independent scoring call: clear KV so positions start at 0.
+    llama_memory_clear(llama_get_memory(impl_->ctx), /*data=*/true);
+
+    // Tokenize (probe then fill), same as infer().
+    int n_prompt = -llama_tokenize(impl_->vocab, prompt.c_str(), (int)prompt.size(),
+                                   nullptr, 0, /*add_special=*/true, /*parse_special=*/true);
+    if (n_prompt <= 0) { impl_->last_err = "tokenize probe failed"; return out; }
+    std::vector<llama_token> toks(n_prompt);
+    if (llama_tokenize(impl_->vocab, prompt.c_str(), (int)prompt.size(),
+                       toks.data(), n_prompt, true, true) < 0) {
+        impl_->last_err = "tokenize failed"; return out;
+    }
+
+    const int n_vocab = llama_vocab_n_tokens(impl_->vocab);
+    out.assign((size_t)n_prompt, 0.0f);  // out[0] stays 0 (no left context)
+
+    for (int i = 0; i < n_prompt; ++i) {
+        // Decode token i (single-token batch => logits available at last pos).
+        llama_batch b = llama_batch_get_one(&toks[i], 1);
+        if (llama_decode(impl_->ctx, b) != 0) {
+            impl_->last_err = "decode failed at i=" + std::to_string(i);
+            out.clear(); return out;
+        }
+        // Predict the NEXT token (i+1). Last position is index -1.
+        if (i + 1 < n_prompt) {
+            const float* logits = llama_get_logits_ith(impl_->ctx, -1);
+            if (!logits) { impl_->last_err = "null logits at i=" + std::to_string(i);
+                           out.clear(); return out; }
+            // Numerically-stable softmax prob of the actual next token, then
+            // surprisal = -log(prob). Compute log-sum-exp over the vocab.
+            float maxLogit = logits[0];
+            for (int v = 1; v < n_vocab; ++v) if (logits[v] > maxLogit) maxLogit = logits[v];
+            double sumExp = 0.0;
+            for (int v = 0; v < n_vocab; ++v) sumExp += std::exp((double)logits[v] - maxLogit);
+            llama_token nxt = toks[i + 1];
+            double logProb = ((double)logits[nxt] - maxLogit) - std::log(sumExp);
+            out[(size_t)(i + 1)] = (float)(-logProb);
+        }
+    }
+    return out;
+}
+
 #else  // !ICMG_HAS_LLAMA — stubs.
 
 struct LlamaRunner::Impl { std::string last_err = "icmg built without ICMG_USE_LLAMA"; };
@@ -355,6 +406,11 @@ InferResult LlamaRunner::infer(const std::string&,
     InferResult r;
     r.error = "LLM disabled: rebuild icmg with -DICMG_USE_LLAMA=ON";
     return r;
+}
+
+std::vector<float> LlamaRunner::tokenSurprisals(const std::string&) {
+    impl_->last_err = "LLM disabled: rebuild icmg with -DICMG_USE_LLAMA=ON";
+    return {};
 }
 
 #endif // ICMG_HAS_LLAMA

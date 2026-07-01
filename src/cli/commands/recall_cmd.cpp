@@ -10,6 +10,7 @@
 #include "../../imem/scorer.hpp"
 #include "../ref_registry.hpp"
 #include "../session_dedup.hpp"   // Cache-hit optimizer #2: TTL-aware recall dedup
+#include "../last_session.hpp"    // A2: recall --last-session
 #include "../../core/persona_db.hpp"        // #moments: merge persona _moments
 #include "../../core/profile_store.hpp"
 #include "../../core/user_identity.hpp"
@@ -65,6 +66,7 @@ public:
             "  --no-dedup      Show nodes already returned this session (default: suppress)\n"
             "  --explain       Show score breakdown\n"
             "  --history       Show recent queries\n"
+            "  --last-session  Re-onboard: most-recent session snapshot + last wflog (Open items flagged)\n"
             "  --index         Layer-1 index: #id|icon|title|~tok (progressive disclosure)\n"
             "  --timeline      Layer-1 chronological view, grouped by day (newest first)\n"
             "  --get IDS       Layer-2: fetch full content for comma-separated ids\n"
@@ -85,6 +87,13 @@ public:
             std::string ids = flagValue(args, "--get");
             if (!ids.empty()) return runGet(ids, hasFlag(args, "--json"));
         }
+        // A2: --last-session surfaces the single most-recent session snapshot +
+        // last wflog (Open items flagged). Onboards you back into where you left
+        // off. No query needed. Short-circuits before normal recall parsing.
+        if (hasFlag(args, "--last-session")) {
+            return runLastSession(hasFlag(args, "--json"));
+        }
+
         bool index    = hasFlag(args, "--index");
         bool timeline = hasFlag(args, "--timeline");
         std::string by = flagValue(args, "--by", "topic");
@@ -309,6 +318,62 @@ public:
         }
         if (json) printJson(got);
         else      printFull(got);
+        return 0;
+    }
+
+    // A2: --last-session. Pulls the single most-recent session snapshot and the
+    // most-recent wflog into a SessionView, then renders (pure formatter in
+    // last_session.hpp). Re-onboards "where did we leave off" in one command.
+    int runLastSession(bool json) {
+        auto& cfg = core::Config::instance();
+        core::Db db(cfg.projectDbPath("."));
+
+        SessionView v;
+        // Most-recent session snapshot: reserved topic prefixes, newest by time.
+        db.query(
+            "SELECT topic, content, COALESCE(last_used, created_at) AS ts "
+            "FROM memory_nodes WHERE deleted_at IS NULL AND ("
+            "  topic LIKE 'session-snapshot%' OR topic LIKE 'auto-compact-%' "
+            "  OR topic LIKE 'session:%' OR topic LIKE 'session %') "
+            "ORDER BY ts DESC LIMIT 1",
+            {},
+            [&](const core::Row& r){
+                if (r.size() < 3) return;
+                v.has_snapshot = true;
+                v.snap_topic   = r[0];
+                v.snap_content = r[1];
+                int64_t ts = 0; try { ts = std::stoll(r[2]); } catch (...) {}
+                v.snap_age = timeAgo(ts);
+            });
+
+        // Most-recent wflog (log-saved <goal>): extract Goal/Decisions/Open.
+        db.query(
+            "SELECT content, COALESCE(last_used, created_at) AS ts "
+            "FROM memory_nodes WHERE deleted_at IS NULL AND topic LIKE 'log-saved %' "
+            "ORDER BY ts DESC LIMIT 1",
+            {},
+            [&](const core::Row& r){
+                if (r.size() < 2) return;
+                v.has_wflog       = true;
+                v.log_goal        = wflogField(r[0], "Goal");
+                v.log_decisions   = wflogField(r[0], "Decisions");
+                v.log_open        = wflogField(r[0], "Open");
+                int64_t ts = 0; try { ts = std::stoll(r[1]); } catch (...) {}
+                v.log_age = timeAgo(ts);
+            });
+
+        if (json) {
+            std::cout << "{\"has_snapshot\":" << (v.has_snapshot ? "true" : "false")
+                      << ",\"snapshot_topic\":\""; escapeJson(std::cout, v.snap_topic);
+            std::cout << "\",\"snapshot_age\":\""; escapeJson(std::cout, v.snap_age);
+            std::cout << "\",\"has_wflog\":" << (v.has_wflog ? "true" : "false")
+                      << ",\"goal\":\""; escapeJson(std::cout, v.log_goal);
+            std::cout << "\",\"decisions\":\""; escapeJson(std::cout, v.log_decisions);
+            std::cout << "\",\"open\":\""; escapeJson(std::cout, v.log_open);
+            std::cout << "\"}\n";
+        } else {
+            std::cout << renderLastSession(v);
+        }
         return 0;
     }
 

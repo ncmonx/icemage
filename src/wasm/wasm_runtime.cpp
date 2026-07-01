@@ -53,37 +53,81 @@ bool loadModuleBytes(const WasmtimeApi& a, const std::string& path,
 }
 
 // Get-or-compile module (cache by path). Caller holds g_mtx.
-wasmtime_module_t* getModule(const WasmtimeApi& a, const WasmSkill& s, std::string& err) {
-    auto it = g_modCache.find(s.wasmPath);
+wasmtime_module_t* getModule(const WasmtimeApi& a, const std::string& wasmPath,
+                             const std::string& sha256, std::string& err) {
+    auto it = g_modCache.find(wasmPath);
     if (it != g_modCache.end()) return it->second;
-    if (!s.sha256.empty()) {
-        std::string actual = icmg::core::sha256OfFile(s.wasmPath);
-        if (actual != s.sha256) {
-            err = "sha256 mismatch (pinned " + s.sha256 + ", got " + actual + ")";
+    if (!sha256.empty()) {
+        std::string actual = icmg::core::sha256OfFile(wasmPath);
+        if (actual != sha256) {
+            err = "sha256 mismatch (pinned " + sha256 + ", got " + actual + ")";
             return nullptr;
         }
     }
     std::string bytes;
-    if (!loadModuleBytes(a, s.wasmPath, bytes, err)) return nullptr;
+    if (!loadModuleBytes(a, wasmPath, bytes, err)) return nullptr;
     wasmtime_module_t* mod = nullptr;
     if (auto* e = a.module_new(g_engine, (const uint8_t*)bytes.data(), bytes.size(), &mod)) {
         err = "module_new: " + takeErr(a, e); return nullptr;
     }
-    g_modCache[s.wasmPath] = mod;
+    g_modCache[wasmPath] = mod;
     return mod;
 }
 
-} // namespace
+// Environment passed to the icmg.log host callback: the API (for memory access)
+// plus the buffer that receives whatever the module logs. Lives on the caller's
+// stack for the whole run (define -> instantiate -> call -> delete linker).
+struct HostCallCtx {
+    const WasmtimeApi* a = nullptr;
+    std::string* log = nullptr;
+};
 
-bool wasmRuntimeAvailable(std::string& err) {
-    const WasmtimeApi& a = api();
-    if (!a.ok) { err = "wasm runtime unavailable"; return false; }
-    return true;
+// icmg.log(ptr,len) -> ()  host function. Reads the module's linear memory at
+// [ptr,ptr+len) and appends it to the capture buffer. Never traps.
+static wasm_trap_t* hostLogCallback(void* env, wasmtime_caller_t* caller,
+                                    const wasmtime_val_t* args, size_t nargs,
+                                    wasmtime_val_t* /*results*/, size_t /*nresults*/) {
+    auto* h = static_cast<HostCallCtx*>(env);
+    if (!h || !h->a || !h->log || nargs < 2) return nullptr;
+    const WasmtimeApi& a = *h->a;
+    wasmtime_context_t* ctx = a.caller_context(caller);
+    wasmtime_extern_t ext;
+    if (!a.caller_export_get(caller, "memory", 6, &ext) ||
+        ext.kind != WASMTIME_EXTERN_MEMORY) return nullptr;
+    uint8_t* mem = a.memory_data(ctx, &ext.of.memory);
+    size_t memsz = a.memory_data_size(ctx, &ext.of.memory);
+    int32_t ptr = args[0].of.i32;
+    int32_t len = args[1].of.i32;
+    if (ptr < 0 || len < 0) return nullptr;
+    if ((size_t)ptr >= memsz) return nullptr;
+    size_t n = std::min<size_t>((size_t)len, memsz - (size_t)ptr);
+    h->log->append((const char*)mem + ptr, n);
+    return nullptr;
 }
 
-bool runWasmFilter(const WasmSkill& skill, const std::string& input,
-                   const WasmLimits& lim, std::string& out, std::string& rerr) {
+// Build the (i32,i32)->() functype for icmg.log using dynamic-loaded symbols.
+// Returns nullptr if host-caps symbols are unavailable. Caller owns the result
+// (delete via a.functype_delete).
+static wasm_functype_t* buildLogType(const WasmtimeApi& a) {
+    if (!a.hostcaps) return nullptr;
+    wasm_valtype_t* ps[2] = { a.valtype_new(WASM_I32), a.valtype_new(WASM_I32) };
+    wasm_valtype_vec_t params, results;
+    a.valtype_vec_new(&params, 2, ps);
+    a.valtype_vec_new_empty(&results);
+    return a.functype_new(&params, &results);   // takes ownership of both vecs
+}
+
+// Shared core: run a sandboxed module's (icmg_alloc + <callFn>) over `input`,
+// returning the module's packed-i64 output slice as raw bytes in `out`.
+// callFn is the exported entry ("icmg_filter" or "icmg_extract"). Both share the
+// exact same ABI: alloc(len)->ptr, memcpy input, callFn(ptr,len)->(outPtr<<32|outLen).
+// Handles engine init, module cache, fuel/epoch/timeout watchdog, bounds clamp.
+bool runWasmModule(const std::string& wasmPath, const std::string& sha256,
+                   const char* callFn, const std::string& input,
+                   const WasmLimits& lim, std::string& out, std::string& rerr,
+                   std::string* hostLog) {
     out.clear(); rerr.clear();
+    if (hostLog) hostLog->clear();
     const WasmtimeApi& a = api();
     if (!a.ok) { rerr = "wasm runtime unavailable"; return false; }
 
@@ -95,7 +139,7 @@ bool runWasmFilter(const WasmSkill& skill, const std::string& input,
         g_engine = a.engine_new(cfg);   // consumes cfg
         if (!g_engine) { rerr = "engine init failed"; return false; }
     }
-    wasmtime_module_t* mod = getModule(a, skill, rerr);
+    wasmtime_module_t* mod = getModule(a, wasmPath, sha256, rerr);
     if (!mod) return false;
 
     wasmtime_store_t* store = a.store_new(g_engine, nullptr, nullptr);
@@ -119,23 +163,48 @@ bool runWasmFilter(const WasmSkill& skill, const std::string& input,
         wcv.notify_all();
         if (watch.joinable()) watch.join();
     };
+    wasmtime_linker_t* linker = nullptr;
     auto fail = [&](const std::string& m) -> bool {
-        rerr = m; stopWatch(); a.store_delete(store); return false;
+        rerr = m; stopWatch();
+        if (linker && a.linker_delete) a.linker_delete(linker);
+        a.store_delete(store); return false;
     };
 
+    // Host-caps path: when available, instantiate via a linker that defines the
+    // icmg.log(ptr,len) host func. Backward-compatible -- import-less modules
+    // instantiate fine (the definition is simply unused). Falls back to the
+    // legacy import-less instance_new when host-caps symbols are missing.
+    HostCallCtx hctx; hctx.a = &a; hctx.log = hostLog;
     wasmtime_instance_t inst; wasm_trap_t* trap = nullptr;
-    if (auto* e = a.instance_new(ctx, mod, nullptr, 0, &inst, &trap))
-        return fail("instance_new: " + takeErr(a, e));
-    if (trap) return fail("instance trap");
+    if (a.hostcaps) {
+        linker = a.linker_new(g_engine);
+        if (!linker) return fail("linker_new failed");
+        wasm_functype_t* ft = buildLogType(a);
+        if (ft) {
+            if (auto* e = a.linker_define_func(linker, "icmg", 4, "log", 3, ft,
+                                               hostLogCallback, &hctx, nullptr)) {
+                a.functype_delete(ft);
+                return fail("linker_define_func: " + takeErr(a, e));
+            }
+            a.functype_delete(ft);
+        }
+        if (auto* e = a.linker_instantiate(linker, ctx, mod, &inst, &trap))
+            return fail("linker_instantiate: " + takeErr(a, e));
+        if (trap) return fail("instance trap");
+    } else {
+        if (auto* e = a.instance_new(ctx, mod, nullptr, 0, &inst, &trap))
+            return fail("instance_new: " + takeErr(a, e));
+        if (trap) return fail("instance trap");
+    }
 
     auto getExport = [&](const char* nm, wasmtime_extern_t& ext) -> bool {
         return a.instance_export_get(ctx, &inst, nm, std::strlen(nm), &ext);
     };
-    wasmtime_extern_t exMem, exAlloc, exFilter;
-    if (!getExport("memory", exMem)       || exMem.kind    != WASMTIME_EXTERN_MEMORY ||
-        !getExport("icmg_alloc", exAlloc) || exAlloc.kind  != WASMTIME_EXTERN_FUNC   ||
-        !getExport("icmg_filter", exFilter)|| exFilter.kind != WASMTIME_EXTERN_FUNC)
-        return fail("module missing filter-v1 exports (memory/icmg_alloc/icmg_filter)");
+    wasmtime_extern_t exMem, exAlloc, exCall;
+    if (!getExport("memory", exMem)        || exMem.kind   != WASMTIME_EXTERN_MEMORY ||
+        !getExport("icmg_alloc", exAlloc)  || exAlloc.kind != WASMTIME_EXTERN_FUNC   ||
+        !getExport(callFn, exCall)         || exCall.kind  != WASMTIME_EXTERN_FUNC)
+        return fail(std::string("module missing exports (memory/icmg_alloc/") + callFn + ")");
 
     // icmg_alloc(len) -> ptr
     wasmtime_val_t aArgs[1]; aArgs[0].kind = WASMTIME_I32; aArgs[0].of.i32 = (int32_t)input.size();
@@ -150,14 +219,14 @@ bool runWasmFilter(const WasmSkill& skill, const std::string& input,
     if (ptr < 0 || (size_t)ptr + input.size() > memsz) return fail("alloc out of bounds");
     std::memcpy(mem + ptr, input.data(), input.size());
 
-    // icmg_filter(ptr, len) -> i64 packed (out_ptr<<32 | out_len)
+    // callFn(ptr, len) -> i64 packed (out_ptr<<32 | out_len)
     wasmtime_val_t fArgs[2];
     fArgs[0].kind = WASMTIME_I32; fArgs[0].of.i32 = ptr;
     fArgs[1].kind = WASMTIME_I32; fArgs[1].of.i32 = (int32_t)input.size();
     wasmtime_val_t fRes[1];
-    if (auto* e = a.func_call(ctx, &exFilter.of.func, fArgs, 2, fRes, 1, &trap))
-        return fail("icmg_filter: " + takeErr(a, e));
-    if (trap) return fail("icmg_filter trap (timeout/fuel)");
+    if (auto* e = a.func_call(ctx, &exCall.of.func, fArgs, 2, fRes, 1, &trap))
+        return fail(std::string(callFn) + ": " + takeErr(a, e));
+    if (trap) return fail(std::string(callFn) + " trap (timeout/fuel)");
 
     uint64_t packed = (uint64_t)fRes[0].of.i64;
     uint32_t outPtr = (uint32_t)(packed >> 32);
@@ -171,7 +240,42 @@ bool runWasmFilter(const WasmSkill& skill, const std::string& input,
     out.assign((const char*)mem + outPtr, outLen);
 
     stopWatch();
+    if (linker && a.linker_delete) a.linker_delete(linker);
     a.store_delete(store);
+    return true;
+}
+
+} // namespace
+
+bool wasmRuntimeAvailable(std::string& err) {
+    const WasmtimeApi& a = api();
+    if (!a.ok) { err = "wasm runtime unavailable"; return false; }
+    return true;
+}
+
+bool wasmHostCapsAvailable() {
+    const WasmtimeApi& a = api();
+    return a.ok && a.hostcaps;
+}
+
+bool runWasmFilter(const WasmSkill& skill, const std::string& input,
+                   const WasmLimits& lim, std::string& out, std::string& rerr) {
+    return runWasmModule(skill.wasmPath, skill.sha256, "icmg_filter", input, lim, out, rerr, nullptr);
+}
+
+bool runWasmFilterCapture(const WasmSkill& skill, const std::string& input,
+                          const WasmLimits& lim, std::string& out,
+                          std::string& hostLog, std::string& rerr) {
+    return runWasmModule(skill.wasmPath, skill.sha256, "icmg_filter", input, lim, out, rerr, &hostLog);
+}
+
+bool runWasmExtractor(const WasmExtractor& ext, const std::string& content,
+                      const WasmLimits& lim, graph::ExtractResult& result,
+                      std::string& rerr) {
+    std::string json;
+    if (!runWasmModule(ext.wasmPath, ext.sha256, "icmg_extract", content, lim, json, rerr, nullptr))
+        return false;
+    if (!parseExtractorOutput(json, result, rerr)) return false;
     return true;
 }
 

@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace icmg::llm {
 
@@ -98,6 +99,14 @@ public:
                       const std::function<bool(const std::string&)>& on_token = {});
 
     const std::string& lastError() const;
+
+    // A3 (2026-07-01): per-token surprisal (-log p) of `prompt` under the loaded
+    // model -- the information content of each token, for perplexity-based
+    // salience compression (LLMLingua-style). surprisals[0]=0 (no left context).
+    // Returns empty on failure / not-loaded / not-built (ICMG_HAS_LLAMA off).
+    // Decodes the whole prompt once; **opt-in, NEVER the hot path** (same
+    // latency contract as infer()).
+    std::vector<float> tokenSurprisals(const std::string& prompt);
 
     // v1.32.0 C3: force-clear the KV cache. Safe to call when not loaded
     // (no-op). Useful between unrelated conversations on the same runner.

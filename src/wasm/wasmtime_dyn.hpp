@@ -57,6 +57,23 @@ struct WasmtimeApi {
     decltype(&wasmtime_wat2wasm) wat2wasm = nullptr;
     // byte-vec lifetime (for wat2wasm / error output buffers)
     decltype(&wasm_byte_vec_delete) byte_vec_delete = nullptr;
+
+    // --- host-caps (OPTIONAL): expose read-only host funcs to the sandbox via
+    // the linker. If any of these is missing (older wasmtime.dll), `hostcaps`
+    // stays false and the runtime falls back to import-less instance_new -- core
+    // filter/extractor still works, only host-call skills are unavailable.
+    bool hostcaps = false;
+    decltype(&wasmtime_linker_new)          linker_new = nullptr;
+    decltype(&wasmtime_linker_delete)       linker_delete = nullptr;
+    decltype(&wasmtime_linker_define_func)  linker_define_func = nullptr;
+    decltype(&wasmtime_linker_instantiate)  linker_instantiate = nullptr;
+    decltype(&wasmtime_caller_context)      caller_context = nullptr;
+    decltype(&wasmtime_caller_export_get)   caller_export_get = nullptr;
+    decltype(&wasm_valtype_new)             valtype_new = nullptr;
+    decltype(&wasm_valtype_vec_new)         valtype_vec_new = nullptr;
+    decltype(&wasm_valtype_vec_new_empty)   valtype_vec_new_empty = nullptr;
+    decltype(&wasm_functype_new)            functype_new = nullptr;
+    decltype(&wasm_functype_delete)         functype_delete = nullptr;
 };
 
 // Resolve every symbol from the bundled wasmtime.dll. Any miss -> ok=false
@@ -98,8 +115,29 @@ inline WasmtimeApi loadWasmtime(std::string& err) {
     ICMG_WASM_BIND(byte_vec_delete,     "wasm_byte_vec_delete")
 #undef ICMG_WASM_BIND
 
+    // Optional host-caps binds: never touch `err`; track a local all-ok flag.
+#define ICMG_WASM_BIND_OPT(field, sym)                                          \
+    api.field = reinterpret_cast<decltype(api.field)>(                          \
+        reinterpret_cast<void*>(GetProcAddress(h, sym)));                       \
+    if (!api.field) hostcaps_ok = false;
+    {
+        bool hostcaps_ok = true;
+        ICMG_WASM_BIND_OPT(linker_new,            "wasmtime_linker_new")
+        ICMG_WASM_BIND_OPT(linker_delete,         "wasmtime_linker_delete")
+        ICMG_WASM_BIND_OPT(linker_define_func,    "wasmtime_linker_define_func")
+        ICMG_WASM_BIND_OPT(linker_instantiate,    "wasmtime_linker_instantiate")
+        ICMG_WASM_BIND_OPT(caller_context,        "wasmtime_caller_context")
+        ICMG_WASM_BIND_OPT(caller_export_get,     "wasmtime_caller_export_get")
+        ICMG_WASM_BIND_OPT(valtype_new,           "wasm_valtype_new")
+        ICMG_WASM_BIND_OPT(valtype_vec_new,       "wasm_valtype_vec_new")
+        ICMG_WASM_BIND_OPT(valtype_vec_new_empty, "wasm_valtype_vec_new_empty")
+        ICMG_WASM_BIND_OPT(functype_new,          "wasm_functype_new")
+        ICMG_WASM_BIND_OPT(functype_delete,       "wasm_functype_delete")
+        api.hostcaps = hostcaps_ok;
+    }
+#undef ICMG_WASM_BIND_OPT
+
     api.ok = err.empty();
-    if (!api.ok && api.dll) { FreeLibrary((HMODULE)api.dll); api.dll = nullptr; }
 #else
     // POSIX: same dynamic-load via dlopen (W3.5). The .so/.dylib must be bundled
     // alongside the binary (CI step) for this to resolve; absent -> unavailable.
@@ -133,6 +171,26 @@ inline WasmtimeApi loadWasmtime(std::string& err) {
     ICMG_WASM_BIND(wat2wasm,            "wasmtime_wat2wasm")
     ICMG_WASM_BIND(byte_vec_delete,     "wasm_byte_vec_delete")
 #undef ICMG_WASM_BIND
+    // Optional host-caps binds (POSIX): never touch `err`.
+#define ICMG_WASM_BIND_OPT(field, sym)                                          \
+    api.field = reinterpret_cast<decltype(api.field)>(dlsym(h, sym));           \
+    if (!api.field) hostcaps_ok = false;
+    {
+        bool hostcaps_ok = true;
+        ICMG_WASM_BIND_OPT(linker_new,            "wasmtime_linker_new")
+        ICMG_WASM_BIND_OPT(linker_delete,         "wasmtime_linker_delete")
+        ICMG_WASM_BIND_OPT(linker_define_func,    "wasmtime_linker_define_func")
+        ICMG_WASM_BIND_OPT(linker_instantiate,    "wasmtime_linker_instantiate")
+        ICMG_WASM_BIND_OPT(caller_context,        "wasmtime_caller_context")
+        ICMG_WASM_BIND_OPT(caller_export_get,     "wasmtime_caller_export_get")
+        ICMG_WASM_BIND_OPT(valtype_new,           "wasm_valtype_new")
+        ICMG_WASM_BIND_OPT(valtype_vec_new,       "wasm_valtype_vec_new")
+        ICMG_WASM_BIND_OPT(valtype_vec_new_empty, "wasm_valtype_vec_new_empty")
+        ICMG_WASM_BIND_OPT(functype_new,          "wasm_functype_new")
+        ICMG_WASM_BIND_OPT(functype_delete,       "wasm_functype_delete")
+        api.hostcaps = hostcaps_ok;
+    }
+#undef ICMG_WASM_BIND_OPT
     api.ok = err.empty();
     if (!api.ok && api.dll) { dlclose(api.dll); api.dll = nullptr; }
 #endif

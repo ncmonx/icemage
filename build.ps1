@@ -42,6 +42,13 @@ $BuildDir = 'C:\icmg-build\build-msvc-full'
 
 Set-Location $PSScriptRoot
 
+# Suppress MSYS/Git-Bash path-conversion so cmd.exe children never get a
+# B:/ "insert disk" modal. Must be set BEFORE vcvars + ninja launch so
+# all grandchild processes inherit these. (icmg main.cpp sets them too,
+# but that only covers icmg-spawned children, not the build chain itself.)
+$env:MSYS_NO_PATHCONV    = '1'
+$env:MSYS2_ARG_CONV_EXCL = '*'
+
 # ”” auto-read version from CMakeLists.txt (single source of truth) ””””””””””””
 function Get-IcmgVersion {
     $line = Get-Content 'CMakeLists.txt' | Select-String 'project\(icmg VERSION' | Select-Object -First 1
@@ -104,6 +111,37 @@ function Protect-VulkanObjs {
     Get-ChildItem $base -Filter '*.comp.cpp'   -ErrorAction SilentlyContinue | % { $_.LastWriteTime = $old }
     Get-ChildItem "$base\CMakeFiles\ggml-vulkan.dir" -Filter '*.comp.cpp.obj' -ErrorAction SilentlyContinue | % { $_.LastWriteTime = $now }
     logline '[vulkan-guard] done'
+}
+
+
+# -- Install live bin (rename-kill-replace) ----------------------------------
+# Windows cannot overwrite an exe that is open. Safe sequence:
+#   1. Rename old -> .old  (NTFS allows rename on open handle)
+#   2. Copy new  -> icmg.exe  (slot is now free)
+#   3. Kill any running icmg processes
+#   4. Delete .old  (safe now that processes are gone)
+function Install-LiveBin([string]$src) {
+    $dest = "$env:USERPROFILE\bin\icmg.exe"
+    $old  = "$env:USERPROFILE\bin\icmg.exe.old"
+    if (-not (Test-Path (Split-Path $dest))) { return }
+
+    if (Test-Path $dest) {
+        if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
+        Rename-Item $dest $old -Force
+        logline '[install] renamed old -> icmg.exe.old'
+    }
+
+    Copy-Item $src $dest -Force
+    logline "[install] copied new exe -> $dest"
+
+    $procs = Get-Process -Name icmg -ErrorAction SilentlyContinue
+    if ($procs) {
+        $procs | Stop-Process -Force
+        logline "[install] killed $($procs.Count) running icmg process(es)"
+    }
+
+    Remove-Item $old -Force -ErrorAction SilentlyContinue
+    logline '[install] live bin updated'
 }
 
 # ”” main ”””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””””
@@ -176,13 +214,29 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
     logline "copied: $exeDest"
     # Auto-copy runtime DLLs next to the shipped exe so it runs standalone
     # (no more manual copy-the-13-DLLs step before running the fresh build).
-    # Fresh build emits 8 DLLs under $BuildDir; 5 third-party DLLs
-    # (libcrypto / tree-sitter / zstd / vulkan-1 / wasmtime) live only in the
+    # Fresh build emits most DLLs under $BuildDir (vcpkg applocal). wasmtime.dll
+    # + libzstd.dll normally land there too, but wasmtime needs libzstd resolved
+    # at LoadLibrary time or the WASM skill runtime reports "unavailable". Some
+    # DLLs (libcrypto / tree-sitter / vulkan-1 / ggml-vulkan) live only in the
     # install dir. Layer install-dir DLLs first (baseline), then overlay the
     # fresh build DLLs so a just-rebuilt DLL always wins. Guarded: skip a
     # source silently if it is absent.
     $relDir  = "$PSScriptRoot\build-msvc-full\Release"
     $instBin = "$env:USERPROFILE\bin"
+    # WASM safety-net: ensure wasmtime.dll + its libzstd.dll dependency sit next
+    # to the raw $BuildDir exe (Ninja: exe at $BuildDir root, no Release subdir).
+    # vcpkg applocal usually drops them; if it ever misses, WASM skill filters go
+    # dark. Idempotent: only copy from install dir when absent in $BuildDir.
+    foreach ($wdll in 'wasmtime.dll','libzstd.dll') {
+        $wdst = Join-Path $BuildDir $wdll
+        if (-not (Test-Path $wdst)) {
+            $wsrc = Join-Path $instBin $wdll
+            if (Test-Path $wsrc) {
+                Copy-Item $wsrc $wdst -Force
+                logline "[wasm] safety-net copied $wdll -> `$BuildDir"
+            }
+        }
+    }
     if (Test-Path $instBin) {
         Get-ChildItem "$instBin\*.dll" -ErrorAction SilentlyContinue |
             Copy-Item -Destination $relDir -Force
@@ -191,6 +245,7 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
         Copy-Item -Destination $relDir -Force
     $dllCount = (Get-ChildItem "$relDir\*.dll" -ErrorAction SilentlyContinue).Count
     logline "copied $dllCount runtime DLL(s) next to exe"
+    Install-LiveBin $exeSrc
     # NOTE: do NOT clean $BuildDir here. It lives on C:\ (no D: clutter) and
     # wiping it forces a full recompile next build + races icmg_test link
     # (LNK1104). Incremental artifacts stay; third_party Vulkan .obj preserved.
