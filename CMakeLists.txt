@@ -919,6 +919,7 @@ add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)
 add_icmg_test(test_content_status       tests/cli/test_content_status.cpp)  # P3: 0-byte file != path mismatch
 add_icmg_test(test_savings_daily        tests/cli/test_savings_daily.cpp)  # savings --daily console rows
 add_icmg_test(test_badge                 tests/cli/test_badge.cpp)          # icmg badge: shields.io endpoint-JSON formatter (pure core)
+add_icmg_test(test_last_session          tests/cli/test_last_session.cpp)   # A2: recall --last-session pure helpers
 # v1.10.0 backlog burn:
 add_icmg_test(test_hookio_cmd           tests/cli/test_hookio_cmd.cpp)
 add_icmg_test(test_cleanup_cmd          tests/cli/test_cleanup_cmd.cpp)
