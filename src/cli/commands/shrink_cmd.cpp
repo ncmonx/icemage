@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <map>
 #include <regex>
@@ -282,28 +283,49 @@ std::string shrinkGeneric(const std::string& s, int head_b = 4096, int tail_b = 
 // Llama logprob scorer (--scorer=llama)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Compute a salience score for `line` via llama log-probability.
-// Score = 1.0 / (perplexity + 1), mapped to [0, 1]:
-//   - low perplexity (predictable/boilerplate) → score near 0
-//   - high perplexity (surprising/informative) → score near 1
-//
-// `runner` must be non-null; if it is null OR the logprob API is unavailable
-// this function falls back to infoScore() with no side effects on the caller.
-//
-// TODO: wire real llama logprob here.
-// LlamaRunner currently exposes only infer() (text generation). When a
-// logprob / perplexity API is added to LlamaRunner (e.g., evalLogprob()),
-// replace the fallback body below with something like:
-//
-//   auto res = runner->evalLogprob(line);     // hypothetical API
-//   if (!res.ok) return core::infoScore(line);
-//   double ppl = std::exp(-res.mean_log_prob);
-//   return 1.0 / (ppl + 1.0);
+// Compute a salience score for `line` via llama log-probability (A3, wired
+// 2026-07-01). Mean surprisal (-log p) over the line's tokens = its information
+// content; higher = more surprising/informative = keep. `runner` must be a
+// loaded LlamaRunner. On any failure (null runner, empty surprisals) this falls
+// back to infoScore() so the caller never breaks.
 static double llamaLogprobScore(const std::string& line,
-                                icmg::llm::LlamaRunner* /*runner*/) {
-    // TODO: wire real llama logprob here.
+                                icmg::llm::LlamaRunner* runner) {
+    if (runner && runner->isLoaded()) {
+        auto surp = runner->tokenSurprisals(line);
+        if (!surp.empty()) {
+            // Mean surprisal, skipping index 0 (no left context) when possible.
+            double sum = 0.0; size_t cnt = 0;
+            for (size_t i = (surp.size() > 1 ? 1 : 0); i < surp.size(); ++i) {
+                sum += surp[i]; ++cnt;
+            }
+            if (cnt > 0) return sum / (double)cnt;
+        }
+    }
     // Fallback: heuristic infoScore (model-free, always available).
     return core::infoScore(line);
+}
+
+// Resolve + load the active local model into `runner`. Returns true if loaded
+// (caller can use llama scoring); false means no model / disabled / load fail
+// (caller falls back to heuristic). Same resolution as `icmg ask --backend=local`.
+static bool loadActiveModel(icmg::llm::LlamaRunner& runner) {
+    if (!icmg::llm::LlamaRunner::available()) return false;
+    namespace fs = std::filesystem;
+    const char* home =
+#ifdef _WIN32
+        std::getenv("USERPROFILE");
+#else
+        std::getenv("HOME");
+#endif
+    fs::path lldir = (home && *home ? fs::path(home) : fs::current_path()) / ".icmg" / "llm";
+    std::error_code ec;
+    if (fs::exists(lldir / "disabled", ec)) return false;
+    std::string active;
+    { std::ifstream af(lldir / "active"); std::getline(af, active); }
+    if (active.empty()) return false;
+    fs::path gguf = lldir / active / "model.gguf";
+    if (!fs::exists(gguf, ec)) return false;
+    return runner.load(gguf.string());
 }
 
 } // namespace
@@ -385,14 +407,23 @@ public:
         else if (forced == "generic")  k = Kind::Generic;
         else if (forced == "salience") {
             // v2.0.0 TE2: salience backend — keep the most informative lines within
-            // the byte budget (threshold). Pluggable score (heuristic infoScore now;
-            // llama-logprob perplexity later). Opt-in via --kind salience.
+            // the byte budget (threshold). Score is pluggable: heuristic infoScore
+            // (default) or llama-logprob perplexity via --scorer=llama (A3, opt-in;
+            // falls back to infoScore if no model / load fails).
             auto lines = splitLines(input);
+            icmg::llm::LlamaRunner runner;
+            bool llama_ok = use_llama_scorer && loadActiveModel(runner);
+            if (use_llama_scorer && !llama_ok)
+                std::cerr << "[icmg shrink: salience] --scorer=llama unavailable "
+                             "(no active model / load failed); using heuristic.\n";
             std::vector<double> scores; scores.reserve(lines.size());
-            for (auto& ln : lines) scores.push_back(core::infoScore(ln));
+            for (auto& ln : lines)
+                scores.push_back(llama_ok ? llamaLogprobScore(ln, &runner)
+                                          : core::infoScore(ln));
             std::string out = core::selectByBudget(lines, scores, (size_t)threshold, "\n");
             std::cout << out << "\n";
-            std::cerr << "[icmg shrink: salience] " << input.size() << "->" << out.size()
+            std::cerr << "[icmg shrink: salience" << (llama_ok ? "/llama" : "") << "] "
+                      << input.size() << "->" << out.size()
                       << " bytes (" << (input.size() > 0 ? 100 - 100 * out.size() / input.size() : 0)
                       << "% saved)\n";
             return 0;
