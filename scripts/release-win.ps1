@@ -63,6 +63,15 @@ foreach ($d in 'libwinpthread-1.dll','onnxruntime.dll','onnxruntime_providers_sh
 Get-ChildItem "$bd\bin\*.dll" -EA SilentlyContinue | Copy-Item -Destination $pkg   # ggml*, llama
 if (Test-Path 'C:\Windows\System32\vulkan-1.dll') { Copy-Item 'C:\Windows\System32\vulkan-1.dll' $pkg }
 
+# WASM runtime DLLs (wasmtime + its libzstd dep). build.ps1 drops these next to the
+# raw build-dir exe; ship them so WASM skills/extractors work out-of-the-box (else
+# the runtime dynamically no-ops - filters/extractors silently unavailable on end-user boxes).
+$exeDir = Split-Path $exe -Parent
+foreach ($d in 'wasmtime.dll','libzstd.dll') {
+    $src = @("$exeDir\$d", "$bd\$d", "$bd\Release\$d") | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($src) { Copy-Item $src $pkg -Force } else { Write-Host "WARN: $d not found (WASM runtime will be unavailable in this bundle)" -ForegroundColor Yellow }
+}
+
 # verify version from the PACKAGED exe (DLLs colocated)
 Push-Location $pkg
 $reported = (& '.\icmg.exe' --version 2>&1 | Select-Object -First 1)
@@ -95,3 +104,21 @@ Write-Host "uploading to $Repo $tag (--clobber)..." -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) { throw "gh release upload failed (exit $LASTEXITCODE) - does release $tag exist?" }
 Write-Host "uploaded $tag win-x64 zip + sha256." -ForegroundColor Green
 & gh release view $tag --repo $Repo --json assets --jq '.assets[].name'
+
+# --- auto-prune temp release scratch (keep latest 2 versions) -----------------
+# Each release writes icmg-pkg-* / icmg-*.zip(.sha256) into the temp staging dir;
+# without this they accumulate (hundreds over time). Keep the two newest versions'
+# artifacts, drop older ones. Never touch icmg-public / icmg-wire (live infra).
+# Best-effort: a cleanup failure must never fail the release.
+try {
+    $tmpRoot  = Split-Path $zip -Parent
+    $keepDirs = @('icmg-public','icmg-wire')
+    $rel = Get-ChildItem $tmpRoot -Force -ErrorAction SilentlyContinue | Where-Object {
+        ($keepDirs -notcontains $_.Name) -and ($_.Name -match '^icmg(-pkg)?-\d+\.\d+\.\d+')
+    }
+    $keep = $rel | ForEach-Object { if ($_.Name -match '(\d+\.\d+\.\d+)') { $Matches[1] } } |
+            Sort-Object { [version]$_ } -Unique -Descending | Select-Object -First 2
+    $rel | Where-Object { ($_.Name -match '(\d+\.\d+\.\d+)') -and ($keep -notcontains $Matches[1]) } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "temp prune: kept versions $($keep -join ', ')" -ForegroundColor DarkGray
+} catch { Write-Host "temp prune skipped: $_" -ForegroundColor DarkGray }
