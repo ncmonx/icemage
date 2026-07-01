@@ -63,6 +63,15 @@ foreach ($d in 'libwinpthread-1.dll','onnxruntime.dll','onnxruntime_providers_sh
 Get-ChildItem "$bd\bin\*.dll" -EA SilentlyContinue | Copy-Item -Destination $pkg   # ggml*, llama
 if (Test-Path 'C:\Windows\System32\vulkan-1.dll') { Copy-Item 'C:\Windows\System32\vulkan-1.dll' $pkg }
 
+# WASM runtime DLLs (wasmtime + its libzstd dep). build.ps1 drops these next to the
+# raw build-dir exe; ship them so WASM skills/extractors work out-of-the-box (else
+# the runtime dynamically no-ops - filters/extractors silently unavailable on end-user boxes).
+$exeDir = Split-Path $exe -Parent
+foreach ($d in 'wasmtime.dll','libzstd.dll') {
+    $src = @("$exeDir\$d", "$bd\$d", "$bd\Release\$d") | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($src) { Copy-Item $src $pkg -Force } else { Write-Host "WARN: $d not found (WASM runtime will be unavailable in this bundle)" -ForegroundColor Yellow }
+}
+
 # verify version from the PACKAGED exe (DLLs colocated)
 Push-Location $pkg
 $reported = (& '.\icmg.exe' --version 2>&1 | Select-Object -First 1)
