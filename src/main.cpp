@@ -17,6 +17,7 @@
 #include "core/crash_hint.hpp"
 #include "core/dll_trace.hpp"
 #include "core/openssl_rng.hpp"
+#include "core/throw_site.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
 #include <system_error>
@@ -165,6 +166,10 @@ int main(int argc, char* argv[]) {
     // so an err126 crash can name the subsystem that was initializing. Catches
     // runtime LoadLibrary-by-name modules invisible to the PE import walk.
     icmg::core::installDllTracer();
+    // Throw-site capture (issue #222): record the module+offset stack of every
+    // first-chance C++ exception so an uncaught err126 can name its THROWER —
+    // the last-DLL hint alone proved a red herring (ntmarta.dll) twice.
+    icmg::core::installThrowSiteCapture();
     // err126 root fix (Server 2019 / Core): route OpenSSL's RNG onto BCrypt so
     // SQLCipher writes never load the missing CryptoAPI (rsaenh) module. Must run
     // before any encrypted DB is opened. Opt out with ICMG_NO_RAND_OVERRIDE=1.
@@ -413,8 +418,15 @@ int main(int argc, char* argv[]) {
             const std::string& last = icmg::core::lastLoadedDll();
             if (!last.empty())
                 std::cerr << "      last DLL loaded before crash: " << last
-                          << "  (the missing module is one this loads at runtime;\n"
-                          << "       re-run with ICMG_TRACE_DLL=1 to see the full load order)\n";
+                          << "  (may be UNRELATED to the failure — it is only the\n"
+                          << "       most recent successful load; re-run with ICMG_TRACE_DLL=1\n"
+                          << "       to see the full load order)\n";
+            // Issue #222: the throw-site stack names the module that actually
+            // threw — far more reliable than the last-loaded-DLL heuristic.
+            std::string tstack = icmg::core::lastThrowStackFormatted();
+            if (!tstack.empty())
+                std::cerr << "      throw site (module+offset, innermost first):\n"
+                          << tstack;
             std::cerr << mhint;
             // DEGRADE: if a read command (context) crashed on a host module-load
             // err126 (e.g. SQLCipher write-side crypto on Windows Server), emit the

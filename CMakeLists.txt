@@ -958,6 +958,7 @@ add_icmg_test(test_mine                  tests/cli/test_mine.cpp)               
 add_icmg_test(test_bugfix_v161           tests/core/test_bugfix_v161.cpp)         # v1.61 bugfix
 add_icmg_test(test_exec_timeout          tests/core/test_exec_timeout.cpp)        # v1.78.4 bug2: safeExecShell pipe-block
 add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)       # v1.78.4 bug1: updating.lock startup check
+add_icmg_test(test_throw_site            tests/core/test_throw_site.cpp)          # #222: err126 throw-site capture
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
