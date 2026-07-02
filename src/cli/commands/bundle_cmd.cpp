@@ -11,6 +11,7 @@
 #include "../headtail_range.hpp"
 #include "../think_directive.hpp"
 #include "../auto_zone.hpp"
+#include "../../core/file_time.hpp"   // #222: clock_cast-free mtime conversion
 #include "../model_pricing.hpp"
 #include "../../core/intent_slice.hpp"
 #include "../../core/read_dedup.hpp"
@@ -480,19 +481,14 @@ public:
                 // Convert to system_clock (Unix epoch) before compare with
                 // node->updated_at (Unix seconds). Without this, every call
                 // triggered spurious rescan because file_mt was always ~3.6e8 ahead.
-                int64_t file_mt;
-                #if defined(_MSC_VER) && _MSC_VER >= 1920
-                  auto _sys = std::chrono::clock_cast<std::chrono::system_clock>(_mt);
-                  file_mt = std::chrono::duration_cast<std::chrono::seconds>(
-                      _sys.time_since_epoch()).count();
-                #else
-                  // Cross-platform fallback: subtract Win FILETIME-Unix epoch
-                  // delta (369 years = 11644473600 s). Safe on libstdc++ where
-                  // file_clock == system_clock (delta=0).
-                  int64_t raw = std::chrono::duration_cast<std::chrono::seconds>(
-                      _mt.time_since_epoch()).count();
-                  file_mt = (raw > 11644473600LL) ? raw - 11644473600LL : raw;
-                #endif
+                // Issue #222: NO clock_cast here -- on MSVC it converts through
+                // utc_clock -> get_tzdb_list() -> LoadLibrary("icu.dll"), which
+                // throws system_error(126) on Server 2019/Core (no ICU). Pure
+                // epoch-delta arithmetic is leap-second-blind, irrelevant at
+                // the 5s stale tolerance. See core/file_time.hpp.
+                int64_t raw = std::chrono::duration_cast<std::chrono::seconds>(
+                    _mt.time_since_epoch()).count();
+                int64_t file_mt = core::unixFromFileClockSeconds(raw);
                 if (file_mt > node->updated_at + 5) {
                     std::cerr << "[icmg context] stale (file mtime "
                               << (file_mt - node->updated_at)

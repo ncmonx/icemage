@@ -1,4 +1,5 @@
 #include "../base_command.hpp"
+#include "../../core/file_time.hpp"   // #222: clock_cast-free mtime conversion
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -972,23 +973,15 @@ private:
                     // Fix: convert via clock_cast (C++20) or the portable
                     // duration-arithmetic trick: subtract the file_clock epoch
                     // offset from system_clock.
-#if defined(__cpp_lib_clock_cast) && __cpp_lib_clock_cast >= 201902L
-                    auto sys_wt = std::chrono::clock_cast<std::chrono::system_clock>(wt);
-                    auto sec = std::chrono::duration_cast<std::chrono::seconds>(
-                        sys_wt.time_since_epoch()).count();
-#else
-                    // Portable C++17 fallback: use stat() to get mtime as
-                    // time_t (unix epoch). file_time_type::time_since_epoch()
-                    // is not directly comparable to unix epoch on MSVC (NTFS
-                    // epoch = 1601-01-01), so we avoid it entirely.
-                    int64_t sec = 0;
-                    {
-                        struct stat st{};
-                        if (::stat(e.path().string().c_str(), &st) == 0)
-                            sec = static_cast<int64_t>(st.st_mtime);
-                        // stat fail (race/perm) -> sec=0 -> treated as old, skipped.
-                    }
-#endif
+                    // Issue #222: NO clock_cast -- on MSVC it converts through
+                    // utc_clock -> get_tzdb_list() -> LoadLibrary("icu.dll"),
+                    // which throws system_error(126) on Server 2019/Core (no
+                    // ICU). Pure epoch-delta arithmetic instead (leap-second
+                    // precision irrelevant for a recency cutoff). See
+                    // core/file_time.hpp.
+                    int64_t raw = std::chrono::duration_cast<std::chrono::seconds>(
+                        wt.time_since_epoch()).count();
+                    int64_t sec = core::unixFromFileClockSeconds(raw);
                     if (sec < cutoff) continue;
                 }
                 changed.push_back(e.path().string());

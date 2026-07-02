@@ -522,6 +522,17 @@ else()
 endif()
 add_executable(icmg src/main.cpp ${ICMG_WIN_RESOURCE})
 
+# Issue #222 (2026-07-02, izin kak): emit PDB for the release exe so err126
+# throw-site offsets (throw_site.hpp prints icmg.exe+0xNNN) resolve to
+# function+line via llvm-symbolizer. /Z7 embeds debug info in .obj
+# (sccache-safe -- same flag ggml-vulkan already uses); /DEBUG makes link.exe
+# write icmg.pdb next to the exe. Zero codegen change; PDB is NOT shipped.
+if(MSVC)
+    target_compile_options(icmg_lib PRIVATE /Z7)
+    target_compile_options(icmg PRIVATE /Z7)
+    target_link_options(icmg PRIVATE /DEBUG)
+endif()
+
 # v1.7.0: minimal launcher stub.
 if(WIN32)
     add_executable(icmg-launcher src/exec_client.c)
@@ -959,6 +970,7 @@ add_icmg_test(test_bugfix_v161           tests/core/test_bugfix_v161.cpp)       
 add_icmg_test(test_exec_timeout          tests/core/test_exec_timeout.cpp)        # v1.78.4 bug2: safeExecShell pipe-block
 add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)       # v1.78.4 bug1: updating.lock startup check
 add_icmg_test(test_throw_site            tests/core/test_throw_site.cpp)          # #222: err126 throw-site capture
+add_icmg_test(test_file_time             tests/core/test_file_time.cpp)           # #222 ROOT FIX: clock_cast-free file mtime
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
