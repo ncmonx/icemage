@@ -78,8 +78,23 @@ LlamaRunner::LlamaRunner() : impl_(new Impl()) {
                           "(headless/no-GPU). Set ICMG_FORCE_VULKAN=1 to override.";
         return;
     }
-    llama_backend_init();
-    impl_->backend_inited = true;
+    // v2.13.1 error boundary: the local LLM is an OPTIONAL subsystem — any
+    // init failure (ggml Vulkan device probe throwing on a broken/stale
+    // driver, vk::SystemError surfacing as err126 on Windows Server, etc.)
+    // must degrade to "LLM unavailable", never crash the whole command.
+    // backend_inited stays false -> load() refuses gracefully downstream.
+    try {
+        llama_backend_init();
+        impl_->backend_inited = true;
+    } catch (const std::exception& e) {
+        impl_->last_err = std::string("local LLM backend init failed (") + e.what()
+                        + ") — LLM disabled for this run; command continues without it. "
+                          "Set ICMG_GGML_NO_VULKAN=1 to silence this probe.";
+    } catch (...) {
+        impl_->last_err = "local LLM backend init failed — LLM disabled for this run; "
+                          "command continues without it. Set ICMG_GGML_NO_VULKAN=1 "
+                          "to silence this probe.";
+    }
 }
 
 LlamaRunner::~LlamaRunner() {

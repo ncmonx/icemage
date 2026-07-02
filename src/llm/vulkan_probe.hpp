@@ -14,6 +14,7 @@
 // The decision core is pure (unit-testable); the ICD probe + env reads are thin.
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace icmg::llm {
 
@@ -54,6 +55,21 @@ inline bool envForceVulkan() {
 
 // Is a Vulkan ICD registered on this host? (Windows: registry probe; else true.)
 bool vulkanIcdPresent();
+
+// Pure core of the ICD probe (v2.13.1, err126 recurrence on Server despite the
+// gate): each registry value under Khronos\Vulkan\Drivers NAMES the ICD's JSON
+// manifest file. An uninstalled/stale driver can leave the value behind while
+// the manifest is gone -- so value-count alone false-positives, the gate passes,
+// and vkCreateInstance still crashes err126. Presence = at least one advertised
+// manifest actually exists on disk. Str = std::string/std::wstring; ExistsFn =
+// file-exists predicate (fs::exists in prod, injected fake in tests).
+template <class Str, class ExistsFn>
+inline bool anyIcdManifestPresent(const std::vector<Str>& manifest_paths, ExistsFn exists) {
+    for (const auto& p : manifest_paths) {
+        if (!p.empty() && exists(p)) return true;
+    }
+    return false;
+}
 
 // Combined real-world gate, computed once and cached. Callers (LlamaRunner ctor
 // + available()) use this to skip the local-LLM backend on unsafe hosts.
