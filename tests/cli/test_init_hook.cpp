@@ -10,6 +10,8 @@
 #include <fstream>
 #include <filesystem>
 #include <string>
+#include <set>
+#include <cctype>
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -120,6 +122,147 @@ TEST("init_hook: file round-trip preserves other keys") {
     ASSERT_EQ(final["hooks"]["PreToolUse"].size(), 1u);
 
     std::error_code ec; fs::remove(tmp, ec);
+}
+
+
+// ---------------------------------------------------------------------------
+// GREP_HOOK_JS intent-layer heuristic (v2.8.0).
+// The PreToolUse:Grep hook adds a 3rd "intent" layer: when the pattern looks
+// like a natural-language phrase (not a regex / identifier), the hook also
+// runs `icmg find "<pattern>"` so the agent gets ranked code slices in ONE
+// turn instead of looping grep->reword->grep on a phrase that never matches
+// verbatim. This mirrors the JS isIntentLike() in init_cmd.cpp GREP_HOOK_JS.
+static bool isIntentLike(const std::string& pat) {
+    // trim
+    size_t b = pat.find_first_not_of(" \t\r\n");
+    if (b == std::string::npos) return false;
+    size_t e = pat.find_last_not_of(" \t\r\n");
+    std::string s = pat.substr(b, e - b + 1);
+    if (s.empty()) return false;
+    // word count (split on whitespace runs)
+    int words = 0; bool in = false;
+    for (char c : s) {
+        bool ws = (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+        if (!ws && !in) { ++words; in = true; }
+        else if (ws) in = false;
+    }
+    if (words < 2) return false;                 // single token => identifier/regex/path
+    // any regex metachar => treat as literal grep, not prose
+    const std::string meta = "[](){}|^$*+?\\";
+    for (char c : s)
+        if (meta.find(c) != std::string::npos) return false;
+    return true;                                  // multi-word prose => intent search
+}
+
+TEST("grep_hook: multi-word prose is intent-like") {
+    ASSERT_TRUE(isIntentLike("where is the persona turn handled"));
+    ASSERT_TRUE(isIntentLike("handle login flow"));
+    ASSERT_TRUE(isIntentLike("two words"));
+}
+
+TEST("grep_hook: single token is NOT intent-like (identifier/regex/path)") {
+    ASSERT_TRUE(!isIntentLike("FindCommand"));
+    ASSERT_TRUE(!isIntentLike("src/main.cpp"));
+    ASSERT_TRUE(!isIntentLike("getUserById"));
+    ASSERT_TRUE(!isIntentLike(""));
+    ASSERT_TRUE(!isIntentLike("   "));
+}
+
+TEST("grep_hook: regex metachars disqualify intent (use literal grep)") {
+    ASSERT_TRUE(!isIntentLike("foo.*bar baz"));
+    ASSERT_TRUE(!isIntentLike("a\\|b cd"));
+    ASSERT_TRUE(!isIntentLike("class (Foo|Bar)"));
+    ASSERT_TRUE(!isIntentLike("end$ of line"));
+}
+
+
+// ---------------------------------------------------------------------------
+// GREP_HOOK_JS loop-detector (v2.9.0).
+// Stateless hook persists recent grep patterns per-session to .icmg/grep-loop.json.
+// When a new pattern is near-identical to a recent one, the hook prepends a hard
+// banner ("you already searched this -- use icmg find, stop reword-grepping").
+// This catches the reword-loop that the intent-layer misses: exact re-runs AND
+// single-token identifier suffix-rewording (parseConfig -> parseConfigFile),
+// which never trip isIntentLike (single token => skipped). These C++ mirrors
+// replicate the JS wordSet/jaccard/isLoop in init_cmd.cpp GREP_HOOK_JS.
+static std::set<std::string> wordSet(const std::string& s) {
+    std::set<std::string> out;
+    std::string cur;
+    for (char c : s) {
+        if (std::isalnum((unsigned char)c)) cur += (char)std::tolower((unsigned char)c);
+        else { if (cur.size() >= 2) out.insert(cur); cur.clear(); }
+    }
+    if (cur.size() >= 2) out.insert(cur);
+    return out;
+}
+static double jaccardWords(const std::string& a, const std::string& b) {
+    auto sa = wordSet(a), sb = wordSet(b);
+    if (sa.empty() || sb.empty()) return 0.0;
+    size_t inter = 0;
+    for (auto& w : sa) if (sb.count(w)) ++inter;
+    size_t uni = sa.size() + sb.size() - inter;
+    return uni ? (double)inter / (double)uni : 0.0;
+}
+static std::string normPat(const std::string& s) {
+    // lowercase + collapse whitespace runs to single space + trim
+    std::string out; bool in_ws = false, started = false;
+    for (char c : s) {
+        bool ws = (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+        if (ws) { in_ws = true; continue; }
+        if (in_ws && started) out += ' ';
+        in_ws = false; started = true;
+        out += (char)std::tolower((unsigned char)c);
+    }
+    return out;
+}
+static bool isSingleToken(const std::string& s) {
+    for (char c : s)
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') return false;
+    return !s.empty();
+}
+static bool isLoop(const std::string& prev, const std::string& cur) {
+    if (normPat(prev) == normPat(cur)) return true;          // exact re-run
+    if (jaccardWords(prev, cur) >= 0.5) return true;         // phrase reword
+    if (isSingleToken(prev) && isSingleToken(cur)) {         // identifier suffix-reword
+        std::string lp = normPat(prev), lc = normPat(cur);
+        if (lp.size() >= 4 && lc.size() >= 4 &&
+            (lc.find(lp) != std::string::npos || lp.find(lc) != std::string::npos))
+            return true;
+    }
+    return false;
+}
+
+TEST("grep_loop: exact re-run is a loop") {
+    ASSERT_TRUE(isLoop("handle login flow", "handle login flow"));
+    ASSERT_TRUE(isLoop("FooBar", "FooBar"));
+    ASSERT_TRUE(isLoop("a  b\tc", "a b c"));   // whitespace-normalized
+}
+
+TEST("grep_loop: phrase reword above 0.5 jaccard is a loop") {
+    // {handle,user,login,flow} vs {handle,login,flow,logic}: inter 3, union 5 = 0.6
+    ASSERT_TRUE(isLoop("handle user login flow", "handle login flow logic"));
+    // {parse,the,config,file} vs {parse,config,file}: inter 3, union 4 = 0.75
+    ASSERT_TRUE(isLoop("parse the config file", "parse config file"));
+}
+
+TEST("grep_loop: disjoint queries are NOT a loop") {
+    ASSERT_TRUE(!isLoop("handle login flow", "render markdown table"));
+    ASSERT_TRUE(!isLoop("alpha beta", "gamma delta"));
+    // one shared word out of many: {handle,user,auth} vs {handle,db,migration}: 1/5 = 0.2
+    ASSERT_TRUE(!isLoop("handle user auth", "handle db migration"));
+}
+
+TEST("grep_loop: single-token identifier suffix-reword is a loop") {
+    ASSERT_TRUE(isLoop("parseConfig", "parseConfigFile"));
+    ASSERT_TRUE(isLoop("loadUser", "loadUserById"));
+    ASSERT_TRUE(isLoop("GREP_HOOK", "GREP_HOOK_JS"));
+}
+
+TEST("grep_loop: distinct single tokens are NOT a loop") {
+    ASSERT_TRUE(!isLoop("parseConfig", "renderView"));
+    ASSERT_TRUE(!isLoop("foo", "bar"));
+    // too short to containment-match (guards against trivial substrings)
+    ASSERT_TRUE(!isLoop("ab", "abcdef"));
 }
 
 

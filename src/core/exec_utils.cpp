@@ -359,6 +359,13 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     } else {
         bool prefer_bash = std::getenv("MSYSTEM") != nullptr
                         || std::getenv("BASH") != nullptr;
+        // v2.11.1: also probe bash even without MSYS env (e.g. Git Bash on
+        // Windows without MSYSTEM set, or Claude Code running from native VS
+        // terminal). This fixes `icmg run grep -n "pat\|pat2"` where `\|` is
+        // valid GNU grep alternation but PowerShell misparses it as a pipe.
+        // Prefer bash whenever it is physically present -- it handles POSIX
+        // regex metacharacters correctly and avoids PS parse quirks.
+        if (!prefer_bash) prefer_bash = true;  // always probe; bash_path check below guards
         std::string bash_path;
         if (prefer_bash) {
             // Resolve bash.exe by checking common locations; PATH lookup

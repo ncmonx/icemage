@@ -4,6 +4,8 @@
 #include "filters/filter_utils.hpp"
 #include "ultra_pipeline.hpp"   // v1.56 T1
 #include "filters/wasm_filter.hpp"   // v2.x WASM skill filter
+#include "output_delta.hpp"          // Delta-only: diff vs previous run
+#include "output_tier.hpp"           // Auto-tier: classify output by urgency
 #include "../wasm/wasm_registry.hpp"
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
@@ -77,7 +79,8 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
 }
 
 int Tkil::runFiltered(const std::string& command, bool raw, bool json,
-                     bool dry_run, bool stream, bool ultra) {
+                      bool dry_run, bool stream, bool ultra,
+                      bool no_delta, bool last_full, bool no_tier) {
     CmdType type = detector_.detect(command);
 
     // A7: dry-run mode
@@ -276,14 +279,91 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             << ",\"output\":\"" << escaped << "\""
             << "}\n";
     } else {
-        std::cout << fr.output;
-        if (!raw && fr.was_truncated) {
-            std::cout << "[" << fr.filtered_lines << "/" << fr.original_lines
-                      << " lines shown]\n";
+        // --- Auto-tier (classify first) + Delta-only (sub-renderer of SUCCESS) ---
+        // Composition (advisor-validated): classify() consumes FULL output;
+        // delta runs ONLY inside the SUCCESS tier. A warn keyword in an
+        // unchanged line still bumps to WARNING (delta can't demote it).
+        bool delta_env_off = [] {
+            const char* e = std::getenv("ICMG_NO_DELTA");
+            return e && *e && *e != '0';
+        }();
+        bool tier_env_off = [] {
+            const char* e = std::getenv("ICMG_NO_TIER");
+            return e && *e && *e != '0';
+        }();
+        bool use_delta = !raw && !json && !no_delta && !delta_env_off;
+        bool use_tier  = !raw && !json && !no_tier && !tier_env_off;
+
+        if (last_full) {
+            // --last-full: print previous snapshot instead of current output
+            auto snap = loadLastOutput(command);
+            if (snap.exists && !snap.output.empty()) {
+                std::cout << "[icmg run --last-full] previous run snapshot:\n"
+                          << snap.output;
+            } else {
+                std::cout << "[icmg run --last-full] no previous snapshot for this command.\n";
+            }
+            recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+            return result.exit_code;
+        }
+
+        // Classify the FULL output first (tier is a property of the result).
+        icmg::tkil::OutputTier tier =
+            use_tier ? icmg::tkil::classifyTier(result.exit_code, fr.output)
+                     : icmg::tkil::OutputTier::Error;  // tier off → treat as full-output path
+
+        auto emitFull = [&]() {
+            std::cout << fr.output;
+            if (!raw && fr.was_truncated)
+                std::cout << "[" << fr.filtered_lines << "/"
+                          << fr.original_lines << " lines shown]\n";
+        };
+
+        if (tier == icmg::tkil::OutputTier::Error) {
+            // ERROR tier (exit!=0 or sacred keyword) → always full output.
+            // (Also the path when tiering is disabled entirely.)
+            emitFull();
+            recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+        } else if (tier == icmg::tkil::OutputTier::Warning) {
+            // WARNING tier → head summary + count (delta disabled here).
+            auto ws = icmg::tkil::renderWarningSummary(fr.output, /*head_lines=*/3);
+            std::cout << "[tier:warn " << ws.shown_lines << "/" << ws.total_lines
+                      << " lines]\n" << ws.text;
+            recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+        } else {
+            // SUCCESS tier → delta sub-render.
+            if (use_delta) {
+                auto prev_snap = loadLastOutput(command);
+                auto delta = icmg::tkil::computeOutputDelta(
+                    prev_snap.output, fr.output, /*exit_ok=*/true,
+                    /*sacred_always=*/false);  // sacred handled by tier already
+                recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+
+                if (delta.first_run) {
+                    emitFull();
+                } else if (delta.hash_only) {
+                    std::cout << "[tier:ok] output too large for delta. "
+                                 "Use --no-delta for full output.\n";
+                } else if (delta.identical) {
+                    std::cout << ".\n";  // no change → 1-token marker
+                } else {
+                    // changed-but-success: marker preserves the "moved" signal
+                    std::cout << "~ ok (" << fr.filtered_lines << " lines, +"
+                              << delta.added_lines;
+                    if (delta.removed_lines > 0)
+                        std::cout << " -" << delta.removed_lines;
+                    std::cout << " changed)\n" << delta.text;
+                    if (!delta.text.empty() && delta.text.back() != '\n') std::cout << '\n';
+                    std::cout << "[icmg run --no-delta] for full output\n";
+                }
+            } else {
+                emitFull();
+                recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+            }
         }
     }
 
-    recordCommand(command, fr.original_lines, fr.filtered_lines);
+    // (recordCommand already called above in both delta and no-delta paths)
 
     // Phase 20: log to tool_invocations for `icmg budget`. Best-effort —
     // ignore failures (table may not exist on legacy DBs that didn't migrate).
@@ -346,22 +426,88 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
     return result.exit_code;
 }
 
-void Tkil::recordCommand(const std::string& cmd, int orig, int filt) {
+void Tkil::recordCommand(const std::string& cmd, int orig, int filt,
+                         const std::string& filtered_output) {
     int64_t now = nowEpoch();
-    // Upsert: bump frequency + update last_used + accumulate line stats
-    db_.run(
-        "INSERT INTO commands(command,frequency,last_used,total_original_lines,total_filtered_lines)"
-        " VALUES(?,1,?,?,?)"
-        " ON CONFLICT(command) DO UPDATE SET"
-        " frequency=frequency+1,"
-        " last_used=excluded.last_used,"
-        " total_original_lines=total_original_lines+excluded.total_original_lines,"
-        " total_filtered_lines=total_filtered_lines+excluded.total_filtered_lines",
-        {cmd, std::to_string(now), std::to_string(orig), std::to_string(filt)});
+    // Cap snapshot at 64 KB to prevent blob bloat.
+    constexpr size_t kCap = 64 * 1024;
+    std::string snap = (filtered_output.size() > kCap)
+                       ? filtered_output.substr(0, kCap)
+                       : filtered_output;
+    // Simple hash: use size + first/last 32 bytes as a fast fingerprint.
+    // (Full SHA-256 would require a dep; this is sufficient for change detection.)
+    std::string hash_str;
+    if (!filtered_output.empty()) {
+        size_t sz = filtered_output.size();
+        std::string seed = std::to_string(sz);
+        size_t tail_start = sz > 32 ? sz - 32 : 0;
+        seed += filtered_output.substr(0, 32);
+        seed += filtered_output.substr(tail_start);
+        // Compute FNV-1a 64-bit hash of seed string
+        uint64_t h = 14695981039346656037ULL;
+        for (unsigned char c : seed) { h ^= c; h *= 1099511628211ULL; }
+        char buf[17]; std::snprintf(buf, sizeof(buf), "%016llx",
+                                    static_cast<unsigned long long>(h));
+        hash_str = buf;
+    }
+    // Upsert: bump frequency + update last_used + accumulate line stats + REPLACE snapshot.
+    // Defensive: on a deployed binary running from a dir without the migrations/
+    // folder, the embedded-migration fallback may predate 0046 (last_filtered_*
+    // columns). In that case fall back to the basic upsert so `icmg run` never
+    // crashes — delta/tier silently degrade to full output.
+    try {
+        db_.run(
+            "INSERT INTO commands(command,frequency,last_used,total_original_lines,"
+            "total_filtered_lines,last_filtered_output,last_filtered_hash)"
+            " VALUES(?,1,?,?,?,?,?)"
+            " ON CONFLICT(command) DO UPDATE SET"
+            " frequency=frequency+1,"
+            " last_used=excluded.last_used,"
+            " total_original_lines=total_original_lines+excluded.total_original_lines,"
+            " total_filtered_lines=total_filtered_lines+excluded.total_filtered_lines,"
+            " last_filtered_output=excluded.last_filtered_output,"
+            " last_filtered_hash=excluded.last_filtered_hash",
+            {cmd, std::to_string(now), std::to_string(orig), std::to_string(filt),
+             snap, hash_str});
+    } catch (...) {
+        // Columns missing (pre-0046 schema) — record without snapshot.
+        try {
+            db_.run(
+                "INSERT INTO commands(command,frequency,last_used,total_original_lines,"
+                "total_filtered_lines) VALUES(?,1,?,?,?)"
+                " ON CONFLICT(command) DO UPDATE SET"
+                " frequency=frequency+1,"
+                " last_used=excluded.last_used,"
+                " total_original_lines=total_original_lines+excluded.total_original_lines,"
+                " total_filtered_lines=total_filtered_lines+excluded.total_filtered_lines",
+                {cmd, std::to_string(now), std::to_string(orig), std::to_string(filt)});
+        } catch (...) { /* commands table missing entirely — skip */ }
+    }
 }
 
 void Tkil::recordManual(const std::string& cmd) {
     recordCommand(cmd, 0, 0);
+}
+
+Tkil::LastRunSnapshot Tkil::loadLastOutput(const std::string& cmd) {
+    LastRunSnapshot snap;
+    // Defensive: pre-0046 schema (deployed binary, embedded-migration fallback)
+    // lacks last_filtered_* columns. A failed query must NOT crash icmg run —
+    // return exists=false so the SUCCESS tier falls back to full output.
+    try {
+        db_.query(
+            "SELECT last_filtered_output, last_filtered_hash "
+            "FROM commands WHERE command=? LIMIT 1",
+            {cmd},
+            [&](const std::vector<std::string>& row) {
+                if (!row.empty()) {
+                    snap.output = row.size() > 0 ? row[0] : "";
+                    snap.hash   = row.size() > 1 ? row[1] : "";
+                    snap.exists = true;
+                }
+            });
+    } catch (...) { snap.exists = false; }
+    return snap;
 }
 
 double Tkil::computeScore(int freq, int64_t last_used) const {
