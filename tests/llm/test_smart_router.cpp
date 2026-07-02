@@ -90,3 +90,30 @@ TEST("vulkan gate: ICMG_FORCE_VULKAN overrides a missing ICD and force-off") {
     ASSERT_TRUE(llamaBackendSafe(true, /*icd*/false, false, /*forceVk*/true));
     ASSERT_TRUE(llamaBackendSafe(true, false, /*noVk*/true, /*forceVk*/true)); // force-on wins
 }
+
+// 2026-07-02: stale-ICD false-positive (err126 recurrence on Server despite the
+// gate). A registry value under Khronos\Vulkan\Drivers names the ICD's JSON
+// manifest; an uninstalled driver can leave the value behind while the file is
+// gone. The presence probe must verify at least one advertised manifest
+// actually exists on disk -- value-count alone is NOT presence.
+TEST("vulkan gate: stale manifest entries (file gone) -> ICD absent") {
+    std::vector<std::string> stale = {"C:/gone/nvoglv64.json", "C:/gone/igvk64.json"};
+    ASSERT_TRUE(!anyIcdManifestPresent(stale, [](const std::string&) { return false; }));
+}
+
+TEST("vulkan gate: one live manifest among stale -> ICD present") {
+    std::vector<std::string> mixed = {"C:/gone/old.json", "C:/live/amdvlk64.json"};
+    ASSERT_TRUE(anyIcdManifestPresent(mixed, [](const std::string& p) {
+        return p == "C:/live/amdvlk64.json";
+    }));
+}
+
+TEST("vulkan gate: no manifest values at all -> ICD absent") {
+    std::vector<std::string> none;
+    ASSERT_TRUE(!anyIcdManifestPresent(none, [](const std::string&) { return true; }));
+}
+
+TEST("vulkan gate: empty-string value is not a manifest") {
+    std::vector<std::string> weird = {""};
+    ASSERT_TRUE(!anyIcdManifestPresent(weird, [](const std::string&) { return true; }));
+}
