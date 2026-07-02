@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.13.1 LANGUAGES CXX C)
+project(icmg VERSION 2.13.2 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -522,6 +522,17 @@ else()
 endif()
 add_executable(icmg src/main.cpp ${ICMG_WIN_RESOURCE})
 
+# Issue #222 (2026-07-02, izin kak): emit PDB for the release exe so err126
+# throw-site offsets (throw_site.hpp prints icmg.exe+0xNNN) resolve to
+# function+line via llvm-symbolizer. /Z7 embeds debug info in .obj
+# (sccache-safe -- same flag ggml-vulkan already uses); /DEBUG makes link.exe
+# write icmg.pdb next to the exe. Zero codegen change; PDB is NOT shipped.
+if(MSVC)
+    target_compile_options(icmg_lib PRIVATE /Z7)
+    target_compile_options(icmg PRIVATE /Z7)
+    target_link_options(icmg PRIVATE /DEBUG)
+endif()
+
 # v1.7.0: minimal launcher stub.
 if(WIN32)
     add_executable(icmg-launcher src/exec_client.c)
@@ -650,10 +661,7 @@ add_icmg_test(test_strict_audit   tests/cli/test_strict_audit.cpp)
 add_icmg_test(test_service_singleton tests/core/test_service_singleton.cpp)
 add_icmg_test(test_wasm_skill    tests/wasm/test_wasm_skill.cpp)
 add_icmg_test(test_wasm_runtime tests/wasm/test_wasm_runtime.cpp)
-add_icmg_test(test_wasm_extractor tests/wasm/test_wasm_extractor.cpp)  # v2.13.0 extractor-v1 ABI: manifest + output mapper (pure)
-add_icmg_test(test_badge tests/cli/test_badge.cpp)  # v2.13.0 icmg badge: shields.io endpoint-JSON formatter (pure core)
-add_icmg_test(test_last_session tests/cli/test_last_session.cpp)  # v2.13.0 A2: recall --last-session pure helpers
-add_icmg_test(test_perplexity_score tests/core/test_perplexity_score.cpp)  # v2.13.0 A3: surprisal->salience adapter (pure)
+add_icmg_test(test_wasm_extractor tests/wasm/test_wasm_extractor.cpp)  # extractor-v1 ABI: manifest + output mapper (pure)
 add_icmg_test(test_context_budget tests/cli/test_context_budget.cpp)
 add_icmg_test(test_dense_summary tests/cli/test_dense_summary.cpp)  # odysseus-inspired dense compaction summary (AGPL-clean reimpl)
 add_icmg_test(test_persona_local_only tests/core/test_persona_local_only.cpp)
@@ -845,7 +853,10 @@ add_icmg_test(test_file_lock tests/core/test_file_lock.cpp)
 add_icmg_test(test_url_sanitize tests/core/test_url_sanitize.cpp)
 add_icmg_test(test_fetch_reduce tests/core/test_fetch_reduce.cpp)
 add_icmg_test(test_batch_emit tests/cli/test_batch_emit.cpp)
-add_icmg_test(test_filter_pass tests/tkil/test_filter_pass.cpp)
+add_icmg_test(test_filter_pass   tests/tkil/test_filter_pass.cpp)
+add_icmg_test(test_output_delta  tests/tkil/test_output_delta.cpp)
+add_icmg_test(test_delta_schema_resilience tests/tkil/test_delta_schema_resilience.cpp)
+add_icmg_test(test_output_tier   tests/tkil/test_output_tier.cpp)
 add_icmg_test(test_ref_registry tests/cli/test_ref_registry.cpp)
 add_icmg_test(test_pack_delta      tests/cli/test_pack_delta.cpp)
 add_icmg_test(test_update_asset    tests/cli/test_update_asset.cpp)
@@ -919,6 +930,9 @@ add_icmg_test(test_hook_approach        tests/core/test_hook_approach.cpp)
 add_icmg_test(test_bundle_secret_scan   tests/cli/test_bundle_secret_scan.cpp)
 add_icmg_test(test_content_status       tests/cli/test_content_status.cpp)  # P3: 0-byte file != path mismatch
 add_icmg_test(test_savings_daily        tests/cli/test_savings_daily.cpp)  # savings --daily console rows
+add_icmg_test(test_badge                 tests/cli/test_badge.cpp)          # icmg badge: shields.io endpoint-JSON formatter (pure core)
+add_icmg_test(test_last_session          tests/cli/test_last_session.cpp)   # A2: recall --last-session pure helpers
+add_icmg_test(test_perplexity_score      tests/core/test_perplexity_score.cpp)  # A3: surprisal->salience adapter (pure)
 # v1.10.0 backlog burn:
 add_icmg_test(test_hookio_cmd           tests/cli/test_hookio_cmd.cpp)
 add_icmg_test(test_cleanup_cmd          tests/cli/test_cleanup_cmd.cpp)
@@ -955,6 +969,8 @@ add_icmg_test(test_mine                  tests/cli/test_mine.cpp)               
 add_icmg_test(test_bugfix_v161           tests/core/test_bugfix_v161.cpp)         # v1.61 bugfix
 add_icmg_test(test_exec_timeout          tests/core/test_exec_timeout.cpp)        # v1.78.4 bug2: safeExecShell pipe-block
 add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)       # v1.78.4 bug1: updating.lock startup check
+add_icmg_test(test_throw_site            tests/core/test_throw_site.cpp)          # #222: err126 throw-site capture
+add_icmg_test(test_file_time             tests/core/test_file_time.cpp)           # #222 ROOT FIX: clock_cast-free file mtime
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.

@@ -284,6 +284,33 @@ public:
             std::cout << "  ! [db] open failed (locked or corrupt)\n";
         }
 
+        // 6b. DB WRITE probe (issue #222): on some headless Server SKUs the
+        // encrypted write side crashes err126 while every read works — so a
+        // read-only doctor reported "all passed" on a host where `icmg context`
+        // (stale-rescan = write) was broken. Exercise the write path with a
+        // rolled-back transaction: no persistent change, same crypto/IV code.
+        try {
+            auto& cfg = core::Config::instance();
+            std::string db_path = cfg.projectDbPath(".");
+            if (fs::exists(db_path)) {
+                core::Db db(db_path);
+                db.run("BEGIN IMMEDIATE", {});
+                db.run("CREATE TABLE IF NOT EXISTS _doctor_write_probe(x)", {});
+                db.run("INSERT INTO _doctor_write_probe(x) VALUES (1)", {});
+                db.run("ROLLBACK", {});
+                if (verb) std::cout << "  ✓ [db] write probe ok\n";
+            }
+        } catch (const std::exception& e) {
+            ++issues;
+            std::cout << "  ! [db] WRITE probe failed — reads work but writes crash on\n"
+                         "    this host (err126 class: graph update / context rescan will\n"
+                         "    fail). Error: " << e.what() << "\n";
+        } catch (...) {
+            ++issues;
+            std::cout << "  ! [db] WRITE probe failed (unknown error) — graph update /\n"
+                         "    context rescan will fail on this host.\n";
+        }
+
         // 7. [commands] feature-map M4: near-duplicate command detector. Catches
         // an accidental dup command (same purpose, two registrations) -- durable
         // anti-dup that does not rely on the build-time reflex rule.
