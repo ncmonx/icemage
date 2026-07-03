@@ -1,7 +1,9 @@
 #include "scorer.hpp"
+#include "memory_tier.hpp"   // A1: tier tie-breaker for recall ranking
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <sstream>
 #include <iterator>
 
@@ -184,9 +186,31 @@ std::vector<MemoryNode> Scorer::rank(const std::string& query,
         n.importance_mult = d.importance_mult;
     }
 
-    // Stable sort by score descending
-    std::stable_sort(nodes.begin(), nodes.end(),
-        [](const MemoryNode& a, const MemoryNode& b) { return a.score > b.score; });
+    // Stable sort by score descending. A1 (opt-in via ICMG_RECALL_TIER_BOOST):
+    // when two scores are ~equal (relative epsilon), break the tie by memory
+    // tier (hot > warm > cold). This ONLY reorders near-equal scores -- where
+    // stable_sort order was arbitrary anyway -- so it can never move a
+    // well-separated pair (provably no regression). Default OFF => byte-identical
+    // to the plain score-desc ordering.
+    bool tier_boost = [] {
+        const char* e = std::getenv("ICMG_RECALL_TIER_BOOST");
+        return e && *e && *e != '0';
+    }();
+    if (tier_boost) {
+        int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        std::stable_sort(nodes.begin(), nodes.end(),
+            [now](const MemoryNode& a, const MemoryNode& b) {
+                if (!scoresTied(a.score, b.score)) return a.score > b.score;
+                int ra = tierRankOrder(memoryTier(a.last_used, a.frequency, a.importance, now));
+                int rb = tierRankOrder(memoryTier(b.last_used, b.frequency, b.importance, now));
+                if (ra != rb) return ra > rb;
+                return a.score > b.score;  // stable within same tier
+            });
+    } else {
+        std::stable_sort(nodes.begin(), nodes.end(),
+            [](const MemoryNode& a, const MemoryNode& b) { return a.score > b.score; });
+    }
 
     // Remove zero-score nodes (no query match)
     nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
