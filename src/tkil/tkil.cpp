@@ -8,6 +8,7 @@
 #include "output_tier.hpp"           // Auto-tier: classify output by urgency
 #include "output_nano.hpp"           // D1: symbol-only compression (opt-in --nano)
 #include "output_gist.hpp"           // D4: one-line semantic gist (opt-in --gist)
+#include "command_learn.hpp"         // D6b: auto-router (learned verdict -> mode)
 #include "../wasm/wasm_registry.hpp"
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
@@ -307,6 +308,40 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             }
             recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
             return result.exit_code;
+        }
+
+        // D6b auto-router (opt-in via ICMG_AUTO_ROUTE): if THIS command has a
+        // learned "noisy" verdict from accumulated cross-session stats, apply
+        // the recommended tighter mode automatically -- turning D6's advice
+        // into action. Only when the user gave no explicit mode flag; default
+        // OFF so behaviour is unchanged unless opted in.
+        bool auto_route_on = [] {
+            const char* e = std::getenv("ICMG_AUTO_ROUTE");
+            return e && *e && *e != '0';
+        }();
+        if (auto_route_on && !nano && !gist) {
+            icmg::tkil::CmdStat st;
+            st.command = command;
+            db_.query(
+                "SELECT frequency, total_original_lines, total_filtered_lines "
+                "FROM commands WHERE command=? LIMIT 1",
+                {command},
+                [&](const std::vector<std::string>& row) {
+                    if (row.size() >= 3) {
+                        try { st.frequency      = std::stoll(row[0]); } catch (...) {}
+                        try { st.total_original = std::stoll(row[1]); } catch (...) {}
+                        try { st.total_filtered = std::stoll(row[2]); } catch (...) {}
+                    }
+                });
+            switch (icmg::tkil::autoRouteMode(st)) {
+                case icmg::tkil::AutoRoute::Nano:
+                    std::cerr << "[icmg run] auto-route: --nano (learned noisy)\n";
+                    nano = true; break;
+                case icmg::tkil::AutoRoute::Gist:
+                    std::cerr << "[icmg run] auto-route: --gist (learned noisy)\n";
+                    gist = true; break;
+                default: break;
+            }
         }
 
         // D1 nano mode (opt-in): collapse diagnostics to file:kind:code:line.

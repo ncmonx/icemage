@@ -90,6 +90,7 @@ public:
             "  --stream     Streaming filter (real-time output)\n"
             "  --nano       Symbol-only compression (file:kind:code:line) — 95%+ on builds\n"
             "  --gist       One-line semantic TL;DR of the output (test/diff/log/build)\n"
+            "               (ICMG_AUTO_ROUTE=1 auto-applies --nano/--gist to learned-noisy cmds)\n"
             "  --timeout N  Execution timeout in ms (default: 60000)\n";
     }
 

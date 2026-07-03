@@ -69,3 +69,25 @@ TEST("learn: build-like command detection") {
     ASSERT_FALSE(learnLooksLikeBuild("kubectl get pods"));
     ASSERT_FALSE(learnLooksLikeBuild("git log"));
 }
+
+// --- D6b auto-router decision ---
+
+TEST("autoroute: noisy build command routes to nano") {
+    CmdStat s{"cmake --build build", 10, 2000, 200};
+    ASSERT_TRUE(autoRouteMode(s) == AutoRoute::Nano);
+}
+
+TEST("autoroute: noisy non-build command routes to gist") {
+    CmdStat s{"kubectl get pods -A", 8, 1600, 300};
+    ASSERT_TRUE(autoRouteMode(s) == AutoRoute::Gist);
+}
+
+TEST("autoroute: quiet command routes to none") {
+    CmdStat s{"git status --porcelain", 50, 100, 90};
+    ASSERT_TRUE(autoRouteMode(s) == AutoRoute::None);
+}
+
+TEST("autoroute: infrequent command routes to none (no evidence)") {
+    CmdStat s{"cmake --build build", 1, 500, 50};
+    ASSERT_TRUE(autoRouteMode(s) == AutoRoute::None);
+}

@@ -109,4 +109,26 @@ inline const char* learnClassName(LearnClass c) {
     }
 }
 
+// D6b auto-router: turn the learned verdict into an actionable render mode.
+// Given a command's accumulated stats, decide whether `icmg run` should
+// automatically apply a tighter mode. Returns None unless the command is
+// classified Noisy (repeated + large + mostly-filtered evidence), then Nano
+// for build/test diagnostics or Gist otherwise. Pure -> the caller gates it
+// behind an opt-in env flag so default behaviour is unchanged.
+enum class AutoRoute { None, Nano, Gist };
+
+inline AutoRoute autoRouteMode(const CmdStat& s, const LearnConfig& cfg = {}) {
+    LearnResult r = analyzeOne(s, cfg);
+    if (r.cls != LearnClass::Noisy) return AutoRoute::None;
+    return learnLooksLikeBuild(s.command) ? AutoRoute::Nano : AutoRoute::Gist;
+}
+
+inline const char* autoRouteName(AutoRoute a) {
+    switch (a) {
+        case AutoRoute::Nano: return "nano";
+        case AutoRoute::Gist: return "gist";
+        default:              return "none";
+    }
+}
+
 } // namespace icmg::tkil
