@@ -89,6 +89,7 @@ public:
             "  --dry-run    Show what would be filtered without executing\n"
             "  --stream     Streaming filter (real-time output)\n"
             "  --nano       Symbol-only compression (file:kind:code:line) — 95%+ on builds\n"
+            "  --gist       One-line semantic TL;DR of the output (test/diff/log/build)\n"
             "  --timeout N  Execution timeout in ms (default: 60000)\n";
     }
 
@@ -101,7 +102,7 @@ public:
         bool raw = ra.raw, json_out = ra.json_out, dry_run = ra.dry_run,
              stream = ra.stream, yes = ra.yes, ultra = ra.ultra,
              no_delta = ra.no_delta, last_full = ra.last_full, no_tier = ra.no_tier;
-        bool nano = ra.nano;
+        bool nano = ra.nano, gist = ra.gist;
         if (const char* e = std::getenv("ICMG_TKIL_ULTRA"); e && *e && *e != '0')
             ultra = true;                                                         // env opt-in
         std::vector<std::string> cmd_args = ra.cmd_args;  // raw child tokens
@@ -157,7 +158,7 @@ public:
         }
 
         return executor.runFiltered(command, raw, json_out, dry_run, stream, ultra,
-                                      no_delta, last_full, no_tier, nano);
+                                      no_delta, last_full, no_tier, nano, gist);
     }
 };
 

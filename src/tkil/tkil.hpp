@@ -34,7 +34,8 @@ public:
                     bool no_delta = false,   // delta-only: bypass delta
                     bool last_full= false,   // delta-only: print prev snapshot
                     bool no_tier  = false,   // auto-tier: bypass tier (full output)
-                    bool nano     = false);  // D1: symbol-only compression (file:kind:code:line)
+                    bool nano     = false,   // D1: symbol-only compression (file:kind:code:line)
+                    bool gist     = false);  // D4: one-line semantic gist (TL;DR)
 
     // Suggest commands by score (freq × recency)
     std::vector<CmdRecord> suggest(const std::string& prefix = "", int limit = 10);

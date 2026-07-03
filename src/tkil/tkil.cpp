@@ -7,6 +7,7 @@
 #include "output_delta.hpp"          // Delta-only: diff vs previous run
 #include "output_tier.hpp"           // Auto-tier: classify output by urgency
 #include "output_nano.hpp"           // D1: symbol-only compression (opt-in --nano)
+#include "output_gist.hpp"           // D4: one-line semantic gist (opt-in --gist)
 #include "../wasm/wasm_registry.hpp"
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
@@ -81,7 +82,7 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
 
 int Tkil::runFiltered(const std::string& command, bool raw, bool json,
                       bool dry_run, bool stream, bool ultra,
-                      bool no_delta, bool last_full, bool no_tier, bool nano) {
+                      bool no_delta, bool last_full, bool no_tier, bool nano, bool gist) {
     CmdType type = detector_.detect(command);
 
     // A7: dry-run mode
@@ -312,6 +313,14 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
         // Sits ABOVE tier/delta; full output still recorded for --last-full.
         if (nano) {
             std::cout << icmg::tkil::nanoCompress(fr.output);
+            recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+            return result.exit_code;
+        }
+
+        // D4 gist mode (opt-in): one-line semantic TL;DR of the output.
+        // Also above tier/delta; full output still recorded for --last-full.
+        if (gist) {
+            std::cout << icmg::tkil::renderGist(command, result.exit_code, fr.output);
             recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
             return result.exit_code;
         }
