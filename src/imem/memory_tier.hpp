@@ -6,6 +6,8 @@
 #include <string>
 #include <cstring>
 #include <cstdint>
+#include <cmath>
+#include <algorithm>
 
 namespace icmg::imem {
 
@@ -45,6 +47,32 @@ inline bool tierPasses(const std::string& tier_filter, int64_t last_used,
                        int frequency, int importance, int64_t now) {
     if (tier_filter.empty()) return true;
     return memTierName(memoryTier(last_used, frequency, importance, now)) == tier_filter;
+}
+
+// A1 recall-ranking wiring: tier as a STABLE TIE-BREAKER (not a score
+// multiplier). Multiplying the composite score by a tier factor would
+// double-count last_used/frequency/importance -- those signals are already in
+// recency/freq/importance_mult/age_mult (the exact regression a prior review
+// rejected). A tie-breaker only reorders scores that are already ~equal, where
+// the current stable_sort ordering is arbitrary, so it CANNOT regress a
+// well-separated pair. Higher rank = preferred: hot(2) > warm(1) > cold(0).
+inline int tierRankOrder(MemTier t) {
+    switch (t) {
+        case MemTier::Hot:  return 2;
+        case MemTier::Warm: return 1;
+        default:            return 0;
+    }
+}
+
+// Two composite scores count as "tied" (eligible for the tier tie-breaker) when
+// they are within a RELATIVE epsilon of each other. Relative (not absolute) so
+// the band scales with score magnitude across corpora. eps too small => the
+// tie-breaker never fires (dead feature); too large => genuinely-distinct
+// scores reorder (reintroduces regression). 0.5% is a gentle, tested default.
+inline bool scoresTied(double a, double b, double rel_eps = 0.005) {
+    double m = std::max(std::fabs(a), std::fabs(b));
+    if (m <= 0.0) return true;                 // both ~zero
+    return std::fabs(a - b) <= rel_eps * m;
 }
 
 }  // namespace icmg::imem

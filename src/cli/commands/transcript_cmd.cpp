@@ -14,6 +14,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../tkil/history_cost.hpp"   // #1: re-send amplification analysis
 
 #include <ctime>
 #include <iomanip>
@@ -21,6 +22,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 namespace icmg::cli {
 
@@ -56,6 +58,9 @@ public:
             "  list [--limit N]\n"
             "      Recent recordings (default 20).\n"
             "  stats\n"
+            "      Summary counts + top sessions.\n"
+            "  cost [--session SID] [--top N] [--json]\n"
+            "      Re-send amplification: which entries cost the most across turns.\n"
             "      Row count + total bytes stored.\n"
             "  show <id>\n"
             "      Dump one entry verbatim.\n"
@@ -219,6 +224,68 @@ public:
                    {std::to_string(cutoff)});
             std::cout << "transcript prune: deleted " << before
                       << " entries older than " << days << " days\n";
+            return 0;
+        }
+
+        if (sub == "cost") {
+            std::string session = flagValue(rest, "--session");
+            bool json_out = hasFlag(rest, "--json");
+            int top = 10;
+            if (std::string v = flagValue(rest, "--top"); !v.empty()) {
+                try { top = std::stoi(v); } catch (...) {}
+            }
+            // Load chronological entries (oldest first) so position = re-send count.
+            std::vector<tkil::HistEntry> chrono;
+            std::string sql =
+                "SELECT id, char_len, substr(content,1,60) FROM transcripts ";
+            std::vector<std::string> params;
+            if (!session.empty()) { sql += "WHERE session_id = ? "; params.push_back(session); }
+            sql += "ORDER BY recorded_at ASC, id ASC";
+            db.query(sql, params, [&](const core::Row& r){
+                if (r.size() < 3) return;
+                tkil::HistEntry e;
+                try { e.id = std::stoll(r[0]); } catch (...) {}
+                try { e.char_len = std::stoll(r[1]); } catch (...) {}
+                e.preview = r[2];
+                chrono.push_back(std::move(e));
+            });
+            auto rep = tkil::analyzeHistoryCost(chrono, (size_t)std::max(1, top));
+
+            if (json_out) {
+                std::cout << "{\"entries\":" << rep.entries
+                          << ",\"raw_tokens\":" << tkil::histTokens(rep.raw_chars)
+                          << ",\"resend_tokens\":" << tkil::histTokens(rep.amplified_chars)
+                          << ",\"amplification\":" << rep.amplification
+                          << ",\"hotspots\":[";
+                for (size_t i = 0; i < rep.hotspots.size(); ++i) {
+                    const auto& h = rep.hotspots[i];
+                    if (i) std::cout << ",";
+                    std::cout << "{\"id\":" << h.id << ",\"resends\":" << h.resends
+                              << ",\"resend_tokens\":" << tkil::histTokens(h.amplified) << "}";
+                }
+                std::cout << "]}\n";
+                return 0;
+            }
+            if (rep.entries == 0) {
+                std::cout << "[cost] no transcript entries"
+                          << (session.empty() ? "" : " for that session") << ".\n";
+                return 0;
+            }
+            std::cout << "=== Re-send cost ("
+                      << (session.empty() ? "all sessions" : session) << ") ===\n"
+                      << "  entries:        " << rep.entries << "\n"
+                      << "  raw tokens:     ~" << tkil::histTokens(rep.raw_chars)
+                      << " (sent once each)\n"
+                      << "  re-send tokens: ~" << tkil::histTokens(rep.amplified_chars)
+                      << " (actual, with per-turn re-send)\n"
+                      << "  amplification:  " << rep.amplification << "x\n\n"
+                      << "Top hotspots (compact these first -- biggest re-send cost):\n";
+            for (const auto& h : rep.hotspots) {
+                std::cout << "  #" << h.id << "  ~" << tkil::histTokens(h.amplified)
+                          << " tok (" << h.resends << " re-sends x ~"
+                          << tkil::histTokens(h.char_len) << ")  "
+                          << h.preview << "\n";
+            }
             return 0;
         }
 

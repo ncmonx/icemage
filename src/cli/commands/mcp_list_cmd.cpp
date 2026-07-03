@@ -7,6 +7,8 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../mcp/base_mcp_tool.hpp"
+#include "../../mcp/tool_budget.hpp"
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -25,13 +27,14 @@ public:
         std::cout <<
             "Usage: icmg mcp <action>\n\n"
             "Actions:\n"
-            "  list [--json]      Show all registered MCP tools + descriptions\n";
+            "  list [--json]      Show all registered MCP tools + descriptions\n"
+            "  audit [--json] [--top N]  Per-turn token cost of each tool schema (diet)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         std::string action = args[0];
-        if (action != "list") {
+        if (action != "list" && action != "audit") {
             std::cerr << "icmg mcp: unknown action '" << action << "'\n";
             usage();
             return 1;
@@ -40,6 +43,53 @@ public:
         auto& reg = core::Registry<mcp::BaseMcpTool>::instance();
         auto names = reg.keys();
         std::sort(names.begin(), names.end());
+
+        if (action == "audit") {
+            bool json_out = hasFlag(args, "--json");
+            int top = 0;  // 0 = all
+            if (std::string v = flagValue(args, "--top"); !v.empty()) {
+                try { top = std::stoi(v); } catch (...) {}
+            }
+            std::vector<mcp::ToolSchemaInfo> infos;
+            for (auto& n : names) {
+                auto handler = reg.create(n);
+                mcp::ToolSchemaInfo si;
+                si.name        = n;
+                si.description = handler->description();
+                si.schema_json = handler->schema().dump();
+                infos.push_back(std::move(si));
+            }
+            auto rep = mcp::analyzeToolBudget(infos);
+            auto rows = rep.rows;
+            if (top > 0 && (int)rows.size() > top) rows.resize(top);
+
+            if (json_out) {
+                std::cout << "{\"tools\":" << rep.tools
+                          << ",\"total_tokens\":" << rep.total_tokens
+                          << ",\"avg_tokens\":" << rep.avg_tokens << ",\"rows\":[";
+                for (size_t i = 0; i < rows.size(); ++i) {
+                    const auto& r = rows[i];
+                    if (i) std::cout << ",";
+                    std::cout << "{\"name\":\"" << r.name << "\",\"tokens\":" << r.tokens
+                              << ",\"verbose\":" << (r.verbose ? "true" : "false") << "}";
+                }
+                std::cout << "]}\n";
+                return 0;
+            }
+            std::cout << "=== MCP tool schema budget (per-turn cost) ===\n"
+                      << "  tools:        " << rep.tools << "\n"
+                      << "  total tokens: ~" << rep.total_tokens
+                      << " (sent every turn)\n"
+                      << "  avg/tool:     ~" << (int)rep.avg_tokens << "\n\n"
+                      << "By cost (>>> = diet candidate, disproportionately large):\n";
+            for (const auto& r : rows) {
+                std::cout << "  " << (r.verbose ? ">>> " : "    ")
+                          << std::left << std::setw(24) << r.name
+                          << "~" << r.tokens << " tok (desc " << r.desc_chars
+                          << "c + schema " << r.schema_chars << "c)\n";
+            }
+            return 0;
+        }
 
         if (json_out) {
             std::cout << "[";
