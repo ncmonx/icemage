@@ -860,6 +860,7 @@ add_icmg_test(test_delta_schema_resilience tests/tkil/test_delta_schema_resilien
 add_icmg_test(test_output_tier   tests/tkil/test_output_tier.cpp)
 add_icmg_test(test_output_nano   tests/tkil/test_output_nano.cpp)
 add_icmg_test(test_output_gist   tests/tkil/test_output_gist.cpp)
+add_icmg_test(test_command_learn tests/tkil/test_command_learn.cpp)
 add_icmg_test(test_ref_registry tests/cli/test_ref_registry.cpp)
 add_icmg_test(test_pack_delta      tests/cli/test_pack_delta.cpp)
 add_icmg_test(test_update_asset    tests/cli/test_update_asset.cpp)
