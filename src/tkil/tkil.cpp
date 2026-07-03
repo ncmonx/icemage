@@ -6,6 +6,7 @@
 #include "filters/wasm_filter.hpp"   // v2.x WASM skill filter
 #include "output_delta.hpp"          // Delta-only: diff vs previous run
 #include "output_tier.hpp"           // Auto-tier: classify output by urgency
+#include "output_nano.hpp"           // D1: symbol-only compression (opt-in --nano)
 #include "../wasm/wasm_registry.hpp"
 #include "../core/registry.hpp"
 #include "../core/turn_cache.hpp"
@@ -80,7 +81,7 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
 
 int Tkil::runFiltered(const std::string& command, bool raw, bool json,
                       bool dry_run, bool stream, bool ultra,
-                      bool no_delta, bool last_full, bool no_tier) {
+                      bool no_delta, bool last_full, bool no_tier, bool nano) {
     CmdType type = detector_.detect(command);
 
     // A7: dry-run mode
@@ -303,6 +304,14 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             } else {
                 std::cout << "[icmg run --last-full] no previous snapshot for this command.\n";
             }
+            recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
+            return result.exit_code;
+        }
+
+        // D1 nano mode (opt-in): collapse diagnostics to file:kind:code:line.
+        // Sits ABOVE tier/delta; full output still recorded for --last-full.
+        if (nano) {
+            std::cout << icmg::tkil::nanoCompress(fr.output);
             recordCommand(command, fr.original_lines, fr.filtered_lines, fr.output);
             return result.exit_code;
         }

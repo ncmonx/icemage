@@ -14,7 +14,8 @@ namespace icmg::cli {
 
 struct RunArgs {
     bool raw = false, json_out = false, dry_run = false, stream = false,
-         yes = false, ultra = false, no_delta = false, last_full = false, no_tier = false;
+         yes = false, ultra = false, no_delta = false, last_full = false, no_tier = false,
+         nano = false;
     std::string              command;    // quoted, shell-ready child command line
     std::vector<std::string> cmd_args;   // raw (unquoted) child tokens
 };
@@ -50,6 +51,7 @@ inline RunArgs parseRunArgs(const std::vector<std::string>& args) {
             else if (a == "--no-delta")   { r.no_delta  = true; continue; }
             else if (a == "--last-full")  { r.last_full = true; continue; }
             else if (a == "--no-tier")    { r.no_tier   = true; continue; }
+            else if (a == "--nano")       { r.nano      = true; continue; }
             // unknown leading flag -> treat as the start of the child command
         }
         in_cmd = true;
