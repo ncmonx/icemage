@@ -977,6 +977,7 @@ add_icmg_test(test_exec_timeout          tests/core/test_exec_timeout.cpp)      
 add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)       # v1.78.4 bug1: updating.lock startup check
 add_icmg_test(test_throw_site            tests/core/test_throw_site.cpp)          # #222: err126 throw-site capture
 add_icmg_test(test_file_time             tests/core/test_file_time.cpp)           # #222 ROOT FIX: clock_cast-free file mtime
+add_icmg_test(test_emit_agents_md        tests/cli/test_emit_agents_md.cpp)       # 2026-07-05 feature #2: emit-agents-md cross-tool config sync
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
