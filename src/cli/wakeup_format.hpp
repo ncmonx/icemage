@@ -11,8 +11,23 @@
 #include "../core/token_budget.hpp"
 #include <string>
 #include <sstream>
+#include <cstdint>
+#include <vector>
 
 namespace icmg::cli {
+
+// Pick the newest (max) handoff timestamp from a set of candidates. A candidate
+// <= 0 means "absent/unreadable" and is ignored. Returns 0 if none are valid.
+// The legacy `remember.md` can freeze (stopped being written 2026-06-10) while
+// the active handoff moved to recent.md / now.md; taking the max across all of
+// them keeps a fresh continuation from being mislabeled as a stale gap.
+inline int64_t newestHandoffTs(const std::vector<int64_t>& candidates) {
+    int64_t best = 0;
+    for (int64_t ts : candidates) {
+        if (ts > best) best = ts;
+    }
+    return best;
+}
 
 // Compact one-line legend. Mirrors the 6 icons iconFor() can emit in v1:
 //   🟤 decision  🔴 critical/gotcha  🟡 fix/bug  🟣 research  🎯 plan  🔵 other

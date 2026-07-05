@@ -75,14 +75,23 @@ public:
             int64_t lastTs = 0; bool haveLast = false;
             try {
                 namespace fs = std::filesystem;
-                fs::path rp = fs::path(".") / ".remember" / "remember.md";
-                if (fs::exists(rp)) {
+                // Pick the NEWEST handoff file. `remember.md` is legacy and can
+                // freeze (stopped being written 2026-06-10) while the active
+                // handoff moved to recent.md / now.md. Reading only remember.md
+                // reported a bogus 25-day gap. Take the max mtime across all
+                // three so a fresh continuation isn't mislabeled as a stale
+                // fresh session.
+                std::vector<int64_t> cands;
+                for (const char* fname : {"remember.md", "recent.md", "now.md"}) {
+                    fs::path rp = fs::path(".") / ".remember" / fname;
+                    if (!fs::exists(rp)) continue;
                     auto ftime = fs::last_write_time(rp);
                     auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
                         ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now());
-                    lastTs = (int64_t)std::chrono::system_clock::to_time_t(sctp);
-                    haveLast = true;
+                    cands.push_back((int64_t)std::chrono::system_clock::to_time_t(sctp));
                 }
+                lastTs = newestHandoffTs(cands);
+                haveLast = (lastTs > 0);
             } catch (...) {}
             auto hint = computeGreetingHint(now, lastTs, haveLast);
             if (hint.haveLast) {
