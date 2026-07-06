@@ -29,6 +29,17 @@ void betweenTests() {
     try {
         ::icmg::imem::Scorer::instance().reset();
     } catch (...) {}
+    // Reset process-env knobs so a test that sets them (e.g. isolateDaemon in
+    // test_causal sets ICMG_RECALL_CACHE=0 / ICMG_NO_DAEMON=1) cannot leak into
+    // the next test in the mono binary. Each test starts from icmg defaults
+    // (cache on, daemon on); tests needing them off re-set at their own start.
+#ifdef _WIN32
+    _putenv_s("ICMG_RECALL_CACHE", "");
+    _putenv_s("ICMG_NO_DAEMON", "");
+#else
+    unsetenv("ICMG_RECALL_CACHE");
+    unsetenv("ICMG_NO_DAEMON");
+#endif
     // Other singletons to reset here as mono mode reveals state leaks.
 }
 
