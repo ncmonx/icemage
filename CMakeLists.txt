@@ -982,6 +982,7 @@ add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)     
 add_icmg_test(test_throw_site            tests/core/test_throw_site.cpp)          # #222: err126 throw-site capture
 add_icmg_test(test_file_time             tests/core/test_file_time.cpp)           # #222 ROOT FIX: clock_cast-free file mtime
 add_icmg_test(test_emit_agents_md        tests/cli/test_emit_agents_md.cpp)       # 2026-07-05 feature #2: emit-agents-md cross-tool config sync
+add_icmg_test(test_compress_prompt       tests/cli/test_compress_prompt.cpp)      # 2026-07-06 feature #6: honesty-gated prompt compressor
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
