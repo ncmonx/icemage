@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.14.0 LANGUAGES CXX C)
+project(icmg VERSION 2.15.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -714,6 +714,10 @@ add_icmg_test(test_importance_decay tests/imem/test_importance_decay.cpp)  # v1.
 add_icmg_test(test_tier_rank     tests/imem/test_tier_rank.cpp)  # A1: tier tie-breaker
 add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomize T1
 add_icmg_test(test_memory_source tests/imem/test_memory_source.cpp)  # provenance: memory source (ctor guarded-ALTER)
+add_icmg_test(test_bitemporal    tests/imem/test_bitemporal.cpp)  # feature #5: bi-temporal fact invalidation
+add_icmg_test(test_causal        tests/imem/test_causal.cpp)  # feature #1: causal-fact retrieval
+add_icmg_test(test_retrieval_tier tests/imem/test_retrieval_tier.cpp)  # feature #3: two-tier recall scheduling
+add_icmg_test(test_skill_bank    tests/imem/test_skill_bank.cpp)  # feature #7: trajectory -> skill-bank distillation
 add_icmg_test(test_memory_history tests/imem/test_memory_history.cpp)  # Gap #5: dedup + token metric
 add_icmg_test(test_token_ledger tests/cli/test_token_ledger.cpp)  # Gap #3: real API token ledger
 add_icmg_test(test_cache_advisor tests/cli/test_cache_advisor.cpp)  # #1b: cache-hit TREND advisor (prefix-stability)
@@ -786,6 +790,7 @@ add_icmg_test(test_agent_lease  tests/core/test_agent_lease.cpp)    # v2.0.0 Pha
 add_icmg_test(test_db_key_hex   tests/core/test_db_key_hex.cpp)     # v1.90.0 sec (CodeQL sql-inj: hex key guard)
 add_icmg_test(test_summary_confidence tests/core/test_summary_confidence.cpp)  # v2.0.0 TE1
 add_icmg_test(test_compress_select tests/core/test_compress_select.cpp)  # v2.0.0 TE2
+add_icmg_test(test_prompt_rewrite tests/core/test_prompt_rewrite.cpp)  # feature #8: pre-flight prompt rewrite (TE2 layer)
 add_icmg_test(test_working_set tests/core/test_working_set.cpp)  # v2.0.0 C1+C3 governor core
 add_icmg_test(test_ws_snapshot tests/core/test_ws_snapshot.cpp)  # v2.0.0 C4 transition
 add_icmg_test(test_compact_advisor tests/core/test_compact_advisor.cpp)  # v2.0.0 C5 advisor
@@ -977,6 +982,8 @@ add_icmg_test(test_exec_timeout          tests/core/test_exec_timeout.cpp)      
 add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)       # v1.78.4 bug1: updating.lock startup check
 add_icmg_test(test_throw_site            tests/core/test_throw_site.cpp)          # #222: err126 throw-site capture
 add_icmg_test(test_file_time             tests/core/test_file_time.cpp)           # #222 ROOT FIX: clock_cast-free file mtime
+add_icmg_test(test_emit_agents_md        tests/cli/test_emit_agents_md.cpp)       # 2026-07-05 feature #2: emit-agents-md cross-tool config sync
+add_icmg_test(test_compress_prompt       tests/cli/test_compress_prompt.cpp)      # 2026-07-06 feature #6: honesty-gated prompt compressor
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.

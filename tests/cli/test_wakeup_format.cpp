@@ -12,6 +12,7 @@
 
 using icmg::cli::iconLegend;
 using icmg::cli::briefingCostFooter;
+using icmg::cli::newestHandoffTs;
 
 // 1. Legend lists the typed-icon vocabulary (at least decision + gotcha + plan).
 TEST("wakeup-format: iconLegend lists the typed-icon vocabulary") {
@@ -44,4 +45,20 @@ TEST("wakeup-format: cost footer token estimate grows with briefing length") {
     int big   = tokOf(briefingCostFooter(std::string(800, 'a')));
     ASSERT_TRUE(small > 0);
     ASSERT_TRUE(big > small);
+}
+
+// 4. newestHandoffTs picks the max timestamp — a frozen legacy remember.md must
+//    not shadow a newer recent.md/now.md (the 25-day-bogus-gap bug, 2026-07-05).
+TEST("wakeup-format: newestHandoffTs picks the newest handoff, not the legacy one") {
+    // remember.md frozen, recent.md fresh -> newest wins.
+    ASSERT_EQ(newestHandoffTs({1000, 5000, 3000}), (int64_t)5000);
+    // order independence
+    ASSERT_EQ(newestHandoffTs({5000, 1000}), (int64_t)5000);
+}
+
+// 5. Absent/unreadable candidates (<= 0) are ignored; empty -> 0.
+TEST("wakeup-format: newestHandoffTs ignores absent candidates") {
+    ASSERT_EQ(newestHandoffTs({0, 0, 4200}), (int64_t)4200);
+    ASSERT_EQ(newestHandoffTs({}), (int64_t)0);
+    ASSERT_EQ(newestHandoffTs({-1, 0}), (int64_t)0);
 }

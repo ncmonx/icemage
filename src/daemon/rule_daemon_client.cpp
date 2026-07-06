@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <stdexcept>
 #include <thread>
 
@@ -182,6 +183,13 @@ bool RuleDaemonClient::ensureDaemon() {
 bool RuleDaemonClient::callHook(const std::string& op,
                                  const std::string& stdin_raw,
                                  std::string* out_emit) {
+    // Escape hatch (tests / CI / hostile env): ICMG_NO_DAEMON=1 disables ALL
+    // daemon interaction -- no pipe connect, no spawn. Prevents a hang when a
+    // stale/half-open daemon pipe from a concurrent session leaves ReadFile
+    // blocking, and keeps unit tests free of external-process dependencies.
+    if (const char* nd = std::getenv("ICMG_NO_DAEMON"); nd && nd[0] == '1')
+        return false;
+
     // Try once without spawn. If daemon down, spawn + retry once.
     auto attempt = [&]() -> bool {
         json req;

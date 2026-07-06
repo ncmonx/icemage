@@ -7,6 +7,7 @@
 #include "../cli/recall_json.hpp"
 #include <cstdlib>
 #include "scorer.hpp"
+#include "retrieval_tier.hpp"
 #include "../core/hook_bus.hpp"
 #include "../core/user_identity.hpp"
 #include "../core/exec_utils.hpp"
@@ -126,6 +127,10 @@ MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     if (row.size() > 11) try { n.pinned  = std::stoi(row[11]); } catch (...) {}
     if (row.size() > 12 && !row[12].empty()) n.git_sha = row[12];
     if (row.size() > 13 && !row[13].empty()) n.source = row[13];
+    // Bi-temporal (feature #5): valid_from, invalidated_at, superseded_by.
+    if (row.size() > 14) try { n.valid_from     = row[14].empty() ? 0 : std::stoll(row[14]); } catch (...) {}
+    if (row.size() > 15) try { n.invalidated_at = row[15].empty() ? 0 : std::stoll(row[15]); } catch (...) {}
+    if (row.size() > 16) try { n.superseded_by  = row[16].empty() ? 0 : std::stoll(row[16]); } catch (...) {}
     return n;
 }
 
@@ -139,6 +144,37 @@ MemoryStore::MemoryStore(core::Db& db) : db_(db) {
               [&](const core::Row& r) { ++cols; if (r.size() > 1 && r[1] == "source") hasSource = true; });
     if (cols > 0 && !hasSource)
         db_.run("ALTER TABLE memory_nodes ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown'");
+
+    // Feature #5 (bi-temporal): ensure the invalidation columns exist (guarded --
+    // covers hand-created fixtures + DBs that skipped the migrator). Only ALTERs
+    // an EXISTING table. valid_from = fact true-time; invalidated_at = supersede
+    // time (0 = live); superseded_by = replacing node id.
+    if (cols > 0) {
+        bool hasValidFrom = false, hasInvAt = false, hasSupBy = false;
+        db_.query("PRAGMA table_info(memory_nodes)", {},
+                  [&](const core::Row& r) {
+                      if (r.size() > 1) {
+                          if (r[1] == "valid_from")     hasValidFrom = true;
+                          if (r[1] == "invalidated_at") hasInvAt = true;
+                          if (r[1] == "superseded_by")  hasSupBy = true;
+                      }
+                  });
+        if (!hasValidFrom) db_.run("ALTER TABLE memory_nodes ADD COLUMN valid_from INTEGER NOT NULL DEFAULT 0");
+        if (!hasInvAt)     db_.run("ALTER TABLE memory_nodes ADD COLUMN invalidated_at INTEGER NOT NULL DEFAULT 0");
+        if (!hasSupBy)     db_.run("ALTER TABLE memory_nodes ADD COLUMN superseded_by INTEGER NOT NULL DEFAULT 0");
+    }
+
+    // Feature #1 (causal-fact retrieval): typed causal edges between facts.
+    // Guarded-CREATE so hand-made fixtures + pre-migration DBs get it. UNIQUE
+    // triple makes linkCausal idempotent via INSERT OR IGNORE.
+    db_.run("CREATE TABLE IF NOT EXISTS memory_causal_edges("
+            " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            " src_id INTEGER NOT NULL, dst_id INTEGER NOT NULL,"
+            " relation TEXT NOT NULL DEFAULT 'related_to',"
+            " created_at INTEGER NOT NULL DEFAULT 0,"
+            " UNIQUE(src_id, dst_id, relation))");
+    db_.run("CREATE INDEX IF NOT EXISTS idx_causal_src ON memory_causal_edges(src_id)");
+    db_.run("CREATE INDEX IF NOT EXISTS idx_causal_dst ON memory_causal_edges(dst_id)");
 
     // Gap #5: ensure query_history has a tokens metric column (guarded -- covers
     // hand-created fixtures + DBs that skipped the migrator). Only ALTERs an
@@ -319,16 +355,21 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
 
     std::string zone = effective.zone.empty() ? "default" : effective.zone;
     std::string git_sha = effective.git_sha.empty() ? captureGitSha() : effective.git_sha;
+    // Bi-temporal (feature #5): a fact is true-from `valid_from` (defaults to now)
+    // and live (invalidated_at=0) until superseded.
+    int64_t validFrom = effective.valid_from > 0 ? effective.valid_from : now;
     // Phase 47 T4: tag created_by from user_identity (env / git config / anonymous).
     db_.run(
         "INSERT INTO memory_nodes(topic,content,keywords,importance,frequency,"
-        "last_used,created_at,expires_at,zone,created_by,git_sha,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "last_used,created_at,expires_at,zone,created_by,git_sha,source,valid_from) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         {effective.topic, effective.content, effective.keywords,
          std::to_string(effective.importance),
          std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
          expires, zone, core::currentUser(), git_sha,
-         effective.source.empty() ? std::string("unknown") : effective.source});
+         effective.source.empty() ? std::string("unknown") : effective.source,
+         std::to_string(validFrom)});
     // Phase 48: initial row_version=1 for sync tracking.
     int64_t new_id = db_.lastInsertId();
     try { db_.run("UPDATE memory_nodes SET row_version=1 WHERE id=?", {std::to_string(new_id)}); } catch(...) {}
@@ -381,6 +422,124 @@ bool MemoryStore::restore(int64_t id) {
     return true;
 }
 
+bool MemoryStore::invalidate(int64_t id, int64_t supersededBy) {
+    // Bi-temporal (feature #5): mark a still-live fact as superseded WITHOUT
+    // deleting it -- recall (via all()) then skips it, but history/get() keep it.
+    // No-op (returns false) if the node is missing or already invalidated.
+    rcFlushOnWrite();
+    MemoryNode existing = get(id);
+    if (existing.id == 0) return false;            // unknown id
+    if (existing.invalidated_at > 0) return false; // already superseded
+    int64_t now = nowEpoch();
+    db_.run("UPDATE memory_nodes SET invalidated_at=?, superseded_by=? "
+            "WHERE id=? AND (invalidated_at IS NULL OR invalidated_at=0)",
+            {std::to_string(now), std::to_string(supersededBy), std::to_string(id)});
+    return true;
+}
+
+std::vector<MemoryNode> MemoryStore::allIncludingInvalidated() const {
+    // History view: every non-deleted, non-expired fact -- live AND invalidated.
+    std::vector<MemoryNode> result;
+    int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    db_.query("SELECT id,topic,content,keywords,importance,frequency,"
+              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
+              "valid_from,invalidated_at,superseded_by "
+              "FROM memory_nodes "
+              "WHERE deleted_at IS NULL "
+              "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
+              {std::to_string(now)},
+              [&](const core::Row& r) { result.push_back(rowToNode(r)); });
+    return result;
+}
+
+// ---- Causal-fact retrieval (feature #1) ---------------------------------
+bool MemoryStore::linkCausal(int64_t src, int64_t dst, const std::string& relation) {
+    rcFlushOnWrite();
+    std::string rel = relation.empty() ? std::string("related_to") : relation;
+    int64_t now = nowEpoch();
+    // INSERT OR IGNORE + UNIQUE(src,dst,relation) => idempotent per triple.
+    db_.run("INSERT OR IGNORE INTO memory_causal_edges(src_id,dst_id,relation,created_at) "
+            "VALUES(?,?,?,?)",
+            {std::to_string(src), std::to_string(dst), rel, std::to_string(now)});
+    return true;
+}
+
+std::vector<MemoryStore::CausalEdge>
+MemoryStore::causalNeighbors(int64_t id, bool outgoing) const {
+    std::vector<CausalEdge> edges;
+    const char* sql = outgoing
+        ? "SELECT src_id,dst_id,relation,created_at FROM memory_causal_edges WHERE src_id=? ORDER BY id"
+        : "SELECT src_id,dst_id,relation,created_at FROM memory_causal_edges WHERE dst_id=? ORDER BY id";
+    db_.query(sql, {std::to_string(id)}, [&](const core::Row& r) {
+        CausalEdge e;
+        if (r.size() > 0) try { e.src = std::stoll(r[0]); } catch (...) {}
+        if (r.size() > 1) try { e.dst = std::stoll(r[1]); } catch (...) {}
+        if (r.size() > 2) e.relation = r[2];
+        if (r.size() > 3) try { e.created_at = std::stoll(r[3]); } catch (...) {}
+        edges.push_back(e);
+    });
+    return edges;
+}
+
+std::vector<MemoryNode> MemoryStore::recallCausal(const std::string& query, int limit) {
+    // Layer 1: ordinary BM25 recall (unchanged ranking).
+    std::vector<MemoryNode> hits = recall(query, limit);
+
+    // Layer 2: 1-hop causal expansion. For each hit, pull its outgoing causal
+    // neighbors; append any live fact not already present. Order: hits first,
+    // then expansions (so BM25 relevance stays on top).
+    std::unordered_set<int64_t> seen;
+    for (const auto& n : hits) seen.insert(n.id);
+
+    std::vector<MemoryNode> expanded;
+    for (const auto& n : hits) {
+        for (const auto& e : causalNeighbors(n.id, /*outgoing=*/true)) {
+            if (seen.count(e.dst)) continue;
+            MemoryNode nb = get(e.dst);
+            // Only surface live, non-deleted facts (respect bi-temporal + soft-del).
+            if (nb.id == 0 || nb.deleted_at > 0 || nb.invalidated_at > 0) continue;
+            seen.insert(e.dst);
+            expanded.push_back(nb);
+        }
+    }
+    hits.insert(hits.end(), expanded.begin(), expanded.end());
+    return hits;
+}
+
+std::vector<MemoryNode> MemoryStore::recallAuto(const std::string& query, int limit) {
+    // Two-tier scheduling (feature #3): probe with the cheap BM25 pass to gauge
+    // query difficulty, then escalate to the expensive semantic tier only when
+    // the cheap pass looks weak. Deterministic gate in retrieval_tier.hpp.
+    auto corpus = all();
+    auto& scorer = Scorer::instance();
+    scorer.fit(corpus);
+    int probe_n = std::max(limit, 10);
+    auto probe = scorer.rank(query, corpus, probe_n);
+
+    TierThresholds th;
+    QueryTierSignal sig;
+    sig.candidate_count = (int)probe.size();
+    // token count: whitespace-delimited words in the query.
+    {
+        bool in_tok = false;
+        for (char c : query) {
+            bool ws = (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+            if (!ws && !in_tok) { ++sig.query_tokens; in_tok = true; }
+            else if (ws) in_tok = false;
+        }
+    }
+    if (!probe.empty()) {
+        sig.top_score = scorer.score(query, probe[0]);
+        for (const auto& n : probe)
+            if (scorer.score(query, n) >= th.strong_score) ++sig.strong_hits;
+    }
+
+    if (classifyRetrievalTier(sig, th) == RetrievalTier::Deep)
+        return recallSemantic(query, limit, /*alpha=*/0.5);  // deep tier
+    return recall(query, limit);                             // cheap tier
+}
+
 int MemoryStore::purge(int days_old) {
     rcFlushOnWrite();   // ram-brain: invalidate recall cache on any write
     int64_t cutoff = nowEpoch() - (int64_t)days_old * 86400;
@@ -396,7 +555,8 @@ int MemoryStore::purge(int days_old) {
 MemoryNode MemoryStore::get(int64_t id) const {
     MemoryNode node;
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
+              "valid_from,invalidated_at,superseded_by "
               "FROM memory_nodes WHERE id=?",
               {std::to_string(id)},
               [&](const core::Row& r) { node = rowToNode(r); });
@@ -409,9 +569,11 @@ std::vector<MemoryNode> MemoryStore::all() const {
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
+              "valid_from,invalidated_at,superseded_by "
               "FROM memory_nodes "
               "WHERE deleted_at IS NULL "
+              "AND (invalidated_at IS NULL OR invalidated_at=0) "   // bi-temporal: live facts only
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
               {std::to_string(now)},
               [&](const core::Row& r) { result.push_back(rowToNode(r)); });
