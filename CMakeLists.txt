@@ -789,6 +789,7 @@ add_icmg_test(test_agent_lease  tests/core/test_agent_lease.cpp)    # v2.0.0 Pha
 add_icmg_test(test_db_key_hex   tests/core/test_db_key_hex.cpp)     # v1.90.0 sec (CodeQL sql-inj: hex key guard)
 add_icmg_test(test_summary_confidence tests/core/test_summary_confidence.cpp)  # v2.0.0 TE1
 add_icmg_test(test_compress_select tests/core/test_compress_select.cpp)  # v2.0.0 TE2
+add_icmg_test(test_prompt_rewrite tests/core/test_prompt_rewrite.cpp)  # feature #8: pre-flight prompt rewrite (TE2 layer)
 add_icmg_test(test_working_set tests/core/test_working_set.cpp)  # v2.0.0 C1+C3 governor core
 add_icmg_test(test_ws_snapshot tests/core/test_ws_snapshot.cpp)  # v2.0.0 C4 transition
 add_icmg_test(test_compact_advisor tests/core/test_compact_advisor.cpp)  # v2.0.0 C5 advisor

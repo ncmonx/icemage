@@ -27,6 +27,7 @@
 #include "../../core/exec_context.hpp"   // premiumAvailable() no-premium signal
 #include "../../llm/smart_router.hpp"    // routeFor gate
 #include "../../llm/warm_pool.hpp"       // in-process local inference
+#include "../../core/prompt_rewrite.hpp" // feature #8: pre-flight context compression
 #include "../../llm/llama_runner.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
@@ -62,6 +63,9 @@ public:
             "  --dry-run       Show assembled prompt; do not call LLM\n"
             "  --no-store      Do not auto-store decision\n"
             "  --no-pack       Skip pack step (smaller prompt; for terse tasks)\n"
+            "  --rewrite       Pre-flight compress the packed context (TE2 salience;\n"
+            "                  system prompt + task protected verbatim; honesty-gated)\n"
+            "  --rewrite-budget N  Target chars for the packed context (default 3000)\n"
             "  --command CMD   Override the command (default: from config)\n"
             "  --light         Token-saving: cheap model + skip pack/persona\n"
             "  --model NAME    Override the model (e.g. claude-haiku-4-5)\n"
@@ -106,6 +110,14 @@ public:
 
         // Build prompt.
         std::ostringstream prompt;
+        std::string pack_body;   // feature #8: captured separately so --rewrite can
+                                 // compress ONLY the packed context (head/tail protected).
+        // feature #8: opt-in pre-flight rewrite -- compress the bulky packed
+        // context with the deterministic TE2 salience compressor before send.
+        bool rewrite = hasFlag(args, "--rewrite");
+        std::size_t rewrite_budget = 3000;
+        { std::string rb = flagValue(args, "--rewrite-budget", "");
+          if (!rb.empty()) { try { rewrite_budget = (std::size_t)std::stoul(rb); } catch (...) {} } }
         // Persona policy: coding sub-agents (--exec) stay clean engineers (never persona);
         // advisory is opt-in (agent.use_persona, default off); ICMG_NO_PERSONA=1 forces off.
         bool no_persona_env = std::getenv("ICMG_NO_PERSONA") != nullptr || light;
@@ -178,13 +190,25 @@ public:
 #endif
             auto pack_res = core::safeExecShell(pack_cmd, false, 30000);
             if (pack_res.exit_code == 0 && !pack_res.out.empty()) {
-                prompt << pack_res.out << "\n\n";
+                pack_body = pack_res.out + "\n\n";
             }
         }
 
-        prompt << "## Task\n" << task << "\n";
-
-        std::string assembled = prompt.str();
+        std::string head = prompt.str();
+        std::string tail = "## Task\n" + task + "\n";
+        std::string assembled;
+        if (rewrite) {
+            core::RewriteReport rep;
+            assembled = core::rewriteAssembled(head, pack_body, tail, rewrite_budget, rep);
+            if (rep.applied)
+                std::cerr << "[icmg agent --rewrite] context " << rep.before_tokens
+                          << " -> " << rep.after_tokens << " tok (saved "
+                          << (rep.before_tokens - rep.after_tokens) << ")\n";
+            else
+                std::cerr << "[icmg agent --rewrite] no gain (context within budget); sent as-is\n";
+        } else {
+            assembled = head + pack_body + tail;
+        }
 
         if (dry_run) {
             std::cout << assembled;
