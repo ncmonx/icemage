@@ -163,6 +163,18 @@ MemoryStore::MemoryStore(core::Db& db) : db_(db) {
         if (!hasSupBy)     db_.run("ALTER TABLE memory_nodes ADD COLUMN superseded_by INTEGER NOT NULL DEFAULT 0");
     }
 
+    // Feature #1 (causal-fact retrieval): typed causal edges between facts.
+    // Guarded-CREATE so hand-made fixtures + pre-migration DBs get it. UNIQUE
+    // triple makes linkCausal idempotent via INSERT OR IGNORE.
+    db_.run("CREATE TABLE IF NOT EXISTS memory_causal_edges("
+            " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            " src_id INTEGER NOT NULL, dst_id INTEGER NOT NULL,"
+            " relation TEXT NOT NULL DEFAULT 'related_to',"
+            " created_at INTEGER NOT NULL DEFAULT 0,"
+            " UNIQUE(src_id, dst_id, relation))");
+    db_.run("CREATE INDEX IF NOT EXISTS idx_causal_src ON memory_causal_edges(src_id)");
+    db_.run("CREATE INDEX IF NOT EXISTS idx_causal_dst ON memory_causal_edges(dst_id)");
+
     // Gap #5: ensure query_history has a tokens metric column (guarded -- covers
     // hand-created fixtures + DBs that skipped the migrator). Only ALTERs an
     // EXISTING table.
@@ -438,6 +450,60 @@ std::vector<MemoryNode> MemoryStore::allIncludingInvalidated() const {
               {std::to_string(now)},
               [&](const core::Row& r) { result.push_back(rowToNode(r)); });
     return result;
+}
+
+// ---- Causal-fact retrieval (feature #1) ---------------------------------
+bool MemoryStore::linkCausal(int64_t src, int64_t dst, const std::string& relation) {
+    rcFlushOnWrite();
+    std::string rel = relation.empty() ? std::string("related_to") : relation;
+    int64_t now = nowEpoch();
+    // INSERT OR IGNORE + UNIQUE(src,dst,relation) => idempotent per triple.
+    db_.run("INSERT OR IGNORE INTO memory_causal_edges(src_id,dst_id,relation,created_at) "
+            "VALUES(?,?,?,?)",
+            {std::to_string(src), std::to_string(dst), rel, std::to_string(now)});
+    return true;
+}
+
+std::vector<MemoryStore::CausalEdge>
+MemoryStore::causalNeighbors(int64_t id, bool outgoing) const {
+    std::vector<CausalEdge> edges;
+    const char* sql = outgoing
+        ? "SELECT src_id,dst_id,relation,created_at FROM memory_causal_edges WHERE src_id=? ORDER BY id"
+        : "SELECT src_id,dst_id,relation,created_at FROM memory_causal_edges WHERE dst_id=? ORDER BY id";
+    db_.query(sql, {std::to_string(id)}, [&](const core::Row& r) {
+        CausalEdge e;
+        if (r.size() > 0) try { e.src = std::stoll(r[0]); } catch (...) {}
+        if (r.size() > 1) try { e.dst = std::stoll(r[1]); } catch (...) {}
+        if (r.size() > 2) e.relation = r[2];
+        if (r.size() > 3) try { e.created_at = std::stoll(r[3]); } catch (...) {}
+        edges.push_back(e);
+    });
+    return edges;
+}
+
+std::vector<MemoryNode> MemoryStore::recallCausal(const std::string& query, int limit) {
+    // Layer 1: ordinary BM25 recall (unchanged ranking).
+    std::vector<MemoryNode> hits = recall(query, limit);
+
+    // Layer 2: 1-hop causal expansion. For each hit, pull its outgoing causal
+    // neighbors; append any live fact not already present. Order: hits first,
+    // then expansions (so BM25 relevance stays on top).
+    std::unordered_set<int64_t> seen;
+    for (const auto& n : hits) seen.insert(n.id);
+
+    std::vector<MemoryNode> expanded;
+    for (const auto& n : hits) {
+        for (const auto& e : causalNeighbors(n.id, /*outgoing=*/true)) {
+            if (seen.count(e.dst)) continue;
+            MemoryNode nb = get(e.dst);
+            // Only surface live, non-deleted facts (respect bi-temporal + soft-del).
+            if (nb.id == 0 || nb.deleted_at > 0 || nb.invalidated_at > 0) continue;
+            seen.insert(e.dst);
+            expanded.push_back(nb);
+        }
+    }
+    hits.insert(hits.end(), expanded.begin(), expanded.end());
+    return hits;
 }
 
 int MemoryStore::purge(int days_old) {

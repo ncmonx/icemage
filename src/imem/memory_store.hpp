@@ -48,6 +48,31 @@ public:
     // returns only live). For time-travel / audit queries.
     std::vector<MemoryNode> allIncludingInvalidated() const;
 
+    // ---- Causal-fact retrieval (feature #1) ------------------------------
+    // Typed causal edges between facts, layered OVER BM25 recall (not replacing
+    // it). A recall hit can pull in causally-linked facts via a 1-hop walk, so a
+    // fact that doesn't lexically match the query still surfaces when it
+    // caused/enabled a fact that does. Deterministic, no LLM.
+    struct CausalEdge {
+        int64_t     src = 0;
+        int64_t     dst = 0;
+        std::string relation;      // caused_by | enables | blocks | related_to | ...
+        int64_t     created_at = 0;
+    };
+
+    // Create a typed causal edge src --relation--> dst. Idempotent for the same
+    // (src,dst,relation) triple. Returns false only on a hard DB error.
+    bool linkCausal(int64_t src, int64_t dst, const std::string& relation = "related_to");
+
+    // Edges touching `id`. outgoing=true -> edges where src==id (id -> others);
+    // outgoing=false -> edges where dst==id (others -> id).
+    std::vector<CausalEdge> causalNeighbors(int64_t id, bool outgoing = true) const;
+
+    // BM25 recall + 1-hop causal expansion: after ranking, append the outgoing
+    // causal neighbors of each hit (deduped, live only). Plain recall order is
+    // preserved; expanded facts follow. No edges == plain recall.
+    std::vector<MemoryNode> recallCausal(const std::string& query, int limit = 10);
+
     // Hard-delete all nodes deleted more than days_old days ago.
     int purge(int days_old = 30);
 

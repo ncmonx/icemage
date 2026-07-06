@@ -60,6 +60,7 @@ public:
             "  --semantic      Hybrid BM25+vec recall (Phase 23). Falls back to BM25 if no embedder.\n"
             "  --alpha N       Blend weight 0..1 (1=BM25 only, 0=vec only, default 0.5)\n"
             "  --pure          Equivalent to --semantic --alpha 0\n"
+            "  --causal        Expand BM25 hits 1-hop over causal edges (feature #1; see `memory link`)\n"
             "  --all-projects  Cross-project recall (aggregates from registered projects)\n"
             "  --fuzzy         Fuzzy search fallback\n"
             "  --at-commit SHA Filter to memories stored at a specific git commit (prefix ok)\n"
@@ -103,6 +104,7 @@ public:
         bool fuzzy    = hasFlag(args, "--fuzzy");
         bool no_dedup = hasFlag(args, "--no-dedup");
         bool semantic = hasFlag(args, "--semantic") || hasFlag(args, "--pure");
+        bool causal   = hasFlag(args, "--causal");  // feature #1: 1-hop causal expansion over BM25
         bool pure_vec = hasFlag(args, "--pure");
         double alpha = 0.5;
         try { alpha = std::stod(flagValue(args, "--alpha", "0.5")); } catch (...) {}
@@ -199,6 +201,8 @@ public:
             results = store.recallByTopic(topic, limit);
         } else if (!zone.empty()) {
             results = store.recallInZone(query, zone, limit, fuzzy);
+        } else if (causal) {
+            results = store.recallCausal(query, limit);
         } else if (semantic) {
             results = store.recallSemantic(query, limit, alpha);
         } else if (unseen) {
