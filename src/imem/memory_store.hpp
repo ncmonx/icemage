@@ -73,6 +73,12 @@ public:
     // preserved; expanded facts follow. No edges == plain recall.
     std::vector<MemoryNode> recallCausal(const std::string& query, int limit = 10);
 
+    // Two-tier scheduling (feature #3): probe with the cheap BM25 pass, then
+    // escalate to the expensive semantic tier ONLY when the cheap pass looks
+    // weak (see retrieval_tier.hpp). Saves the ~5-6s ONNX cold-load on the
+    // common case where lexical recall already nails it.
+    std::vector<MemoryNode> recallAuto(const std::string& query, int limit = 10);
+
     // Hard-delete all nodes deleted more than days_old days ago.
     int purge(int days_old = 30);
 

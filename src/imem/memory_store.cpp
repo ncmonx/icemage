@@ -7,6 +7,7 @@
 #include "../cli/recall_json.hpp"
 #include <cstdlib>
 #include "scorer.hpp"
+#include "retrieval_tier.hpp"
 #include "../core/hook_bus.hpp"
 #include "../core/user_identity.hpp"
 #include "../core/exec_utils.hpp"
@@ -504,6 +505,39 @@ std::vector<MemoryNode> MemoryStore::recallCausal(const std::string& query, int 
     }
     hits.insert(hits.end(), expanded.begin(), expanded.end());
     return hits;
+}
+
+std::vector<MemoryNode> MemoryStore::recallAuto(const std::string& query, int limit) {
+    // Two-tier scheduling (feature #3): probe with the cheap BM25 pass to gauge
+    // query difficulty, then escalate to the expensive semantic tier only when
+    // the cheap pass looks weak. Deterministic gate in retrieval_tier.hpp.
+    auto corpus = all();
+    auto& scorer = Scorer::instance();
+    scorer.fit(corpus);
+    int probe_n = std::max(limit, 10);
+    auto probe = scorer.rank(query, corpus, probe_n);
+
+    TierThresholds th;
+    QueryTierSignal sig;
+    sig.candidate_count = (int)probe.size();
+    // token count: whitespace-delimited words in the query.
+    {
+        bool in_tok = false;
+        for (char c : query) {
+            bool ws = (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+            if (!ws && !in_tok) { ++sig.query_tokens; in_tok = true; }
+            else if (ws) in_tok = false;
+        }
+    }
+    if (!probe.empty()) {
+        sig.top_score = scorer.score(query, probe[0]);
+        for (const auto& n : probe)
+            if (scorer.score(query, n) >= th.strong_score) ++sig.strong_hits;
+    }
+
+    if (classifyRetrievalTier(sig, th) == RetrievalTier::Deep)
+        return recallSemantic(query, limit, /*alpha=*/0.5);  // deep tier
+    return recall(query, limit);                             // cheap tier
 }
 
 int MemoryStore::purge(int days_old) {

@@ -61,6 +61,7 @@ public:
             "  --alpha N       Blend weight 0..1 (1=BM25 only, 0=vec only, default 0.5)\n"
             "  --pure          Equivalent to --semantic --alpha 0\n"
             "  --causal        Expand BM25 hits 1-hop over causal edges (feature #1; see `memory link`)\n"
+            "  --auto-tier     Cheap BM25 by default; escalate to semantic only for hard queries (feature #3)\n"
             "  --all-projects  Cross-project recall (aggregates from registered projects)\n"
             "  --fuzzy         Fuzzy search fallback\n"
             "  --at-commit SHA Filter to memories stored at a specific git commit (prefix ok)\n"
@@ -105,6 +106,7 @@ public:
         bool no_dedup = hasFlag(args, "--no-dedup");
         bool semantic = hasFlag(args, "--semantic") || hasFlag(args, "--pure");
         bool causal   = hasFlag(args, "--causal");  // feature #1: 1-hop causal expansion over BM25
+        bool autoTier = hasFlag(args, "--auto-tier");  // feature #3: cheap BM25, escalate to semantic only if weak
         bool pure_vec = hasFlag(args, "--pure");
         double alpha = 0.5;
         try { alpha = std::stod(flagValue(args, "--alpha", "0.5")); } catch (...) {}
@@ -203,6 +205,8 @@ public:
             results = store.recallInZone(query, zone, limit, fuzzy);
         } else if (causal) {
             results = store.recallCausal(query, limit);
+        } else if (autoTier) {
+            results = store.recallAuto(query, limit);
         } else if (semantic) {
             results = store.recallSemantic(query, limit, alpha);
         } else if (unseen) {

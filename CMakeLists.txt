@@ -716,6 +716,7 @@ add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomiz
 add_icmg_test(test_memory_source tests/imem/test_memory_source.cpp)  # provenance: memory source (ctor guarded-ALTER)
 add_icmg_test(test_bitemporal    tests/imem/test_bitemporal.cpp)  # feature #5: bi-temporal fact invalidation
 add_icmg_test(test_causal        tests/imem/test_causal.cpp)  # feature #1: causal-fact retrieval
+add_icmg_test(test_retrieval_tier tests/imem/test_retrieval_tier.cpp)  # feature #3: two-tier recall scheduling
 add_icmg_test(test_memory_history tests/imem/test_memory_history.cpp)  # Gap #5: dedup + token metric
 add_icmg_test(test_token_ledger tests/cli/test_token_ledger.cpp)  # Gap #3: real API token ledger
 add_icmg_test(test_cache_advisor tests/cli/test_cache_advisor.cpp)  # #1b: cache-hit TREND advisor (prefix-stability)
