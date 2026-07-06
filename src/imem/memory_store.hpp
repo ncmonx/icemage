@@ -38,6 +38,16 @@ public:
     // Restore soft-deleted node.
     bool restore(int64_t id);
 
+    // Bi-temporal (feature #5, Graphiti pattern): mark a live fact as superseded
+    // by a newer one. Sets invalidated_at=now + superseded_by=<newId>, but keeps
+    // the row so history stays queryable. Recall (all()) then skips it. Returns
+    // false if the id is unknown or already invalidated.
+    bool invalidate(int64_t id, int64_t supersededBy = 0);
+
+    // History view: all non-deleted facts INCLUDING invalidated ones (all()
+    // returns only live). For time-travel / audit queries.
+    std::vector<MemoryNode> allIncludingInvalidated() const;
+
     // Hard-delete all nodes deleted more than days_old days ago.
     int purge(int days_old = 30);
 

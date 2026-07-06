@@ -20,6 +20,13 @@ struct MemoryNode {
     std::string git_sha;          // Phase 15: git commit SHA at store time (short, may be empty)
     std::string source      = "unknown";  // provenance: who/what supplied this info
 
+    // Bi-temporal (feature #5, Graphiti pattern): valid_from = when the fact
+    // became true (defaults to store time); invalidated_at = when a newer fact
+    // superseded it (0 = still live); superseded_by = id of the replacing node.
+    int64_t     valid_from     = 0;  // unix epoch, 0 = unknown (falls back to created_at)
+    int64_t     invalidated_at = 0;  // unix epoch, 0 = live/current
+    int64_t     superseded_by  = 0;  // id of the node that replaced this one, 0 = none
+
     // Computed at query time — not stored in DB
     double      score       = 0.0;
     double      bm25_score  = 0.0;

@@ -427,6 +427,7 @@ public:
         else if (sub == "stats")   registered = "memory-stats";
         else if (sub == "cache")   registered = "memory-cache";
         else if (sub == "history") registered = "memory-history";
+        else if (sub == "invalidate") registered = "memory-invalidate";
         else if (sub == "purge")   registered = "memory-purge";
         else if (sub == "decay")   registered = "memory-decay";
         else if (sub == "prune")   registered = "memory-prune";
