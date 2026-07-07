@@ -133,6 +133,71 @@ double Scorer::ageDecay(int64_t created_at, int importance) const {
     return std::exp(-0.0077 * tier_mult * days);
 }
 
+std::vector<double> Scorer::normalizeMinMax(const std::vector<double>& raw) {
+    if (raw.empty()) return {};
+    double lo = raw[0], hi = raw[0];
+    for (double v : raw) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    double range = hi - lo;
+    std::vector<double> out(raw.size());
+    if (range <= 0.0) {
+        // Single value or all-equal -- no meaningful spread; treat every
+        // candidate as maximally relevant rather than dividing by zero.
+        std::fill(out.begin(), out.end(), 1.0);
+        return out;
+    }
+    for (size_t i = 0; i < raw.size(); ++i) out[i] = (raw[i] - lo) / range;
+    return out;
+}
+
+double Scorer::entityOverlapScore(const std::vector<std::string>& query_entities,
+                                   const std::string& candidate_keywords) {
+    if (query_entities.empty()) return 0.0;
+    size_t hits = 0;
+    for (const auto& ent : query_entities) {
+        if (!ent.empty() && candidate_keywords.find(ent) != std::string::npos) ++hits;
+    }
+    return static_cast<double>(hits) / static_cast<double>(query_entities.size());
+}
+
+int Scorer::levenshteinCapped(const std::string& a, const std::string& b, int cap) {
+    int la = (int)a.size(), lb = (int)b.size();
+    if (std::abs(la - lb) > cap) return cap + 1;  // length gap alone exceeds cap
+    // Two-row DP, capped: any cell that could never come in under `cap`
+    // isn't tracked precisely -- we still fill the row but early-exit the
+    // whole call if the running row minimum already exceeds cap.
+    std::vector<int> prev(lb + 1), cur(lb + 1);
+    for (int j = 0; j <= lb; ++j) prev[j] = j;
+    for (int i = 1; i <= la; ++i) {
+        cur[0] = i;
+        int row_min = cur[0];
+        for (int j = 1; j <= lb; ++j) {
+            int cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+            cur[j] = std::min({ prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost });
+            row_min = std::min(row_min, cur[j]);
+        }
+        if (row_min > cap) return cap + 1;  // early exit -- can't recover
+        std::swap(prev, cur);
+    }
+    int d = prev[lb];
+    return d > cap ? cap + 1 : d;
+}
+
+double Scorer::fuzzyTokenOverlap(const std::vector<std::string>& query_tokens,
+                                  const std::vector<std::string>& corpus_tokens,
+                                  int max_edit_distance) {
+    if (query_tokens.empty()) return 0.0;
+    size_t hits = 0;
+    for (const auto& q : query_tokens) {
+        for (const auto& c : corpus_tokens) {
+            if (levenshteinCapped(q, c, max_edit_distance) <= max_edit_distance) {
+                ++hits;
+                break;
+            }
+        }
+    }
+    return static_cast<double>(hits) / static_cast<double>(query_tokens.size());
+}
+
 double Scorer::score(const std::string& query, const MemoryNode& node) const {
     auto d = scoreDetailed(query, node);
     return d.total;

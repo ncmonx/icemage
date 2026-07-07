@@ -134,6 +134,51 @@ TEST("detector: empty → Default") {
     ASSERT_EQ(d.detect(""), CmdType::Default);
 }
 
+// ---- shell-wrapper unwrapping (bash -c "...") ------------------------------
+// Root cause (2026-07-07): commands routed through a shell wrapper --
+// `"C:\Program Files\Git\bin\bash.exe" -c "grep -n foo bar"` -- never matched
+// ANY pattern because detect() only prefix-matched the OUTER command string,
+// which starts with the interpreter path, not the real inner command.
+// Confirmed in production telemetry: 2206 invocations of this exact shape,
+// 8.3MB raw, only 1.2% filtered (fell through to CmdType::Default every
+// time) even though most of them were plainly `grep ...` inside.
+
+TEST("detector: bash -c wrapper unwraps inner grep → Search") {
+    Detector d;
+    ASSERT_EQ(d.detect("bash -c \"grep -rn foo src/\""), CmdType::Search);
+}
+
+TEST("detector: full-path bash.exe -c wrapper unwraps inner grep → Search") {
+    Detector d;
+    ASSERT_EQ(d.detect(
+        "\"C:\\Program Files\\Git\\bin\\bash.exe\" -c \"grep -n foo bar\""),
+        CmdType::Search);
+}
+
+TEST("detector: bash -c wrapper with export-PATH preamble still finds real cmd") {
+    // Exact production shape: `export PATH=...; <real command>` inside -c.
+    Detector d;
+    ASSERT_EQ(d.detect(
+        "\"C:\\Program Files\\Git\\bin\\bash.exe\" -c "
+        "\"export PATH=\\\"/usr/bin:/mingw64/bin:$PATH\\\"; grep -rn foo bar\""),
+        CmdType::Search);
+}
+
+TEST("detector: sh -c wrapper unwraps inner git log → GitLog") {
+    Detector d;
+    ASSERT_EQ(d.detect("sh -c \"git log --oneline\""), CmdType::GitLog);
+}
+
+TEST("detector: bash -c wrapper with no recognizable inner command → Default (no regression)") {
+    Detector d;
+    ASSERT_EQ(d.detect("bash -c \"icmg store --topic foo bar\""), CmdType::Default);
+}
+
+TEST("detector: plain (non-wrapped) command unaffected by wrapper unwrap logic") {
+    Detector d;
+    ASSERT_EQ(d.detect("grep -rn foo src/"), CmdType::Search);
+}
+
 
 // ---- Command densifier (pre-exec) -----------------------------------------
 TEST("densify: git status -> porcelain+branch") {

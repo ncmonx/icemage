@@ -1,5 +1,6 @@
 #include "detector.hpp"
 #include <algorithm>
+#include <cstring>
 
 namespace icmg::tkil {
 
@@ -211,6 +212,60 @@ CmdType Detector::detect(const std::string& command) const {
             }
             while (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
             if (!rest.empty()) cmd = "git " + rest;
+        }
+    }
+
+    // 2026-07-07: unwrap shell-wrapper commands (`bash -c "..."`,
+    // `sh -c "..."`, incl. full interpreter paths like
+    // `"C:\Program Files\Git\bin\bash.exe" -c "..."`) so the REAL inner
+    // command gets classified instead of falling through to Default every
+    // time. Root cause: prefix-matching below only ever saw the wrapper's
+    // own start (the interpreter path), never the command it actually runs.
+    // Confirmed in production: 2206 invocations of this exact shape, 8.3MB
+    // raw, only 1.2% filtered. Also strips a leading `export VAR=...;`
+    // preamble (the exact production shape) before pattern matching.
+    {
+        std::string lc = cmd;
+        std::transform(lc.begin(), lc.end(), lc.begin(), ::tolower);
+        // Find `-c ` after an interpreter name (bash/sh/zsh), regardless of
+        // how much path precedes it (quoted or not).
+        auto isShellInterpreter = [](const std::string& low) {
+            static const char* kNames[] = {"bash", "sh", "zsh", "dash"};
+            for (auto* n : kNames) {
+                size_t pos = low.rfind(n);
+                if (pos == std::string::npos) continue;
+                size_t end = pos + std::strlen(n);
+                // must be at a path/word boundary: preceded by / \ " or start,
+                // followed by .exe", " -c, or end-of-word.
+                bool boundary_before = (pos == 0) || low[pos-1] == '/' ||
+                                        low[pos-1] == '\\' || low[pos-1] == '"';
+                bool boundary_after = (end < low.size()) &&
+                    (low.compare(end, 4, ".exe") == 0 || low[end] == ' ' || low[end] == '"');
+                if (boundary_before && boundary_after) return true;
+            }
+            return false;
+        };
+        if (isShellInterpreter(lc)) {
+            size_t cpos = lc.find(" -c ");
+            if (cpos != std::string::npos) {
+                std::string rest = cmd.substr(cpos + 4);
+                while (!rest.empty() && (rest.front() == ' ' || rest.front() == '"'))
+                    rest.erase(rest.begin());
+                while (!rest.empty() && (rest.back() == ' ' || rest.back() == '"'))
+                    rest.pop_back();
+                // Strip a leading `export VAR="...";` preamble (possibly
+                // several, semicolon-separated) to reach the real command.
+                for (;;) {
+                    std::string trimmed = rest;
+                    while (!trimmed.empty() && trimmed.front() == ' ') trimmed.erase(trimmed.begin());
+                    if (trimmed.rfind("export ", 0) != 0) { rest = trimmed; break; }
+                    size_t semi = trimmed.find(';');
+                    if (semi == std::string::npos) { rest = ""; break; }
+                    rest = trimmed.substr(semi + 1);
+                }
+                while (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
+                if (!rest.empty()) cmd = rest;
+            }
         }
     }
 

@@ -7,6 +7,7 @@
 #include "../cli/recall_json.hpp"
 #include <cstdlib>
 #include "scorer.hpp"
+#include "entity_extract.hpp"  // 2026-07-07: query-side entity linking for recall boost
 #include "retrieval_tier.hpp"
 #include "../core/hook_bus.hpp"
 #include "../core/user_identity.hpp"
@@ -605,7 +606,7 @@ std::vector<MemoryNode> MemoryStore::all() const {
 }
 
 std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
-                                              int limit, bool /*fuzzy*/) {
+                                              int limit, bool fuzzy) {
     // Fire PRE_RECALL hook
     core::HookContext ctx;
     ctx.set<std::string>("query", query);
@@ -628,6 +629,32 @@ std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
     auto& scorer = Scorer::instance();
     scorer.fit(corpus);
     auto ranked = scorer.rank(effective_query, corpus, limit);
+
+    // 2026-07-07: `fuzzy` was a documented CLI flag ("--fuzzy: Fuzzy search
+    // fallback") that this function silently discarded (was `bool /*fuzzy*/`)
+    // -- a typo'd query token matched nothing even with --fuzzy set. This is
+    // the actual fallback: only kicks in when the normal BM25 pass came back
+    // empty, so it never changes behavior for queries that already work.
+    // Deterministic, zero-LLM: bounded Levenshtein (see Scorer::fuzzyTokenOverlap).
+    if (fuzzy && ranked.empty() && !corpus.empty()) {
+        auto q_tokens = scorer.tokenize(effective_query);
+        if (!q_tokens.empty()) {
+            struct FuzzyHit { MemoryNode node; double score; };
+            std::vector<FuzzyHit> hits;
+            hits.reserve(corpus.size());
+            for (auto& n : corpus) {
+                auto c_tokens = scorer.tokenize(n.content + " " + n.topic + " " + n.keywords);
+                double s = Scorer::fuzzyTokenOverlap(q_tokens, c_tokens, 2);
+                if (s > 0.0) hits.push_back({n, s});
+            }
+            std::sort(hits.begin(), hits.end(),
+                      [](const FuzzyHit& a, const FuzzyHit& b) { return a.score > b.score; });
+            if ((int)hits.size() > limit) hits.resize(limit);
+            ranked.clear();
+            ranked.reserve(hits.size());
+            for (auto& h : hits) ranked.push_back(std::move(h.node));
+        }
+    }
 
     // Bump frequency for top result
     if (!ranked.empty()) bumpFrequency(ranked[0].id);
@@ -811,20 +838,33 @@ std::vector<MemoryNode> MemoryStore::recallSemantic(const std::string& query,
     }
 
     // Step 4: BM25 normalisation (max-score = 1).
-    double max_bm = 0.0;
-    for (auto& n : cand) {
-        // bm25_score lives in n.frequency? No — Scorer doesn't return raw scores publicly.
-        // Use rank-based fallback: position-derived score.
-        // (Scorer ranks already; we rebuild a normalized BM25 by inverse rank.)
-    }
-    // Rank-based BM25 normalization: top doc=1.0 -> bottom near 0.
+    // 2026-07-07 fix: use the REAL bm25_score magnitude (already populated by
+    // Scorer::rank() into each MemoryNode) via min-max normalization, instead
+    // of a rank-POSITION fallback (top=1.0, decreasing by index regardless of
+    // actual relevance gap). The old fallback distorted the hybrid blend: two
+    // near-tied candidates got maximally different weight, and two wildly
+    // different candidates got merely adjacent weight -- because it only
+    // looked at list position, never the real score magnitude.
+    std::vector<double> raw_bm25;
+    raw_bm25.reserve(cand.size());
+    for (auto& n : cand) raw_bm25.push_back(n.bm25_score);
+    auto bm25_norm = Scorer::normalizeMinMax(raw_bm25);
     int N = (int)cand.size();
-    auto bm_norm = [&](int idx) {
-        return (N <= 1) ? 1.0 : 1.0 - (double)idx / (double)(N - 1);
-    };
-    (void)max_bm;
+    auto bm_norm = [&](int idx) { return bm25_norm[idx]; };
 
     // Step 5: hybrid blend.
+    // 2026-07-07: entity-linking top-up (Mem0-style, deterministic/zero-LLM).
+    // extractEntities() already tags candidate.keywords with "type:value"
+    // tokens (url/ip/env/mention) at CAPTURE time, but recallSemantic never
+    // cross-references the QUERY's own entities against them. A query that
+    // names the same concrete env-var/URL/@mention as a memory now gets a
+    // small, capped boost on top of the BM25+cosine blend -- a real-overlap
+    // signal neither BM25 nor cosine can see on their own. Scoped ONLY to
+    // this hybrid path (not the pure-BM25 alpha==1 / no-embedder early
+    // returns above) to keep this change's surface small and match what's
+    // covered by the new tests -- extending those paths is a follow-up.
+    static constexpr double kEntityBoostWeight = 0.15;
+    auto query_entities = extractEntities(query);
     struct Scored { MemoryNode node; double score; };
     std::vector<Scored> blended;
     blended.reserve(cand.size());
@@ -836,7 +876,9 @@ std::vector<MemoryNode> MemoryStore::recallSemantic(const std::string& query,
             cs = (double)embed::cosine(qvec, it->second);
             if (cs < 0.0) cs = 0.0;
         }
-        double s = alpha * bm + (1.0 - alpha) * cs;
+        double ent = query_entities.empty() ? 0.0
+            : Scorer::entityOverlapScore(query_entities, cand[i].keywords);
+        double s = alpha * bm + (1.0 - alpha) * cs + kEntityBoostWeight * ent;
         blended.push_back({cand[i], s});
     }
     std::sort(blended.begin(), blended.end(),

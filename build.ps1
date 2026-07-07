@@ -245,7 +245,14 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
         Copy-Item -Destination $relDir -Force
     $dllCount = (Get-ChildItem "$relDir\*.dll" -ErrorAction SilentlyContinue).Count
     logline "copied $dllCount runtime DLL(s) next to exe"
-    Install-LiveBin $exeSrc
+    # 2026-07-07 (Cahyo): stopped auto-installing to the live ~/bin on every
+    # build. Install-LiveBin kills any running icmg.exe first -- but other
+    # sessions/tools may have their OWN icmg.exe running, and Stop-Process
+    # against those fails with Access Denied (owned by a different session),
+    # which aborted the whole build. Build now only produces the ship binary
+    # under $exeDest (source tree); installing to ~/bin is a deliberate,
+    # separate step for when a new version is actually ready to go live.
+    logline "[install] skipped (live-bin install no longer automatic -- run Install-LiveBin manually when shipping a new version)"
     # NOTE: do NOT clean $BuildDir here. It lives on C:\ (no D: clutter) and
     # wiping it forces a full recompile next build + races icmg_test link
     # (LNK1104). Incremental artifacts stay; third_party Vulkan .obj preserved.

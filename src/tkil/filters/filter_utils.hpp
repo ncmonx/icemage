@@ -6,6 +6,32 @@
 
 namespace icmg::tkil {
 
+// 2026-07-07: universal byte-cap gate. Root cause: every filter's
+// line-count-based limits (DefaultFilter's early-return, applyHardLimit's
+// MAX_OUTPUT_LINES check) could be bypassed entirely by a raw output with
+// FEW lines but ENORMOUS per-line size (one huge JSON/base64 blob, no
+// newlines) -- confirmed in production: a single powershell invocation
+// emitted 472,581,003 raw bytes with 0% filtered because it had too few
+// "lines" to ever hit a truncation path. capRawBytes() is called from
+// INSIDE splitLines() -- the one function all 19 registered filters call
+// first -- so nothing downstream can possibly see more than MAX_RAW_BYTES
+// of raw input, regardless of line count or filter type.
+constexpr size_t MAX_RAW_BYTES = 2 * 1024 * 1024;  // 2 MiB raw-input ceiling
+
+inline std::string capRawBytes(const std::string& raw) {
+    if (raw.size() <= MAX_RAW_BYTES) return raw;
+    size_t head = MAX_RAW_BYTES * 3 / 4;   // keep more of the head (context)
+    size_t tail = MAX_RAW_BYTES / 4;
+    size_t omitted = raw.size() - head - tail;
+    std::string out;
+    out.reserve(head + tail + 64);
+    out.append(raw, 0, head);
+    out += "\n... (" + std::to_string(omitted) + " bytes omitted, raw input exceeded "
+        + std::to_string(MAX_RAW_BYTES) + "-byte Tkil cap) ...\n";
+    out.append(raw, raw.size() - tail, tail);
+    return out;
+}
+
 // Phase 67 T27: strip ANSI escape sequences (color, cursor, OSC). Major
 // noise source in modern CLIs (npm/cargo/pnpm color output → 30-50% bytes
 // are escape codes invisible to the model).
@@ -79,7 +105,9 @@ inline std::vector<std::string> collapseBlankRuns(const std::vector<std::string>
 
 // Split string into lines (with ANSI strip applied first).
 inline std::vector<std::string> splitLines(const std::string& s) {
-    std::string clean = stripAnsi(s);
+    // 2026-07-07: cap BEFORE stripAnsi/tokenizing so a pathological giant
+    // blob never gets fully scanned by every filter downstream either.
+    std::string clean = stripAnsi(capRawBytes(s));
     std::vector<std::string> lines;
     std::istringstream ss(clean);
     std::string line;

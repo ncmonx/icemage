@@ -73,6 +73,54 @@ TEST("applyHardLimit: over limit — truncates") {
     ASSERT_CONTAINS(result.output, "truncated at");
 }
 
+// ---- capRawBytes / splitLines byte-cap: nothing escapes Tkil ---------------
+// Root cause (2026-07-07): every filter's short-circuit path (few-lines case
+// in DefaultFilter et al) and applyHardLimit() itself only ever bounded LINE
+// COUNT, never BYTE SIZE. A single pathological line (huge JSON/base64 blob,
+// no newlines) sails through completely unfiltered -- confirmed in
+// production telemetry: one `powershell -File ...` invocation emitted
+// 472,581,003 raw bytes with filtered_bytes IDENTICAL (0% saved), because it
+// had few enough "lines" to hit DefaultFilter's early return before
+// applyHardLimit was ever called, AND applyHardLimit itself only checks
+// line count. Fix: cap raw byte size INSIDE splitLines() -- the one function
+// every one of the 19 registered filters calls first -- so no filter can
+// possibly bypass it, regardless of line count.
+
+TEST("capRawBytes: input under cap -> unchanged") {
+    std::string small = "hello world";
+    ASSERT_EQ(capRawBytes(small), small);
+}
+
+TEST("capRawBytes: input over cap -> output bounded") {
+    std::string huge(MAX_RAW_BYTES * 3, 'x');
+    auto capped = capRawBytes(huge);
+    ASSERT_TRUE(capped.size() < huge.size());
+    ASSERT_TRUE(capped.size() <= MAX_RAW_BYTES + 200);  // + marker overhead
+}
+
+TEST("capRawBytes: mentions omitted byte count in the marker") {
+    std::string huge(MAX_RAW_BYTES * 2, 'y');
+    auto capped = capRawBytes(huge);
+    ASSERT_CONTAINS(capped, "bytes omitted");
+}
+
+TEST("capRawBytes: preserves head and tail content") {
+    std::string huge = "HEAD_MARKER" + std::string(MAX_RAW_BYTES * 2, 'z') + "TAIL_MARKER";
+    auto capped = capRawBytes(huge);
+    ASSERT_CONTAINS(capped, "HEAD_MARKER");
+    ASSERT_CONTAINS(capped, "TAIL_MARKER");
+}
+
+TEST("splitLines: a single giant line (no newlines) is bounded, not passed through raw") {
+    // This is the exact production failure mode: one huge line, zero
+    // newlines, so line-count-based limits never trigger.
+    std::string one_giant_line(MAX_RAW_BYTES * 5, 'a');
+    auto lines = splitLines(one_giant_line);
+    size_t total = 0;
+    for (auto& l : lines) total += l.size();
+    ASSERT_TRUE(total < one_giant_line.size());
+}
+
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
