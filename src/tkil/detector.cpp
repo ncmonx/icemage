@@ -1,6 +1,9 @@
 #include "detector.hpp"
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace icmg::tkil {
 
@@ -265,6 +268,62 @@ CmdType Detector::detect(const std::string& command) const {
                 }
                 while (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
                 if (!rest.empty()) cmd = rest;
+            }
+        }
+    }
+
+    // 2026-07-08: unwrap `powershell`/`pwsh -File <script>` wrappers by
+    // reading the SCRIPT's content and classifying that instead. Found while
+    // investigating why a sibling project's savings-dashboard still sat at
+    // ~33-40% even after the bash -c fix above: the icemage-code agent
+    // harness (a DIFFERENT codebase from icmg) writes the real command to a
+    // temp .ps1 file and runs it as
+    // `powershell -NoProfile -ExecutionPolicy Bypass -File <temp>\run.ps1`.
+    // Confirmed in production: 3511 invocations of this exact shape, 12.7MB
+    // raw (excluding one already-fixed 472MB outlier), only ~38% filtered.
+    // Unlike bash -c, the real command lives in a FILE, not the command
+    // string -- but detect() runs BEFORE execution (Tkil::runFiltered calls
+    // detect() first, executes later), so the script is normally still on
+    // disk. Best-effort: if the file is gone/unreadable, degrade silently to
+    // whatever the wrapper string itself would classify as (Default) --
+    // never throw, never behave worse than before this fix.
+    {
+        std::string lc = cmd;
+        std::transform(lc.begin(), lc.end(), lc.begin(), ::tolower);
+        bool is_ps = (lc.rfind("powershell", 0) == 0) || (lc.rfind("pwsh", 0) == 0);
+        if (is_ps) {
+            size_t fpos = lc.find(" -file ");
+            if (fpos != std::string::npos) {
+                std::string rest = cmd.substr(fpos + 7);
+                while (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
+                bool quoted = !rest.empty() && rest.front() == '"';
+                std::string path;
+                if (quoted) {
+                    size_t end = rest.find('"', 1);
+                    path = (end == std::string::npos) ? rest.substr(1) : rest.substr(1, end - 1);
+                } else {
+                    size_t sp = rest.find(' ');
+                    path = (sp == std::string::npos) ? rest : rest.substr(0, sp);
+                }
+                if (!path.empty()) {
+                    std::error_code ec;
+                    if (std::filesystem::exists(path, ec) && !ec) {
+                        std::ifstream f(path, std::ios::binary);
+                        if (f) {
+                            std::ostringstream ss;
+                            ss << f.rdbuf();
+                            std::string script = ss.str();
+                            while (!script.empty() &&
+                                   (script.back() == '\n' || script.back() == '\r' || script.back() == ' '))
+                                script.pop_back();
+                            size_t start = 0;
+                            while (start < script.size() && (script[start] == ' ' || script[start] == '\n' || script[start] == '\r'))
+                                ++start;
+                            if (start > 0) script.erase(0, start);
+                            if (!script.empty()) cmd = script;
+                        }
+                    }
+                }
             }
         }
     }

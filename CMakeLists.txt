@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.15.1 LANGUAGES CXX C)
+project(icmg VERSION 2.15.2 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -640,6 +640,7 @@ endmacro()
 add_icmg_test(test_parseargv    tests/tkil/test_parseargv.cpp)
 add_icmg_test(test_detector     tests/tkil/test_detector.cpp)
 add_icmg_test(test_filter_utils tests/tkil/test_filter_utils.cpp)
+add_icmg_test(test_git_filter   tests/tkil/test_git_filter.cpp)  # 2026-07-08: hash-length regex bug (7-char short hash never matched)
 add_icmg_test(test_filters      tests/tkil/test_filters.cpp)
 add_icmg_test(test_lang_filters tests/tkil/test_lang_filters.cpp)  # v1.21.5
 add_icmg_test(test_dedup_pass   tests/tkil/test_dedup_pass.cpp)

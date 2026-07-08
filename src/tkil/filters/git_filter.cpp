@@ -50,7 +50,14 @@ public:
             kept = lines;
         } else if (is_log) {
             // git log: max 30 entries, shorten hash to 8 chars
-            static const std::regex re_hash(R"(^([0-9a-f]{8,40})\b)");
+            // 2026-07-08 fix: was {8,40} -- but `git log --oneline`'s default
+            // short-hash length is 7 chars (git's own core.abbrev default
+            // since Git 2.11), so a 7-char hash never matched this regex,
+            // entry_count never incremented, and the 30-entry cap was
+            // unreachable for the single most common git log invocation
+            // shape. Confirmed in production: a `git log --oneline` call
+            // emitted 76,551 raw bytes with 0% filtered as a direct result.
+            static const std::regex re_hash(R"(^([0-9a-f]{7,40})\b)");
             int entry_count = 0;
             for (auto& l : lines) {
                 if (entry_count >= 30) {

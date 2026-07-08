@@ -12,6 +12,8 @@
 #include "../../src/graph/extractor/dart_extract.hpp"
 #include <cstring>
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 
 using icmg::tkil::CmdType;
 using icmg::tkil::Detector;
@@ -177,6 +179,62 @@ TEST("detector: bash -c wrapper with no recognizable inner command → Default (
 TEST("detector: plain (non-wrapped) command unaffected by wrapper unwrap logic") {
     Detector d;
     ASSERT_EQ(d.detect("grep -rn foo src/"), CmdType::Search);
+}
+
+// ---- shell-wrapper unwrapping (powershell -File <temp>.ps1) ---------------
+// Root cause (2026-07-08): found while investigating why a sibling project's
+// savings-dashboard still sat at ~33-40% even after the bash -c fix above.
+// The icemage-code agent harness (a DIFFERENT codebase, not icmg) writes the
+// real command to a temp .ps1 file and runs it via
+// `powershell -NoProfile -ExecutionPolicy Bypass -File <temp>\run.ps1` --
+// same failure shape as bash -c, but the real command is in a FILE, not the
+// command string itself. Confirmed in production: 3511 invocations of this
+// exact shape, 12.7MB raw (excluding one already-fixed 472MB outlier), only
+// ~38% filtered. Unlike the bash -c fix, this needs best-effort FILE I/O:
+// detect() runs BEFORE the command executes (Tkil::runFiltered calls
+// detect() at line 87, execution happens later at line 151), so the temp
+// script file is still on disk at classification time in the normal case.
+// Must degrade safely to Default if the file is gone/unreadable -- never
+// crash, never behave worse than the pre-fix baseline.
+
+TEST("detector: powershell -File <script> classifies by the SCRIPT's content") {
+    std::string path = std::filesystem::temp_directory_path().string() + "/icmg_test_detector_ps1_a.ps1";
+    { std::ofstream f(path); f << "grep -rn foo src/\n"; }
+    Detector d;
+    auto result = d.detect("powershell -NoProfile -ExecutionPolicy Bypass -File " + path);
+    std::filesystem::remove(path);
+    ASSERT_EQ(result, CmdType::Search);
+}
+
+TEST("detector: powershell -File wrapper with quoted path still unwraps") {
+    std::string path = std::filesystem::temp_directory_path().string() + "/icmg_test_detector_ps1_b.ps1";
+    { std::ofstream f(path); f << "git log --oneline\n"; }
+    Detector d;
+    auto result = d.detect("powershell -NoProfile -ExecutionPolicy Bypass -File \"" + path + "\"");
+    std::filesystem::remove(path);
+    ASSERT_EQ(result, CmdType::GitLog);
+}
+
+TEST("detector: powershell -File pointing at a MISSING file degrades to Default (no crash)") {
+    Detector d;
+    auto result = d.detect(
+        "powershell -NoProfile -ExecutionPolicy Bypass -File "
+        "C:\\Users\\Nobody\\AppData\\Local\\Temp\\icmg_test_definitely_missing_12345.ps1");
+    ASSERT_EQ(result, CmdType::Default);
+}
+
+TEST("detector: pwsh -File also unwraps (not just powershell.exe)") {
+    std::string path = std::filesystem::temp_directory_path().string() + "/icmg_test_detector_ps1_c.ps1";
+    { std::ofstream f(path); f << "cargo build\n"; }
+    Detector d;
+    auto result = d.detect("pwsh -NoProfile -File " + path);
+    std::filesystem::remove(path);
+    ASSERT_EQ(result, CmdType::Rust);  // "cargo build" classifies as Rust, not generic Build
+}
+
+TEST("detector: non-powershell -File-shaped command unaffected (no false positive)") {
+    Detector d;
+    ASSERT_EQ(d.detect("grep -rn -File foo src/"), CmdType::Search);
 }
 
 
