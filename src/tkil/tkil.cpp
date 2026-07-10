@@ -66,6 +66,7 @@ BaseFilter* Tkil::getFilter(CmdType type) const {
         {CmdType::Dotnet,         "dotnet"},
         {CmdType::Swift,          "swift"},
         {CmdType::Kotlin,         "kotlin"},
+        {CmdType::Gh,             "gh"},         // 2026-07-10
         {CmdType::Default,        "default"},
     };
     auto& reg = core::Registry<icmg::tkil::BaseFilter>::instance();

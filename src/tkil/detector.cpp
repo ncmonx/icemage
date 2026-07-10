@@ -117,6 +117,17 @@ Detector::Detector() {
         {"docker-compose", CmdType::Docker},
         {"docker compose", CmdType::Docker},
 
+        // GitHub CLI (2026-07-10): `gh api` emits pretty-printed JSON with
+        // zero prior filter coverage -- see gh_filter.cpp for the fix.
+        {"gh api",     CmdType::Gh},
+        {"gh pr",      CmdType::Gh},
+        {"gh issue",   CmdType::Gh},
+        {"gh release", CmdType::Gh},
+        {"gh run",     CmdType::Gh},
+        {"gh repo",    CmdType::Gh},
+        {"gh gist",    CmdType::Gh},
+        {"gh workflow",CmdType::Gh},
+
         // DB CLIs (Phase 21 Task 5c). Schema dumps fall through to Default
         // so the full output is preserved (mysqldump etc. produce DDL the
         // user usually wants verbatim).

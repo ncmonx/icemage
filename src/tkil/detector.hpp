@@ -25,6 +25,7 @@ enum class CmdType {
     Dotnet,         // dotnet build/run/test (MSBuild noise)
     Swift,          // swift build / xcodebuild (xcbeautify-grade noise)
     Kotlin,         // kotlinc / gradle :compileKotlin (gradle noise)
+    Gh,             // 2026-07-10: gh api/pr/issue/release (GitHub CLI JSON output)
     Default         // unknown
 };
 
@@ -61,6 +62,7 @@ inline std::ostream& operator<<(std::ostream& os, CmdType t) {
         case CmdType::Dotnet:         return os << "Dotnet";
         case CmdType::Swift:          return os << "Swift";
         case CmdType::Kotlin:         return os << "Kotlin";
+        case CmdType::Gh:             return os << "Gh";
         case CmdType::Default:        return os << "Default";
     }
     return os << "Unknown";
