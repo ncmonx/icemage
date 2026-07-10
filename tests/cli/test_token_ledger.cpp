@@ -57,6 +57,88 @@ TEST("token-ledger: window filter excludes out-of-window rows") {
     ASSERT_EQ((long long)win.input, 100LL);    // old row excluded
 }
 
+// Bug report 2026-07-10 (icmg-savings-daily-history.md): the "Daily real-token
+// history" block in `icmg savings` read from a DIFFERENT source
+// (context-budget --all-sessions transcript-mtime estimate) than the
+// "Real API tokens" headline (token_ledger) -- causing missing days + wrong
+// magnitudes. Fix: a pure day-bucketed aggregation directly over token_ledger,
+// the SAME source of truth as the headline block.
+TEST("token-ledger-by-day: empty table yields no rows") {
+    icmg::core::Db db(":memory:");
+    auto rows = aggregateTokenLedgerByDay(db, 30);
+    ASSERT_EQ((int)rows.size(), 0);
+}
+
+TEST("token-ledger-by-day: sums all four token kinds per day") {
+    icmg::core::Db db(":memory:");
+    ensureTokenLedger(db);
+    int64_t today = (int64_t)std::time(nullptr);
+    db.run("INSERT INTO token_ledger (ts, input_tokens, output_tokens,"
+           " cache_read_tokens, cache_creation_tokens) VALUES (?, 100, 20, 50, 10)",
+           {std::to_string(today)});
+    db.run("INSERT INTO token_ledger (ts, input_tokens, output_tokens,"
+           " cache_read_tokens, cache_creation_tokens) VALUES (?, 200, 40, 0, 5)",
+           {std::to_string(today)});
+    auto rows = aggregateTokenLedgerByDay(db, 30);
+    ASSERT_EQ((int)rows.size(), 1);
+    // 100+20+50+10 + 200+40+0+5 = 180 + 245 = 425
+    ASSERT_EQ((long long)rows[0].tokens, 425LL);
+    ASSERT_EQ((long long)rows[0].turns, 2LL);
+}
+
+TEST("token-ledger-by-day: distinct days are separate rows, newest first") {
+    icmg::core::Db db(":memory:");
+    ensureTokenLedger(db);
+    int64_t now = (int64_t)std::time(nullptr);
+    int64_t yesterday = now - 86400;
+    int64_t two_days_ago = now - 2 * 86400;
+    db.run("INSERT INTO token_ledger (ts, input_tokens) VALUES (?, 10)",
+           {std::to_string(two_days_ago)});
+    db.run("INSERT INTO token_ledger (ts, input_tokens) VALUES (?, 20)",
+           {std::to_string(yesterday)});
+    db.run("INSERT INTO token_ledger (ts, input_tokens) VALUES (?, 30)",
+           {std::to_string(now)});
+    auto rows = aggregateTokenLedgerByDay(db, 30);
+    ASSERT_EQ((int)rows.size(), 3);
+    ASSERT_EQ((long long)rows[0].tokens, 30LL);  // newest first
+    ASSERT_EQ((long long)rows[2].tokens, 10LL);  // oldest last
+}
+
+TEST("token-ledger-by-day: max_rows caps the output (still newest-first)") {
+    icmg::core::Db db(":memory:");
+    ensureTokenLedger(db);
+    int64_t now = (int64_t)std::time(nullptr);
+    for (int i = 0; i < 5; ++i) {
+        int64_t ts = now - (int64_t)i * 86400;
+        db.run("INSERT INTO token_ledger (ts, input_tokens) VALUES (?, ?)",
+               {std::to_string(ts), std::to_string(100 * (i + 1))});
+    }
+    auto rows = aggregateTokenLedgerByDay(db, 2);
+    ASSERT_EQ((int)rows.size(), 2);
+    ASSERT_EQ((long long)rows[0].tokens, 100LL);  // today (i=0) newest
+}
+
+// Regression guard for the exact reported symptom: a session spanning several
+// turns whose activity is spread across a busy day must NOT vanish (the old
+// bug bucketed by transcript-file mtime, not per-row ts, so busy days with a
+// still-open file could disappear). Multiple rows on the SAME day must always
+// reconcile to one bucket whose sum equals every row inserted that day.
+TEST("token-ledger-by-day: busy day with many turns is never dropped") {
+    icmg::core::Db db(":memory:");
+    ensureTokenLedger(db);
+    int64_t now = (int64_t)std::time(nullptr);
+    int64_t expected = 0;
+    for (int i = 0; i < 50; ++i) {
+        db.run("INSERT INTO token_ledger (ts, input_tokens, output_tokens)"
+               " VALUES (?, 1000, 500)", {std::to_string(now)});
+        expected += 1500;
+    }
+    auto rows = aggregateTokenLedgerByDay(db, 30);
+    ASSERT_EQ((int)rows.size(), 1);
+    ASSERT_EQ((long long)rows[0].tokens, expected);
+    ASSERT_EQ((long long)rows[0].turns, 50LL);
+}
+
 TEST("token-ledger: cacheHitRate = cache_read / totalInput (0 when empty)") {
     // Empty totals -> no divide-by-zero, rate is 0.
     TokenLedgerTotals empty;

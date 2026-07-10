@@ -106,4 +106,44 @@ inline TokenLedgerTotals aggregateTokenLedger(core::Db& db, int window_days) {
     return t;
 }
 
+// Bug report 2026-07-10 (icmg-savings-daily-history.md): the "Daily
+// real-token history" block in `icmg savings` used to aggregate a DIFFERENT
+// source (context-budget --all-sessions transcript-file mtime + text-length
+// estimate) than the "Real API tokens" headline (this token_ledger table).
+// Two disagreeing numbers in one command's output -- missing days (a still-
+// growing transcript file only ever counted on its LAST mtime, so a busy
+// multi-day session could vanish from the earlier days) and wrong magnitude
+// (session-token estimate vs real API-billed tokens are different scales).
+//
+// This is the fix: bucket token_ledger itself by local calendar day, so the
+// daily list is always the SAME source of truth as the headline, and every
+// row (turn) counts on the day it actually happened.
+struct DailyTokenRow {
+    std::string day;     // YYYY-MM-DD, local time
+    int64_t tokens = 0;  // input+output+cache_read+cache_creation for that day
+    int64_t turns = 0;   // row count that day
+};
+
+// Newest-first, capped at max_rows (<=0 = unlimited).
+inline std::vector<DailyTokenRow> aggregateTokenLedgerByDay(core::Db& db, int max_rows) {
+    std::vector<DailyTokenRow> out;
+    ensureTokenLedger(db);
+    std::string sql =
+        "SELECT date(ts,'unixepoch','localtime') AS day,"
+        " COALESCE(SUM(input_tokens+output_tokens+cache_read_tokens+cache_creation_tokens),0),"
+        " COUNT(*) FROM token_ledger GROUP BY day ORDER BY day DESC";
+    if (max_rows > 0) sql += " LIMIT " + std::to_string(max_rows);
+    db.query(sql, {}, [&](const core::Row& r) {
+        if (r.size() < 3) return;
+        DailyTokenRow row;
+        row.day = r[0];
+        try {
+            row.tokens = std::stoll(r[1]);
+            row.turns  = std::stoll(r[2]);
+        } catch (...) {}
+        out.push_back(std::move(row));
+    });
+    return out;
+}
+
 } // namespace icmg::cli

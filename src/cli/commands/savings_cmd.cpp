@@ -471,39 +471,33 @@ public:
                       << total.actual_tokens
                       << "  (separate measure -- not a session-coverage %)\n";
 
-            std::map<std::string, int64_t, std::greater<std::string>> by_day;
-            for (auto& r : rsd.sessions) {
-                if (r.mtime <= 0) continue;
-                std::time_t t = (std::time_t)r.mtime;
-                std::tm tm_buf{};
-#ifdef _WIN32
-                localtime_s(&tm_buf, &t);
-#else
-                localtime_r(&t, &tm_buf);
-#endif
-                char dbuf[16]; std::strftime(dbuf, sizeof(dbuf), "%Y-%m-%d", &tm_buf);
-                by_day[dbuf] += r.total;
-            }
-            if (!by_day.empty()) {
+            // Bug fix 2026-07-10 (icmg-savings-daily-history.md): this list
+            // used to bucket rsd.sessions by transcript-file MTIME with a
+            // TEXT-LENGTH ESTIMATE total -- a different source/scale than the
+            // "Real API tokens" headline above (which reads token_ledger).
+            // Symptom: busy multi-day sessions vanished (only the file's last
+            // mtime day got credited) and the days that did show were off by
+            // 2-1000x (estimate vs real billed tokens). Fix: bucket
+            // token_ledger itself by the row's own timestamp -- the SAME
+            // source of truth as the headline, so the two always reconcile.
+            auto daily_rows = aggregateTokenLedgerByDay(db, 14);
+            if (!daily_rows.empty()) {
                 // v1.20.0 (U1): ASCII sparkline. --ascii flag toggles compact bar view.
                 bool ascii_mode = hasFlag(args, "--ascii");
                 std::cout << "\nDaily real-token history (this project, newest first):\n";
-                int shown = 0;
                 if (ascii_mode) {
                     int64_t maxv = 0;
-                    for (auto& [_, t] : by_day) if (t > maxv) maxv = t;
+                    for (auto& row : daily_rows) if (row.tokens > maxv) maxv = row.tokens;
                     if (maxv == 0) maxv = 1;
-                    for (auto& [d, tok] : by_day) {
-                        if (shown++ >= 14) break;
-                        int bars = (int)((tok * 30) / maxv);
+                    for (auto& row : daily_rows) {
+                        int bars = (int)((row.tokens * 30) / maxv);
                         std::string bar(bars > 0 ? bars : 0, '#');
-                        std::cout << "  " << d << "  " << std::left << std::setw(30) << bar
-                                  << std::right << std::setw(10) << tok << " tok\n";
+                        std::cout << "  " << row.day << "  " << std::left << std::setw(30) << bar
+                                  << std::right << std::setw(10) << row.tokens << " tok\n";
                     }
                 } else {
-                    for (auto& [d, tok] : by_day) {
-                        if (shown++ >= 14) break;
-                        std::cout << "  " << d << "  " << std::setw(10) << tok << " tok\n";
+                    for (auto& row : daily_rows) {
+                        std::cout << "  " << row.day << "  " << std::setw(10) << row.tokens << " tok\n";
                     }
                 }
             }
@@ -857,45 +851,38 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
                 os << R"HTML(</tbody></table></details>)HTML";
             }
 
-            // Daily history: group by YYYY-MM-DD, newest first.
-            std::map<std::string, int64_t, std::greater<std::string>> by_day_html;
-            std::map<std::string, int> sess_per_day;
-            for (auto& r : rsd.sessions) {
-                if (r.mtime <= 0) continue;
-                std::time_t t = (std::time_t)r.mtime;
-                std::tm tm_buf{};
-#ifdef _WIN32
-                localtime_s(&tm_buf, &t);
-#else
-                localtime_r(&t, &tm_buf);
-#endif
-                char dbuf[16]; std::strftime(dbuf, sizeof(dbuf), "%Y-%m-%d", &tm_buf);
-                by_day_html[dbuf] += r.total;
-                ++sess_per_day[dbuf];
-            }
-            if (!by_day_html.empty()) {
-                int64_t day_max = 0;
-                for (auto& [_, v] : by_day_html) if (v > day_max) day_max = v;
-                os << R"HTML(<details style="margin-bottom:24px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px 20px" open>
+            // Daily history: read token_ledger directly (SAME source as the
+            // headline "Real API tokens" block), grouped by local calendar
+            // day. Bug fix 2026-07-10 (icmg-savings-daily-history.md): this
+            // used to bucket rsd.sessions by transcript-file MTIME with a
+            // TEXT-LENGTH ESTIMATE total, causing missing busy days + 2-1000x
+            // magnitude drift vs the real API-billed totals shown above.
+            {
+                auto& cfg2 = core::Config::instance();
+                core::Db db2(cfg2.projectDbPath("."));
+                auto daily_rows = aggregateTokenLedgerByDay(db2, 30);
+                if (!daily_rows.empty()) {
+                    int64_t day_max = 0;
+                    for (auto& row : daily_rows) if (row.tokens > day_max) day_max = row.tokens;
+                    os << R"HTML(<details style="margin-bottom:24px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px 20px" open>
 <summary style="cursor:pointer;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.05em;font-weight:500">Daily real-token history ()HTML"
-                   << by_day_html.size()
-                   << R"HTML( days, newest first)</summary>
+                       << daily_rows.size()
+                       << R"HTML( days, newest first)</summary>
 <table style="margin-top:12px">
-<thead><tr><th>Date</th><th class="num">Sessions</th><th class="num">Real tokens</th><th>Trend</th></tr></thead>
+<thead><tr><th>Date</th><th class="num">Turns</th><th class="num">Real tokens</th><th>Trend</th></tr></thead>
 <tbody>)HTML";
-                int shown = 0;
-                for (auto& [d, tok] : by_day_html) {
-                    if (shown++ >= 30) break;
-                    int bar_pct = day_max > 0 ? (int)(100 * tok / day_max) : 0;
-                    os << "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px\">"
-                       << d << "</td>"
-                       << "<td class=\"num\">" << sess_per_day[d] << "</td>"
-                       << "<td class=\"num\">" << humanTok(tok) << "</td>"
-                       << "<td style=\"width:40%\"><div style=\"background:#21262d;border-radius:3px;height:10px;overflow:hidden\">"
-                       << "<div style=\"height:100%;width:" << bar_pct
-                       << "%;background:linear-gradient(90deg,#58a6ff,#3fb950)\"></div></div></td></tr>";
+                    for (auto& row : daily_rows) {
+                        int bar_pct = day_max > 0 ? (int)(100 * row.tokens / day_max) : 0;
+                        os << "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px\">"
+                           << row.day << "</td>"
+                           << "<td class=\"num\">" << row.turns << "</td>"
+                           << "<td class=\"num\">" << humanTok(row.tokens) << "</td>"
+                           << "<td style=\"width:40%\"><div style=\"background:#21262d;border-radius:3px;height:10px;overflow:hidden\">"
+                           << "<div style=\"height:100%;width:" << bar_pct
+                           << "%;background:linear-gradient(90deg,#58a6ff,#3fb950)\"></div></div></td></tr>";
+                    }
+                    os << R"HTML(</tbody></table></details>)HTML";
                 }
-                os << R"HTML(</tbody></table></details>)HTML";
             }
         }
 
