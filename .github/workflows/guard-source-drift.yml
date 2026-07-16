@@ -1,0 +1,142 @@
+name: Guard - no source drift to public
+
+# Server-side counterpart to the local pre-push hook
+# (.icemage/hooks/pre-push-public-guard.sh). Source-of-truth is the PRIVATE
+# repo (icmg-src); this public repo (icemage) is a stripped release mirror.
+# On 2026-07-16 private froze at v2.9 because v2.10-v2.18 were developed
+# straight on public. This job fails a push/PR that introduces SOURCE changes
+# to public that did not come through private.
+#
+# Two modes:
+#   * If the repo secret PRIVATE_SYNC_TOKEN is set, it clones private/main and
+#     verifies every changed source file is byte-identical there (true drift
+#     detection).
+#   * Otherwise it falls back to a marker convention: a commit touching source
+#     must carry a `Propagated-from-private:` trailer or `[allow-public-source]`
+#     in its message. Unmarked source edits fail.
+#
+# Override a single legitimate push: put `[allow-public-source]` in the commit
+# message (works in both modes).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  source-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect source drift
+        env:
+          PRIVATE_SYNC_TOKEN: ${{ secrets.PRIVATE_SYNC_TOKEN }}
+          PRIVATE_REPO: ncmonx/icmg-src
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          # --- range of commits introduced by this event ---
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+          # New branch / unknown base -> compare against first parent of head.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null \
+             || printf '%s' "$base" | grep -qE '^0+$'; then
+            base="$(git rev-parse "$head^" 2>/dev/null || echo "$head")"
+          fi
+          echo "range: $base..$head"
+
+          is_source() {
+            case "$1" in
+              src/*|tests/*|CMakeLists.txt|CMakePresets.json|migrations/*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # --- source files changed in this event ---
+          mapfile -t changed < <(git diff --name-only "$base" "$head")
+          src_changed=()
+          for f in "${changed[@]}"; do
+            [ -n "$f" ] || continue
+            if is_source "$f"; then src_changed+=("$f"); fi
+          done
+
+          if [ ${#src_changed[@]} -eq 0 ]; then
+            echo "OK: no source paths changed in this push."
+            exit 0
+          fi
+          echo "source files changed: ${#src_changed[@]}"
+          printf '  - %s\n' "${src_changed[@]}"
+
+          # --- explicit per-push override ---
+          msg="$(git log -1 --format='%B' "$head")"
+          if printf '%s' "$msg" | grep -qiF '[allow-public-source]'; then
+            echo "OK: commit carries [allow-public-source] override."
+            exit 0
+          fi
+
+          fail() {
+            echo ""
+            echo "::error::Source changes pushed to the PUBLIC mirror that did not come through private (icmg-src)."
+            {
+              echo "## :no_entry: Source drift to public"
+              echo ""
+              echo "${#src_changed[@]} source file(s) changed here without coming through the private source-of-truth:"
+              printf '  - `%s`\n' "${src_changed[@]}"
+              echo ""
+              echo "Develop in **icmg-src**, then strip + propagate to this mirror."
+              echo "If this push *is* the propagation, add a \`Propagated-from-private: <sha>\` trailer"
+              echo "or \`[allow-public-source]\` to the commit message."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+
+          # --- mode 1: compare against private (needs token) ---
+          if [ -n "${PRIVATE_SYNC_TOKEN:-}" ]; then
+            echo "mode: private comparison"
+            tmp="$(mktemp -d)"
+            if git clone --depth 1 --branch main \
+                 "https://x-access-token:${PRIVATE_SYNC_TOKEN}@github.com/${PRIVATE_REPO}.git" \
+                 "$tmp/priv" >/dev/null 2>&1; then
+              drift=()
+              for f in "${src_changed[@]}"; do
+                pub_blob="$(git rev-parse "$head:$f" 2>/dev/null || echo MISSING)"
+                if [ -f "$tmp/priv/$f" ]; then
+                  priv_blob="$(git -C "$tmp/priv" hash-object "$f" 2>/dev/null)"
+                else
+                  priv_blob="ABSENT"
+                fi
+                if [ "$pub_blob" != "$priv_blob" ]; then drift+=("$f"); fi
+              done
+              if [ ${#drift[@]} -eq 0 ]; then
+                echo "OK: every changed source file matches private/main."
+                exit 0
+              fi
+              echo "drift vs private:"; printf '  - %s\n' "${drift[@]}"
+              src_changed=("${drift[@]}")
+              fail
+            else
+              echo "WARN: could not clone private ($PRIVATE_REPO); falling back to marker check."
+            fi
+          fi
+
+          # --- mode 2: marker convention (no token) ---
+          echo "mode: marker convention"
+          if printf '%s' "$msg" | grep -qiE '^Propagated-from-private:'; then
+            echo "OK: commit carries Propagated-from-private trailer."
+            exit 0
+          fi
+          fail
