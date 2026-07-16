@@ -8,6 +8,7 @@
 //     responses larger than 4KB (legacy unframed shape preserved <4KB).
 
 #include <string>
+#include <vector>
 
 namespace icmg::daemon {
 
@@ -48,6 +49,14 @@ public:
     // Returns true if a daemon is reachable after the call (was-already-up OR
     // spawned-and-now-up within ~500ms).
     static bool ensureDaemon();
+
+    // 2026-07-10: the argv used to spawn the background daemon (Windows:
+    // cmd.exe /c start /b icmg rule-daemon start). Pure + side-effect-free so
+    // it's unit-testable without actually spawning a process. Public so
+    // ensureDaemon()'s regression (a stray literal "nul" file being created
+    // when this used to be a shell-redirect string executed by whichever
+    // shell safeExecShell picked) can be guarded directly.
+    static std::vector<std::string> daemonSpawnArgv();
 
     // Parse a possibly-framed response. If raw starts with "Content-Length: "
     // strips the header and returns just the body. Otherwise returns raw.

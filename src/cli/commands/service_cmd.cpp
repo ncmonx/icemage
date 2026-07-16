@@ -96,7 +96,7 @@ private:
             f.close();
             if (pid > 0) {
 #ifdef _WIN32
-                std::string kc = "taskkill /PID " + std::to_string(pid) + " /F > nul 2>&1";
+                std::string kc = core::suppressStderr("taskkill /PID " + std::to_string(pid) + " /F >/dev/null");
 #else
                 std::string kc = "kill -TERM " + std::to_string(pid) + " 2>/dev/null";
 #endif

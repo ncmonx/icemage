@@ -638,7 +638,7 @@ private:
         if (flag_set) std::cout << "  interval:  every " << interval_min << " min\n";
 
 #ifdef _WIN32
-        std::string q = "MSYS_NO_PATHCONV=1 schtasks /Query /TN \"" + tn + "\" /FO LIST 2>nul";
+        std::string q = core::suppressStderr("MSYS_NO_PATHCONV=1 schtasks /Query /TN \"" + tn + "\" /FO LIST");
         auto res = core::safeExecShell(q, false, 5000);
         if (res.exit_code == 0 && !res.out.empty()) {
             std::cout << "  installed: YES\n";

@@ -13,6 +13,7 @@
 #include "../../core/registry.hpp"
 #include "../savings_daily.hpp"
 #include "../token_ledger.hpp"
+#include "../filter_gaps.hpp"
 #include "../cache_advisor.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -333,6 +334,14 @@ public:
                           << ",\"cache_hit_rate\":" << std::fixed
                           << std::setprecision(4) << tl.cacheHitRate() << "}";
             }
+            // 2026-07-16: expose filter-coverage gaps in JSON too (badge/CI
+            // tooling can flag an uncovered high-waste verb without parsing
+            // the human console output).
+            {
+                auto gaps = findFilterGaps(db, cutoff, /*min_raw_bytes=*/20000,
+                                           /*max_pct_saved=*/15.0, /*limit=*/5);
+                std::cout << ",\"filter_gaps\":" << filterGapsJson(gaps);
+            }
             std::cout << "}\n";
             return 0;
         }
@@ -500,6 +509,26 @@ public:
                         std::cout << "  " << row.day << "  " << std::setw(10) << row.tokens << " tok\n";
                     }
                 }
+            }
+        }
+
+        // Self-diagnosing filter-coverage gaps (2026-07-16): surface command
+        // verbs burning the most raw bytes while Tkil saves the least -- these
+        // are missing/weak filters. Proactive: a coverage hole (like `gh api`
+        // passing through 0% filtered) shows up here the moment it costs
+        // tokens, instead of waiting for someone to eyeball token_ledger.
+        {
+            auto gaps = findFilterGaps(db, cutoff, /*min_raw_bytes=*/20000,
+                                       /*max_pct_saved=*/15.0, /*limit=*/5);
+            if (!gaps.empty()) {
+                std::cout << "\nFilter-coverage gaps (high raw output, low savings -- candidates for a Tkil filter):\n";
+                for (auto& g : gaps) {
+                    std::cout << "  " << std::left << std::setw(22) << g.verb
+                              << std::right << std::setw(8) << g.calls << " calls  "
+                              << std::setw(9) << (g.raw_bytes / 1024) << " KB raw  "
+                              << std::setw(5) << (int)(g.pct_saved + 0.5) << "% saved\n";
+                }
+                std::cout << "  → add a Tkil filter for the top verb, or run `icmg learn` for a recommendation\n";
             }
         }
 

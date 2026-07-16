@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.17.0 LANGUAGES CXX C)
+project(icmg VERSION 2.18.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -722,6 +722,7 @@ add_icmg_test(test_retrieval_tier tests/imem/test_retrieval_tier.cpp)  # feature
 add_icmg_test(test_skill_bank    tests/imem/test_skill_bank.cpp)  # feature #7: trajectory -> skill-bank distillation
 add_icmg_test(test_memory_history tests/imem/test_memory_history.cpp)  # Gap #5: dedup + token metric
 add_icmg_test(test_token_ledger tests/cli/test_token_ledger.cpp)  # Gap #3: real API token ledger
+add_icmg_test(test_filter_gaps  tests/cli/test_filter_gaps.cpp)  # 2026-07-16: savings self-diagnosing filter-coverage gaps
 add_icmg_test(test_cache_advisor tests/cli/test_cache_advisor.cpp)  # #1b: cache-hit TREND advisor (prefix-stability)
 add_icmg_test(test_session_dedup tests/cli/test_session_dedup.cpp)  # Cache-hit optimizer #2: TTL recall dedup
 add_icmg_test(test_atom_split    tests/imem/test_atom_split.cpp)  # v1.79 atomize T2
@@ -875,8 +876,11 @@ add_icmg_test(test_pack_delta      tests/cli/test_pack_delta.cpp)
 add_icmg_test(test_update_asset    tests/cli/test_update_asset.cpp)
 add_icmg_test(test_sync_roundtrip  tests/cli/test_sync_roundtrip.cpp)
 add_icmg_test(test_daemon          tests/cli/test_daemon.cpp)
+add_icmg_test(test_daemon_spawn_argv tests/cli/test_daemon_spawn_argv.cpp)  # 2026-07-10: stray nul file bug (shell-picked bash misread cmd.exe syntax)
 add_icmg_test(test_rule_daemon     tests/daemon/test_rule_daemon.cpp)
 add_icmg_test(test_hook_internals  tests/core/test_hook_internals.cpp)
+add_icmg_test(test_suppress_stderr tests/core/test_suppress_stderr.cpp)  # 2026-07-16: bash-safe stderr redirect (no stray nul)
+add_icmg_test(test_nul_sweep       tests/core/test_nul_sweep.cpp)  # 2026-07-16: doctor stray-nul file sweep
 add_icmg_test(test_hook_cmd        tests/cli/test_hook_cmd.cpp)
 add_icmg_test(test_bench_cmd       tests/cli/test_bench_cmd.cpp)
 add_icmg_test(test_skill_index_cmd tests/cli/test_skill_index_cmd.cpp)

@@ -190,8 +190,8 @@ int unregisterWindowsSchedule(const std::string& task_name) {
 }
 
 bool queryWindowsSchedule(const std::string& task_name, std::string* status_out) {
-    std::string cmd = "MSYS_NO_PATHCONV=1 schtasks /Query /TN \""
-                    + task_name + "\" /FO LIST 2>nul";
+    std::string cmd = suppressStderr("MSYS_NO_PATHCONV=1 schtasks /Query /TN \""
+                    + task_name + "\" /FO LIST");
     auto res = safeExecShell(cmd, false, 5000);
     if (res.exit_code != 0) return false;
     if (status_out) *status_out = res.out;

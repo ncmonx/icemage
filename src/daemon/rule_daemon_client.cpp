@@ -159,19 +159,29 @@ bool RuleDaemonClient::getStrict() {
 
 // ---- v0.56.0: hook RPC fast-path -------------------------------------------
 
+std::vector<std::string> RuleDaemonClient::daemonSpawnArgv() {
+#ifdef _WIN32
+    // cmd.exe /c so `start /b` (a cmd.exe builtin) is always interpreted by
+    // cmd.exe itself -- never by whatever shell safeExecShell might have
+    // picked (bash.exe if present on PATH/common install dirs, which does
+    // NOT understand `start` and treats `nul` as an ordinary filename
+    // instead of the reserved null device, per the 2026-07-10 bug).
+    return {"cmd.exe", "/c", "start", "/b", "icmg", "rule-daemon", "start"};
+#else
+    return {"icmg", "rule-daemon", "start"};
+#endif
+}
+
 bool RuleDaemonClient::ensureDaemon() {
     if (ping()) return true;
     // Spawn background daemon. Best-effort; fire-and-forget.
-    // Use core::safeExecShell so PATH inheritance + Windows CreateProcess
-    // hidden-window semantics are handled consistently.
-    std::string cmd =
-#ifdef _WIN32
-        "start /b icmg rule-daemon start >nul 2>nul"
-#else
-        "icmg rule-daemon start >/dev/null 2>&1 &"
-#endif
-        ;
-    (void)icmg::core::safeExecShell(cmd, false, 2000);
+    // 2026-07-10: was safeExecShell() with a shell-redirect command string
+    // ("start /b icmg rule-daemon start >nul 2>nul") -- fixed to a plain
+    // argv array executed via safeExec() (CreateProcess/posix_spawn
+    // directly, no shell in the middle) so there is no shell left to
+    // misinterpret `start` or the `nul` redirect target. See
+    // daemonSpawnArgv() for the full story + tests/cli/test_daemon_spawn_argv.cpp.
+    (void)icmg::core::safeExec(daemonSpawnArgv(), false, 2000);
     // Poll up to 500ms for daemon to come up.
     for (int i = 0; i < 10; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));

@@ -54,4 +54,17 @@ inline std::string resolveWinShell(const std::vector<std::string>& candPwsh,
     for (const auto& c : candPwsh) if (!c.empty() && exists(c)) return c;
     return powershell5Full;
 }
+// Append a bash-safe stderr suppression to a shell command destined for
+// safeExecShell(). 2026-07-16: safeExecShell() PREFERS bash (Git Bash / MSYS2)
+// whenever bash.exe is found, even on Windows -- so a Windows-style `2>nul`
+// redirect does NOT hit the null device there; bash treats `nul` as an
+// ordinary relative filename and creates a stray `nul` FILE in the current
+// working directory (the 2026-07-16 stray-nul bug). `/dev/null` is understood
+// by bash on every platform (Git Bash/MSYS provide it on Windows), so it is
+// the correct sink for any command routed through safeExecShell. Use this
+// helper instead of hand-writing `2>nul` / `>nul` in a safeExecShell string.
+inline std::string suppressStderr(const std::string& cmd) {
+    return cmd + " 2>/dev/null";
+}
+
 } // namespace icmg::core

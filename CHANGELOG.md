@@ -4,6 +4,18 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.18.0
+
+**Filter-coverage telemetry goes proactive + a stray-`nul` daemon bug fix.** Five changes, all TDD:
+
+- **`icmg savings` now self-diagnoses filter-coverage gaps.** It surfaces the command verbs burning the most raw output while Tkil saves the least — i.e. missing or weak filters. Born from two same-week incidents (`git log` 7-char hash regex miss, `gh api` 0% filtered) that were both found *reactively* only after a human eyeballed `token_ledger`. Now a coverage hole shows up in the dashboard the moment it costs tokens.
+- **`icmg learn` turns those gaps into an actionable recommendation** — for each high-waste verb it prints the concrete next step (JSON-minify filter for `gh`/`curl`-style verbs, extend the matching filter for `git`/`docker` dispatchers, or a generic cap/summarise filter otherwise), pointing at the exact `src/tkil/filters/` pattern.
+- **`icmg savings --json` now exposes a `filter_gaps` array** so the badge/CI/tooling can flag an uncovered high-waste verb without parsing prose.
+- **Fix: stray `nul` file bug.** `RuleDaemonClient::ensureDaemon()` spawned the daemon via `safeExecShell()` with a cmd.exe-specific redirect string (`start /b icmg rule-daemon start >nul 2>nul`). `safeExecShell()` prefers bash whenever `bash.exe` is found — so on any Windows box with Git installed this ran under bash, where `start` is unknown (daemon never spawned) and `nul` is an ordinary filename, so `>nul` created a literal `nul` file in the current directory *on every `icmg` invocation*. Fixed with a plain-argv spawn (`daemonSpawnArgv()`) via `safeExec()` — no shell in the middle.
+- **Audit: three more `safeExecShell` sites** (`schedule_helper`, `backup_cmd`, `service_cmd`) carried the same Windows-`nul`-through-bash hazard; all now route through a new bash-safe `core::suppressStderr()` helper (`2>/dev/null`).
+
+**2340/2340 tests ✓.**
+
 ## v2.17.0
 
 **`gh api` JSON output had zero Tkil filter coverage.** Found while investigating why a release/CI-heavy session's "Command filter" savings showed only ~17% (much lower than the 60-99% typical for git/grep/build commands) — `gh api <endpoint>` had no `CmdType` at all, so every call fell through to `CmdType::Default` and passed through raw. Production telemetry: a single `gh api gists/<id>` call emitted 36,741 raw bytes with `filtered_bytes` IDENTICAL to raw (0% saved). New `GhFilter` minifies `gh api`'s default pretty-printed JSON (2-space indent) when it round-trips as valid JSON — a strictly lossless transform (the parsed value is byte-for-byte identical before/after), typically cutting 30-50% of bytes. Non-JSON `gh` output (`gh pr view` tables, plain-text errors) and malformed/truncated JSON both fall through to raw passthrough unchanged — never invents a truncation that could hide real API data. New `CmdType::Gh` + detector patterns for `gh api/pr/issue/release/run/repo/gist/workflow`. TDD: 5 new tests first (`test_gh_filter.cpp`), all green. Verified live against a real `gh api` call. **2309/2309 tests ✓.**

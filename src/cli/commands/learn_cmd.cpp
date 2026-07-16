@@ -11,6 +11,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../tkil/command_learn.hpp"
+#include "../filter_gaps.hpp"
 #include <iostream>
 #include <vector>
 #include <string>
@@ -97,6 +98,7 @@ public:
         if (noisy.empty()) {
             std::cout << "[learn] analyzed " << stats.size()
                       << " command(s); none are consistently noisy. Nothing to tune.\n";
+            emitFilterGapSuggestions(db);
             return 0;
         }
         std::cout << "[learn] " << noisy.size() << " noisy command(s) from "
@@ -107,7 +109,28 @@ public:
                       << (int)((1.0 - n.filter_ratio) * 100) << "% filtered as noise\n"
                       << "    -> " << n.recommendation << "\n\n";
         }
+        emitFilterGapSuggestions(db);
         return 0;
+    }
+
+ private:
+    // 2026-07-16: turn the byte-level filter-coverage gaps that `icmg savings`
+    // surfaces into an actionable recommendation right here in `icmg learn` --
+    // "this verb wastes N KB at M% saved; register a filter like so". Closes
+    // the loop from telemetry -> concrete next step, so a missing filter (the
+    // gh api / git log class of bug) becomes a suggestion instead of waiting
+    // to be re-discovered by hand.
+    static void emitFilterGapSuggestions(core::Db& db) {
+        auto gaps = findFilterGaps(db, /*since_ts=*/0, /*min_raw_bytes=*/50000,
+                                   /*max_pct_saved=*/15.0, /*limit=*/3);
+        if (gaps.empty()) return;
+        std::cout << "\n[learn] filter-coverage gaps (verbs wasting the most, no/weak filter):\n\n";
+        for (const auto& g : gaps) {
+            std::cout << "  " << g.verb << "  (" << g.calls << " calls, "
+                      << (g.raw_bytes / 1024) << " KB raw, "
+                      << (int)(g.pct_saved + 0.5) << "% saved)\n"
+                      << "    -> " << suggestFilterFor(g) << "\n\n";
+        }
     }
 };
 
