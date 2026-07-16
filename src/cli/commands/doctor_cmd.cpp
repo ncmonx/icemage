@@ -19,6 +19,7 @@
 #include "../../core/command_suggest.hpp"   // feature-map M4: near-dup command check
 #include "../registry_docs.hpp"
 #include "../../core/dll_probe.hpp"          // doctor --deps: name missing module (err126)
+#include "../../core/nul_sweep.hpp"           // doctor: sweep stray `nul` files (2026-07-16)
 #ifdef _WIN32
   #include <windows.h>
 #endif
@@ -49,7 +50,8 @@ public:
             "  - Orphaned .bak / .pending-restart files from stalled updates\n"
             "  - Stale sayless hook trigger (>30d) when sayless ON\n"
             "  - Strict flag global ON but project hooks not in strict mode\n"
-            "  - Missing bundled DLLs next to icmg.exe (Windows)\n\n"
+            "  - Missing bundled DLLs next to icmg.exe (Windows)\n"
+            "  - Stray `nul` files (cwd, home, ~/bin) from the daemon redirect bug\n\n"
             "Options:\n"
             "  --dry-run      Report only; apply no fixes\n"
             "  --verbose      Print details for OK checks too\n";
@@ -328,6 +330,30 @@ public:
                     std::cout << "      icmg " << d.a << " ~ icmg " << d.b
                               << " (" << (int)(d.score*100) << "%)  -> icmg map " << d.a << "\n";
                 }
+            }
+        }
+
+        // 8. [nul] stray-nul file sweep (2026-07-16). The daemon / safeExecShell
+        // stray-nul bug created literal files named `nul` when a Windows `>nul`
+        // redirect ran under bash (which treats `nul` as an ordinary filename,
+        // not the null device). The spawn fixes stop NEW ones; this removes any
+        // leftovers scattered in the cwd, home, and ~/bin (a bare `nul` on PATH
+        // actively breaks tooling). Removed even in default mode (safe: the name
+        // can only be an artifact); --dry-run reports without deleting.
+        {
+            std::vector<fs::path> sweepDirs = { fs::current_path() };
+            fs::path home = homeDir();
+            sweepDirs.push_back(home);
+            sweepDirs.push_back(home / "bin");
+            auto hits = core::sweepStrayNulFiles(sweepDirs, /*remove=*/!dry);
+            if (!hits.empty()) {
+                ++issues;
+                std::cout << "  ! [nul] " << hits.size()
+                          << " stray `nul` file(s)" << (dry ? " found:" : " removed:") << "\n";
+                for (const auto& p : hits) std::cout << "      " << p << "\n";
+                if (!dry) ++fixed;
+            } else if (verb) {
+                std::cout << "  [ok] [nul] no stray nul files\n";
             }
         }
 
