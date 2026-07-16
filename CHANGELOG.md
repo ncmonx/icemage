@@ -13,8 +13,10 @@ Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 - **`icmg savings --json` now exposes a `filter_gaps` array** so the badge/CI/tooling can flag an uncovered high-waste verb without parsing prose.
 - **Fix: stray `nul` file bug.** `RuleDaemonClient::ensureDaemon()` spawned the daemon via `safeExecShell()` with a cmd.exe-specific redirect string (`start /b icmg rule-daemon start >nul 2>nul`). `safeExecShell()` prefers bash whenever `bash.exe` is found — so on any Windows box with Git installed this ran under bash, where `start` is unknown (daemon never spawned) and `nul` is an ordinary filename, so `>nul` created a literal `nul` file in the current directory *on every `icmg` invocation*. Fixed with a plain-argv spawn (`daemonSpawnArgv()`) via `safeExec()` — no shell in the middle.
 - **Audit: three more `safeExecShell` sites** (`schedule_helper`, `backup_cmd`, `service_cmd`) carried the same Windows-`nul`-through-bash hazard; all now route through a new bash-safe `core::suppressStderr()` helper (`2>/dev/null`).
+- **`icmg doctor` now sweeps leftover `nul` files.** The spawn fixes above stop *new* stray `nul` files, but the ones already created (one per prior `icmg` invocation, scattered across the cwd, `~`, and `~/bin`) remained — and a bare `nul` on `PATH` (`~/bin/nul`) actively breaks tooling. Doctor now finds and removes them (reported under `[nul]`; `--dry-run` lists without deleting). Deletion uses the Win32 extended-length prefix (`\\?\` + `_wremove`) because a plain remove of a final `nul` component is intercepted by Windows' DOS-device mapping and silently targets the NUL *device*, leaving the real file on disk. New `src/core/nul_sweep.hpp` (`isStrayNulName` / `sweepStrayNulFiles` / `removeStrayNul`), 8 tests.
+- **Build fix (CI hotfix on top of v2.18.0).** The v2.18.0 tag referenced `tests/core/test_nul_sweep.cpp` from `CMakeLists.txt` but the source (and its `nul_sweep.hpp` header) were never `git add`ed, so the CMake *generate* step failed on the Linux/macOS runners (`Cannot find source file` → `No SOURCES given to target: icmg_test`). Both files are now committed.
 
-**2340/2340 tests ✓.**
+**2340/2340 tests ✓** (Windows; +2 POSIX-only remove-path tests on the Linux/macOS runners).
 
 ## v2.17.0
 
