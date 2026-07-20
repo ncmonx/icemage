@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.18.0 LANGUAGES CXX C)
+project(icmg VERSION 2.19.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -933,6 +933,8 @@ add_icmg_test(test_migration_0032       tests/core/test_migration_0032.cpp)
 add_icmg_test(test_migration_0041       tests/core/test_migration_0035.cpp)
 add_icmg_test(test_edge_confidence        tests/graph/test_edge_confidence.cpp)
 add_icmg_test(test_markdown_extractor   tests/graph/test_markdown_extractor.cpp)
+add_icmg_test(test_sql_extractor        tests/graph/test_sql_extractor.cpp)      # gap G3: SQL schema graph
+add_icmg_test(test_hcl_extractor        tests/graph/test_hcl_extractor.cpp)      # gap G4: HCL/Terraform graph
 add_icmg_test(test_shell_extractor      tests/graph/test_shell_extractor.cpp)
 add_icmg_test(test_graph_query_engine   tests/cli/test_graph_query_engine.cpp)
 add_icmg_test(test_graph_clean_alias    tests/cli/test_graph_clean_alias.cpp)
@@ -990,6 +992,17 @@ add_icmg_test(test_throw_site            tests/core/test_throw_site.cpp)        
 add_icmg_test(test_file_time             tests/core/test_file_time.cpp)           # #222 ROOT FIX: clock_cast-free file mtime
 add_icmg_test(test_emit_agents_md        tests/cli/test_emit_agents_md.cpp)       # 2026-07-05 feature #2: emit-agents-md cross-tool config sync
 add_icmg_test(test_compress_prompt       tests/cli/test_compress_prompt.cpp)      # 2026-07-06 feature #6: honesty-gated prompt compressor
+add_icmg_test(test_tool_wiring           tests/cli/test_tool_wiring.cpp)          # gap G6: init --all-tools multi-host wiring
+
+# Python sidecar tests (multimodal ingest: office docx/xlsx + graceful deps).
+# G1 gap vs graphify. Runs only if a Python 3 interpreter is found; the test
+# itself skips office round-trips when python-docx/openpyxl are absent, so it
+# stays green on minimal CI.
+find_program(ICMG_PYTHON3 NAMES python3 python)
+if(ICMG_PYTHON3)
+    add_test(NAME test_ingest_sidecar
+             COMMAND ${ICMG_PYTHON3} ${CMAKE_SOURCE_DIR}/multimodal/test_ingest.py)
+endif()
 
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.

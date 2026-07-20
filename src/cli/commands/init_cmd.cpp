@@ -15,6 +15,7 @@
 
 #include "../base_command.hpp"
 #include "../presence_hook.hpp"   // me-everywhere heartbeat hook template
+#include "../tool_wiring.hpp"     // G6: --all-tools multi-host CLI wiring
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
@@ -1490,6 +1491,11 @@ public:
             "  --tool <name>   Target tool: claude-code (default) | cursor | windsurf | zed |\n"
             "                  codex | copilot | opencode | gemini | amp (v1.21.0; native\n"
             "                  install for non-claude-code is hint-only for now)\n"
+            "  --all-tools     Wire EVERY detected host CLI in one shot (drops a routing\n"
+            "                  rule at each tool's config path). Claude Code still gets the\n"
+            "                  full native hook setup.\n"
+            "  --strict        Like --all-tools but also wires tools not yet present here\n"
+            "                  (proactive, graphify install --strict parity).\n"
             "  --no-agents     Skip AGENTS.md update\n"
             "  --no-embedder   Skip embedder sidecar drop\n"
             "  --no-scan       Skip initial graph scan\n"
@@ -1519,7 +1525,37 @@ public:
         // each tool's per-project config location so the user can wire icmg
         // manually. Native auto-install per tool deferred to v1.21.x+.
         std::string tool = flagValue(args, "--tool", "claude-code");
-        if (tool != "claude-code") {
+        // v2.19 (G6): --all-tools / --strict wires EVERY detected host CLI in one
+        // shot (graphify `install --strict` parity). Claude Code still gets the
+        // full native hook setup below; the other hosts get a routing-rule file
+        // dropped at their config location so the agent is pointed at icmg.
+        bool all_tools = hasFlag(args, "--all-tools") || hasFlag(args, "--strict");
+        if (all_tools) {
+            fs::path troot = fs::current_path();
+            const char* h = std::getenv("HOME");
+            if (!h) h = std::getenv("USERPROFILE");
+            fs::path thome = h ? fs::path(h) : troot;
+            int wired = 0, skipped = 0;
+            std::cout << "  --all-tools: wiring detected host CLIs...\n";
+            for (const auto& tt : toolwiring::knownTools()) {
+                bool present = toolwiring::isToolPresent(tt, troot, thome);
+                // --strict also wires tools not yet present (proactive); plain
+                // --all-tools only touches ones actually detected here.
+                bool doWire = present || hasFlag(args, "--strict");
+                if (!doWire) { ++skipped; continue; }
+                fs::path w = toolwiring::writeRouting(tt, troot, thome);
+                if (!w.empty()) {
+                    ++wired;
+                    std::cout << "    [ok] " << tt.name << " -> " << tt.configRelPath
+                              << (present ? "" : " (proactive)") << "\n";
+                } else {
+                    std::cout << "    [!!] " << tt.name << ": write failed\n";
+                }
+            }
+            std::cout << "  --all-tools: " << wired << " wired, " << skipped
+                      << " skipped (not detected). Claude Code setup continues below.\n\n";
+        }
+        if (tool != "claude-code" && !all_tools) {
             std::cout << "  --tool " << tool << ": auto-install not yet implemented (v1.21.x+).\n"
                       << "  Manual config locations:\n"
                       << "    cursor    .cursor/rules/\n"

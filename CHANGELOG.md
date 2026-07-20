@@ -4,6 +4,64 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.19.0
+
+**graphify-parity ingest & graph pack.** Five gaps from the graphify landscape
+research, closed: Office ingest (`.docx`/`.xlsx`), audio/video transcription
+(faster-whisper), SQL schema graph (`.sql`/`.ddl`), HCL/Terraform graph
+(`.tf`/`.hcl`), and one-shot multi-host wiring (`init --all-tools`/`--strict`).
+34 new tests; 2364 C++ + 15 Python green.
+
+
+- **`icmg ingest` now transcribes audio/video (`.mp4` `.mov` `.mkv` `.webm`
+  `.mp3` `.wav` `.m4a` `.flac` …).** Closes gap G2 from the graphify research.
+  Transcription via faster-whisper (sidecar `extract_media`; CPU int8 `base`
+  model by default, overridable with `ICMG_WHISPER_MODEL/DEVICE/COMPUTE`).
+  faster-whisper bundles its own audio decoding (PyAV), so ffmpeg is not
+  required for common containers. Graceful when the dep is absent: a clear
+  "install faster-whisper" message, never a crash. Media nodes are recorded as
+  `video`/`audio` in the graph. TDD: sidecar tests skip the heavy run when
+  faster-whisper is present and assert the dep-guard shape when it's absent.
+- **HCL / Terraform extractor (`.tf` / `.hcl` / `.tfvars`).** Closes gap G4 from
+  the graphify research. Top-level blocks (`resource`, `data`, `module`,
+  `variable`, `output`, `provider`, `locals`, `terraform`, …) become graph nodes
+  as `<type>.<labels>` (in `classes`), each block's local name in `functions`,
+  and a `module` block's `source` becomes a `module:<source>` dependency edge
+  (in `imports`). Comment-tolerant (`#`, `//`, `/* */`). New `HclExtractor`
+  (`src/graph/extractor/hcl_extractor.{hpp,cpp}`), 8 tests. Scanner now maps
+  `.tf`/`.hcl`/`.tfvars` → `hcl`. Verified E2E. TDD.
+- **`icmg init --all-tools` / `--strict` — one-shot multi-host wiring.** Closes
+  gap G6 (graphify's `install --strict` parity). Previously `init --tool <name>`
+  handled one host CLI at a time and was hint-only for non-Claude-Code tools.
+  Now `--all-tools` detects every supported host present in the project
+  (Cursor, Windsurf, Zed, Codex, Copilot, OpenCode, Gemini, Amp) and drops a
+  real icmg routing-rule file at each one's config path in a single run;
+  `--strict` also wires hosts not yet detected (proactive). Claude Code still
+  gets the full native hook setup. New pure, header-only `src/cli/tool_wiring.hpp`
+  (`knownTools` / `routingContent` / `isToolPresent` / `writeRouting`), 6 tests
+  (`tests/cli/test_tool_wiring.cpp`). Verified end-to-end. TDD.
+- **SQL schema extractor (`.sql` / `.ddl`).** Closes gap G3 from the graphify
+  research: `.sql` files now feed the code graph instead of only getting a
+  generic regex scan. `CREATE TABLE` → table nodes, `CREATE VIEW/FUNCTION/
+  PROCEDURE/TRIGGER` → routine nodes, `FOREIGN KEY … REFERENCES` / inline
+  `REFERENCES` → `references:<table>` edges (table-to-table). Dialect-tolerant:
+  `IF NOT EXISTS`, quoted / backticked / bracketed and schema-qualified names,
+  line `--` and `/* */` comments stripped. New `SqlExtractor`
+  (`src/graph/extractor/sql_extractor.{hpp,cpp}`), 10 tests
+  (`tests/graph/test_sql_extractor.cpp`). Verified end-to-end: `icmg graph
+  update` on a `.sql` file emits `[table]` / `[view]` nodes. TDD.
+- **`icmg ingest` now reads Office documents (`.docx` / `.xlsx`).** Closes gap
+  G1 from the graphify landscape research: graphify ingests office files, icemage
+  previously only did PDF + image OCR. `.docx` extracts paragraphs + table cells;
+  `.xlsx` extracts every sheet's cells (sheet-titled, tab-joined rows). Routed
+  through the ingest sidecar (`multimodal/icmg_ingest.py` → `extract_office`,
+  python-docx / openpyxl, graceful when a dep is missing). Office extraction is
+  exact, so it skips the OCR confidence-gate / vision-recommendation path and is
+  labelled `office` (not `image`) in the summary line. New standalone sidecar
+  test suite `multimodal/test_ingest.py` (10 cases, wired into CTest as
+  `test_ingest_sidecar`; skips office round-trips gracefully if the Python deps
+  are absent). TDD.
+
 ## v2.18.0
 
 **Filter-coverage telemetry goes proactive + a stray-`nul` daemon bug fix.** Five changes, all TDD:

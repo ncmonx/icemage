@@ -41,7 +41,10 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg ingest <image-path> [options]\n\n"
+            "Usage: icmg ingest <path> [options]\n\n"
+            "Accepts an image (OCR), an Office doc (.docx/.xlsx), audio/video\n"
+            "(.mp4/.mp3/... via faster-whisper), or a text document (--doc /\n"
+            "auto by extension).\n\n"
             "Options:\n"
             "  --raw                 Skip OCR; print metadata only\n"
             "  --refresh             Bypass cache, re-OCR\n"
@@ -166,19 +169,44 @@ public:
         }
 
         // Run OCR via sidecar.
+        // Office documents (.docx/.xlsx) -> office extractor; audio/video
+        // (.mp4/.mp3/...) -> media transcription (faster-whisper); everything
+        // else is OCR'd as an image.
+        std::string lext;
+        {
+            auto d = path.find_last_of('.');
+            if (d != std::string::npos) {
+                lext = path.substr(d + 1);
+                for (auto& c : lext) c = (char)std::tolower((unsigned char)c);
+            }
+        }
+        bool isOffice = (lext == "docx" || lext == "xlsx");
+        bool isMedia = (lext == "mp4" || lext == "mov" || lext == "mkv" ||
+                        lext == "webm" || lext == "avi" || lext == "m4v" ||
+                        lext == "mp3" || lext == "wav" || lext == "m4a" ||
+                        lext == "flac" || lext == "ogg" || lext == "aac");
+        bool isExact = isOffice || isMedia;
         auto t0 = std::chrono::steady_clock::now();
-        std::string text = runOcr(path);
+        std::string text = isOffice ? runOffice(path)
+                         : isMedia  ? runMedia(path)
+                                     : runOcr(path);
         auto t1 = std::chrono::steady_clock::now();
         int elapsed_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
         if (text.empty()) {
-            std::cerr << "[icmg ingest] OCR returned empty (sidecar missing? "
-                      << "Install: pip install pytesseract Pillow + tesseract binary)\n";
+            if (isMedia) {
+                std::cerr << "[icmg ingest] transcription returned empty (sidecar "
+                          << "missing? Install: pip install faster-whisper)\n";
+            } else {
+                std::cerr << "[icmg ingest] OCR returned empty (sidecar missing? "
+                          << "Install: pip install pytesseract Pillow + tesseract binary)\n";
+            }
             return emitMetadata(hash, bytes_in, json_out, out_path);
         }
 
         // Heuristic confidence: text length vs image bytes ratio + alphanumeric ratio.
-        int conf = computeConfidence(text);
+        // Office/media extraction is exact (not OCR), so it is full confidence.
+        int conf = isExact ? 100 : computeConfidence(text);
 
         // Cache store (best-effort).
         try {
@@ -192,7 +220,8 @@ public:
 
         if (!no_graph) recordMediaNode(db, path, text);
         return emitOcr(text, conf, hash, bytes_in, /*from_cache*/ false,
-                       min_chars, json_out, out_path, elapsed_ms);
+                       min_chars, json_out, out_path, elapsed_ms, isExact,
+                       isMedia ? "media" : (isOffice ? "office" : "image"));
     }
 
 private:
@@ -215,7 +244,11 @@ private:
                 std::string ext = path.substr(dot + 1);
                 for (auto& ch : ext) ch = (char)std::tolower((unsigned char)ch);
                 if (ext == "pdf") mt = "pdf";
-                else if (ext == "mp4" || ext == "mov" || ext == "mkv" || ext == "webm") mt = "video";
+                else if (ext == "mp4" || ext == "mov" || ext == "mkv" || ext == "webm"
+                         || ext == "avi" || ext == "m4v") mt = "video";
+                else if (ext == "mp3" || ext == "wav" || ext == "m4a"
+                         || ext == "flac" || ext == "ogg" || ext == "aac") mt = "audio";
+                else if (ext == "docx" || ext == "xlsx") mt = "office";
             }
             graph::GraphStore store(db);
             store.upsertNode(graph::buildMediaNode(path, mt, text));
@@ -266,6 +299,107 @@ private:
         }
     }
 
+    // Extract text from an Office document (.docx/.xlsx) via the ingest
+    // sidecar's extract_office (python-docx / openpyxl). Same inline-python
+    // pattern as runOcr so the extraction logic lives in one place
+    // (multimodal/icmg_ingest.py) and is unit-tested there.
+    std::string runOffice(const std::string& doc_path) {
+        std::string sidecar = locateSidecar();
+        // Prefer importing the sidecar module (single source of truth); fall
+        // back to a self-contained script if the file isn't locatable.
+        std::string py_script;
+        if (!sidecar.empty() && sidecar != "inline" && fs::exists(sidecar)) {
+            fs::path sp(sidecar);
+            std::string dir = sp.parent_path().string();
+            for (auto& c : dir) if (c == '\\') c = '/';
+            py_script =
+                "import sys,json,importlib.util;"
+                "spec=importlib.util.spec_from_file_location('icmg_ingest',r'" + sidecar + "');"
+                "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);"
+                "print(json.dumps(m.extract_office(sys.argv[1]),ensure_ascii=False))";
+        } else {
+            // Minimal inline fallback (docx paragraphs + xlsx cells).
+            py_script =
+                "import sys,json,os;"
+                "p=sys.argv[1];e=os.path.splitext(p)[1].lower();r={};"
+                "\ntry:\n"
+                " if e=='.docx':\n"
+                "  import docx;d=docx.Document(p);"
+                "r={'text':chr(10).join(x.text for x in d.paragraphs if x.text),'kind':'docx'}\n"
+                " elif e=='.xlsx':\n"
+                "  import openpyxl;wb=openpyxl.load_workbook(p,read_only=True,data_only=True);"
+                "L=[]\n"
+                "  for ws in wb.worksheets:\n"
+                "   for row in ws.iter_rows(values_only=True):\n"
+                "    L.append(chr(9).join(str(c) for c in row if c is not None))\n"
+                "  r={'text':chr(10).join(L),'kind':'xlsx'}\n"
+                " else:\n"
+                "  r={'error':'unsupported'}\n"
+                "except Exception as ex:\n"
+                " r={'error':str(ex)}\n"
+                "print(json.dumps(r,ensure_ascii=False))";
+        }
+        std::string cmd = std::string("python3 -c \"") + py_script + "\" \"" + doc_path + "\"";
+        auto res = core::safeExecShell(cmd, false, 30000);
+        if (res.exit_code != 0 || res.out.empty()) {
+            cmd = std::string("python -c \"") + py_script + "\" \"" + doc_path + "\"";
+            res = core::safeExecShell(cmd, false, 30000);
+            if (res.exit_code != 0 || res.out.empty()) return {};
+        }
+        try {
+            auto j = nlohmann::json::parse(res.out);
+            return j.value("text", "");
+        } catch (...) {
+            return {};
+        }
+    }
+
+    // Transcribe audio/video (.mp4/.mp3/...) to text via the ingest sidecar's
+    // extract_media (faster-whisper). Same inline-python pattern as runOffice:
+    // logic lives in multimodal/icmg_ingest.py and is unit-tested there.
+    std::string runMedia(const std::string& media_path) {
+        std::string sidecar = locateSidecar();
+        std::string py_script;
+        if (!sidecar.empty() && sidecar != "inline" && fs::exists(sidecar)) {
+            py_script =
+                "import sys,json,importlib.util;"
+                "spec=importlib.util.spec_from_file_location('icmg_ingest',r'" + sidecar + "');"
+                "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);"
+                "print(json.dumps(m.extract_media(sys.argv[1]),ensure_ascii=False))";
+        } else {
+            // Minimal inline fallback (faster-whisper 'base', CPU int8).
+            py_script =
+                "import sys,json,os;"
+                "p=sys.argv[1];r={};"
+                "\ntry:\n"
+                " from faster_whisper import WhisperModel\n"
+                " mdl=WhisperModel(os.environ.get('ICMG_WHISPER_MODEL','base'),"
+                "device=os.environ.get('ICMG_WHISPER_DEVICE','cpu'),"
+                "compute_type=os.environ.get('ICMG_WHISPER_COMPUTE','int8'))\n"
+                " segs,info=mdl.transcribe(p)\n"
+                " r={'text':' '.join(s.text.strip() for s in segs).strip(),'kind':'media'}\n"
+                "except ImportError:\n"
+                " r={'error':'faster-whisper not installed'}\n"
+                "except Exception as ex:\n"
+                " r={'error':str(ex)}\n"
+                "print(json.dumps(r,ensure_ascii=False))";
+        }
+        // Transcription can be slow -> allow up to 10 minutes.
+        std::string cmd = std::string("python3 -c \"") + py_script + "\" \"" + media_path + "\"";
+        auto res = core::safeExecShell(cmd, false, 600000);
+        if (res.exit_code != 0 || res.out.empty()) {
+            cmd = std::string("python -c \"") + py_script + "\" \"" + media_path + "\"";
+            res = core::safeExecShell(cmd, false, 600000);
+            if (res.exit_code != 0 || res.out.empty()) return {};
+        }
+        try {
+            auto j = nlohmann::json::parse(res.out);
+            return j.value("text", "");
+        } catch (...) {
+            return {};
+        }
+    }
+
     std::string locateSidecar() {
         // Project-local first, then ~/.icmg/embed.
         for (auto* p : {"multimodal/icmg_ingest.py", "./multimodal/icmg_ingest.py"}) {
@@ -284,8 +418,13 @@ private:
 
     int emitOcr(const std::string& text, int conf, const std::string& hash,
                  int64_t bytes_in, bool from_cache, int min_chars,
-                 bool json_out, const std::string& out_path, int elapsed_ms) {
-        bool low_conf = ((int)text.size() < min_chars) || conf < 50;
+                 bool json_out, const std::string& out_path, int elapsed_ms,
+                 bool isExact = false,
+                 const char* kindLabelArg = nullptr) {
+        const char* kindLabel = kindLabelArg ? kindLabelArg
+                                             : (isExact ? "office" : "image");
+        // Office/media extraction is exact -> never a low-confidence case.
+        bool low_conf = !isExact && (((int)text.size() < min_chars) || conf < 50);
         std::ostream* os = &std::cout;
         std::ofstream of;
         if (!out_path.empty()) {
@@ -316,9 +455,10 @@ private:
         int saved_pct = bytes_in > 0
             ? (int)(100 - (100LL * (int64_t)text.size() / bytes_in))
             : 0;
-        std::cerr << "[icmg ingest] " << bytes_in << "B image → "
+        std::cerr << "[icmg ingest] " << bytes_in << "B " << kindLabel << " → "
                   << text.size() << "B text "
-                  << "(" << saved_pct << "% saved, conf=" << conf << "%)"
+                  << "(" << saved_pct << "% saved"
+                  << (isExact ? "" : (", conf=" + std::to_string(conf) + "%")) << ")"
                   << (from_cache ? " [cache HIT]" : (" in " + std::to_string(elapsed_ms) + "ms"))
                   << "\n";
         return 0;

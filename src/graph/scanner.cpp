@@ -57,6 +57,7 @@ static const struct { const char* ext; const char* lang; } EXT_MAP[] = {
     {".lua","lua"},
     {".dart","dart"},
     {".sql","sql"},
+    {".tf","hcl"}, {".hcl","hcl"}, {".tfvars","hcl"},
     // Phase 68: doc/data/config files. Lang label only — no AST extractor;
     // generic extractor still applies (regex symbol scan).
     {".md","markdown"}, {".markdown","markdown"}, {".rst","markdown"},
