@@ -7,6 +7,8 @@
 
 #include "../base_command.hpp"
 #include "../cache_emitter.hpp"
+#include "../cache_layout.hpp"
+#include "../effort_hint.hpp"
 #include "../content_status.hpp"
 #include "../headtail_range.hpp"
 #include "../think_directive.hpp"
@@ -1336,6 +1338,29 @@ public:
         // Phase 40 T1: optional Anthropic prompt-cache wrap.
         // Phase 67 T12: --auto-cache enables cache-prefix when output >= 4KB
         // (Anthropic recommends caching when prefix > ~1K tokens for ROI).
+        //
+        // v2.20 research #1: --cache-aware assembles a BYTE-STABLE prefix.
+        // The plain --cache-prefix wraps the whole blob, but pack's line 1 is a
+        // per-task header, so the wrapped prefix mutates every call and the
+        // cache never hits. --cache-aware classifies sections (conventions /
+        // rules / graph / files = stable; task / recall / diff = volatile),
+        // orders stable-first, and wraps ONLY the stable prefix -> the cached
+        // region is identical across turns that share the same repo state.
+        if (hasFlag(args, "--cache-aware")) {
+            int ttl = 3600;
+            try { std::string t = flagValue(args, "--cache-ttl");
+                  if (!t.empty()) ttl = std::stoi(t); } catch (...) {}
+            cli::CacheEmitOptions o; o.ttl_seconds = ttl;
+            auto segs = cli::classifyMarkdownSections(capped);
+            auto layout = cli::assembleCacheAware(segs, o);
+            capped = layout.text;
+            std::cerr << "[icmg pack] cache-aware: stable-prefix "
+                      << layout.prefix_bytes << "B (" << layout.stable_count
+                      << " sections, hash " << layout.prefix_hash
+                      << "), volatile-tail " << layout.tail_bytes << "B ("
+                      << layout.volatile_count << " sections), wrapped="
+                      << (layout.wrapped ? "yes" : "no") << "\n";
+        } else {
         bool want_cache = hasFlag(args, "--cache-prefix");
         if (hasFlag(args, "--auto-cache") && capped.size() >= 4096) {
             want_cache = true;
@@ -1350,6 +1375,7 @@ public:
             } catch (...) {}
             cli::CacheEmitOptions o; o.ttl_seconds = ttl;
             capped = cli::wrapCachePrefix(capped, o);
+        }
         }
 
         // Phase 70: auto-compress when output ≥ threshold. Default ON; opt-out
@@ -1429,6 +1455,21 @@ public:
         if (sayless)       capped = cli::applySaylessDirective(capped);
         else if (concise)  capped = cli::applyConciseDirective(capped);
         else if (no_think) capped = cli::applyNoThinkDirective(capped);
+
+        // v2.20 research #6: opt-in thinking-budget effort hint. Deterministic
+        // recommendation from intent + graph fan-out (symbols touched); emits an
+        // <icmg-effort> directive a host can use to size extended-thinking.
+        // Advisory only -> off by default.
+        if (hasFlag(args, "--effort-hint")) {
+            cli::Intent it = (classified != cli::Intent::Unknown)
+                                 ? classified : cli::classifyIntent(task);
+            int fanOut = cli::estimateFanOut(capped);
+            auto eh = cli::recommendEffort(it, fanOut);
+            capped = cli::applyEffortDirective(capped, eh);
+            std::cerr << "[icmg pack] effort=" << cli::effortLabel(eh.level)
+                      << " budget~" << eh.budget_tokens
+                      << " (fan-out " << fanOut << ", " << eh.rationale << ")\n";
+        }
 
         // Phase 41 T4: telemetry record.
         // Phase 62: only record when a directive actually applied — skip noise

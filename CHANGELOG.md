@@ -4,6 +4,41 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.20.0
+
+**Model-era capability pack (deep-research 2026-07-22).** As frontier models grew
+1M-token windows, extended-thinking budgets, and multi-agent orchestration, the
+token lever shifted from *how much* to trim toward *cache-hit rate* and
+*reasoning-token* cost. Seven gaps researched; five shipped (two already covered
+in-tree, not rebuilt):
+
+- **Cache-aware context assembly** (`pack --cache-aware`) -- prompt caching
+  (-90% cost / -85% latency, Anthropic) only pays off with a byte-stable cached
+  prefix, but the old whole-blob wrap mutated on line 1 (per-task header) so the
+  cache never hit. New `cache_layout` classifies sections (conventions / rules /
+  graph / files = stable; task / recall / diff = volatile), orders stable-first,
+  wraps ONLY the stable prefix, and reports an FNV-1a `prefix_hash` so drift is
+  visible. Verified: two different tasks yield an identical prefix hash.
+- **MCP tool annotations** -- every tools/list entry now carries
+  `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`,
+  derived from each tool's `isMutating()` signal (fetch/ingest/sync are
+  open-world). Lets an agent host plan safely (don't retry non-idempotent, warn
+  before destructive). 41/41 tools annotated.
+- **`icmg_graph_query` MCP tool** -- deterministic multi-hop structural search
+  (`blast_radius` | `who_calls` | `path_between`): the cheap traversal a code
+  model can't reconstruct from flat grep.
+- **`pack --effort-hint`** -- deterministic extended-thinking budget
+  recommendation from task intent + graph fan-out (`<icmg-effort>` directive;
+  advisory, off by default).
+- **`token-ledger stats` / `otel`** -- cache-hit ratio (the dominant 2026 cost
+  lever) + honest cost estimate over the existing ledger; `otel` emits
+  OpenTelemetry GenAI-style JSON offline.
+
+All deterministic, no-LLM, local-first, TDD. Full suite 2406 tests. Anti-dup:
+cross-session resume-brief already covered by `wakeup` + layer0
+failed-validation extraction; multi-agent work-claim already shipped as
+`agent_leases` + `session claim`.
+
 ## v2.19.1
 
 **`icmg run` destructive-op guard: argv-aware, no more false positives.** The

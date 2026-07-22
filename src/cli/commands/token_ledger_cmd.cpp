@@ -153,6 +153,53 @@ public:
             return 0;
         }
 
+        // v2.20 research #5: cache-hit ratio + cost over the existing
+        // token_ledger (extend, not a parallel table). `stats` reports the
+        // cache-hit fraction (cache-read / total input) -- the dominant 2026
+        // cost lever -- alongside token totals and an honest cost estimate.
+        // `otel` emits the same as OpenTelemetry GenAI-style JSON (offline).
+        if (action == "stats" || action == "otel") {
+            int window_days = 30;
+            std::string w = flagValue(args, "--window", "30d");
+            if (!w.empty() && w.back() == 'd') w.pop_back();
+            try { window_days = std::stoi(w); } catch (...) {}
+            TokenLedgerTotals t = aggregateTokenLedger(db, window_days);
+            double cacheHit = t.cacheHitRate();   // existing helper (0..1)
+
+            // Honest, model-agnostic cost estimate: fresh input + cache-creation
+            // at $3/Mtok, cache-read at ~10% of that, output at $15/Mtok
+            // (Claude-class defaults; a rough meter, not billing truth).
+            double cost = (double)(t.input + t.cache_creation) * 3.0 / 1'000'000.0
+                        + (double)t.cache_read * 0.30 / 1'000'000.0
+                        + (double)t.output * 15.0 / 1'000'000.0;
+
+            if (action == "otel") {
+                std::cout << "{\n"
+                    << "  \"name\": \"gen_ai.client.window\",\n"
+                    << "  \"attributes\": {\n"
+                    << "    \"gen_ai.usage.input_tokens\": " << t.totalInput() << ",\n"
+                    << "    \"gen_ai.usage.output_tokens\": " << t.output << ",\n"
+                    << "    \"gen_ai.usage.cached_tokens\": " << t.cache_read << ",\n"
+                    << "    \"icmg.cache_hit_ratio\": " << std::fixed << std::setprecision(4) << cacheHit << ",\n"
+                    << "    \"icmg.est_cost_usd\": " << std::fixed << std::setprecision(4) << cost << ",\n"
+                    << "    \"icmg.rows\": " << t.rows << "\n"
+                    << "  }\n}\n";
+                return 0;
+            }
+
+            std::cout << "Token ledger stats (window " << window_days << "d):\n"
+                      << "  rows            " << t.rows << "\n"
+                      << "  input (fresh)   " << t.input << "\n"
+                      << "  cache-read      " << t.cache_read << "\n"
+                      << "  cache-creation  " << t.cache_creation << "\n"
+                      << "  output          " << t.output << "\n"
+                      << "  cache-hit ratio " << std::fixed << std::setprecision(1)
+                      << (cacheHit * 100.0) << "%\n"
+                      << "  est. cost       $" << std::fixed << std::setprecision(4)
+                      << cost << "\n";
+            return 0;
+        }
+
         std::cerr << "icmg token-ledger: unknown action '" << action << "'\n";
         usage();
         return 1;

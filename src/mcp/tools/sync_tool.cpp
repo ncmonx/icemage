@@ -13,6 +13,12 @@ namespace icmg::mcp {
 class SyncTool : public BaseMcpTool {
 public:
     std::string name()        const override { return "icmg_sync"; }
+    // Talks to a remote sync peer -> open-world (and mutating: writes state).
+    McpToolAnnotations annotations() const override {
+        auto a = defaultToolAnnotations(isMutating());
+        a.openWorld = true;
+        return a;
+    }
     std::string description() const override {
         return "Team sync: push/pull memory + graph via git-tracked JSONL. "
                "Use 'push' to share local decisions, 'pull' to fetch teammate "

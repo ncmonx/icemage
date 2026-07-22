@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.19.1 LANGUAGES CXX C)
+project(icmg VERSION 2.20.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -821,6 +821,8 @@ add_icmg_test(test_memory_tier tests/core/test_memory_tier.cpp)  # v2.0.0 extern
 add_icmg_test(test_bfs_expand  tests/graph/test_bfs_expand.cpp)
 add_icmg_test(test_mcp_resources tests/mcp/test_mcp_resources.cpp)
 add_icmg_test(test_lazy_tool_schema tests/mcp/test_lazy_tool_schema.cpp)
+add_icmg_test(test_tool_annotations tests/mcp/test_tool_annotations.cpp)  # v2.20 MCP behavioral hints
+add_icmg_test(test_graph_query_tool tests/mcp/test_graph_query_tool.cpp)  # v2.20 research #7 multi-hop graph MCP
 add_icmg_test(test_vec_search tests/embed/test_vec_search.cpp)
 add_icmg_test(test_sp_link tests/sp/test_sp_link.cpp)
 add_icmg_test(test_parity tests/graph/test_parity.cpp)
@@ -854,6 +856,8 @@ add_icmg_test(test_treesitter_grammars tests/style_clone/test_treesitter_grammar
 add_icmg_test(test_command_registry tests/cli/test_command_registry.cpp)   # v1.27.0 Phase 5
 add_icmg_test(test_service_install_vbs tests/core/test_service_install_vbs.cpp)  # v1.28.0 TDD backfill
 add_icmg_test(test_cache_emitter tests/cli/test_cache_emitter.cpp)
+add_icmg_test(test_cache_layout  tests/cli/test_cache_layout.cpp)   # v2.20 research #1 cache-aware assembly
+add_icmg_test(test_effort_hint   tests/cli/test_effort_hint.cpp)    # v2.20 research #6 thinking-budget hint
 add_icmg_test(test_treesitter_typescript tests/graph/test_treesitter_typescript.cpp)
 add_icmg_test(test_treesitter_python tests/graph/test_treesitter_python.cpp)
 add_icmg_test(test_think_directive tests/cli/test_think_directive.cpp)

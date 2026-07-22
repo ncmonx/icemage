@@ -13,6 +13,12 @@ namespace icmg::mcp {
 class IngestTool : public BaseMcpTool {
 public:
     std::string name()        const override { return "icmg_ingest"; }
+    // Reads external files (media/docs) -> open-world (and mutating: writes cache).
+    McpToolAnnotations annotations() const override {
+        auto a = defaultToolAnnotations(isMutating());
+        a.openWorld = true;
+        return a;
+    }
     std::string description() const override {
         return "OCR an image file locally via Python sidecar (pytesseract). "
                "Returns extracted text + confidence + cache hit indicator. "

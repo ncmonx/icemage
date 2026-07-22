@@ -13,6 +13,12 @@ namespace icmg::mcp {
 class FetchTool : public BaseMcpTool {
 public:
     std::string name()        const override { return "icmg_fetch"; }
+    // Reaches the network -> open-world hint (still read-only: cached download).
+    McpToolAnnotations annotations() const override {
+        auto a = defaultToolAnnotations(isMutating());
+        a.openWorld = true;
+        return a;
+    }
     std::string description() const override {
         return "Download URL with content-aware reduction (HTML strips chrome, "
                "JSON schema-summarizes >5KB, PDF via sidecar, binary metadata-only). "

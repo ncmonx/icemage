@@ -136,7 +136,8 @@ json McpServer::buildToolsListResponse(bool lazy) const {
         tools.push_back({
             {"name",        tool->name()},
             {"description", desc},
-            {"inputSchema", schema}
+            {"inputSchema", schema},
+            {"annotations", tool->annotationsJson()}
         });
     }
 

@@ -2,6 +2,7 @@
 #include "../core/db.hpp"
 #include "../core/tool_call_cache.hpp"
 #include "../core/rate_limiter.hpp"   // v1.72 Security: MCP rate limiting
+#include "tool_annotations.hpp"       // v2.20 MCP: behavioral tool hints
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -33,6 +34,10 @@ public:
     virtual std::string name()        const = 0;
     virtual std::string description() const = 0;
     virtual std::vector<McpToolParam> params() const = 0;
+
+    // v2.20 MCP: serialized tool annotations emitted in tools/list (public so
+    // the server can read it; formatting fixed, behavior comes from annotations()).
+    json annotationsJson() const { return toolAnnotationsToJson(annotations()); }
 
     // A4: all tools return JSON; call() is final, callImpl() is overridden.
     // Phase 67 T24: read-only tools wrapped in ToolCallCache (5min TTL).
@@ -80,6 +85,14 @@ protected:
 
     // Override returning true to skip cache (write-side tools).
     virtual bool isMutating() const { return false; }
+
+    // v2.20 MCP tool annotations: behavioral hints (readOnly/destructive/
+    // idempotent/openWorld) the client uses for planning. Default derives from
+    // isMutating(); tools override to refine (e.g. fetch/ingest/sync set
+    // openWorld=true, a delete-style tool sets destructive=true).
+    virtual McpToolAnnotations annotations() const {
+        return defaultToolAnnotations(isMutating());
+    }
 
     // Helpers
     static std::string getStr(const json& args, const std::string& key,
