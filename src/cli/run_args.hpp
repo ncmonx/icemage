@@ -9,6 +9,7 @@
 // after it — or after a bare `--` — is passed verbatim to the child.
 #include <string>
 #include <vector>
+#include <cctype>
 
 namespace icmg::cli {
 
@@ -89,6 +90,119 @@ inline DestructiveDecision destructiveDecision(bool yes_flag, bool assume_yes_en
     if (yes_flag || assume_yes_env)      return DestructiveDecision::Proceed;
     if (!stdin_is_tty)                   return DestructiveDecision::Deny;   // no hang
     return DestructiveDecision::Prompt;
+}
+
+// v2.20.0: argv-aware destructive detection (replaces the old whole-string
+// substring scan, which false-positived on `grep 'rm -rf'`, a path like
+// `src/farm/`, or any search pattern that merely CONTAINED "rm "/"-f"). We only
+// flag when the LEADING verb of the command is the destructive tool, so an
+// argument/quote/path that happens to contain the token no longer trips it.
+//
+// Notes:
+//  - A single quoted token ("rm -rf /tmp/x") is split on whitespace first so
+//    the leading verb is still recovered.
+//  - Known wrapper prefixes (env VAR=val, sudo) are skipped to reach the verb.
+namespace detail {
+inline std::string lc(std::string s) {
+    for (char& c : s) c = (char)std::tolower((unsigned char)c);
+    return s;
+}
+inline bool tokEq(const std::string& a, const char* b) { return lc(a) == b; }
+// Flatten argv to whitespace tokens (splits a single quoted shell line too).
+inline std::vector<std::string> flatten(const std::vector<std::string>& argv) {
+    std::vector<std::string> out;
+    for (const auto& a : argv) {
+        std::string cur;
+        for (char c : a) {
+            if (c == ' ' || c == '\t') { if (!cur.empty()) { out.push_back(cur); cur.clear(); } }
+            else cur += c;
+        }
+        if (!cur.empty()) out.push_back(cur);
+    }
+    return out;
+}
+// Is this token an env-assignment (VAR=val) wrapper we should skip past?
+inline bool isEnvAssign(const std::string& t) {
+    auto eq = t.find('=');
+    if (eq == std::string::npos || eq == 0) return false;
+    for (size_t i = 0; i < eq; ++i) {
+        char c = t[i];
+        if (!(std::isalnum((unsigned char)c) || c == '_')) return false;
+    }
+    return true;
+}
+} // namespace detail
+
+// True if a leading `ICMG_ASSUME_YES=1` (or =true/=yes) / `FORCE=1` env-prefix
+// is present -- honored as explicit bypass intent even when the env didn't reach
+// the icmg process itself (it was set for the wrapped child).
+inline bool hasInlineYesPrefix(const std::vector<std::string>& argv) {
+    for (const auto& raw : detail::flatten(argv)) {
+        if (!detail::isEnvAssign(raw)) return false;   // stop at first non-env token
+        auto eq = raw.find('=');
+        std::string key = detail::lc(raw.substr(0, eq));
+        std::string val = detail::lc(raw.substr(eq + 1));
+        bool truthy = (val == "1" || val == "true" || val == "yes");
+        if ((key == "icmg_assume_yes" || key == "force" || key == "icmg_yes") && truthy)
+            return true;
+    }
+    return false;
+}
+
+inline bool isDestructiveArgv(const std::vector<std::string>& argv, std::string& reason) {
+    using namespace detail;
+    auto toks = flatten(argv);
+    // Skip env-assignment + sudo wrappers to find the real leading verb.
+    size_t i = 0;
+    while (i < toks.size() && (isEnvAssign(toks[i]) || tokEq(toks[i], "sudo"))) ++i;
+    if (i >= toks.size()) return false;
+    const std::string verb = lc(toks[i]);
+    auto rest = std::vector<std::string>(toks.begin() + i, toks.end());
+    auto hasTok = [&](const char* f) {
+        for (size_t k = i + 1; k < toks.size(); ++k) if (lc(toks[k]) == f) return true;
+        return false;
+    };
+    // Any token starting with '-' that bundles r or f (rm -rf, rm -fr, rm -Rf...).
+    auto hasRmForce = [&]() {
+        for (size_t k = i + 1; k < toks.size(); ++k) {
+            const std::string& t = toks[k];
+            if (t.size() >= 2 && t[0] == '-' && t[1] != '-') {
+                for (char c : t) if (c == 'r' || c == 'R' || c == 'f') return true;
+            }
+        }
+        return false;
+    };
+
+    if (verb == "rm") {
+        if (hasRmForce()) { reason = "rm with -r/-f"; return true; }
+        return false;
+    }
+    if (verb == "remove-item") { reason = "Remove-Item"; return true; }
+    if (verb == "rmdir") {
+        if (hasTok("/s") || hasRmForce()) { reason = "rmdir /s"; return true; }
+        return false;
+    }
+    if (verb == "git") {
+        // git rm -r/-f, git push --force, git reset --hard, git clean -f
+        if (toks.size() > i + 1) {
+            const std::string sub = lc(toks[i + 1]);
+            if (sub == "rm" && hasRmForce())        { reason = "git rm -r/-f";      return true; }
+            if (sub == "push" && hasTok("--force")) { reason = "git push --force";  return true; }
+            if (sub == "reset" && hasTok("--hard")) { reason = "git reset --hard";  return true; }
+            if (sub == "clean" && hasRmForce())     { reason = "git clean -f";      return true; }
+        }
+        return false;
+    }
+    // SQL destructive statements can appear as an argument to a db CLI
+    // (psql -c "DROP TABLE t"), so scan the joined REST for these phrases.
+    std::string joined;
+    for (auto& t : rest) { joined += lc(t); joined += ' '; }
+    if (joined.find("delete from")  != std::string::npos) { reason = "DELETE FROM";   return true; }
+    if (joined.find("drop table")   != std::string::npos) { reason = "DROP TABLE";    return true; }
+    if (joined.find("drop database")!= std::string::npos) { reason = "DROP DATABASE"; return true; }
+    if (joined.find("drop schema")  != std::string::npos) { reason = "DROP SCHEMA";   return true; }
+    if (joined.find("truncate ")    != std::string::npos) { reason = "TRUNCATE";      return true; }
+    return false;
 }
 
 } // namespace icmg::cli

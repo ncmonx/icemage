@@ -4,6 +4,22 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.19.1
+
+**`icmg run` destructive-op guard: argv-aware, no more false positives.** The
+guard that gates `rm -rf`/`Remove-Item`/`DROP TABLE`/etc. used a whole-string
+substring scan, so any command that merely *contained* `rm ` + `-f`/`-r`
+anywhere -- `grep 'rm -rf' notes.txt`, a path like `src/farm/`, a search pattern
+-- was wrongly refused, and a `--yes`/`ICMG_ASSUME_YES=1` bypass set on an
+auto-wrapped child command never reached the icmg process so it kept denying.
+Now the detection is argv-aware (`isDestructiveArgv` in `run_args.hpp`): it flags
+only when the *leading verb* is the destructive tool (skipping `env VAR=val` /
+`sudo` prefixes and splitting a single quoted shell line), and a leading
+`ICMG_ASSUME_YES=1` / `FORCE=1` env-prefix is honored as explicit bypass intent
+(`hasInlineYesPrefix`). SQL statements passed as a db-CLI argument
+(`psql -c "DROP TABLE t"`) are still caught; `git rm --cached` (non-destructive)
+no longer trips. 10 new tests (`tests/cli/test_run_args.cpp`). TDD.
+
 ## v2.19.0
 
 **graphify-parity ingest & graph pack.** Five gaps from the graphify landscape

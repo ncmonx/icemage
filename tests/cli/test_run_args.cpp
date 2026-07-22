@@ -76,3 +76,59 @@ TEST("destructive: non-interactive (no tty) auto-denies, never prompts (#184)") 
 TEST("destructive: interactive tty prompts") {
     ASSERT_TRUE(destructiveDecision(false,false,true,false,true) == DestructiveDecision::Prompt);
 }
+
+// v2.20.0: argv-aware destructive detection. The old substring scan flagged any
+// command line CONTAINING "rm " + "-f"/"-r" anywhere -- so `grep 'rm -rf'`, a
+// path like `src/farm/`, or a search pattern falsely tripped the guard. The new
+// detector only flags when the LEADING verb is the destructive tool.
+using icmg::cli::isDestructiveArgv;
+
+TEST("destructive-argv: real rm -rf is flagged") {
+    std::string why;
+    ASSERT_TRUE(isDestructiveArgv({"rm", "-rf", "build/"}, why));
+    ASSERT_EQ(why, std::string("rm with -r/-f"));
+}
+TEST("destructive-argv: rm -f is flagged") {
+    std::string why;
+    ASSERT_TRUE(isDestructiveArgv({"rm", "-f", "a.txt"}, why));
+}
+TEST("destructive-argv: grep for 'rm -rf' is NOT flagged (false-positive fix)") {
+    std::string why;
+    ASSERT_FALSE(isDestructiveArgv({"grep", "rm -rf", "notes.txt"}, why));
+}
+TEST("destructive-argv: path containing 'rm' is NOT flagged") {
+    std::string why;
+    ASSERT_FALSE(isDestructiveArgv({"ls", "-la", "src/farm/-r-thing"}, why));
+}
+TEST("destructive-argv: single-token shell line still parses leading verb") {
+    std::string why;
+    ASSERT_TRUE(isDestructiveArgv({"rm -rf /tmp/x"}, why));         // one quoted token
+    std::string why2;
+    ASSERT_FALSE(isDestructiveArgv({"echo rm -rf danger"}, why2));  // echo is leading
+}
+TEST("destructive-argv: Remove-Item / git rm -r / rmdir /s / SQL still caught") {
+    std::string w;
+    ASSERT_TRUE(isDestructiveArgv({"Remove-Item", "x", "-Recurse"}, w));
+    std::string w2; ASSERT_TRUE(isDestructiveArgv({"git", "rm", "-r", "dir"}, w2));
+    std::string w3; ASSERT_TRUE(isDestructiveArgv({"rmdir", "/s", "dir"}, w3));
+    std::string w4; ASSERT_TRUE(isDestructiveArgv({"psql", "-c", "DROP TABLE t"}, w4));
+    std::string w5; ASSERT_TRUE(isDestructiveArgv({"git", "reset", "--hard"}, w5));
+}
+TEST("destructive-argv: git rm WITHOUT -r/-f is NOT auto-flagged") {
+    std::string w;
+    ASSERT_FALSE(isDestructiveArgv({"git", "rm", "--cached", "a.txt"}, w));
+}
+
+// Root-cause #2: env-prefix bypass. A leading `ICMG_ASSUME_YES=1` / `FORCE=1`
+// on the wrapped command line should be honored as bypass intent.
+using icmg::cli::hasInlineYesPrefix;
+
+TEST("inline-yes: ICMG_ASSUME_YES=1 prefix is honored") {
+    ASSERT_TRUE(hasInlineYesPrefix({"ICMG_ASSUME_YES=1", "rm", "-rf", "x"}));
+    ASSERT_TRUE(hasInlineYesPrefix({"ICMG_ASSUME_YES=1 rm -rf x"}));  // single token
+}
+TEST("inline-yes: no prefix -> false") {
+    ASSERT_FALSE(hasInlineYesPrefix({"rm", "-rf", "x"}));
+    ASSERT_FALSE(hasInlineYesPrefix({"FOO=1", "rm", "-rf", "x"}));   // unrelated var
+    ASSERT_FALSE(hasInlineYesPrefix({"ICMG_ASSUME_YES=0", "rm", "x"}));
+}

@@ -22,40 +22,6 @@ namespace icmg::cli {
 
 namespace {
 
-// Returns true + sets reason if the arg list looks like a destructive operation.
-bool isDestructiveOp(const std::vector<std::string>& argv, std::string& reason) {
-    std::string joined;
-    for (auto& a : argv) { joined += a; joined += " "; }
-    std::string lc = joined;
-    for (char& c : lc) c = (char)std::tolower((unsigned char)c);
-
-    bool has_rm = lc.find("rm ") != std::string::npos;
-    if (has_rm && (lc.find("-rf") != std::string::npos || lc.find("-fr") != std::string::npos
-                || lc.find(" -r ") != std::string::npos || lc.find(" -f ") != std::string::npos))
-        { reason = "rm with -r/-f"; return true; }
-
-    if (lc.find("remove-item") != std::string::npos)
-        { reason = "Remove-Item"; return true; }
-
-    if (lc.find("rmdir") != std::string::npos && lc.find("/s") != std::string::npos)
-        { reason = "rmdir /s"; return true; }
-
-    if (lc.find("delete from") != std::string::npos) { reason = "DELETE FROM";    return true; }
-    if (lc.find("drop table")  != std::string::npos) { reason = "DROP TABLE";     return true; }
-    if (lc.find("drop database")!= std::string::npos){ reason = "DROP DATABASE";  return true; }
-    if (lc.find("drop schema") != std::string::npos) { reason = "DROP SCHEMA";    return true; }
-    if (lc.find("truncate ")   != std::string::npos) { reason = "TRUNCATE";       return true; }
-
-    if (lc.find("git push") != std::string::npos && lc.find("--force") != std::string::npos)
-        { reason = "git push --force"; return true; }
-    if (lc.find("git reset") != std::string::npos && lc.find("--hard") != std::string::npos)
-        { reason = "git reset --hard"; return true; }
-    if (lc.find("git clean") != std::string::npos && lc.find("-f") != std::string::npos)
-        { reason = "git clean -f"; return true; }
-
-    return false;
-}
-
 // Returns true if every non-flag arg in argv targets a known-safe directory.
 // Safe dirs are regenerable (build output, temp, caches) — no user data lost.
 bool targetsSafeDir(const std::vector<std::string>& argv) {
@@ -115,12 +81,18 @@ public:
         std::string dest_reason;
         bool assume_yes = [] { const char* e = std::getenv("ICMG_ASSUME_YES");
                                return e && *e && *e != '0'; }();
+        // v2.20.0 root-cause #2: also honor a leading `ICMG_ASSUME_YES=1` /
+        // `FORCE=1` env-prefix on the wrapped command line -- when a command is
+        // auto-wrapped as `icmg run "<cmd>"`, that env was set for the child, so
+        // it never reached this process. Treat the inline prefix as the same
+        // explicit opt-in the user intended.
+        if (hasInlineYesPrefix(cmd_args)) assume_yes = true;
 #if defined(_WIN32)
         bool stdin_tty = _isatty(_fileno(stdin)) != 0;
 #else
         bool stdin_tty = isatty(fileno(stdin)) != 0;
 #endif
-        bool is_dest = isDestructiveOp(cmd_args, dest_reason);
+        bool is_dest = isDestructiveArgv(cmd_args, dest_reason);
         auto dd = destructiveDecision(yes, assume_yes, is_dest,
                                       targetsSafeDir(cmd_args), stdin_tty);
         if (dd == DestructiveDecision::Deny) {
