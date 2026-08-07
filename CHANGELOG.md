@@ -4,6 +4,30 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.21.0
+
+**Brain + token trio.** Three deterministic memory-quality upgrades, no LLM
+required:
+
+- **Session-aware recall delta** -- when the session TTL dedup suppresses
+  memory nodes you already saw this session, `recall` now emits a single
+  stdout line `[N prior memories still apply: #ids]` instead of silently
+  dropping them (previously stderr-only). The agent keeps the reference
+  without re-paying the tokens for full bodies.
+- **Contradiction sentinel** (`memory-health --contradictions`) -- scans the
+  memory store for node pairs that overlap heavily (Jaccard >= 0.6 default,
+  `--jaccard-min` to tune) yet disagree: a negation marker on one side or a
+  conflicting `key=value` fact. Flag-only, never deletes; each hit suggests
+  the existing bi-temporal fix (`icmg memory invalidate <old> --by <new>`).
+  Strongest-first ordering, capped at `--max` (default 25) so a 31k-node
+  store stays readable. Verified live: caught real `icmg_version` and
+  `prefix` conflicts at 100% overlap.
+- **Adaptive recall depth** (`recall --adaptive`) -- recall limit follows the
+  deterministic intent classifier from v2.20 effort-hint: simple task = 3
+  results, unknown = 7, complex = 12. An explicit `--limit` always wins.
+
+9 new tests (2416 total).
+
 ## v2.20.0
 
 **Model-era capability pack (deep-research 2026-07-22).** As frontier models grew

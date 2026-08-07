@@ -39,4 +39,16 @@ std::string applyEffortDirective(const std::string& text, const EffortHint& h);
 // Deterministic; used when the caller has no explicit fan-out.
 int estimateFanOut(const std::string& packBlob);
 
+// v2.21 research B: adaptive recall depth. A fixed top-N over-fetches for
+// routine tasks and under-fetches for cross-module work; bind N to the same
+// intent classifier used for effort hints. Explicit --limit always wins at the
+// call site -- this is only the default when the caller opts in (--adaptive).
+inline int adaptiveRecallDepth(Intent intent) {
+    switch (intent) {
+        case Intent::Simple:  return 3;
+        case Intent::Complex: return 12;
+        default:              return 7;
+    }
+}
+
 } // namespace icmg::cli

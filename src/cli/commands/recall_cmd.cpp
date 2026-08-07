@@ -10,6 +10,7 @@
 #include "../../imem/scorer.hpp"
 #include "../ref_registry.hpp"
 #include "../session_dedup.hpp"   // Cache-hit optimizer #2: TTL-aware recall dedup
+#include "../effort_hint.hpp"     // v2.21 research B: adaptive depth via classifyIntent
 #include "../last_session.hpp"    // A2: recall --last-session
 #include "../../core/persona_db.hpp"        // #moments: merge persona _moments
 #include "../../core/profile_store.hpp"
@@ -55,6 +56,7 @@ public:
             "Usage: icmg recall <query> [options]\n\n"
             "Options:\n"
             "  --limit N       Max results (default: 10)\n"
+            "  --adaptive      Bind depth to task intent (simple 3 / unknown 7 / complex 12)\n"
             "  --topic X       Filter by topic prefix\n"
             "  --zone Z        Restrict corpus to zone (sharper IDF, faster)\n"
             "  --semantic      Hybrid BM25+vec recall (Phase 23). Falls back to BM25 if no embedder.\n"
@@ -186,6 +188,19 @@ public:
             return 1;
         }
 
+        // v2.21 research B: adaptive recall depth. A fixed top-N over-fetches
+        // for routine tasks and under-fetches for cross-module work. --adaptive
+        // binds N to the intent classifier already shipped for effort hints:
+        // Simple -> 3, Unknown -> 7, Complex -> 12. An explicit --limit wins.
+        if (hasFlag(args, "--adaptive") && flagValue(args, "--limit").empty()) {
+            cli::Intent it = cli::classifyIntent(query);
+            limit = cli::adaptiveRecallDepth(it);
+            std::cerr << "[icmg recall] adaptive depth: " << limit
+                      << " (" << (it == cli::Intent::Simple ? "simple" :
+                                  it == cli::Intent::Complex ? "complex" : "unclassified")
+                      << " task)\n";
+        }
+
         std::vector<imem::MemoryNode> results;
         if (atoms) {
             // v1.79 ICM dual-memory: match the semantic atom FTS, then return
@@ -256,16 +271,22 @@ public:
                     (std::filesystem::current_path() / ".icmg" / "recall-dedup.txt").string();
                 int64_t ttl = recallDedupTTL();
                 std::vector<imem::MemoryNode> deduped;
+                std::vector<std::string> suppressed_ids;   // v2.21 research A
                 for (auto& n : results) {
                     std::string key = std::to_string(n.id);
                     if (!wasInjectedRecently(ddpath, key, ttl)) {
                         markInjected(ddpath, key);
                         deduped.push_back(std::move(n));
+                    } else {
+                        suppressed_ids.push_back(key);
                     }
                 }
-                if (deduped.size() < results.size()) {
-                    size_t suppressed = results.size() - deduped.size();
-                    std::cerr << "[icmg recall] " << suppressed
+                if (!suppressed_ids.empty()) {
+                    // v2.21 research A (session-aware recall delta): the model
+                    // must still SEE that prior facts apply -- one compact
+                    // stdout line with ids instead of full re-emission.
+                    std::cout << formatPriorRefLine(suppressed_ids) << "\n";
+                    std::cerr << "[icmg recall] " << suppressed_ids.size()
                               << " node(s) suppressed (seen this session; use --no-dedup to show)\n";
                 }
                 results = std::move(deduped);

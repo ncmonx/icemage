@@ -8,6 +8,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../imem/contradiction_scan.hpp"   // v2.21 research C
 #include <iostream>
 #include <iomanip>
 #include <map>
@@ -25,8 +26,11 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg memory health [--json] [--strict]\n\n"
-            "Reports memory store hygiene. --strict exits non-zero on warning.\n";
+            "Usage: icmg memory health [--json] [--strict] [--contradictions]\n\n"
+            "Reports memory store hygiene. --strict exits non-zero on warning.\n"
+            "  --contradictions       flag mutually-contradictory fact pairs (no deletes)\n"
+            "  --jaccard-min X        overlap threshold for candidate pairs (default 0.6)\n"
+            "  --max N                show top-N strongest pairs (default 25)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -37,6 +41,55 @@ public:
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
         int64_t now = std::time(nullptr);
+
+        // v2.21 research C: contradiction sentinel. FLAG ONLY -- lists pairs of
+        // live memories that look mutually contradictory (same topic + negation
+        // marker on one side, or conflicting key=value) so stale facts can be
+        // bi-temporally invalidated. Never deletes.
+        if (hasFlag(args, "--contradictions")) {
+            double jmin = 0.6;
+            try { jmin = std::stod(flagValue(args, "--jaccard-min", "0.6")); } catch (...) {}
+            int maxOut = 25;
+            try { maxOut = std::stoi(flagValue(args, "--max", "25")); } catch (...) {}
+            std::vector<imem::MemFact> facts;
+            db.query("SELECT id, content, created_at FROM memory_nodes "
+                     "WHERE deleted_at IS NULL OR deleted_at = 0", {},
+                     [&](const core::Row& r) {
+                         if (r.size() < 3) return;
+                         imem::MemFact f;
+                         f.id = std::stoll(r[0]);
+                         f.content = r[1];
+                         f.created_at = r[2].empty() ? 0 : std::stoll(r[2]);
+                         facts.push_back(std::move(f));
+                     });
+            auto cands = imem::findContradictionCandidates(facts, jmin);
+            size_t total = cands.size();
+            if ((int)cands.size() > maxOut) cands.resize(maxOut);   // strongest first
+            if (json_out) {
+                std::cout << "[";
+                for (size_t i = 0; i < cands.size(); ++i) {
+                    if (i) std::cout << ",";
+                    std::cout << "{\"old_id\":" << cands[i].old_id
+                              << ",\"new_id\":" << cands[i].new_id
+                              << ",\"reason\":\"" << cands[i].reason << "\"}";
+                }
+                std::cout << "]\n";
+            } else {
+                std::cout << "Contradiction candidates: " << total
+                          << " (scanned " << facts.size() << " live nodes; showing top "
+                          << cands.size() << ", overlap >= " << jmin << ")\n";
+                for (const auto& c : cands) {
+                    std::cout << "  #" << c.old_id << " <- superseded by? -> #"
+                              << c.new_id << "  [" << c.reason << "]\n"
+                              << "    resolve: icmg memory invalidate " << c.old_id
+                              << " --by " << c.new_id << "\n";
+                }
+                if (cands.empty())
+                    std::cout << "  none found -- no conflicting fact pairs above "
+                              << jmin << " overlap\n";
+            }
+            return 0;
+        }
 
         int total = 0, deleted = 0, stale = 0, orphan = 0, embed_count = 0;
         int imp0 = 0, imp1 = 0, imp2 = 0, imp3 = 0;

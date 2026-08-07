@@ -54,6 +54,13 @@ TEST("effort label round-trips") {
     ASSERT_TRUE(std::string(effortLabel(EffortLevel::High)) == "high");
 }
 
+// v2.21 research B: adaptive recall depth binding.
+TEST("adaptive depth: simple shallow, complex deep, unknown middle") {
+    ASSERT_EQ(adaptiveRecallDepth(Intent::Simple), 3);
+    ASSERT_EQ(adaptiveRecallDepth(Intent::Complex), 12);
+    ASSERT_EQ(adaptiveRecallDepth(Intent::Unknown), 7);
+}
+
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }

@@ -20,6 +20,7 @@
 #include <ctime>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace icmg::cli {
 
@@ -60,6 +61,22 @@ inline bool wasInjectedRecently(const std::string& path, const std::string& id,
 inline void markInjected(const std::string& path, const std::string& id) {
     std::ofstream f(path, std::ios::app);
     if (f) f << (int64_t)std::time(nullptr) << "\t" << id << "\n";
+}
+
+// v2.21 research A (session-aware recall delta): when dedup suppresses nodes,
+// the model must still LEARN they exist -- a suppressed node used to vanish
+// with only a stderr note, so the model could not reference or trust prior
+// context. Emit ONE compact stdout line carrying the suppressed ids instead of
+// their full bodies: the model sees "these earlier facts still apply" for a few
+// bytes instead of a re-emission. Returns "" when nothing was suppressed.
+inline std::string formatPriorRefLine(const std::vector<std::string>& ids) {
+    if (ids.empty()) return "";
+    std::string line = "[" + std::to_string(ids.size()) +
+                       " prior memor" + (ids.size() == 1 ? "y" : "ies") +
+                       " still appl" + (ids.size() == 1 ? "ies" : "y") + ":";
+    for (const auto& id : ids) { line += " #"; line += id; }
+    line += "]";
+    return line;
 }
 
 } // namespace icmg::cli

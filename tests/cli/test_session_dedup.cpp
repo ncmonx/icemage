@@ -64,3 +64,19 @@ TEST("session-dedup: default TTL honors env override") {
     unsetenv("ICMG_RECALL_DEDUP_TTL");
 #endif
 }
+
+// ---- v2.21 research A: prior-ref line (session-aware recall delta) ---------
+
+TEST("prior-ref: empty ids -> empty string (no line emitted)") {
+    ASSERT_EQ(formatPriorRefLine({}), std::string(""));
+}
+
+TEST("prior-ref: single id uses singular wording") {
+    ASSERT_EQ(formatPriorRefLine({"123"}),
+              std::string("[1 prior memory still applies: #123]"));
+}
+
+TEST("prior-ref: multiple ids joined in order") {
+    ASSERT_EQ(formatPriorRefLine({"12", "7", "345"}),
+              std::string("[3 prior memories still apply: #12 #7 #345]"));
+}
