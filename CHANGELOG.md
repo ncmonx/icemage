@@ -4,6 +4,26 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.21.1
+
+**Multi-daemon spam fix.** On busy multi-user servers dozens of idle
+`icmg.exe` processes accumulated per user. Root cause: concurrent hook calls
+raced `ensureDaemon()`; every spawned rule-daemon created the *same* named
+pipe successfully (`PIPE_UNLIMITED_INSTANCES`, no
+`FILE_FLAG_FIRST_PIPE_INSTANCE`, no cross-process lock) and then parked in
+`ConnectNamedPipe` forever. Fixed belt-and-braces:
+
+- `RuleDaemon::acquireSingleton()` — per-user cross-process lock (Windows:
+  named mutex `Local\icmg-rule-daemon-<user>`; POSIX: `flock` on
+  `~/.icmg/rule-daemon.lock`). `run()` requires it; the losing daemon exits
+  quietly.
+- `CreateNamedPipeA` now passes `FILE_FLAG_FIRST_PIPE_INSTANCE`, so a raced
+  second daemon can never share the pipe even if the mutex path regresses.
+
+Cleanup on affected servers: `taskkill /F /IM icmg.exe` once, then update.
+
+3 new tests (2419 total).
+
 ## v2.21.0
 
 **Brain + token trio.** Three deterministic memory-quality upgrades, no LLM

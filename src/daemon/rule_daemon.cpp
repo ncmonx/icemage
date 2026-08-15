@@ -25,6 +25,8 @@
 #else
   #include <sys/socket.h>
   #include <sys/un.h>
+  #include <sys/file.h>
+  #include <fcntl.h>
   #include <unistd.h>
   #include <signal.h>
 #endif
@@ -54,6 +56,65 @@ std::string RuleDaemon::pipeName() {
     return std::string(home) + "/.icmg/rule-daemon.sock";
 #endif
 }
+
+// ---- singleton guard --------------------------------------------------------
+// 2026-08-15 multi-daemon spam fix (multi-user server, dozens of icmg.exe):
+// every raced spawn created the same named pipe successfully and parked in
+// ConnectNamedPipe forever. One cross-process lock per user; loser exits.
+
+#ifdef _WIN32
+static HANDLE g_singleton_mutex = nullptr;
+
+bool RuleDaemon::acquireSingleton() {
+    if (g_singleton_mutex) return false; // already held by this process
+    std::string name = "Local\\icmg-rule-daemon";
+    const char* user = std::getenv("USERNAME");
+    if (user && *user) { name += "-"; name += user; }
+    HANDLE h = CreateMutexA(nullptr, TRUE, name.c_str());
+    if (!h) return false;
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(h);
+        return false;
+    }
+    g_singleton_mutex = h;
+    return true;
+}
+
+void RuleDaemon::releaseSingleton() {
+    if (!g_singleton_mutex) return;
+    ReleaseMutex(g_singleton_mutex);
+    CloseHandle(g_singleton_mutex);
+    g_singleton_mutex = nullptr;
+}
+#else
+static int g_singleton_fd = -1;
+
+bool RuleDaemon::acquireSingleton() {
+    if (g_singleton_fd >= 0) return false; // already held by this process
+    const char* home = std::getenv("HOME");
+    if (!home) home = std::getenv("USERPROFILE");
+    if (!home) home = "/tmp";
+    std::string dir = std::string(home) + "/.icmg";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    std::string path = dir + "/rule-daemon.lock";
+    int fd = ::open(path.c_str(), O_CREAT | O_RDWR, 0644);
+    if (fd < 0) return false;
+    if (::flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        ::close(fd);
+        return false;
+    }
+    g_singleton_fd = fd;
+    return true;
+}
+
+void RuleDaemon::releaseSingleton() {
+    if (g_singleton_fd < 0) return;
+    ::flock(g_singleton_fd, LOCK_UN);
+    ::close(g_singleton_fd);
+    g_singleton_fd = -1;
+}
+#endif
 
 // ---- constructor / destructor ----------------------------------------------
 
@@ -405,9 +466,11 @@ std::string RuleDaemon::dispatch(const std::string& request_json) const {
 
 bool RuleDaemon::createPipe() {
     std::string name = pipeName();
+    // FILE_FLAG_FIRST_PIPE_INSTANCE: belt-and-braces with acquireSingleton()
+    // -- a second daemon must FAIL here, never share the pipe (2026-08-15 bug).
     pipe_handle_ = CreateNamedPipeA(
         name.c_str(),
-        PIPE_ACCESS_DUPLEX,
+        PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
         PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
         PIPE_UNLIMITED_INSTANCES,
         4096, 4096, 0, nullptr
@@ -446,7 +509,12 @@ void RuleDaemon::servePipe() {
 }
 
 int RuleDaemon::run() {
+    if (!acquireSingleton()) {
+        std::cerr << "rule-daemon: another instance already running for this user; exiting\n";
+        return 0; // not an error: the surviving daemon serves the pipe
+    }
     if (!createPipe()) {
+        releaseSingleton();
         std::cerr << "rule-daemon: failed to create pipe " << pipeName() << "\n";
         return 1;
     }
@@ -456,6 +524,7 @@ int RuleDaemon::run() {
     servePipe();
     stop_maint_ = true;
     if (maint_thread_.joinable()) maint_thread_.join();
+    releaseSingleton();
     return 0;
 }
 
@@ -505,7 +574,12 @@ void RuleDaemon::serveSocket() {
 }
 
 int RuleDaemon::run() {
+    if (!acquireSingleton()) {
+        std::cerr << "rule-daemon: another instance already running for this user; exiting\n";
+        return 0; // not an error: the surviving daemon serves the socket
+    }
     if (!createSocket()) {
+        releaseSingleton();
         std::cerr << "rule-daemon: failed to create socket " << pipeName() << "\n";
         return 1;
     }
@@ -515,6 +589,7 @@ int RuleDaemon::run() {
     serveSocket();
     stop_maint_ = true;
     if (maint_thread_.joinable()) maint_thread_.join();
+    releaseSingleton();
     return 0;
 }
 

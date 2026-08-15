@@ -277,6 +277,31 @@ TEST("framing: parseFramed handles malformed header (missing \\r\\n\\r\\n)") {
     ASSERT_EQ(out, wire); // unchanged (treated as legacy)
 }
 
+// ---- tests: singleton guard (2026-08-15 multi-daemon spam bug) --------------
+// On a multi-user server dozens of icmg.exe daemons accumulated: concurrent
+// hook calls raced ensureDaemon(), every spawned daemon created the SAME named
+// pipe successfully (no FILE_FLAG_FIRST_PIPE_INSTANCE, no mutex) and then
+// blocked in ConnectNamedPipe forever. acquireSingleton() must make the
+// second daemon lose and exit.
+
+TEST("rule_daemon: acquireSingleton first acquire succeeds") {
+    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton());
+    icmg::daemon::RuleDaemon::releaseSingleton();
+}
+
+TEST("rule_daemon: acquireSingleton second acquire fails while held") {
+    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton());
+    ASSERT_TRUE(!icmg::daemon::RuleDaemon::acquireSingleton());
+    icmg::daemon::RuleDaemon::releaseSingleton();
+}
+
+TEST("rule_daemon: acquireSingleton re-acquire after release succeeds") {
+    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton());
+    icmg::daemon::RuleDaemon::releaseSingleton();
+    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton());
+    icmg::daemon::RuleDaemon::releaseSingleton();
+}
+
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }

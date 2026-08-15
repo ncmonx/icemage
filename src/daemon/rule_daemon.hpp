@@ -76,6 +76,16 @@ public:
 
     static std::string pipeName();
 
+    // 2026-08-15 multi-daemon spam fix: per-user singleton guard. Concurrent
+    // ensureDaemon() races used to spawn N daemons that ALL created the same
+    // named pipe (PIPE_UNLIMITED_INSTANCES, no FIRST_PIPE_INSTANCE) and then
+    // blocked in ConnectNamedPipe forever -- dozens of icmg.exe accumulated on
+    // multi-user servers. run() now requires this lock; the loser exits.
+    //   Windows: named mutex  Local\icmg-rule-daemon-<user>
+    //   POSIX:   flock(LOCK_EX|LOCK_NB) on ~/.icmg/rule-daemon.lock
+    static bool acquireSingleton();
+    static void releaseSingleton();
+
     // Public for tests.
     static int         countLines(const std::string& path, int max_count = 1000);
     static std::string resolveSuggest(const std::string& tmpl, const std::string& file);
