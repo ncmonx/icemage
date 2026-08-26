@@ -3,5 +3,5 @@
 #pragma once
 
 namespace icmg::core {
-inline constexpr const char* ICMG_VERSION = "2.21.1";
+inline constexpr const char* ICMG_VERSION = "2.22.0";
 }  // namespace icmg::core

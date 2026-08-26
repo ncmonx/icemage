@@ -11,6 +11,8 @@
 #include "../ref_registry.hpp"
 #include "../session_dedup.hpp"   // Cache-hit optimizer #2: TTL-aware recall dedup
 #include "../effort_hint.hpp"     // v2.21 research B: adaptive depth via classifyIntent
+#include "../asof_parse.hpp"      // brain v2.22 #1: --as-of time-travel parsing
+#include "../coarse_recall.hpp"   // brain v2.22 #4: coarse-to-fine tail collapse
 #include "../last_session.hpp"    // A2: recall --last-session
 #include "../../core/persona_db.hpp"        // #moments: merge persona _moments
 #include "../../core/profile_store.hpp"
@@ -67,6 +69,10 @@ public:
             "  --all-projects  Cross-project recall (aggregates from registered projects)\n"
             "  --fuzzy         Fuzzy search fallback\n"
             "  --at-commit SHA Filter to memories stored at a specific git commit (prefix ok)\n"
+            "  --as-of T       Time-travel: recall what was believed at T (epoch,\n"
+            "                  7d/24h/30m ago, or YYYY-MM-DD). Includes since-superseded facts.\n"
+            "  --full          Never collapse the tail (default: oversized sets keep top\n"
+            "                  hits full, rest as 1-line index; fetch via --get <id>)\n"
             "  --no-dedup      Show nodes already returned this session (default: suppress)\n"
             "  --explain       Show score breakdown\n"
             "  --history       Show recent queries\n"
@@ -129,6 +135,23 @@ public:
         std::string at_commit = flagValue(args, "--at-commit");
         int limit = 10;
         try { limit = std::stoi(flagValue(args, "--limit", "10")); } catch (...) {}
+
+        // --as-of: brain v2.22 #1 time-travel recall. Accepts unix epoch,
+        // relative duration (7d/24h/30m = that long AGO), or YYYY-MM-DD.
+        int64_t as_of_epoch = 0;
+        {
+            std::string asof_raw = flagValue(args, "--as-of", "");
+            if (!asof_raw.empty()) {
+                int64_t now_sec = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                as_of_epoch = parseAsOf(asof_raw, now_sec);
+                if (as_of_epoch <= 0) {
+                    std::cerr << "icmg recall: bad --as-of value '" << asof_raw
+                              << "' (want epoch, 7d/24h/30m, or YYYY-MM-DD)\n";
+                    return 1;
+                }
+            }
+        }
 
         // --since: filter nodes by creation time.  Accepts a unix epoch (seconds) or
         // relative durations like "7d", "24h", "30m" measured backwards from now.
@@ -202,7 +225,12 @@ public:
         }
 
         std::vector<imem::MemoryNode> results;
-        if (atoms) {
+        if (as_of_epoch > 0) {
+            // Time-travel: rank within the point-in-time corpus. Mutually
+            // exclusive with the live-recall modes below (past view is its own
+            // corpus; mixing with dedup/cache/semantic would lie).
+            results = store.recallAsOf(query, as_of_epoch, limit);
+        } else if (atoms) {
             // v1.79 ICM dual-memory: match the semantic atom FTS, then return
             // the SOURCE memory nodes (clustered) so output shape is identical
             // to normal recall. Default recall path is untouched.
@@ -312,7 +340,22 @@ public:
         } else if (explain) {
             printExplain(query, results);
         } else {
-            printDefault(results);
+            // brain v2.22 #4: coarse-to-fine. Oversized sets keep the strongest
+            // hits full; the tail collapses to 1-line index rows (re-fetch via
+            // `recall --get <ids>`). --full opts out.
+            size_t keep = hasFlag(args, "--full")
+                              ? results.size()
+                              : coarseKeepCount(results);
+            if (keep >= results.size()) {
+                printDefault(results);
+            } else {
+                std::vector<imem::MemoryNode> head(results.begin(), results.begin() + keep);
+                std::vector<imem::MemoryNode> tail(results.begin() + keep, results.end());
+                printDefault(head);
+                std::cout << "-- " << tail.size()
+                          << " more (collapsed to save tokens; icmg recall --get <id>):\n";
+                std::cout << formatIndex(tail, "topic");
+            }
         }
 
         return 0;

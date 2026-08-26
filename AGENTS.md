@@ -164,15 +164,15 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 ### MANDATORY post-change sync (WAJIB — every change, no exceptions)
 After EVERY change (edit / fix / feature / refactor / doc), run all five before the task is done:
 1. `icmg graph update` — refresh the graph (nodes/edges/symbols)
-2. `icmg store --topic decisions-<area> "<what+why>"` — persist the decision/learning
+2. `icmg store decisions-<area> "<what+why>"` — persist the decision/learning (topic is POSITIONAL; `--topic T` also accepted)
 3. `icmg zone add <path> --zone <subsystem>` — tag the touched subsystem
-4. `icmg wflog add "<summary>"` — record the workflow step
+4. `icmg wflog save --goal "<goal>" --decisions "<summary>"` — record the workflow step
 5. `icmg verify --command "<test/build>"` — record verification in the audit trail
 Run independent ones together via `icmg parallel`. Checklist: graph ✓ store ✓ zone ✓ wflog ✓ verify ✓ — not all five means the change is incomplete.
 
 ### Persist learnings (always)
 - Fixed a bug? `icmg known-issue add "<pattern>" --fix "<resolution>"`
-- Made a decision? `icmg store --topic decisions-<feature> "<rationale>"`
+- Made a decision? `icmg store decisions-<feature> "<rationale>"`
 - Long-form rationale (post-mortem, ADR)? `icmg memoir add --title T --content-file F`
 - Anti-pattern / failed approach? `icmg fail store "<task>" "<approach>" "<reason>"`
 - About the **assistant itself** (identity, preferences, state, feelings)? Use the **persona DB**, not project DB: `icmg profile add --zone _identity|_prefs|_vision|_feeling --key <k> --content "..."` (portable across projects; survives where project memory does not). Project/work facts stay in project DB via `icmg store`. Keep self-info and work-info separate.
@@ -189,9 +189,9 @@ Run independent ones together via `icmg parallel`. Checklist: graph ✓ store �
 
 | Type | Prefix | Example |
 | --- | --- | --- |
-| Plan | `plan:<feature>` | `icmg store --topic plan:auth-refresh "..."` |
-| Bug | `bug:<symptom>` | `icmg store --topic bug:linker-error "..."` |
-| Decision | `decisions-<area>` | `icmg store --topic decisions-db "..."` |
+| Plan | `plan:<feature>` | `icmg store plan:auth-refresh "..."` |
+| Bug | `bug:<symptom>` | `icmg store bug:linker-error "..."` |
+| Decision | `decisions-<area>` | `icmg store decisions-db "..."` |
 | Anti-pattern | use `icmg fail store` | see above |
 
 Recall by prefix: `icmg recall "plan:auth"` or `icmg pack "<task>"` (auto BFS+BM25).
@@ -307,8 +307,10 @@ git push private restore/private-main:main --force
 | `icmg recall "<query>"` | BM25 memory recall |
 | `icmg recall "<query>" --semantic` | Semantic (ONNX) recall |
 | `icmg cross-recall "<query>"` | Recall across all projects |
-| `icmg store --topic T "<text>"` | Store a memory node |
+| `icmg store T "<text>"` | Store a memory node (topic positional) |
 | `icmg memory list` | List memory nodes |
+| `icmg recall "<q>" --as-of 7d` | Time-travel: what was believed at T (incl. superseded) |
+| `icmg memory-health --gaps` | Knowledge gaps: recent recalls that found nothing |
 | `icmg memory forget <id>` | Soft-delete a memory |
 | `icmg fail store "<task>" "<approach>" "<reason>"` | Record failed approach |
 | `icmg fail recall "<task>"` | Recall failed approaches |

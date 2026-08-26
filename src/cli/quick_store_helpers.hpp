@@ -30,4 +30,33 @@ inline std::string firstPositional(const std::vector<std::string>& args,
     return "";
 }
 
+// 2026-08-25: topic/content resolution for `icmg store`, with `--topic T` compat.
+// Canonical form is positional (`store <topic> <content>`), but years of emitted
+// AGENTS.md templates taught `store --topic T "<text>"`; under pure positional
+// parsing that stored topic="--topic", content=T and silently DISCARDED the
+// text (real data loss). Honor both forms.
+struct StoreArgs {
+    std::string topic;
+    std::string content;
+};
+
+inline StoreArgs resolveStoreArgs(const std::vector<std::string>& args) {
+    StoreArgs r;
+    // value-taking flags: their trailing value is never topic/content
+    static const std::vector<std::string> vf =
+        {"--kw", "--importance", "--ttl", "--source", "--topic"};
+    // --topic compat form
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--topic") {
+            if (i + 1 < args.size()) r.topic = args[i + 1];
+            r.content = firstPositional(args, vf);
+            return r;
+        }
+    }
+    // canonical positional form
+    if (args.size() >= 1) r.topic = args[0];
+    if (args.size() >= 2) r.content = args[1];
+    return r;
+}
+
 } // namespace icmg::cli

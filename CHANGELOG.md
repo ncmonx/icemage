@@ -4,6 +4,34 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.22.0
+
+**Brain v2.22: the memory learns from its own usage.** Four deterministic
+features from the 2026-08-25 research pass (Zep/Graphiti temporal-KG, Mem0,
+MemoryOS, coarse-to-fine grounded memory), all zero-LLM:
+
+- **Time-travel recall** (`recall --as-of T`) — point-in-time recall over the
+  existing bi-temporal columns: what did we believe at T? Since-superseded
+  facts reappear before their `invalidated_at`; facts not yet valid stay
+  hidden. Accepts epoch, `7d`/`24h`/`30m` (that long ago), `YYYY-MM-DD` (UTC).
+  Side-effect-free: no cache, no frequency bump.
+- **Retrieval-failure ledger** (`memory-health --gaps`) — recall queries in
+  the last `--days` (7) that returned ≤ `--max-results` (0) results are
+  knowledge-gap signals: the agent asked, the brain had nothing. Strongest
+  (most-asked) first, noise queries skipped, `--json` for tooling.
+- **Quick-note promotion by heat** (`memory-consolidate --promote-quick`) —
+  `quick:<epoch>` captures the agent kept recalling (`--min-freq`, default 3)
+  get a permanent searchable topic (`hot:<kw1>-<kw2>-<kw3>`); cold ones keep
+  aging out via decay. `--dry-run` / `--json`.
+- **Coarse-to-fine recall view** — when a recall result set exceeds ~1200
+  tokens, the strongest hits stay full-bodied and the tail collapses to
+  1-line index rows (`recall --get <id>` fetches detail). `--full` opts out.
+
+Fixed en route: SQLite CASE-expression affinity gotcha (`CAST(? AS INTEGER)`
+required or a TEXT-bound param wins every comparison).
+
+23 new tests. **2447/2447 ✓.**
+
 ## v2.21.1
 
 **Multi-daemon spam fix.** On busy multi-user servers dozens of idle

@@ -43,7 +43,8 @@ public:
             usage(); return 0;
         }
         bool quick = hasFlag(args, "--quick");
-        if (!quick && args.size() < 2) {
+        bool topic_flag = hasFlag(args, "--topic");   // 2026-08-25 compat form
+        if (!quick && !topic_flag && args.size() < 2) {
             std::cerr << "icmg store: requires <topic> <content>  (or: store --quick \"<msg>\")\n";
             return 1;
         }
@@ -57,8 +58,15 @@ public:
                 std::chrono::system_clock::now().time_since_epoch()).count();
             topic = quickTopic(now);
         } else {
-            topic   = args[0];
-            content = args[1];
+            // resolveStoreArgs: canonical positional OR legacy `--topic T "<text>"`
+            // (the latter used to silently DISCARD the text -- data loss).
+            auto ra = resolveStoreArgs(args);
+            topic   = ra.topic;
+            content = ra.content;
+            if (topic.empty() || content.empty()) {
+                std::cerr << "icmg store: requires <topic> <content>  (or: store --quick \"<msg>\")\n";
+                return 1;
+            }
         }
         // 2026-06-15 (claude-mem idea): redact <private>...</private> regions so
         // sensitive bytes never reach the DB. If the whole content was private,

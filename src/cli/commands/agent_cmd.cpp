@@ -156,7 +156,7 @@ public:
                       "  - Deviations: anything done differently from the task, or blockers\n"
                       "    hit, or 'none'.\n"
                       "- After a fix, store via `icmg known-issue add`; after a decision, "
-                      "`icmg store --topic decisions-...`.\n\n";
+                      "`icmg store decisions-... \"<why>\"`.\n\n";
         } else {
             prompt << "You are an engineering assistant. Be concise. "
                       "Give a decision sentence followed by minimal code or steps.\n\n"
@@ -166,7 +166,7 @@ public:
                       "- For 2+ independent shell steps: use `icmg parallel --task ... --task ...`. "
                       "Sequential runs are a bug.\n"
                       "- After fixing a bug, store via `icmg known-issue add`. "
-                      "After a non-trivial decision, store via `icmg store --topic decisions-...`.\n\n";
+                      "After a non-trivial decision, store via `icmg store decisions-... \"<why>\"`.\n\n";
         }
 
         if (!no_pack) {

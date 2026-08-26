@@ -605,8 +605,44 @@ std::vector<MemoryNode> MemoryStore::all() const {
     return result;
 }
 
-std::vector<MemoryNode> MemoryStore::recall(const std::string& query,
-                                              int limit, bool fuzzy) {
+// 2026-08-25 brain v2.22 #1: time-travel view. What did we believe at T?
+// valid_from falls back to created_at when 0 (legacy rows predating the
+// bi-temporal columns). Deleted rows stay hidden at any T; expiry is judged
+// against T as well (an expired-note WAS visible while it lived).
+std::vector<MemoryNode> MemoryStore::allAsOf(int64_t as_of_epoch) const {
+    std::vector<MemoryNode> result;
+    const std::string t = std::to_string(as_of_epoch);
+    db_.query("SELECT id,topic,content,keywords,importance,frequency,"
+              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
+              "valid_from,invalidated_at,superseded_by "
+              "FROM memory_nodes "
+              "WHERE deleted_at IS NULL "
+              // NOTE: a CASE-expression result has NO column affinity, so a
+              // TEXT-bound param would win every comparison (INT < TEXT is
+              // always true in SQLite). CAST the param to keep it numeric.
+              "AND (CASE WHEN valid_from IS NULL OR valid_from=0 "
+              "          THEN COALESCE(created_at,0) ELSE valid_from END) <= CAST(? AS INTEGER) "
+              "AND (invalidated_at IS NULL OR invalidated_at=0 OR invalidated_at > CAST(? AS INTEGER)) "
+              "AND (expires_at IS NULL OR expires_at=0 OR expires_at > CAST(? AS INTEGER))",
+              {t, t, t},
+              [&](const core::Row& r) { result.push_back(rowToNode(r)); });
+    return result;
+}
+
+// BM25 rank over the as-of corpus. Deliberately side-effect-free: no recall
+// cache (epoch-keyed cache would mix past and present), no bumpFrequency
+// (inspecting history must not distort live ranking), no hooks.
+std::vector<MemoryNode> MemoryStore::recallAsOf(const std::string& query,
+                                                int64_t as_of_epoch,
+                                                int limit) {
+    auto corpus = allAsOf(as_of_epoch);
+    if (corpus.empty()) return {};
+    auto& scorer = Scorer::instance();
+    scorer.fit(corpus);
+    return scorer.rank(query, corpus, limit);
+}
+
+std::vector<MemoryNode> MemoryStore::recall(const std::string& query,                                              int limit, bool fuzzy) {
     // Fire PRE_RECALL hook
     core::HookContext ctx;
     ctx.set<std::string>("query", query);

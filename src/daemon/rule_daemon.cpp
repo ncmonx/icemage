@@ -65,11 +65,16 @@ std::string RuleDaemon::pipeName() {
 #ifdef _WIN32
 static HANDLE g_singleton_mutex = nullptr;
 
-bool RuleDaemon::acquireSingleton() {
+bool RuleDaemon::acquireSingleton(const char* name_override) {
     if (g_singleton_mutex) return false; // already held by this process
-    std::string name = "Local\\icmg-rule-daemon";
-    const char* user = std::getenv("USERNAME");
-    if (user && *user) { name += "-"; name += user; }
+    std::string name;
+    if (name_override && *name_override) {
+        name = std::string("Local\\") + name_override;
+    } else {
+        name = "Local\\icmg-rule-daemon";
+        const char* user = std::getenv("USERNAME");
+        if (user && *user) { name += "-"; name += user; }
+    }
     HANDLE h = CreateMutexA(nullptr, TRUE, name.c_str());
     if (!h) return false;
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -89,7 +94,7 @@ void RuleDaemon::releaseSingleton() {
 #else
 static int g_singleton_fd = -1;
 
-bool RuleDaemon::acquireSingleton() {
+bool RuleDaemon::acquireSingleton(const char* name_override) {
     if (g_singleton_fd >= 0) return false; // already held by this process
     const char* home = std::getenv("HOME");
     if (!home) home = std::getenv("USERPROFILE");
@@ -97,7 +102,9 @@ bool RuleDaemon::acquireSingleton() {
     std::string dir = std::string(home) + "/.icmg";
     std::error_code ec;
     fs::create_directories(dir, ec);
-    std::string path = dir + "/rule-daemon.lock";
+    std::string path = dir + "/" +
+        ((name_override && *name_override) ? std::string(name_override) + ".lock"
+                                           : std::string("rule-daemon.lock"));
     int fd = ::open(path.c_str(), O_CREAT | O_RDWR, 0644);
     if (fd < 0) return false;
     if (::flock(fd, LOCK_EX | LOCK_NB) != 0) {

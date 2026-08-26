@@ -13,6 +13,7 @@
 #include "../../core/db.hpp"
 #include "../../core/global_db.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../imem/quick_promote.hpp"   // 2026-08-25 brain v2.22 #3
 #include "../../embed/embedder.hpp"
 #include "../../embed/embed_store.hpp"
 #include <iostream>
@@ -36,6 +37,8 @@ public:
             "  --threshold N        Cosine 0..1 (default 0.92) or Jaccard fallback (default 0.85)\n"
             "  --topic-prefix S     Scope to topic prefix\n"
             "  --zone NAME          Scope to one zone (e.g. default)\n"
+            "  --promote-quick      Promote hot quick:<epoch> notes to permanent hot:* topics\n"
+            "  --min-freq N         Heat threshold for --promote-quick (default 3 recalls)\n"
             "  --dry-run            Report candidates only\n"
             "  --json\n";
     }
@@ -52,6 +55,45 @@ public:
         if (all_proj) return runAll(cfg, dry, prefix);
         core::Db db(cfg.projectDbPath("."));
         imem::MemoryStore store(db);
+
+        // 2026-08-25 brain v2.22 #3: quick-note promotion by heat (MemoryOS
+        // pattern). quick:<epoch> notes the agent kept recalling get a
+        // permanent searchable topic; cold ones keep aging out via decay.
+        if (hasFlag(args, "--promote-quick")) {
+            int min_freq = 3;
+            try { min_freq = std::stoi(flagValue(args, "--min-freq", "3")); } catch (...) {}
+            auto promos = imem::findQuickPromotions(store.all(), min_freq, 25);
+            if (json_out) {
+                std::cout << "[";
+                for (size_t i = 0; i < promos.size(); ++i) {
+                    if (i) std::cout << ",";
+                    std::cout << "{\"id\":" << promos[i].id
+                              << ",\"freq\":" << promos[i].frequency
+                              << ",\"to\":\"" << promos[i].to_topic << "\"}";
+                }
+                std::cout << "]\n";
+                return 0;
+            }
+            if (promos.empty()) {
+                std::cout << "promote-quick: no quick:* note with >= " << min_freq
+                          << " recalls.\n";
+                return 0;
+            }
+            for (const auto& p : promos) {
+                if (dry) {
+                    std::cout << "  would promote #" << p.id << " (" << p.frequency
+                              << "x) " << p.from_topic << " -> " << p.to_topic << "\n";
+                } else {
+                    db.run("UPDATE memory_nodes SET topic=?, row_version=row_version+1 "
+                           "WHERE id=?", {p.to_topic, std::to_string(p.id)});
+                    std::cout << "  promoted #" << p.id << " (" << p.frequency
+                              << "x) -> " << p.to_topic << "\n";
+                }
+            }
+            std::cout << (dry ? "(dry-run; rerun without --dry-run to apply)\n" : "");
+            return 0;
+        }
+
         auto embedder = embed::makeEmbedder();
         bool use_cosine = embedder && embedder->available();
         double threshold;

@@ -124,6 +124,19 @@ public:
     // All non-deleted nodes (for scorer corpus).
     std::vector<MemoryNode> all() const;
 
+    // 2026-08-25 brain v2.22 #1: time-travel view (Zep/Graphiti pattern).
+    // Point-in-time corpus: what did we believe AT epoch T?
+    //   visible = valid_from(<=created_at fallback) <= T
+    //             AND (invalidated_at == 0 OR invalidated_at > T)
+    // Soft-deleted nodes stay hidden at any T. Pure SQL, no LLM.
+    std::vector<MemoryNode> allAsOf(int64_t as_of_epoch) const;
+
+    // BM25-ranked recall over the as-of corpus. No cache (historical queries
+    // are rare), no frequency bump (reading the past must not mutate ranking).
+    std::vector<MemoryNode> recallAsOf(const std::string& query,
+                                       int64_t as_of_epoch,
+                                       int limit = 10);
+
     // Save query to history.
     void logQuery(const std::string& query, int result_count);
     // Gap #5: overload that also records an estimated token metric for the

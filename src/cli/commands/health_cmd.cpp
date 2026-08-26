@@ -9,6 +9,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../imem/contradiction_scan.hpp"   // v2.21 research C
+#include "../../imem/recall_gaps.hpp"          // 2026-08-25 brain v2.22 #2
 #include <iostream>
 #include <iomanip>
 #include <map>
@@ -16,6 +17,24 @@
 #include <algorithm>
 #include <ctime>
 #include <string>
+
+namespace {
+// TU-local JSON string escaper (same shape as recall_cmd's).
+void escapeJson(std::ostream& o, const std::string& s) {
+    for (char c : s) {
+        switch (c) {
+            case '"': o << "\\\""; break;
+            case '\\': o << "\\\\"; break;
+            case '\n': o << "\\n"; break;
+            case '\r': o << "\\r"; break;
+            case '\t': o << "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) { /* drop ctl */ }
+                else o << c;
+        }
+    }
+}
+} // namespace
 
 namespace icmg::cli {
 
@@ -26,11 +45,15 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg memory health [--json] [--strict] [--contradictions]\n\n"
+            "Usage: icmg memory health [--json] [--strict] [--contradictions] [--gaps]\n\n"
             "Reports memory store hygiene. --strict exits non-zero on warning.\n"
             "  --contradictions       flag mutually-contradictory fact pairs (no deletes)\n"
             "  --jaccard-min X        overlap threshold for candidate pairs (default 0.6)\n"
-            "  --max N                show top-N strongest pairs (default 25)\n";
+            "  --max N                show top-N strongest pairs (default 25)\n"
+            "  --gaps                 knowledge gaps: recent recall queries that came back\n"
+            "                         empty/thin (the brain was asked and had nothing)\n"
+            "  --days N               history window for --gaps (default 7)\n"
+            "  --max-results N        gap threshold: flag queries with <= N results (default 0)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -87,6 +110,59 @@ public:
                 if (cands.empty())
                     std::cout << "  none found -- no conflicting fact pairs above "
                               << jmin << " overlap\n";
+            }
+            return 0;
+        }
+
+        // 2026-08-25 brain v2.22 #2: retrieval-failure ledger. A recall that
+        // returned nothing is a knowledge-gap SIGNAL (Mem0 production insight):
+        // the agent asked, the brain had nothing. Surface recurring misses as
+        // an actionable "store this" checklist. Read-only over query_history.
+        if (hasFlag(args, "--gaps")) {
+            int days = 7;
+            try { days = std::stoi(flagValue(args, "--days", "7")); } catch (...) {}
+            int maxResults = 0;
+            try { maxResults = std::stoi(flagValue(args, "--max-results", "0")); } catch (...) {}
+            int maxOut = 25;
+            try { maxOut = std::stoi(flagValue(args, "--max", "25")); } catch (...) {}
+            int64_t cutoff = now - (int64_t)days * 86400;
+
+            // matched_ids holds the result count (logQuery stores it there).
+            std::vector<imem::GapQueryRow> rows;
+            db.query("SELECT query, MAX(CAST(matched_ids AS INTEGER)) AS best, "
+                     "       MAX(created_at) AS ts, COUNT(*) AS asks "
+                     "FROM query_history WHERE created_at > ? "
+                     "GROUP BY query", {std::to_string(cutoff)},
+                     [&](const core::Row& r) {
+                         if (r.size() < 4) return;
+                         imem::GapQueryRow g;
+                         g.query = r[0];
+                         try { g.result_count = std::stoi(r[1]); } catch (...) {}
+                         try { g.last_ts      = std::stoll(r[2]); } catch (...) {}
+                         try { g.asks         = std::stoi(r[3]); } catch (...) {}
+                         rows.push_back(std::move(g));
+                     });
+            auto gaps = imem::findRecallGaps(rows, maxResults, maxOut);
+            if (json_out) {
+                std::cout << "[";
+                for (size_t i = 0; i < gaps.size(); ++i) {
+                    if (i) std::cout << ",";
+                    std::cout << "{\"query\":\"";
+                    escapeJson(std::cout, gaps[i].query);
+                    std::cout << "\",\"asks\":" << gaps[i].asks
+                              << ",\"last_ts\":" << gaps[i].last_ts << "}";
+                }
+                std::cout << "]\n";
+            } else {
+                std::cout << "Knowledge gaps (last " << days << "d, " << rows.size()
+                          << " distinct queries, <= " << maxResults << " results):\n";
+                for (const auto& g : gaps) {
+                    std::cout << "  [" << g.asks << "x] " << g.query << "\n";
+                }
+                if (gaps.empty())
+                    std::cout << "  none -- every recent recall found something\n";
+                else
+                    std::cout << "Fill a gap: icmg store <topic> \"<what you learned>\"\n";
             }
             return 0;
         }

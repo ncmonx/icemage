@@ -9,6 +9,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+#ifndef _WIN32
+  #include <unistd.h>   // getpid for singleton test lock name
+#endif
 
 // Access evaluate() via a thin test subclass (white-box).
 class TestDaemon : public icmg::daemon::RuleDaemon {
@@ -282,23 +285,34 @@ TEST("framing: parseFramed handles malformed header (missing \\r\\n\\r\\n)") {
 // hook calls raced ensureDaemon(), every spawned daemon created the SAME named
 // pipe successfully (no FILE_FLAG_FIRST_PIPE_INSTANCE, no mutex) and then
 // blocked in ConnectNamedPipe forever. acquireSingleton() must make the
-// second daemon lose and exit.
+// second daemon lose and exit. Tests use a unique name_override so they never
+// collide with a REAL daemon running on this machine.
+
+static std::string testLockName() {
+    static std::string n = "icmg-test-singleton-" +
+#ifdef _WIN32
+        std::to_string(GetCurrentProcessId());
+#else
+        std::to_string(getpid());
+#endif
+    return n;
+}
 
 TEST("rule_daemon: acquireSingleton first acquire succeeds") {
-    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton());
+    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton(testLockName().c_str()));
     icmg::daemon::RuleDaemon::releaseSingleton();
 }
 
 TEST("rule_daemon: acquireSingleton second acquire fails while held") {
-    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton());
-    ASSERT_TRUE(!icmg::daemon::RuleDaemon::acquireSingleton());
+    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton(testLockName().c_str()));
+    ASSERT_TRUE(!icmg::daemon::RuleDaemon::acquireSingleton(testLockName().c_str()));
     icmg::daemon::RuleDaemon::releaseSingleton();
 }
 
 TEST("rule_daemon: acquireSingleton re-acquire after release succeeds") {
-    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton());
+    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton(testLockName().c_str()));
     icmg::daemon::RuleDaemon::releaseSingleton();
-    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton());
+    ASSERT_TRUE(icmg::daemon::RuleDaemon::acquireSingleton(testLockName().c_str()));
     icmg::daemon::RuleDaemon::releaseSingleton();
 }
 

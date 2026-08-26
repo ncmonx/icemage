@@ -83,7 +83,9 @@ public:
     // multi-user servers. run() now requires this lock; the loser exits.
     //   Windows: named mutex  Local\icmg-rule-daemon-<user>
     //   POSIX:   flock(LOCK_EX|LOCK_NB) on ~/.icmg/rule-daemon.lock
-    static bool acquireSingleton();
+    // name_override: tests pass a unique name so they never collide with a
+    // REAL daemon running on the same machine (default = per-user prod name).
+    static bool acquireSingleton(const char* name_override = nullptr);
     static void releaseSingleton();
 
     // Public for tests.

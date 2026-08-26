@@ -79,7 +79,7 @@ inline std::vector<CorpusEntry> helpCorpus() {
          {"daily cleanup", "rebuild everything", "maintenance pass"}},
 
         // --- write paths ---
-        {"icmg store --topic <X> \"<note>\"",
+        {"icmg store <X> \"<note>\"",
          "store a memory note under topic prefix",
          {"save this", "remember this", "capture decision"}},
         {"icmg known-issue add \"<pat>\" --fix \"<desc>\"",
