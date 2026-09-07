@@ -4,6 +4,33 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.23.0
+
+**Token-killer pack: deep-forget, dangling guard, schemas-on-demand.** Three
+deterministic features from the 2026-09-07 research pass (arXiv 2609.04875
+execution-state unlearning, 2608.04569 referential dangling, 2608.23992
+SCOUT tool discovery), all zero-LLM:
+
+- **`icmg forget <id> --deep`** — unlearning propagation. Forgetting
+  soft-deletes ONE node, but its content typically leaked into derived
+  artifacts (session snapshots, wflog entries, consolidated notes). `--deep`
+  scans live nodes for residue by directional *containment* (how much of the
+  forgotten token set an artifact holds — symmetric Jaccard under-scores a
+  long snapshot holding a verbatim secret). Flag-only, never auto-deletes.
+- **Dangling-reference guard** in `shrink --kind salience` — independent
+  per-line selection can keep a line *using* an identifier while dropping the
+  line *defining* it (34–60% of compressed outputs in the paper's benchmark).
+  A post-pass pulls back first-mention lines of entities referenced by kept
+  lines (CamelCase/ALL_CAPS/snake_case/scoped ids; capped).
+  `--no-dangling-guard` opts out.
+- **`icmg_tool_search` MCP meta-tool** — with `ICMG_MCP_PROFILE=core` the
+  host sees 11 tools instead of 43 full schemas saturating the context window
+  before the first query. The meta-tool ranks ALL registered tools by
+  capability query and returns full `inputSchema` per hit: schemas load on
+  demand. Hidden tools stay callable via `tools/call`.
+
+15 new tests. **2462/2462 ✓.**
+
 ## v2.22.0
 
 **Brain v2.22: the memory learns from its own usage.** Four deterministic

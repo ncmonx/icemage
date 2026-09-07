@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.22.0 LANGUAGES CXX C)
+project(icmg VERSION 2.23.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -927,6 +927,8 @@ add_icmg_test(test_recall_gaps   tests/imem/test_recall_gaps.cpp)  # brain v2.22
 add_icmg_test(test_asof_parse    tests/cli/test_asof_parse.cpp)    # brain v2.22 #1: --as-of parsing
 add_icmg_test(test_quick_promote tests/imem/test_quick_promote.cpp) # brain v2.22 #3: quick-note promotion by heat
 add_icmg_test(test_coarse_recall tests/cli/test_coarse_recall.cpp)  # brain v2.22 #4: coarse-to-fine tail collapse
+add_icmg_test(test_deep_forget   tests/imem/test_deep_forget.cpp)   # v2.23 A: forget --deep residue scan
+add_icmg_test(test_dangling_guard tests/core/test_dangling_guard.cpp) # v2.23 C: dangling-reference guard
 add_icmg_test(test_focus_cmd       tests/cli/test_focus_cmd.cpp)
 add_icmg_test(test_skill_chunk_cmd tests/cli/test_skill_chunk_cmd.cpp)
 add_icmg_test(test_ast_compressor   tests/graph/test_ast_compressor.cpp)

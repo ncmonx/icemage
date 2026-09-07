@@ -13,6 +13,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/compress_select.hpp"  // v2.0.0 TE2 salience
+#include "../../core/dangling_guard.hpp"    // 2026-09-07 C: dangling-ref repair
 #include "../../core/registry.hpp"
 #include "../../core/stdin_util.hpp"
 #include "../../core/config.hpp"
@@ -356,6 +357,7 @@ public:
 "                     function->fn, interface->iface, ...) and report\n"
 "                     before/after token estimate on stderr.\n"
 "  --scorer=llama     (salience mode only) Score lines via llama log-probability\n"
+"  --no-dangling-guard (salience) Skip the dangling-reference repair pass\n"
 "                     (1.0/(perplexity+1)) instead of the default heuristic.\n"
 "                     Requires a loaded LlamaRunner; falls back to infoScore\n"
 "                     with a warning when llama is unavailable or not loaded.\n"
@@ -420,12 +422,22 @@ public:
             for (auto& ln : lines)
                 scores.push_back(llama_ok ? llamaLogprobScore(ln, &runner)
                                           : core::infoScore(ln));
-            std::string out = core::selectByBudget(lines, scores, (size_t)threshold, "\n");
+            // 2026-09-07 C (arXiv 2608.04569): repair dangling references --
+            // pull back dropped lines that DEFINE entities the kept lines use.
+            auto keep = core::selectMaskByBudget(lines, scores, (size_t)threshold, "\n");
+            size_t pulled = 0;
+            if (!hasFlag(args, "--no-dangling-guard")) {
+                for (size_t idx : core::danglingRepairLines(lines, keep)) {
+                    if (!keep[idx]) { keep[idx] = true; ++pulled; }
+                }
+            }
+            std::string out = core::joinKept(lines, keep, "\n");
             std::cout << out << "\n";
             std::cerr << "[icmg shrink: salience" << (llama_ok ? "/llama" : "") << "] "
                       << input.size() << "->" << out.size()
                       << " bytes (" << (input.size() > 0 ? 100 - 100 * out.size() / input.size() : 0)
-                      << "% saved)\n";
+                      << "% saved" << (pulled ? ", +" + std::to_string(pulled) + " dangling-ref line(s) restored" : "")
+                      << ")\n";
             return 0;
         }
         else if (forced == "compress") {

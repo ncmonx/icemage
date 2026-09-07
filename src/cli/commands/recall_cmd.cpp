@@ -13,6 +13,7 @@
 #include "../effort_hint.hpp"     // v2.21 research B: adaptive depth via classifyIntent
 #include "../asof_parse.hpp"      // brain v2.22 #1: --as-of time-travel parsing
 #include "../coarse_recall.hpp"   // brain v2.22 #4: coarse-to-fine tail collapse
+#include "../../imem/deep_forget.hpp"  // 2026-09-07 A: forget --deep residue scan
 #include "../last_session.hpp"    // A2: recall --last-session
 #include "../../core/persona_db.hpp"        // #moments: merge persona _moments
 #include "../../core/profile_store.hpp"
@@ -573,13 +574,16 @@ public:
         if (!pattern.empty()) return forgetPattern(pattern, args);
 
         if (args.empty()) {
-            std::cerr << "icmg forget: requires <id> OR --pattern <SQL-LIKE>\n"; return 1;
+            std::cerr << "icmg forget: requires <id> OR --pattern <SQL-LIKE>\n"
+                         "  --deep   after forgetting, scan derived nodes (snapshots, wflog,\n"
+                         "           consolidated notes) for residue of the forgotten content\n"; return 1;
         }
         int64_t id;
         try { id = std::stoll(args[0]); } catch (...) {
             std::cerr << "icmg forget: invalid id\n"; return 1;
         }
-        bool yes = hasFlag(args, "--yes");
+        bool yes  = hasFlag(args, "--yes");
+        bool deep = hasFlag(args, "--deep");   // 2026-09-07 A: unlearning propagation
 
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
@@ -597,8 +601,48 @@ public:
             return 1;
         }
 
+        // --deep: BEFORE removing, capture content so residue can be found.
+        std::string forgotten_text;
+        if (deep) {
+            auto node = store.get(id);
+            if (node.id != 0) forgotten_text = node.topic + " " + node.content;
+        }
+
         store.remove(id);
         std::cout << "Forgot node #" << id << "\n";
+
+        // 2026-09-07 A (arXiv 2609.04875): a forgotten node's content usually
+        // leaked into derived artifacts (session snapshots, wflog entries,
+        // consolidated notes -- all memory_nodes rows). Surface the residue;
+        // NEVER auto-delete (each hit needs a human/agent decision).
+        if (deep && !forgotten_text.empty()) {
+            std::vector<imem::ResidueCandidate> cands;
+            db.query("SELECT id, topic, content FROM memory_nodes "
+                     "WHERE deleted_at IS NULL AND id != ?",
+                     {std::to_string(id)},
+                     [&](const core::Row& r) {
+                         if (r.size() < 3) return;
+                         imem::ResidueCandidate c;
+                         try { c.id = std::stoll(r[0]); } catch (...) { return; }
+                         c.source = r[1];
+                         c.text   = r[1] + " " + r[2];
+                         cands.push_back(std::move(c));
+                     });
+            auto hits = imem::findResidue(forgotten_text, cands);
+            if (hits.empty()) {
+                std::cout << "deep: no residue found in " << cands.size()
+                          << " live node(s)\n";
+            } else {
+                std::cout << "deep: content residue in " << hits.size()
+                          << " derived node(s) -- review each:\n";
+                for (const auto& h : hits) {
+                    std::cout << "  #" << h.id << "  ("
+                              << (int)(h.overlap * 100) << "% of forgotten tokens)  "
+                              << h.source.substr(0, 60) << "\n";
+                }
+                std::cout << "purge one: icmg forget <id> --yes   (add --deep to chase further)\n";
+            }
+        }
         return 0;
     }
 

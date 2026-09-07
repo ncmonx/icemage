@@ -44,12 +44,15 @@ inline double infoScore(const std::string& s) {
 // Keep the highest-score spans whose cumulative size (with separators) fits budget,
 // emitted in ORIGINAL order. Never returns empty when there is input — at least the
 // single top-scoring span survives (so a 0/under budget still yields signal).
-inline std::string selectByBudget(const std::vector<std::string>& spans,
-                                  const std::vector<double>& scores,
-                                  size_t budgetChars,
-                                  const std::string& sep = "\n") {
+// 2026-09-07: mask variant exposed so post-passes (dangling-reference guard)
+// can reason about what was dropped.
+inline std::vector<bool> selectMaskByBudget(const std::vector<std::string>& spans,
+                                            const std::vector<double>& scores,
+                                            size_t budgetChars,
+                                            const std::string& sep = "\n") {
     const size_t n = spans.size();
-    if (n == 0) return "";
+    std::vector<bool> keep(n, false);
+    if (n == 0) return keep;
 
     // Rank indices by score desc; ties keep earlier index (stable).
     std::vector<size_t> order(n);
@@ -60,7 +63,6 @@ inline std::string selectByBudget(const std::vector<std::string>& spans,
         return sa > sb;
     });
 
-    std::vector<bool> keep(n, false);
     size_t used = 0;
     for (size_t rank = 0; rank < order.size(); ++rank) {
         size_t i = order[rank];
@@ -68,14 +70,26 @@ inline std::string selectByBudget(const std::vector<std::string>& spans,
         if (rank == 0) { keep[i] = true; used += spans[i].size(); continue; }  // top-1 always
         if (used + add <= budgetChars) { keep[i] = true; used += add; }
     }
+    return keep;
+}
 
+inline std::string joinKept(const std::vector<std::string>& spans,
+                            const std::vector<bool>& keep,
+                            const std::string& sep = "\n") {
     std::string out;
-    for (size_t i = 0; i < n; ++i) {
+    for (size_t i = 0; i < spans.size() && i < keep.size(); ++i) {
         if (!keep[i]) continue;
         if (!out.empty()) out += sep;
         out += spans[i];
     }
     return out;
+}
+
+inline std::string selectByBudget(const std::vector<std::string>& spans,
+                                  const std::vector<double>& scores,
+                                  size_t budgetChars,
+                                  const std::string& sep = "\n") {
+    return joinKept(spans, selectMaskByBudget(spans, scores, budgetChars, sep), sep);
 }
 
 }  // namespace icmg::core
