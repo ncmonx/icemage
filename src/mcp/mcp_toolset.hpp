@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -109,6 +110,43 @@ inline std::vector<ToolSearchHit> rankToolMatches(
                      });
     if ((int)hits.size() > max_out) hits.resize(max_out);
     return hits;
+}
+
+// ---- 2026-09-23 IDE-G: per-tool CALL policy ---------------------------------
+// The MCP security literature's recurring finding (authorization architectures,
+// tenant isolation, capability leases): exposure filtering is NOT access
+// control. Our profile/allowlist only hides SCHEMAS from tools/list -- every
+// tool stays callable by name. This gate holds at tools/call time:
+//   ICMG_MCP_DENY=a,b,c   deny-list enforced on calls (schemas also hidden)
+//   ICMG_MCP_READONLY=1   deny the mutating subset (writes/syncs/applies)
+// Deterministic, env-driven, default-off -- existing setups are untouched.
+
+// Tools that MUTATE state (memory writes, syncs, file-writing appliers).
+// Read/query/search/render tools stay callable in readonly mode.
+inline bool isMutatingTool(const std::string& name) {
+    static const std::set<std::string> k = {
+        "icmg_store", "icmg_forget", "icmg_correction", "icmg_distill",
+        "icmg_sync", "icmg_ingest", "icmg_feedback_record", "icmg_fail",
+        "icmg_receipt", "icmg_rule_apply", "icmg_port_apply",
+        "icmg_style_clone_apply", "icmg_project_switch", "icmg_write_mode"};
+    return k.count(name) > 0;
+}
+
+// Should `name` be refused at tools/call? `deny_csv` = ICMG_MCP_DENY (comma
+// separated, spaces tolerated); `readonly` = ICMG_MCP_READONLY=1.
+inline bool isToolCallDenied(const std::string& name, const std::string& deny_csv,
+                             bool readonly) {
+    if (readonly && isMutatingTool(name)) return true;
+    if (deny_csv.empty()) return false;
+    std::stringstream ss(deny_csv);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        const auto b = item.find_first_not_of(" \t");
+        if (b == std::string::npos) continue;
+        const auto e = item.find_last_not_of(" \t");
+        if (item.substr(b, e - b + 1) == name) return true;
+    }
+    return false;
 }
 
 }  // namespace icmg::mcp

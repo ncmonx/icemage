@@ -115,6 +115,20 @@ json McpServer::buildToolsListResponse(bool lazy) const {
         if ((prof && *prof) || (csv && *csv)) {
             keys = selectExposedTools(keys, prof ? prof : "", csv ? csv : "");
         }
+        // IDE-G: denied tools are hidden from the list too (they are not
+        // callable, so advertising their schemas would only mislead).
+        {
+            const char* deny = std::getenv("ICMG_MCP_DENY");
+            const char* ro   = std::getenv("ICMG_MCP_READONLY");
+            const bool readonly = ro && std::string(ro) == "1";
+            if ((deny && *deny) || readonly) {
+                std::vector<std::string> kept;
+                for (const auto& k : keys)
+                    if (!isToolCallDenied(k, deny ? deny : "", readonly))
+                        kept.push_back(k);
+                keys = kept;
+            }
+        }
     }
 
     json tools = json::array();
@@ -170,6 +184,20 @@ void McpServer::handleCallTool(const json& req) {
         return;
     }
     std::string toolName = params["name"].get<std::string>();
+
+    // 2026-09-23 IDE-G: per-tool call policy. Exposure filtering only hides
+    // schemas; this refuses the CALL itself (deny-list / readonly mode).
+    {
+        const char* deny = std::getenv("ICMG_MCP_DENY");
+        const char* ro   = std::getenv("ICMG_MCP_READONLY");
+        const bool readonly = ro && std::string(ro) == "1";
+        if (isToolCallDenied(toolName, deny ? deny : "", readonly)) {
+            sendError(id, -32602, "Tool '" + toolName + "' is denied by policy (" +
+                                  std::string(readonly && isMutatingTool(toolName)
+                                                  ? "ICMG_MCP_READONLY" : "ICMG_MCP_DENY") + ")");
+            return;
+        }
+    }
 
     // v1.6.3: memory store auto-evict at cap. Previous return -32603 blocked
     // all icmg_store calls until manual purge; AI cannot recover mid-session.

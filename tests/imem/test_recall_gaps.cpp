@@ -73,6 +73,65 @@ TEST("gaps: short noise queries skipped") {
     ASSERT_EQ(gaps[0].query, std::string("real question about daemon lifecycle"));
 }
 
+// --- IDE-D (2026-09-23): evicted vs missed ---------------------------------
+// Research: "What Eviction Destroys" (arXiv 2609.08279) -- an empty recall has
+// two very different causes: the brain NEVER held it (missed -> store it) or it
+// WAS held and soft-deleted (evicted -> restore it). Same symptom, opposite
+// remedies, so the ledger should say which one it is.
+
+// 6. Default classification is "missed" (no deleted corpus consulted).
+TEST("gaps: default kind is missed") {
+    std::vector<GapQueryRow> rows = { row("daemon lifecycle teardown", 0, 1000) };
+    auto gaps = findRecallGaps(rows, 0, 10);
+    ASSERT_EQ((int)gaps.size(), 1);
+    ASSERT_EQ((int)gaps[0].kind, (int)GapKind::Missed);
+}
+
+// 7. A soft-deleted memory matching the query tokens -> evicted + its id.
+TEST("gaps: query matching deleted memory classified evicted") {
+    std::vector<GapQueryRow> rows = {
+        row("vulkan shader hang glslc", 0, 1000),
+        row("kubernetes ingress routing", 0, 900),
+    };
+    std::vector<DeletedMemRow> deleted = {
+        {42, "gotcha: vulkan shader hang caused by glslc zombie process"},
+    };
+    auto gaps = findRecallGaps(rows, 0, 10, &deleted);
+    ASSERT_EQ((int)gaps.size(), 2);
+    // ranked by asks/ts equally -> order by input ts desc; find each
+    int evicted = -1, missed = -1;
+    for (int i = 0; i < 2; ++i)
+        (gaps[i].kind == GapKind::Evicted ? evicted : missed) = i;
+    ASSERT_TRUE(evicted >= 0 && missed >= 0);
+    ASSERT_EQ(gaps[evicted].query, std::string("vulkan shader hang glslc"));
+    ASSERT_EQ(gaps[evicted].evicted_id, (int64_t)42);
+    ASSERT_EQ(gaps[missed].query, std::string("kubernetes ingress routing"));
+    ASSERT_EQ(gaps[missed].evicted_id, (int64_t)0);
+}
+
+// 8. One shared trivial word is NOT eviction evidence (needs >=2 real tokens).
+TEST("gaps: single weak overlap stays missed") {
+    std::vector<GapQueryRow> rows = { row("release notes encoding fix", 0, 1000) };
+    std::vector<DeletedMemRow> deleted = {
+        {7, "the fix for the daemon spam problem"},   // shares only "fix"
+    };
+    auto gaps = findRecallGaps(rows, 0, 10, &deleted);
+    ASSERT_EQ((int)gaps.size(), 1);
+    ASSERT_EQ((int)gaps[0].kind, (int)GapKind::Missed);
+}
+
+// 9. Token match is case-insensitive; null deleted list = legacy behaviour.
+TEST("gaps: case-insensitive match and null corpus compat") {
+    std::vector<GapQueryRow> rows = { row("Vulkan Shader HANG", 0, 1000) };
+    std::vector<DeletedMemRow> deleted = {
+        {9, "VULKAN shader hang zombie"},
+    };
+    auto gaps = findRecallGaps(rows, 0, 10, &deleted);
+    ASSERT_EQ((int)gaps[0].kind, (int)GapKind::Evicted);
+    auto legacy = findRecallGaps(rows, 0, 10, nullptr);
+    ASSERT_EQ((int)legacy[0].kind, (int)GapKind::Missed);
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

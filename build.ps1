@@ -238,8 +238,28 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
         }
     }
     if (Test-Path $instBin) {
-        Get-ChildItem "$instBin\*.dll" -ErrorAction SilentlyContinue |
-            Copy-Item -Destination $relDir -Force
+        # WHITELIST ONLY (2026-09-23, Cahyo-approved): ~/bin is a mixed PATH dir
+        # (other projects publish there too -- IDBE .NET DLLs live in it). The
+        # old copy-everything layered 38 foreign DLLs into Release, which
+        # pack-win.ps1 then shipped in the v2.23.0 zip. Same 22-DLL whitelist
+        # as scripts/pack-win.ps1 -- keep the two lists in sync.
+        $icmgDlls = @(
+            'brotlicommon.dll', 'brotlidec.dll', 'brotlienc.dll',
+            'fmt.dll', 'fmtd.dll',
+            'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll', 'ggml-vulkan.dll', 'llama.dll',
+            'libcrypto-3-x64.dll',
+            'libcurl.dll', 'libcurl-d.dll',
+            'libtree-sitter-0.26.dll',
+            'libwinpthread-1.dll',
+            'libzstd.dll', 'z.dll', 'zd.dll',
+            'onnxruntime.dll', 'onnxruntime_providers_shared.dll',
+            'vulkan-1.dll',
+            'wasmtime.dll'
+        )
+        foreach ($idll in $icmgDlls) {
+            $isrc = Join-Path $instBin $idll
+            if (Test-Path $isrc) { Copy-Item $isrc -Destination $relDir -Force }
+        }
     }
     Get-ChildItem $BuildDir -Recurse -Filter '*.dll' -ErrorAction SilentlyContinue |
         Copy-Item -Destination $relDir -Force

@@ -1,6 +1,7 @@
 // v1.21.2 (U2): bench-recall scenario harness.
 //
 // `icmg bench-recall [--file <path>] [--json] [--semantic]`
+// `icmg bench-recall --replay [--days N] [--max N] [--json]`   (2026-09-23)
 //
 // Reads a scenario file (default `bench/recall_scenarios.txt`). Each non-blank,
 // non-`#` line is one scenario:
@@ -12,6 +13,11 @@
 //               combined topic+content of the top-K results
 //   top-k       optional; default 10
 //
+// --replay (IDE-A, DolphinBench arXiv 2609.24971): no file needed -- replays
+// REAL past queries from query_history and reports hit-rate, regressions, and
+// answer token cost. Judges the brain on its actual workload, not a synthetic
+// scenario list.
+//
 // Exit: 0 if all scenarios pass, 1 otherwise (so CI can gate on it).
 
 #include "../base_command.hpp"
@@ -20,9 +26,11 @@
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
+#include "../../imem/bench_replay.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -75,16 +83,22 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg bench-recall [--file <path>] [--json] [--semantic]\n\n"
+            "Usage: icmg bench-recall [--file <path>] [--json] [--semantic]\n"
+            "       icmg bench-recall --replay [--days N] [--max N] [--json]\n\n"
             "Scenario file format (one per line):\n"
             "  <query>|<expect-csv>[|<top-k>]\n\n"
             "  # comments and blank lines ignored\n\n"
             "Default file: bench/recall_scenarios.txt\n"
+            "--replay: replay real past queries from query_history; report\n"
+            "  hit-rate, regressed queries, and answer token cost.\n"
+            "  --days N   history window (default 30)   --max N  cap (default 200)\n"
             "Exits 1 if any scenario fails (gate-friendly).\n";
     }
 
     int run(const std::vector<std::string>& args) override {
         if (hasFlag(args, "--help") || hasFlag(args, "-h")) { usage(); return 0; }
+
+        if (hasFlag(args, "--replay")) return runReplay(args);
 
         std::string file = flagValue(args, "--file");
         if (file.empty()) file = "bench/recall_scenarios.txt";
@@ -218,6 +232,92 @@ public:
         }
 
         return failed == 0 ? 0 : 1;
+    }
+    // IDE-A (2026-09-23): replay real past queries against the CURRENT brain.
+    // hit-rate = still answerable; regressed = answered then, silent now
+    // (forget/prune/eviction damage); avg tokens = injection cost per answer.
+    int runReplay(const std::vector<std::string>& args) {
+        bool json_out = hasFlag(args, "--json");
+        bool use_sem  = hasFlag(args, "--semantic");
+        int days = 30, maxQ = 200;
+        try { days = std::stoi(flagValue(args, "--days", "30")); } catch (...) {}
+        try { maxQ = std::stoi(flagValue(args, "--max", "200")); } catch (...) {}
+
+        core::Db db(core::Config::instance().projectDbPath("."));
+        imem::MemoryStore mem(db);
+
+        const int64_t now = (int64_t)std::time(nullptr);
+        const int64_t cutoff = now - (int64_t)days * 86400;
+
+        // matched_ids holds the result count (logQuery stores it there).
+        struct HistQ { std::string query; int past_hits = 0; };
+        std::vector<HistQ> hist;
+        db.query("SELECT query, MAX(CAST(matched_ids AS INTEGER)) AS best "
+                 "FROM query_history WHERE created_at > ? "
+                 "GROUP BY query ORDER BY MAX(created_at) DESC LIMIT ?",
+                 {std::to_string(cutoff), std::to_string(maxQ)},
+                 [&](const core::Row& r) {
+                     if (r.size() < 2) return;
+                     HistQ h;
+                     h.query = r[0];
+                     try { h.past_hits = std::stoi(r[1]); } catch (...) {}
+                     if (!h.query.empty()) hist.push_back(std::move(h));
+                 });
+        if (hist.empty()) {
+            std::cerr << "bench-recall --replay: no query history in the last "
+                      << days << "d\n";
+            return 1;
+        }
+
+        std::vector<imem::ReplayRow> rows;
+        rows.reserve(hist.size());
+        for (const auto& h : hist) {
+            auto res = use_sem ? mem.recallSemantic(h.query, 5, 0.5)
+                               : mem.recall(h.query, 5, false);
+            imem::ReplayRow rr;
+            rr.query = h.query;
+            rr.past_hits = h.past_hits;
+            rr.now_hits = (int)res.size();
+            for (const auto& n : res)
+                rr.result_chars += (int64_t)n.topic.size() + (int64_t)n.content.size();
+            rows.push_back(std::move(rr));
+        }
+
+        auto s = imem::computeReplayStats(rows);
+        if (json_out) {
+            std::cout << "{\"total\":" << s.total << ",\"hits\":" << s.hits
+                      << ",\"hit_rate\":" << s.hit_rate
+                      << ",\"avg_answer_tokens\":" << s.avg_answer_tokens
+                      << ",\"total_answer_tokens\":" << s.total_answer_tokens
+                      << ",\"regressed\":[";
+            for (size_t i = 0; i < s.regressed.size(); ++i) {
+                if (i) std::cout << ",";
+                std::cout << "\"";
+                for (char c : s.regressed[i]) {   // minimal escape
+                    if (c == '\"' || c == '\\') std::cout << '\\';
+                    std::cout << c;
+                }
+                std::cout << "\"";
+            }
+            std::cout << "]}\n";
+        } else {
+            std::cout << "=== bench-recall --replay (last " << days << "d, "
+                      << s.total << " real queries, "
+                      << (use_sem ? "semantic" : "bm25") << ") ===\n"
+                      << "  hit-rate:        " << s.hits << "/" << s.total << " ("
+                      << (int)(s.hit_rate * 100.0) << "%)\n"
+                      << "  avg answer cost: ~" << s.avg_answer_tokens << " tok\n"
+                      << "  total if all injected: ~" << s.total_answer_tokens
+                      << " tok\n";
+            if (!s.regressed.empty()) {
+                std::cout << "  REGRESSED (answered before, silent now):\n";
+                for (const auto& q : s.regressed)
+                    std::cout << "    - " << q << "\n";
+                std::cout << "  (likely prune/forget damage -- check "
+                             "`icmg memory-health --gaps` for evicted tags)\n";
+            }
+        }
+        return s.regressed.empty() ? 0 : 1;
     }
 };
 

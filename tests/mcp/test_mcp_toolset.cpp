@@ -87,6 +87,29 @@ TEST("tool_search: no match = empty, capped output") {
     ASSERT_EQ((int)r.size(), 2);
 }
 
+// ---- 2026-09-23 IDE-G: per-tool call policy (MCP security theme) -----------
+// Exposure filtering (profile/allowlist) only hides SCHEMAS -- every tool
+// stayed callable. A deny policy must hold at tools/call time.
+
+TEST("call_policy: deny csv blocks exactly the named tools") {
+    ASSERT_TRUE(icmg::mcp::isToolCallDenied("icmg_forget", "icmg_forget,icmg_store", false));
+    ASSERT_TRUE(icmg::mcp::isToolCallDenied("icmg_store", "icmg_forget, icmg_store", false));
+    ASSERT_TRUE(!icmg::mcp::isToolCallDenied("icmg_recall", "icmg_forget,icmg_store", false));
+}
+
+TEST("call_policy: readonly blocks mutating tools only") {
+    ASSERT_TRUE(icmg::mcp::isToolCallDenied("icmg_store", "", true));
+    ASSERT_TRUE(icmg::mcp::isToolCallDenied("icmg_forget", "", true));
+    ASSERT_TRUE(!icmg::mcp::isToolCallDenied("icmg_recall", "", true));
+    ASSERT_TRUE(!icmg::mcp::isToolCallDenied("icmg_context", "", true));
+    ASSERT_TRUE(!icmg::mcp::isToolCallDenied("icmg_tool_search", "", true));
+}
+
+TEST("call_policy: empty policy denies nothing") {
+    ASSERT_TRUE(!icmg::mcp::isToolCallDenied("icmg_store", "", false));
+    ASSERT_TRUE(!icmg::mcp::isToolCallDenied("icmg_forget", "", false));
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

@@ -34,6 +34,7 @@
 #include "../../core/hooks/internals.hpp"
 #include "../../daemon/rule_daemon_client.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../imem/recall_confidence.hpp"  // 2026-09-23 IDE-B: MemCalib cue
 #include "../../compress/write_expander.hpp"   // v1.25.0 (W3)
 #include "../../core/cross_turn_dedup.hpp"
 #include "../strict_audit.hpp"            // v2.0.13: strict audit read/MCP deny      // v2.0.0 C2: cross-turn near-dup gate
@@ -590,7 +591,11 @@ private:
                 markNodeInjected(nid);
                 std::string topic = m.topic;
                 if (topic.size() > 80) topic = topic.substr(0, 77) + "...";
-                rec_out << "  [" << static_cast<int>(m.score) << "] " << topic << "\n";
+                // IDE-B (MemCalib): one-word calibration cue so the model
+                // neither over-trusts a barely-cleared hit nor ignores a strong one.
+                rec_out << "  [" << static_cast<int>(m.score) << "|"
+                        << imem::confidenceTier(m.score, RECALL_MIN_SCORE)
+                        << "] " << topic << "\n";
                 ++added;
             }
             if (added > 0) {

@@ -10,10 +10,28 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
 namespace icmg::graph {
+
+// 2026-09-23 IDE-F (RepoAtlas, arXiv 2609.16936): focused task neighborhood.
+// Under global PageRank a sparse task seed drowns in hub files; a focused
+// view keeps only the seed nodes + their 1-hop neighbors (undirected -- a
+// dependency is context in both directions). Empty seed -> empty set, caller
+// falls back to the global view.
+inline std::set<int64_t> focusNeighborhood(const std::vector<GraphEdge>& edges,
+                                           const std::map<int64_t,double>& seed) {
+    std::set<int64_t> allowed;
+    if (seed.empty()) return allowed;
+    for (const auto& [id, w] : seed) allowed.insert(id);
+    for (const auto& e : edges) {
+        if (seed.count(e.src)) allowed.insert(e.dst);
+        if (seed.count(e.dst)) allowed.insert(e.src);
+    }
+    return allowed;
+}
 
 // `score` = pageRank(nodes, edges) (see graph_centrality.hpp) -- or any
 // id->importance map. Files are ranked by score desc; each emits its child
@@ -22,17 +40,20 @@ namespace icmg::graph {
 // (applied before ranking, see path_filter.hpp): `excludeVendored` (default)
 // drops third_party/generated files; non-empty `rootPrefix` keeps only files
 // inside that tree; when `includeTests` is false (default) test/spec files drop.
+// `allowlist` (optional, IDE-F): only emit files whose id is in the set.
 inline std::string buildRepoSkeleton(const std::vector<GraphNode>& nodes,
                                      const std::map<int64_t,double>& score,
                                      size_t budgetChars,
                                      bool excludeVendored = true,
                                      const std::string& rootPrefix = "",
-                                     bool includeTests = false) {
+                                     bool includeTests = false,
+                                     const std::set<int64_t>* allowlist = nullptr) {
     std::vector<const GraphNode*> files;
     std::map<int64_t, std::vector<const GraphNode*>> kids;
     for (const auto& n : nodes) {
         if (n.kind == "file") {
             if (!keepProjectFile(n.path, excludeVendored, includeTests, rootPrefix)) continue;
+            if (allowlist && allowlist->count(n.id) == 0) continue;
             files.push_back(&n);
         } else if (n.parent_id) {
             kids[n.parent_id].push_back(&n);

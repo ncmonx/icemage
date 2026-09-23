@@ -579,7 +579,7 @@ public:
 class GraphSkeletonCommand : public BaseCommand {
 public:
     std::string name()        const override { return "graph-skeleton"; }
-    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols; --for <task> personalizes; --include-vendored; --all-paths; --tests)"; }
+    std::string description() const override { return "Token-budgeted repo skeleton (god-files + symbols; --for <task> personalizes, --focus narrows to seed neighborhood; --include-vendored; --all-paths; --tests)"; }
 
     int run(const std::vector<std::string>& args) override {
         size_t budget = 8000;
@@ -598,16 +598,30 @@ public:
         }
         std::string forTask = flagValue(args, "--for");
         std::map<int64_t,double> score;
+        std::set<int64_t> focusAllow;
+        bool useFocus = false;
         if (!forTask.empty()) {
             auto seed = graph::seedFromTask(nodes, forTask);   // task-personalized
             score = graph::personalizedPageRank(nodes, edges, seed);
+            // IDE-F (RepoAtlas): --focus restricts the view to the seed
+            // neighborhood -- global hubs cannot drown a sparse task seed.
+            if (hasFlag(args, "--focus")) {
+                focusAllow = graph::focusNeighborhood(edges, seed);
+                useFocus = !focusAllow.empty();   // empty seed -> global view
+                // Within the focus view, DIRECTLY seeded files outrank their
+                // 1-hop neighbors: a hub that merely touches the seed must not
+                // bury the files that actually match the task tokens.
+                if (useFocus)
+                    for (const auto& [nid, w] : seed) score[nid] += 1000.0 * w;
+            }
         } else {
             score = graph::pageRank(nodes, edges);
         }
         bool includeVendored = hasFlag(args, "--include-vendored");
         std::string root = hasFlag(args, "--all-paths") ? std::string("") : std::filesystem::current_path().string();
         bool includeTests = hasFlag(args, "--tests");
-        std::cout << graph::buildRepoSkeleton(nodes, score, budget, !includeVendored, root, includeTests);
+        std::cout << graph::buildRepoSkeleton(nodes, score, budget, !includeVendored, root, includeTests,
+                                              useFocus ? &focusAllow : nullptr);
         return 0;
     }
 };

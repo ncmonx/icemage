@@ -10,6 +10,7 @@
 #include "../../core/db.hpp"
 #include "../../imem/contradiction_scan.hpp"   // v2.21 research C
 #include "../../imem/recall_gaps.hpp"          // 2026-08-25 brain v2.22 #2
+#include "../../imem/grounding_scan.hpp"       // 2026-09-23 landscape IDE-C
 #include <iostream>
 #include <iomanip>
 #include <map>
@@ -45,7 +46,7 @@ public:
 
     void usage() const override {
         std::cout <<
-            "Usage: icmg memory health [--json] [--strict] [--contradictions] [--gaps]\n\n"
+            "Usage: icmg memory health [--json] [--strict] [--contradictions] [--gaps] [--grounding]\n\n"
             "Reports memory store hygiene. --strict exits non-zero on warning.\n"
             "  --contradictions       flag mutually-contradictory fact pairs (no deletes)\n"
             "  --jaccard-min X        overlap threshold for candidate pairs (default 0.6)\n"
@@ -53,7 +54,9 @@ public:
             "  --gaps                 knowledge gaps: recent recall queries that came back\n"
             "                         empty/thin (the brain was asked and had nothing)\n"
             "  --days N               history window for --gaps (default 7)\n"
-            "  --max-results N        gap threshold: flag queries with <= N results (default 0)\n";
+            "  --max-results N        gap threshold: flag queries with <= N results (default 0)\n"
+            "  --grounding            flag memories citing files the graph no longer has\n"
+            "                         (likely stale after rename/delete; never deletes)\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -114,6 +117,73 @@ public:
             return 0;
         }
 
+        // 2026-09-23 landscape IDE-C: grounding scan (arXiv 2609.11060). A
+        // memory citing a file the graph no longer knows was probably written
+        // BEFORE a rename/delete -- flag it as stale-suspect. Probes our own
+        // graph only: read-only, deterministic, zero-LLM. Never deletes.
+        if (hasFlag(args, "--grounding")) {
+            int maxOut = 25;
+            try { maxOut = std::stoi(flagValue(args, "--max", "25")); } catch (...) {}
+
+            std::set<std::string> known;
+            db.query("SELECT path FROM graph_nodes", {}, [&](const core::Row& r) {
+                if (r.empty() || r[0].empty()) return;
+                std::string p = r[0];
+                std::replace(p.begin(), p.end(), '\\', '/');
+                const size_t slash = p.rfind('/');
+                known.insert(imem::grounding_detail::toLower(
+                    slash == std::string::npos ? p : p.substr(slash + 1)));
+            });
+
+            std::vector<imem::GroundedMem> mems;
+            db.query("SELECT id, topic, content FROM memory_nodes "
+                     "WHERE deleted_at IS NULL OR deleted_at = 0", {},
+                     [&](const core::Row& r) {
+                         if (r.size() < 3) return;
+                         imem::GroundedMem m;
+                         m.id = std::stoll(r[0]);
+                         m.topic = r[1];
+                         m.content = r[2];
+                         mems.push_back(std::move(m));
+                     });
+
+            auto issues = imem::findUngroundedMemories(mems, known, maxOut);
+            if (json_out) {
+                std::cout << "[";
+                for (size_t i = 0; i < issues.size(); ++i) {
+                    if (i) std::cout << ",";
+                    std::cout << "{\"id\":" << issues[i].mem_id << ",\"topic\":\"";
+                    escapeJson(std::cout, issues[i].topic);
+                    std::cout << "\",\"missing\":[";
+                    for (size_t k = 0; k < issues[i].missing.size(); ++k) {
+                        if (k) std::cout << ",";
+                        std::cout << "\"";
+                        escapeJson(std::cout, issues[i].missing[k]);
+                        std::cout << "\"";
+                    }
+                    std::cout << "]}";
+                }
+                std::cout << "]\n";
+            } else {
+                std::cout << "Grounding issues: " << issues.size()
+                          << " (scanned " << mems.size() << " live memories against "
+                          << known.size() << " graph files; run `icmg graph update` "
+                          "first if the graph is stale)\n";
+                for (const auto& is : issues) {
+                    std::cout << "  #" << is.mem_id;
+                    if (!is.topic.empty()) std::cout << " [" << is.topic << "]";
+                    std::cout << " cites vanished:";
+                    for (const auto& ref : is.missing) std::cout << " " << ref;
+                    std::cout << "\n    review: icmg memory show " << is.mem_id
+                              << "  (refresh or `icmg memory forget " << is.mem_id
+                              << "`)\n";
+                }
+                if (issues.empty())
+                    std::cout << "  none found -- every cited file still exists in the graph\n";
+            }
+            return 0;
+        }
+
         // 2026-08-25 brain v2.22 #2: retrieval-failure ledger. A recall that
         // returned nothing is a knowledge-gap SIGNAL (Mem0 production insight):
         // the agent asked, the brain had nothing. Surface recurring misses as
@@ -142,7 +212,20 @@ public:
                          try { g.asks         = std::stoi(r[3]); } catch (...) {}
                          rows.push_back(std::move(g));
                      });
-            auto gaps = imem::findRecallGaps(rows, maxResults, maxOut);
+            // IDE-D: soft-deleted corpus -- a gap matching one of these was
+            // EVICTED (recoverable), not never-known. Cap keeps it O(gaps*del).
+            std::vector<imem::DeletedMemRow> deletedCorpus;
+            db.query("SELECT id, topic || ' ' || content FROM memory_nodes "
+                     "WHERE deleted_at IS NOT NULL AND deleted_at > 0 "
+                     "ORDER BY deleted_at DESC LIMIT 500", {},
+                     [&](const core::Row& r) {
+                         if (r.size() < 2) return;
+                         imem::DeletedMemRow d;
+                         try { d.id = std::stoll(r[0]); } catch (...) { return; }
+                         d.text = r[1];
+                         deletedCorpus.push_back(std::move(d));
+                     });
+            auto gaps = imem::findRecallGaps(rows, maxResults, maxOut, &deletedCorpus);
             if (json_out) {
                 std::cout << "[";
                 for (size_t i = 0; i < gaps.size(); ++i) {
@@ -150,19 +233,31 @@ public:
                     std::cout << "{\"query\":\"";
                     escapeJson(std::cout, gaps[i].query);
                     std::cout << "\",\"asks\":" << gaps[i].asks
-                              << ",\"last_ts\":" << gaps[i].last_ts << "}";
+                              << ",\"last_ts\":" << gaps[i].last_ts
+                              << ",\"kind\":\""
+                              << (gaps[i].kind == imem::GapKind::Evicted ? "evicted" : "missed")
+                              << "\"";
+                    if (gaps[i].evicted_id)
+                        std::cout << ",\"evicted_id\":" << gaps[i].evicted_id;
+                    std::cout << "}";
                 }
                 std::cout << "]\n";
             } else {
                 std::cout << "Knowledge gaps (last " << days << "d, " << rows.size()
                           << " distinct queries, <= " << maxResults << " results):\n";
                 for (const auto& g : gaps) {
-                    std::cout << "  [" << g.asks << "x] " << g.query << "\n";
+                    // IDE-D: same symptom, opposite remedies -- say which one.
+                    if (g.kind == imem::GapKind::Evicted)
+                        std::cout << "  [" << g.asks << "x] [evicted] " << g.query
+                                  << "\n      was held as #" << g.evicted_id
+                                  << " -- icmg memory restore " << g.evicted_id << "\n";
+                    else
+                        std::cout << "  [" << g.asks << "x] [missed]  " << g.query << "\n";
                 }
                 if (gaps.empty())
                     std::cout << "  none -- every recent recall found something\n";
                 else
-                    std::cout << "Fill a gap: icmg store <topic> \"<what you learned>\"\n";
+                    std::cout << "Fill a missed gap: icmg store <topic> \"<what you learned>\"\n";
             }
             return 0;
         }

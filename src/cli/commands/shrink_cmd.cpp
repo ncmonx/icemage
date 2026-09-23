@@ -14,6 +14,7 @@
 #include "../base_command.hpp"
 #include "../../core/compress_select.hpp"  // v2.0.0 TE2 salience
 #include "../../core/dangling_guard.hpp"    // 2026-09-07 C: dangling-ref repair
+#include "../../core/graph_coherence.hpp"   // 2026-09-23 IDE-E: TopoCompress pull
 #include "../../core/registry.hpp"
 #include "../../core/stdin_util.hpp"
 #include "../../core/config.hpp"
@@ -358,6 +359,7 @@ public:
 "                     before/after token estimate on stderr.\n"
 "  --scorer=llama     (salience mode only) Score lines via llama log-probability\n"
 "  --no-dangling-guard (salience) Skip the dangling-reference repair pass\n"
+"  --graph-coherence   (salience) Pull back lines citing files graph-adjacent to kept citations (TopoCompress; needs project DB)\n"
 "                     (1.0/(perplexity+1)) instead of the default heuristic.\n"
 "                     Requires a loaded LlamaRunner; falls back to infoScore\n"
 "                     with a warning when llama is unavailable or not loaded.\n"
@@ -431,12 +433,43 @@ public:
                     if (!keep[idx]) { keep[idx] = true; ++pulled; }
                 }
             }
+            // 2026-09-23 IDE-E (arXiv 2608.30811 TopoCompress): graph-wired
+            // coherence -- pull back dropped lines citing files adjacent (in
+            // the code graph) to files cited by kept lines. Opt-in: needs the
+            // project DB, and shrink is often piped outside a project.
+            size_t gpulled = 0;
+            if (hasFlag(args, "--graph-coherence")) {
+                std::map<std::string, std::set<std::string>> adj;
+                try {
+                    core::Db gdb(core::Config::instance().projectDbPath("."));
+                    auto baseOf = [](std::string p) {
+                        std::replace(p.begin(), p.end(), '\\', '/');
+                        const size_t s = p.rfind('/');
+                        std::string b = s == std::string::npos ? p : p.substr(s + 1);
+                        for (auto& c : b) c = (char)std::tolower((unsigned char)c);
+                        return b;
+                    };
+                    gdb.query("SELECT a.path, b.path FROM graph_edges e "
+                              "JOIN graph_nodes a ON a.id = e.src "
+                              "JOIN graph_nodes b ON b.id = e.dst", {},
+                              [&](const core::Row& r) {
+                                  if (r.size() < 2) return;
+                                  const std::string ba = baseOf(r[0]), bb = baseOf(r[1]);
+                                  adj[ba].insert(bb);
+                                  adj[bb].insert(ba);
+                              });
+                } catch (...) { /* no project DB -> no coherence pass */ }
+                for (size_t idx : core::graphCoherencePulls(lines, keep, adj)) {
+                    if (!keep[idx]) { keep[idx] = true; ++gpulled; }
+                }
+            }
             std::string out = core::joinKept(lines, keep, "\n");
             std::cout << out << "\n";
             std::cerr << "[icmg shrink: salience" << (llama_ok ? "/llama" : "") << "] "
                       << input.size() << "->" << out.size()
                       << " bytes (" << (input.size() > 0 ? 100 - 100 * out.size() / input.size() : 0)
                       << "% saved" << (pulled ? ", +" + std::to_string(pulled) + " dangling-ref line(s) restored" : "")
+                      << (gpulled ? ", +" + std::to_string(gpulled) + " graph-coherence line(s) restored" : "")
                       << ")\n";
             return 0;
         }

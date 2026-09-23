@@ -133,6 +133,47 @@ TEST("repo skeleton: includeTests=true shows tests") {
     auto s = buildRepoSkeleton(nodes, score, 1000, true, "", true);   // excludeTests=false
     ASSERT_CONTAINS(s, std::string("test_edges.cpp"));
 }
+
+// ---- 2026-09-23 IDE-F (RepoAtlas, arXiv 2609.16936): focused task view ------
+// Global hubs drown a sparse task seed under plain PageRank; a FOCUSED view
+// restricts the skeleton to the seed neighborhood (seeded files + 1 hop).
+
+TEST("focus: seed plus one-hop neighborhood only") {
+    // 1 -- 2 -- 3 ; 4 isolated. Seed = {1}.
+    std::vector<GraphNode> nodes{ file(1,"a.cpp"), file(2,"b.cpp"),
+                                  file(3,"c.cpp"), file(4,"d.cpp") };
+    std::vector<GraphEdge> edges;
+    GraphEdge e1; e1.src = 1; e1.dst = 2; edges.push_back(e1);
+    GraphEdge e2; e2.src = 2; e2.dst = 3; edges.push_back(e2);
+    std::map<int64_t,double> seed{ {1, 1.0} };
+    auto allowed = focusNeighborhood(edges, seed);
+    ASSERT_TRUE(allowed.count(1) > 0);
+    ASSERT_TRUE(allowed.count(2) > 0);   // 1 hop from seed
+    ASSERT_TRUE(allowed.count(3) == 0);  // 2 hops away
+    ASSERT_TRUE(allowed.count(4) == 0);  // disconnected
+}
+
+TEST("focus: edges are treated as undirected") {
+    std::vector<GraphEdge> edges;
+    GraphEdge e; e.src = 7; e.dst = 9; edges.push_back(e);   // 7 -> 9
+    std::map<int64_t,double> seed{ {9, 2.0} };                // seed on the DST
+    auto allowed = focusNeighborhood(edges, seed);
+    ASSERT_TRUE(allowed.count(7) > 0);   // reachable against edge direction
+}
+
+TEST("focus: empty seed -> empty set (caller falls back to global view)") {
+    std::vector<GraphEdge> edges;
+    ASSERT_EQ((int)focusNeighborhood(edges, {}).size(), 0);
+}
+
+TEST("repo skeleton: allowlist restricts emitted files") {
+    std::vector<GraphNode> nodes{ file(1,"src/a.cpp"), file(2,"src/b.cpp") };
+    std::map<int64_t,double> score{ {1, 0.9}, {2, 0.8} };
+    std::set<int64_t> allow{ 2 };
+    auto s = buildRepoSkeleton(nodes, score, 1000, true, "", false, &allow);
+    ASSERT_TRUE(s.find("src/a.cpp") == std::string::npos);
+    ASSERT_CONTAINS(s, std::string("src/b.cpp"));
+}
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

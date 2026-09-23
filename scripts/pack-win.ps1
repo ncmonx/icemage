@@ -63,13 +63,58 @@ $pkg  = Join-Path $env:TEMP "icmg-pkg-$Version"
 if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
 New-Item -ItemType Directory -Path $pkg | Out-Null
 
-# copy the binary + every runtime DLL sitting next to it
-Get-ChildItem "$BuildDir\*" -Include *.exe, *.dll | Copy-Item -Destination $pkg
+# copy the binary + WHITELISTED runtime DLLs only (guards against foreign build
+# output landing in the Release dir -- v2.23.0 shipped 38 stray .NET DLLs b/c
+# this used to glob *.dll blindly). Update this list when a real dep is added.
+$dllWhitelist = @(
+    'brotlicommon.dll', 'brotlidec.dll', 'brotlienc.dll',
+    'fmt.dll', 'fmtd.dll',
+    'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll', 'ggml-vulkan.dll', 'llama.dll',
+    'libcrypto-3-x64.dll',
+    'libcurl.dll', 'libcurl-d.dll',
+    'libtree-sitter-0.26.dll',
+    'libwinpthread-1.dll',
+    'libzstd.dll', 'z.dll', 'zd.dll',
+    'onnxruntime.dll', 'onnxruntime_providers_shared.dll',
+    'vulkan-1.dll',
+    'wasmtime.dll'
+)
+Copy-Item $exe -Destination $pkg
+$skipped = @()
+Get-ChildItem "$BuildDir\*.dll" | ForEach-Object {
+    if ($dllWhitelist -contains $_.Name) { Copy-Item $_.FullName -Destination $pkg }
+    else { $skipped += $_.Name }
+}
+if ($skipped.Count -gt 0) {
+    Write-Warning ("skipped {0} non-whitelisted DLL(s): {1}" -f $skipped.Count, ($skipped -join ', '))
+}
+$missing = $dllWhitelist | Where-Object { -not (Test-Path (Join-Path $pkg $_)) }
+if ($missing.Count -gt 0) {
+    Write-Warning ("whitelisted DLL(s) MISSING from build dir: {0}" -f ($missing -join ', '))
+}
 $fileCount = (Get-ChildItem $pkg).Count
 
 $zip = Join-Path $OutDir "$name.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path "$pkg\*" -DestinationPath $zip
+
+# --- HARD GATE: zip must contain exactly icmg.exe + the whitelisted DLLs ---
+# (fail-closed so a polluted Release dir or a stale whitelist can never ship)
+$expected = @('icmg.exe') + $dllWhitelist | Sort-Object
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$za = [IO.Compression.ZipFile]::OpenRead($zip)
+try     { $actual = @($za.Entries.Name) | Sort-Object }
+finally { $za.Dispose() }
+$unknown = @($actual   | Where-Object { $expected -notcontains $_ })
+$absent  = @($expected | Where-Object { $actual   -notcontains $_ })
+if ($unknown.Count -gt 0 -or $absent.Count -gt 0) {
+    Remove-Item $zip -Force -ErrorAction SilentlyContinue
+    $msg = "zip content gate FAILED -- zip deleted, nothing to upload."
+    if ($unknown.Count -gt 0) { $msg += " Unknown file(s) in zip: $($unknown -join ', ')." }
+    if ($absent.Count -gt 0)  { $msg += " Missing expected file(s): $($absent -join ', ') (update whitelist if a dep was really removed)." }
+    throw $msg
+}
+Write-Host ("gate:     zip contents verified ({0} files == whitelist)" -f $actual.Count)
 
 $h   = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 $sha = "$zip.sha256"
