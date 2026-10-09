@@ -4,6 +4,60 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.25.0
+
+**Project-scoped daemon pipes — run icmg daemons side by side.** One machine
+can now host several `icmg server` daemons (the dev daemon + one per project,
+e.g. a game-server memory sidecar) by giving each its own pipe name:
+
+```
+icmg server start --pipe icmg-travian
+icmg server exec  --pipe icmg-travian recall "npc reputation" --no-semantic
+```
+
+- **`--pipe <name>`** on every `icmg server` action (start/stop/status/exec);
+  **`ICMG_SERVER_PIPE`** env as fallback. Precedence: flag > env > the
+  `icmg-server` default. Names are validated flat (alnum/`-`/`_`/`.`) so a
+  crafted value cannot escape the pipe namespace (Windows named pipes / unix
+  sockets).
+- Measured through the daemon: ping **81 ms** end-to-end (including client
+  spawn — the pipe round-trip itself is sub-ms), `recall --no-semantic`
+  **153 ms** vs 4.3 s cold semantic recall. Fast enough for NPC-dialogue-pace
+  memory lookups; the per-user auth token still gates every request.
+
+7 new tests. **2504/2504 ✓.**
+
+## v2.24.0
+
+**Landscape pack: grounded memory, honest gaps, real-workload bench, wired
+compression.** Seven deterministic, zero-LLM features from the 2026-09 AI/AGI
+landscape scan (agent-memory, context-compression, repo-view, MCP-security):
+
+- **`memory-health --grounding`** — flags memories citing files the code
+  graph no longer knows (written before a rename/delete); never deletes,
+  noise-controlled (arXiv 2609.11060).
+- **Evicted-vs-missed gap tags** in `memory-health --gaps` — `[missed]` =
+  never held, store it; `[evicted]` = soft-deleted match, `icmg memory
+  restore <id>` (arXiv 2609.08279).
+- **`bench-recall --replay`** — replays `query_history` against the current
+  store: hit-rate, regressed queries, token cost; exits 1 on regressions so
+  CI can gate (arXiv 2609.24971).
+- **Confidence cue** `[score|high/med/low]` on every auto-recall hit
+  (arXiv 2609.24259).
+- **`shrink --kind salience --graph-coherence`** — pulls back dropped lines
+  citing files graph-adjacent to kept citations; opt-in, capped
+  (arXiv 2608.30811).
+- **`graph-skeleton --for <task> --focus`** — task-seed + 1-hop view with
+  seed boost, so sparse seeds aren't drowned by hub files (arXiv 2609.16936).
+- **MCP per-tool call policy** — `ICMG_MCP_DENY` csv + `ICMG_MCP_READONLY=1`
+  enforced at `tools/call` time, denied schemas hidden from `tools/list`;
+  default-off.
+
+Also: Windows zip pollution fixed at the source (`build.ps1` + `pack-win.ps1`
+share one runtime-DLL whitelist, hard zip content gate before upload).
+
+35 new tests. **2497/2497 ✓.**
+
 ## v2.23.0
 
 **Token-killer pack: deep-forget, dangling guard, schemas-on-demand.** Three

@@ -9,6 +9,7 @@
 #include "../../core/registry.hpp"
 #include "../../server/icmg_server.hpp"
 #include "../../server/rpc_protocol.hpp"
+#include "../../server/pipe_name.hpp"      // game-sidecar: project-scoped pipes
 #include "../../core/server_token.hpp"        // v1.68 S2: client auth token
 #include "../../llm/warm_pipe.hpp"
 
@@ -23,13 +24,12 @@ namespace icmg::cli {
 
 namespace {
 
-constexpr const char* kPipeName = "icmg-server";
-
 // Send one request, return response (nullopt if no daemon).
 std::optional<icmg::server::RpcResponse>
 roundTrip(const icmg::server::RpcRequest& req,
+          const std::string& pipe_name,
           std::chrono::milliseconds timeout = std::chrono::milliseconds(2000)) {
-    auto client = icmg::llm::PipeClient::connect(kPipeName, timeout);
+    auto client = icmg::llm::PipeClient::connect(pipe_name, timeout);
     if (!client.has_value()) return std::nullopt;
     // v1.68 S2: attach this user's token so the daemon authorizes the request.
     icmg::server::RpcRequest authed = req;
@@ -57,11 +57,19 @@ public:
             "  stop           Send shutdown to a running daemon\n"
             "  status         Ping the daemon; report up/down\n"
             "  exec <cmd...>  Round-trip one command through the daemon\n\n"
+            "Options:\n"
+            "  --pipe <name>  Pipe name (default icmg-server; env ICMG_SERVER_PIPE).\n"
+            "                 Lets a game/project daemon coexist with the default.\n\n"
             "The daemon holds Config + DBs + Tkil session glossary resident so\n"
             "per-call cold-start (~30 ms) is paid once. Pipe: \\\\.\\pipe\\icmg-server\n";
     }
 
-    int run(const std::vector<std::string>& args) override {
+    int run(const std::vector<std::string>& raw_args) override {
+        // Game-sidecar: resolve project-scoped pipe name, strip --pipe flag.
+        auto resolved = icmg::server::resolvePipeName(raw_args);
+        const std::string& pipe_name = resolved.name;
+        const std::vector<std::string>& args = resolved.args;
+
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         const std::string& action = args[0];
 
@@ -72,23 +80,23 @@ public:
             {
                 icmg::server::RpcRequest ping;
                 ping.cmd = "ping";
-                auto up = roundTrip(ping, std::chrono::milliseconds(500));
+                auto up = roundTrip(ping, pipe_name, std::chrono::milliseconds(500));
                 if (up.has_value() && up->ok) {
                     std::cerr << "icmg server: already running — refusing "
                                  "second instance (use `icmg server stop` first)\n";
                     return 1;
                 }
             }
-            std::cerr << "icmg server: starting (pipe \\\\.\\pipe\\" << kPipeName
+            std::cerr << "icmg server: starting (pipe \\\\.\\pipe\\" << pipe_name
                       << ") — Ctrl-C or `icmg server stop` to exit\n";
-            icmg::server::IcmgServer srv(kPipeName);
+            icmg::server::IcmgServer srv(pipe_name);
             return srv.run();
         }
 
         if (action == "stop") {
             icmg::server::RpcRequest req;
             req.cmd = "shutdown";
-            auto res = roundTrip(req);
+            auto res = roundTrip(req, pipe_name);
             if (!res.has_value()) {
                 std::cout << "icmg server: not running (no pipe)\n";
                 return 1;
@@ -100,7 +108,7 @@ public:
         if (action == "status") {
             icmg::server::RpcRequest req;
             req.cmd = "ping";
-            auto res = roundTrip(req);
+            auto res = roundTrip(req, pipe_name);
             if (res.has_value() && res->ok) {
                 std::cout << "icmg server: UP\n";
                 return 0;
@@ -119,7 +127,7 @@ public:
             req.args.assign(args.begin() + 2, args.end());
             if (const char* sid = std::getenv("CLAUDE_SESSION_ID"); sid && *sid)
                 req.session_id = sid;
-            auto res = roundTrip(req, std::chrono::milliseconds(60000));
+            auto res = roundTrip(req, pipe_name, std::chrono::milliseconds(60000));
             if (!res.has_value()) {
                 std::cerr << "icmg server: not running — start with "
                              "`icmg server start`\n";

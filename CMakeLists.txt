@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.24.0 LANGUAGES CXX C)
+project(icmg VERSION 2.25.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -707,6 +707,7 @@ add_icmg_test(test_session_glossary tests/tkil/test_session_glossary.cpp)
 add_icmg_test(test_ultra_pipeline tests/tkil/test_ultra_pipeline.cpp)
 add_icmg_test(test_rpc_protocol tests/server/test_rpc_protocol.cpp)
 add_icmg_test(test_daemon_lifecycle tests/server/test_daemon_lifecycle.cpp)    # v1.56 T1-stage2  # v1.21.5 (TDD: F3)
+add_icmg_test(test_pipe_name tests/server/test_pipe_name.cpp)                  # game-sidecar: project-scoped daemon pipe
 add_icmg_test(test_layout_extractor tests/style_clone/test_layout_extractor.cpp)  # v1.22.0 (SC3)
 add_icmg_test(test_db           tests/core/test_db.cpp)
 add_icmg_test(test_db_prepared  tests/core/test_db_prepared.cpp)
