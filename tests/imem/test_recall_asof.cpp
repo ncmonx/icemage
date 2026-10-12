@@ -54,22 +54,28 @@ TEST("asof: fact not yet valid at T is invisible") {
 
 // 3. An invalidated fact IS visible as-of a time BEFORE invalidation --
 //    the whole point of time travel: what did we believe back then?
+//    Timestamps are pinned via SQL: nowEpoch() is second-resolution, so on a
+//    fast machine store+invalidate land in the SAME second (valid_from ==
+//    invalidated_at -> the old fact "lived 0 seconds") and a wall-clock-based
+//    assertion is a coin flip. Found 2026-10-12 (failed 5/5 on fast box).
 TEST("asof: superseded fact visible before invalidation, hidden after") {
     icmg::core::Db db(":memory:"); baseSchema(db);
     MemoryStore ms(db);
     MemoryNode a; a.topic = "db"; a.content = "server uses MySQL";
     int64_t old_id = ms.store(a, true);
-    int64_t vf = ms.get(old_id).valid_from;
     MemoryNode b; b.topic = "db"; b.content = "server uses Postgres now";
     int64_t new_id = ms.store(b, true);
     ASSERT_TRUE(ms.invalidate(old_id, new_id));
-    int64_t inv_at = ms.get(old_id).invalidated_at;
-    ASSERT_TRUE(inv_at > 0);
+    ASSERT_TRUE(ms.get(old_id).invalidated_at > 0);
+    // Pin a deterministic timeline: old valid 1000.., new valid 2000..,
+    // old invalidated at 3000.
+    db.run("UPDATE memory_nodes SET valid_from=1000, invalidated_at=3000 WHERE id=" + std::to_string(old_id));
+    db.run("UPDATE memory_nodes SET valid_from=2000 WHERE id=" + std::to_string(new_id));
     // BEFORE invalidation: old fact was the truth.
-    auto before = ms.allAsOf(inv_at - 1 < vf ? vf : inv_at - 1);
+    auto before = ms.allAsOf(2999);
     ASSERT_TRUE(hasId(before, old_id));
     // AFTER invalidation: old fact hidden (current behavior == all()).
-    auto after = ms.allAsOf(inv_at + 10);
+    auto after = ms.allAsOf(3010);
     ASSERT_TRUE(!hasId(after, old_id));
     ASSERT_TRUE(hasId(after, new_id));
 }
@@ -87,7 +93,7 @@ TEST("asof: soft-deleted node stays hidden at any T") {
 }
 
 // 5. recallAsOf ranks within the as-of corpus (BM25) -- a superseded fact is
-//    retrievable by query at a past T.
+//    retrievable by query at a past T. Timeline pinned via SQL (see test 3).
 TEST("asof: recallAsOf finds superseded fact at past T") {
     icmg::core::Db db(":memory:"); baseSchema(db);
     MemoryStore ms(db);
@@ -96,10 +102,11 @@ TEST("asof: recallAsOf finds superseded fact at past T") {
     MemoryNode b; b.topic = "db"; b.content = "server uses Postgres for auth";
     int64_t new_id = ms.store(b, true);
     ms.invalidate(old_id, new_id);
-    int64_t inv_at = ms.get(old_id).invalidated_at;
-    auto past = ms.recallAsOf("MySQL auth", inv_at - 1, 5);
+    db.run("UPDATE memory_nodes SET valid_from=1000, invalidated_at=3000 WHERE id=" + std::to_string(old_id));
+    db.run("UPDATE memory_nodes SET valid_from=2000 WHERE id=" + std::to_string(new_id));
+    auto past = ms.recallAsOf("MySQL auth", 2999, 5);
     ASSERT_TRUE(hasId(past, old_id));
-    auto now_v = ms.recallAsOf("MySQL auth", inv_at + 10, 5);
+    auto now_v = ms.recallAsOf("MySQL auth", 3010, 5);
     ASSERT_TRUE(!hasId(now_v, old_id));
 }
 

@@ -4,6 +4,32 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.25.1
+
+**Sentinel standby disk-IO loop killed.** Found via Task Manager: two icmg
+processes writing ~25 MB/s while the machine was idle. Root cause was a
+self-defeating reaction loop: the `disk` check's auto-prune (`backup prune
+--keep-hourly 12 --keep-daily 3`) keeps ~15 DB-sized snapshots, so a project
+with a large DB can never fall below `disk_mb_max` — the WARN re-fired its
+prune + a 2× full mirror sync every scheduled run, forever. On top of that,
+several live sessions each ran sentinel within the same minute (no
+cross-session gate existed).
+
+- **New per-project guard** (`.icmg/sentinel-guard.json`, pure logic in
+  `src/cli/sentinel_guard.hpp`):
+  - **Run dedup gate** — a sentinel run is skipped when the previous run in
+    the same project was < 300 s ago (`--force` bypasses). Kills the
+    multi-session RUN storm.
+  - **Ineffective-reaction suppression** — disk / snapshot_age / mirror
+    reactions now re-measure after acting; after 2 consecutive reactions that
+    did NOT clear the condition, the reaction is suppressed (status still
+    reported WARN with a hint) until the check recovers or thresholds change.
+- **Flaky bi-temporal tests pinned** — 2 `asof` tests relied on wall-clock
+  seconds advancing between store and invalidate (second-resolution
+  timestamps); timelines are now pinned via SQL, deterministic on any box.
+
+13 new tests. **2517/2517 ✓.**
+
 ## v2.25.0
 
 **Project-scoped daemon pipes — run icmg daemons side by side.** One machine

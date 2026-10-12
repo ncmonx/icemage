@@ -24,6 +24,7 @@
 //   repair_loop    repair-counter <3/h               → halt auto-react
 
 #include "../base_command.hpp"
+#include "../sentinel_guard.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/path_utils.hpp"
 #include "../../core/exec_utils.hpp"
@@ -59,8 +60,9 @@ public:
         std::cout <<
             "Usage: icmg sentinel <subcommand> [options]\n\n"
             "Subcommands:\n"
-            "  run [--dry-run] [--json] [--quiet]\n"
+            "  run [--dry-run] [--json] [--quiet] [--force]\n"
             "                              Single check + auto-react\n"
+            "                              (--force: bypass 5m same-project run gate)\n"
             "  status                       Last-run summary\n"
             "  thresholds [--disk-mb N --cache-rows N --audit-mb N\n"
             "              --snap-age-h N --mirror-age-m N]\n"
@@ -162,7 +164,36 @@ private:
         bool dry   = hasFlag(args, "--dry-run");
         bool json  = hasFlag(args, "--json");
         bool quiet = hasFlag(args, "--quiet");
+        bool force = hasFlag(args, "--force");
         Thresholds t = loadThresholds();
+
+        // 2026-10-12 IO-loop fix: per-project guard state (run dedup +
+        // ineffective-reaction suppression). Lives in the PROJECT .icmg dir —
+        // the old global sentinel-state.json is shared by every project, so it
+        // can't gate runs without starving other projects.
+        fs::path guard_p = icmgDir() / "sentinel-guard.json";
+        sentinel::GuardState gs;
+        {
+            std::ifstream gf(guard_p);
+            if (gf) {
+                std::string buf((std::istreambuf_iterator<char>(gf)),
+                                std::istreambuf_iterator<char>());
+                gs = sentinel::parseGuardState(buf);
+            }
+        }
+        long long now_ts = (long long)std::time(nullptr);
+        if (!force && !dry &&
+            sentinel::shouldSkipRun(gs.last_run_ts, now_ts, sentinel::kMinRunIntervalS)) {
+            if (json) {
+                std::cout << "{\"skipped\":true,\"reason\":\"ran "
+                          << (now_ts - gs.last_run_ts) << "s ago\"}\n";
+            } else if (!quiet) {
+                std::cout << "icmg sentinel: ran " << (now_ts - gs.last_run_ts)
+                          << "s ago — skipped (gate " << sentinel::kMinRunIntervalS
+                          << "s, --force to override)\n";
+            }
+            return 0;
+        }
 
         // Loop guard: refuse auto-react if repair counter already high.
         core::RepairCounter rc;
@@ -179,13 +210,24 @@ private:
             Result r{"disk", "OK", std::to_string(mb) + "MB", ""};
             if ((int)mb > t.disk_mb_max) {
                 r.status = "WARN";
-                if (can_react && !dry) {
+                if (sentinel::shouldSuppress(gs, "disk")) {
+                    r.action = "suppressed (prune ineffective x"
+                             + std::to_string(gs.ineffective["disk"])
+                             + ") — raise `sentinel thresholds --disk-mb` or prune manually";
+                } else if (can_react && !dry) {
                     core::safeExecShell("icmg backup prune --keep-hourly 12 --keep-daily 3", false, 30000);
                     core::safeExecShell("icmg cache prune", false, 15000);
-                    r.action = "pruned backups + cache"; ++reactions;
+                    uintmax_t mb2 = dirSize(icmgDir()) / 1024 / 1024;
+                    bool still = (int)mb2 > t.disk_mb_max;
+                    sentinel::recordOutcome(gs, "disk", still);
+                    r.action = still ? "pruned backups + cache (still over threshold)"
+                                     : "pruned backups + cache";
+                    ++reactions;
                 } else {
                     r.action = dry ? "would prune" : "blocked (loop guard)";
                 }
+            } else {
+                sentinel::recordOutcome(gs, "disk", false);  // healed — reset
             }
             results.push_back(r);
         }
@@ -205,10 +247,28 @@ private:
             Result r{"snapshot_age", "OK", std::to_string(age_h) + "h", ""};
             if (age_h > t.snap_age_h) {
                 r.status = "WARN";
-                if (can_react && !dry) {
+                if (sentinel::shouldSuppress(gs, "snapshot_age")) {
+                    r.action = "suppressed (snapshot ineffective x"
+                             + std::to_string(gs.ineffective["snapshot_age"]) + ")";
+                } else if (can_react && !dry) {
                     core::safeExecShell("icmg backup snapshot --note sentinel", false, 30000);
+                    // Re-measure: a failed snapshot (disk full, locked DB) must
+                    // not re-fire forever.
+                    std::time_t newest2 = 0;
+                    if (fs::exists(bdir)) {
+                        for (auto& e : fs::directory_iterator(bdir)) {
+                            if (!e.is_regular_file()) continue;
+                            if (e.path().extension() != ".db") continue;
+                            std::time_t mt = mtime(e.path());
+                            if (mt > newest2) newest2 = mt;
+                        }
+                    }
+                    long age2 = newest2 ? (std::time(nullptr) - newest2) / 3600 : 9999;
+                    sentinel::recordOutcome(gs, "snapshot_age", age2 > t.snap_age_h);
                     r.action = "snapshot taken"; ++reactions;
                 } else r.action = dry ? "would snapshot" : "blocked";
+            } else {
+                sentinel::recordOutcome(gs, "snapshot_age", false);
             }
             results.push_back(r);
         }
@@ -223,11 +283,21 @@ private:
                      std::to_string(present) + "/2, " + std::to_string(age_m) + "m", ""};
             if (present < 2 || age_m > t.mirror_age_m) {
                 r.status = "WARN";
-                if (can_react && !dry) {
+                if (sentinel::shouldSuppress(gs, "mirror")) {
+                    r.action = "suppressed (sync ineffective x"
+                             + std::to_string(gs.ineffective["mirror"]) + ")";
+                } else if (can_react && !dry) {
                     core::safeExecShell("icmg mirror sync", false, 30000);
                     if (present < 2) core::safeExecShell("icmg mirror sync", false, 30000);
+                    int present2 = (int)fs::exists(ma) + (int)fs::exists(mb);
+                    std::time_t newest2 = std::max(mtime(ma), mtime(mb));
+                    long age2 = newest2 ? (std::time(nullptr) - newest2) / 60 : 9999;
+                    sentinel::recordOutcome(gs, "mirror",
+                                            present2 < 2 || age2 > t.mirror_age_m);
                     r.action = "synced"; ++reactions;
                 } else r.action = dry ? "would sync" : "blocked";
+            } else {
+                sentinel::recordOutcome(gs, "mirror", false);
             }
             results.push_back(r);
         }
@@ -300,6 +370,14 @@ private:
 
         // Persist state.
         if (!dry) {
+            // Per-project guard (run gate + ineffective-reaction ledger).
+            gs.last_run_ts = now_ts;
+            try {
+                fs::create_directories(guard_p.parent_path());
+                std::ofstream gf(guard_p);
+                gf << sentinel::serializeGuardState(gs) << "\n";
+            } catch (...) {}
+
             fs::create_directories(fs::path(sentinelState()).parent_path());
             std::ofstream f(sentinelState());
             f << "{\"ts\":" << std::time(nullptr)
