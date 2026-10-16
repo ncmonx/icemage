@@ -4,6 +4,25 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.25.3
+
+**`icmg files` no longer dies with system error 1113 on unmappable file
+names.** Scanning a tree containing a name Windows cannot map to the ANSI
+code page (a Cygwin-mangled `C\uF03AUsers...` file, or any CJK name on a
+Latin code page) aborted the whole command: `filename().string()`,
+`extension().string()` and `relative().generic_string()` all convert through
+the ACP and throw.
+
+- **New shared helper `src/core/path_u8.hpp`** — `core::pathU8()` /
+  `pathU8Generic()` convert `fs::path` to UTF-8 and never throw. Replaces the
+  two private copies that lived in `find_cmd.cpp` and `maintain_cmd.cpp`, and
+  every raw `.string()` call site in `files_cmd.cpp`.
+- **Iterator hardening** — the `files` directory walk now advances with
+  `increment(ec)` instead of `++it`, so a single unreadable entry skips
+  instead of aborting the scan.
+
+3 new tests. **2547/2547 ✓.**
+
 ## v2.25.2
 
 **`icmg run` now preserves backslashes and quotes end-to-end.** Arguments

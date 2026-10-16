@@ -31,6 +31,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/exec_utils.hpp"
+#include "../../core/path_u8.hpp"
 #include "../../core/schedule_helper.hpp"
 
 #include <algorithm>
@@ -49,13 +50,10 @@ namespace fs = std::filesystem;
 // fs::path::string() throws system error 1113 on Windows when a filename has
 // chars outside the active code page (e.g. a unicode-named .cab/backup file).
 // recursive_directory_iterator below walks EVERY file under the project root,
-// so one such name aborted the whole `maintain` run. .u8string() yields UTF-8
-// and never throws -- same fix as #35441 (find_cmd.cpp). ASCII dir-name compares
-// downstream are unaffected.
-static inline std::string pathU8(const fs::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
+// so one such name aborted the whole `maintain` run. Same fix as #35441
+// (find_cmd.cpp); the helper now lives in core/path_u8.hpp. ASCII dir-name
+// compares downstream are unaffected.
+using icmg::core::pathU8;
 
 namespace icmg::cli {
 
