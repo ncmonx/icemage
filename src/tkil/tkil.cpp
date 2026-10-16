@@ -361,6 +361,17 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
             return result.exit_code;
         }
 
+        // Benign git notices (CRLF conversion, stale commit-graph) carry no
+        // result info but would trip the WARNING tier and crowd the 3-line
+        // head. Remove them first, and say so on stderr (never silently).
+        if (use_tier) {
+            int hidden = 0;
+            fr.output = icmg::tkil::stripBenignNotices(fr.output, &hidden);
+            if (hidden > 0)
+                std::cerr << "[icmg run] hid " << hidden
+                          << " git line-ending/commit-graph notice(s)\n";
+        }
+
         // Classify the FULL output first (tier is a property of the result).
         icmg::tkil::OutputTier tier =
             use_tier ? icmg::tkil::classifyTier(result.exit_code, fr.output)

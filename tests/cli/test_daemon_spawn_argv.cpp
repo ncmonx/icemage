@@ -1,4 +1,4 @@
-// Regression test (2026-07-10, diagnosed with Cahyo): RuleDaemonClient::
+// Regression test (2026-07-10, diagnosed live): RuleDaemonClient::
 // ensureDaemon() used to spawn the background daemon via safeExecShell()
 // with a Windows cmd.exe-specific command string:
 //   "start /b icmg rule-daemon start >nul 2>nul"

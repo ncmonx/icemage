@@ -2,7 +2,7 @@
 // token_ledger.hpp — REAL Anthropic API token ledger (Gap #3).
 //
 // Every API response carries a `usage` block (input / output / cache-read /
-// cache-creation tokens). The GUI (icemage-code AgentLoop) records one row per
+// cache-creation tokens). The companion GUI agent harness records one row per
 // turn through `icmg token-ledger record`; `icmg savings` reads it for an
 // honest meter instead of the filter/denial proxy estimate.
 //

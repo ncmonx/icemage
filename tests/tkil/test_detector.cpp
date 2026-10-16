@@ -184,7 +184,7 @@ TEST("detector: plain (non-wrapped) command unaffected by wrapper unwrap logic")
 // ---- shell-wrapper unwrapping (powershell -File <temp>.ps1) ---------------
 // Root cause (2026-07-08): found while investigating why a sibling project's
 // savings-dashboard still sat at ~33-40% even after the bash -c fix above.
-// The icemage-code agent harness (a DIFFERENT codebase, not icmg) writes the
+// A companion agent harness (a DIFFERENT codebase, not icmg) writes the
 // real command to a temp .ps1 file and runs it via
 // `powershell -NoProfile -ExecutionPolicy Bypass -File <temp>\run.ps1` --
 // same failure shape as bash -c, but the real command is in a FILE, not the

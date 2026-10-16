@@ -9,11 +9,11 @@ TEST("comms_archive: append + read round-trip, never truncates") {
     namespace fs = std::filesystem;
     fs::path p = fs::temp_directory_path() / "icmg_comms_test.jsonl";
     std::error_code ec; fs::remove(p, ec);
-    commsAppend(p.string(), "claudy", "peer", "hai");
-    commsAppend(p.string(), "peer", "claudy", "hai balik");
+    commsAppend(p.string(), "agent-a", "peer", "hai");
+    commsAppend(p.string(), "peer", "agent-a", "hai balik");
     auto rows = commsRead(p.string());
     ASSERT_EQ(rows.size(), (size_t)2);
-    ASSERT_EQ(rows[0].from, std::string("claudy"));
+    ASSERT_EQ(rows[0].from, std::string("agent-a"));
     ASSERT_EQ(rows[1].body, std::string("hai balik"));
     fs::remove(p, ec);
 }

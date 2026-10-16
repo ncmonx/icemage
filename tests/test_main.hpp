@@ -43,6 +43,25 @@ inline void betweenTests();  // declared, defined in mono_main.cpp
 inline void betweenTests() { /* no-op in per-exe mode */ }
 #endif
 
+// Delete "*_test.db" (+ -wal/-shm) in `dir`. Matches on the native (wide on
+// Windows) filename so a name with no ANSI mapping can never throw.
+inline int purgeStaleTestDbs(const std::filesystem::path& dir) {
+    int removed = 0;
+    std::error_code ec;
+    const auto needle = std::filesystem::path("_test.db").native();
+    for (auto it = std::filesystem::directory_iterator(dir, ec);
+         !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+        // By value: filename() returns a temporary, so a reference to its
+        // native() string would dangle.
+        const auto fn = it->path().filename().native();
+        if (fn.find(needle) != std::filesystem::path::string_type::npos) {
+            std::error_code rec;
+            if (std::filesystem::remove(it->path(), rec)) ++removed;
+        }
+    }
+    return removed;
+}
+
 // v1.26.0 (B1): filter-aware run_all. When `filter` non-empty, runs only
 // TEST() cases whose name CONTAINS the filter substring. Single mono test
 // binary (`icmg_test`) dispatches via ctest with --filter <suite-prefix>.
@@ -60,15 +79,11 @@ inline int run_all(const std::string& filter = "") {
     // failures on a second back-to-back run (#30952). Clearing once per run keeps
     // mono-test results deterministic; within-run isolation stays via distinct
     // user_ids per TEST.
-    {
-        std::error_code ec;
-        for (auto it = std::filesystem::directory_iterator(".", ec);
-             !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
-            const std::string fn = it->path().filename().string();
-            if (fn.find("_test.db") != std::string::npos)  // matches .db, -wal, -shm
-                std::filesystem::remove(it->path(), ec);
-        }
-    }
+    // Compare the NATIVE name (wide on Windows): .string() converts to the ANSI
+    // code page and throws system_error 1113 on a name with no mapping (e.g. a
+    // Cygwin-mangled "C\uF03AUsers..." log in the cwd). Uncaught there, that
+    // aborted the whole binary (0xC0000409, bash reports 127) before test #1.
+    purgeStaleTestDbs(".");
     int passed = 0, failed = 0, skipped = 0;
     for (auto& tc : registry()) {
         if (!filter.empty() && tc.name.find(filter) == std::string::npos) {

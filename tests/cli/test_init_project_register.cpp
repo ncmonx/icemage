@@ -28,11 +28,11 @@ static bool projectExists(icmg::core::Db& db, const std::string& name) {
 TEST("init_project_register: insert project registers in global.db") {
     auto db = makeGlobalDb();
     db.run("INSERT INTO projects(name,path,db_path,description) VALUES(?,?,?,?)",
-           {"icemage-code",
-            "D:/Data Kerja/Personal/AI/icemage-code",
-            "D:/Data Kerja/Personal/AI/icemage-code/.icmg/data.db",
+           {"sample-agent",
+            "C:/work/sample-agent",
+            "C:/work/sample-agent/.icmg/data.db",
             "auto-registered by icmg init"});
-    ASSERT_TRUE(projectExists(db, "icemage-code"));
+    ASSERT_TRUE(projectExists(db, "sample-agent"));
 }
 
 TEST("init_project_register: duplicate name is idempotent via INSERT OR REPLACE") {

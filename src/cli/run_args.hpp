@@ -21,18 +21,64 @@ struct RunArgs {
     std::vector<std::string> cmd_args;   // raw (unquoted) child tokens
 };
 
-// Quote a token containing whitespace/quotes so a downstream argv parser can
-// recover the original token (paths with spaces must not fragment).
+// Quote a token containing whitespace/quotes/backslashes so the downstream
+// shell (bash -c on Windows, sh -c on Unix) recovers the original token.
+// wflog #16755: the old version escaped only `"` -- a token holding `\` went
+// through bare, so bash ate one backslash per pair (`a\\b` -> `a\b`,
+// `C:\dir\f` -> `C:dirf`) and a `\"` pair closed the quote early. Same MSYS
+// rule as the companion agent harness quote_arg_msys: escape `\` AND `"`.
 inline std::string runQuoteArg(const std::string& a) {
     if (a.empty()) return "\"\"";
-    if (a.find_first_of(" \t\"") == std::string::npos) return a;
+    if (a.find_first_of(" \t\"\\") == std::string::npos) return a;
     std::string out = "\"";
     for (char c : a) {
-        if (c == '"') out += "\\\"";
-        else          out += c;
+        if (c == '"' || c == '\\') out += '\\';
+        out += c;
     }
     out += "\"";
     return out;
+}
+
+// True when a token is the icmg binary itself (bare name or any path form).
+inline bool isIcmgArgv0(const std::string& t) {
+    std::string s;
+    s.reserve(t.size());
+    for (char c : t) s += (c == '/') ? '\\' : (char)std::tolower((unsigned char)c);
+    auto slash = s.find_last_of('\\');
+    std::string base = (slash == std::string::npos) ? s : s.substr(slash + 1);
+    return base == "icmg" || base == "icmg.exe";
+}
+
+// Strip any leading `icmg run [flags]` wrapper(s) from a verbatim shell line
+// (the single-token form: `icmg run "icmg run ls | grep x"`). Anti-nest
+// guard, wflog #16755: a nested wrapper would spawn icmg-inside-icmg and
+// double-filter the output; the child must run exactly once.
+inline std::string stripNestedRunPrefix(const std::string& line) {
+    std::string s = line;
+    for (;;) {
+        size_t p = s.find_first_not_of(" \t");
+        if (p == std::string::npos) break;
+        auto word_end = [&](size_t from) {
+            size_t e = s.find_first_of(" \t", from);
+            return e == std::string::npos ? s.size() : e;
+        };
+        size_t e1 = word_end(p);
+        if (!isIcmgArgv0(s.substr(p, e1 - p)) || e1 >= s.size()) break;
+        size_t p2 = s.find_first_not_of(" \t", e1);
+        if (p2 == std::string::npos) break;
+        size_t e2 = word_end(p2);
+        if (s.compare(p2, e2 - p2, "run") != 0) break;
+        // Skip the wrapper's own leading flags (and a bare `--`).
+        size_t pos = s.find_first_not_of(" \t", e2);
+        while (pos != std::string::npos && s[pos] == '-') {
+            size_t pe = s.find_first_of(" \t", pos);
+            if (pe == std::string::npos) { pos = std::string::npos; break; }
+            pos = s.find_first_not_of(" \t", pe);
+        }
+        if (pos == std::string::npos) return "";
+        s = s.substr(pos);
+    }
+    return s;
 }
 
 inline RunArgs parseRunArgs(const std::vector<std::string>& args) {
@@ -65,8 +111,28 @@ inline RunArgs parseRunArgs(const std::vector<std::string>& args) {
     // line as one command name ("ls | grep x: command not found"). Multiple
     // tokens are joined with per-token quoting so spaces survive as word
     // boundaries for the downstream shell.
+    // Anti-nest guard (wflog #16755): `icmg run icmg run <cmd>` must unwrap,
+    // not re-wrap -- the inner wrapper's flags are merged and the child runs
+    // exactly once under ONE Tkil filter.
+    if (r.cmd_args.size() >= 2 && isIcmgArgv0(r.cmd_args[0]) && r.cmd_args[1] == "run") {
+        std::vector<std::string> inner(r.cmd_args.begin() + 2, r.cmd_args.end());
+        RunArgs ri  = parseRunArgs(inner);
+        ri.raw      = ri.raw      || r.raw;
+        ri.json_out = ri.json_out || r.json_out;
+        ri.dry_run  = ri.dry_run  || r.dry_run;
+        ri.stream   = ri.stream   || r.stream;
+        ri.yes      = ri.yes      || r.yes;
+        ri.ultra    = ri.ultra    || r.ultra;
+        ri.no_delta = ri.no_delta || r.no_delta;
+        ri.last_full= ri.last_full|| r.last_full;
+        ri.no_tier  = ri.no_tier  || r.no_tier;
+        ri.nano     = ri.nano     || r.nano;
+        ri.gist     = ri.gist     || r.gist;
+        return ri;
+    }
+
     if (r.cmd_args.size() == 1) {
-        r.command = r.cmd_args[0];
+        r.command = stripNestedRunPrefix(r.cmd_args[0]);
     } else {
         for (const auto& a : r.cmd_args) {
             if (!r.command.empty()) r.command += " ";

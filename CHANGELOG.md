@@ -4,6 +4,32 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.25.2
+
+**`icmg run` now preserves backslashes and quotes end-to-end.** Arguments
+containing `\` or `"` (Windows paths, JSON payloads, regexes) used to arrive
+mangled in the child process — backslashes doubled or quotes eaten depending
+on which spawn path the command took.
+
+- **MSYS-aware child quoting** (`src/core/msys_quote.hpp`) — commands routed
+  through bash get quoted for MSYS argument parsing, not MSVCRT rules.
+- **Env-passthrough eval** — the command line travels to bash verbatim in
+  `ICMG_BASH_CMD` and is `eval`-ed there, so no quoting layer can corrupt it.
+- **`parseArgv` now exactly inverts the quoting** on the direct-spawn path:
+  `\\` collapses to `\` only inside double quotes, so round-trips are exact
+  while bare UNC paths (`\\server\share`) stay literal.
+- **Nested `icmg run icmg run ...` is stripped to one level** — no more
+  accidental double-filtering or recursive spawns.
+- **Git noise filtered** — CRLF and commit-graph notices no longer crowd out
+  the real output in the tier summary.
+- **`icmg.exe` keeps its icon** — test builds no longer strip `icmg.rc` from
+  the shared build graph, and build/install now refuse an exe without icon +
+  version resources.
+- **`icmg_test` exit-127 fix** — the test harness no longer aborts when the
+  working folder holds a file name Windows cannot map to the ANSI code page.
+
+27 new tests. **2544/2544 ✓.**
+
 ## v2.25.1
 
 **Sentinel standby disk-IO loop killed.** Found via Task Manager: two icmg
@@ -37,8 +63,8 @@ can now host several `icmg server` daemons (the dev daemon + one per project,
 e.g. a game-server memory sidecar) by giving each its own pipe name:
 
 ```
-icmg server start --pipe icmg-travian
-icmg server exec  --pipe icmg-travian recall "npc reputation" --no-semantic
+icmg server start --pipe icmg-gameserver
+icmg server exec  --pipe icmg-gameserver recall "npc reputation" --no-semantic
 ```
 
 - **`--pipe <name>`** on every `icmg server` action (start/stop/status/exec);
@@ -316,7 +342,7 @@ research, closed: Office ingest (`.docx`/`.xlsx`), audio/video transcription
 
 ## v2.15.2
 
-**Search-accuracy hardening part 2: 2 more root-cause fixes (found by continuing the v2.15.1 telemetry investigation), plus a stale-headline-numbers correction.** (1) After fixing the `bash -c` shell-wrapper misclassification in v2.15.1, a sibling project's savings-dashboard baseline still sat at only ~33-40%. Root cause: the icemage-code agent harness (a separate codebase) also wraps commands as `powershell -NoProfile -ExecutionPolicy Bypass -File <temp>\run.ps1`, writing the real command into a temp script file rather than the command string itself — `Detector::detect()` never unwrapped this shape either (3511 production invocations, 12.7MB raw, only ~38% filtered). Fixed with a best-effort read of the script's content at classification time (safe: `detect()` runs before execution, so the script is normally still on disk; degrades silently to `Default` if the file is gone). (2) Continuing the same investigation past the wrapper fixes (baseline still ~42%) found `GitFilter`'s commit-hash regex required an 8-40 char hex prefix, but `git log --oneline` — the overwhelmingly common default — prints Git's own 7-char short hash, so the regex never matched and the "cap at 30 entries" truncation was structurally unreachable (a single `git log --oneline` call emitted 76,551 raw bytes with 0% filtered). Fixed with a one-character regex change (`{8,40}` → `{7,40}`). Both `SearchFilter` and `GitFilter` had **zero prior test coverage** — `GitFilter` now has 3 new tests exercising it through the same `Registry<BaseFilter>` lookup path Tkil itself uses. Also: this release corrects a **long-standing stale headline number** unrelated to the above fixes — the README's CLI-commands badge said "95+" while `grep -c ICMG_REGISTER_COMMAND` shows **200** actually registered (drift predates this session; the GitHub repo "About" description was also updated, both are now part of the standing release docs-sync gate going forward). All TDD, deterministic, zero-LLM. **2298/2298 tests ✓.**
+**Search-accuracy hardening part 2: 2 more root-cause fixes (found by continuing the v2.15.1 telemetry investigation), plus a stale-headline-numbers correction.** (1) After fixing the `bash -c` shell-wrapper misclassification in v2.15.1, a sibling project's savings-dashboard baseline still sat at only ~33-40%. Root cause: a companion agent-harness codebase also wraps commands as `powershell -NoProfile -ExecutionPolicy Bypass -File <temp>\run.ps1`, writing the real command into a temp script file rather than the command string itself — `Detector::detect()` never unwrapped this shape either (3511 production invocations, 12.7MB raw, only ~38% filtered). Fixed with a best-effort read of the script's content at classification time (safe: `detect()` runs before execution, so the script is normally still on disk; degrades silently to `Default` if the file is gone). (2) Continuing the same investigation past the wrapper fixes (baseline still ~42%) found `GitFilter`'s commit-hash regex required an 8-40 char hex prefix, but `git log --oneline` — the overwhelmingly common default — prints Git's own 7-char short hash, so the regex never matched and the "cap at 30 entries" truncation was structurally unreachable (a single `git log --oneline` call emitted 76,551 raw bytes with 0% filtered). Fixed with a one-character regex change (`{8,40}` → `{7,40}`). Both `SearchFilter` and `GitFilter` had **zero prior test coverage** — `GitFilter` now has 3 new tests exercising it through the same `Registry<BaseFilter>` lookup path Tkil itself uses. Also: this release corrects a **long-standing stale headline number** unrelated to the above fixes — the README's CLI-commands badge said "95+" while `grep -c ICMG_REGISTER_COMMAND` shows **200** actually registered (drift predates this session; the GitHub repo "About" description was also updated, both are now part of the standing release docs-sync gate going forward). All TDD, deterministic, zero-LLM. **2298/2298 tests ✓.**
 
 ## v2.15.1
 

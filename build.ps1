@@ -114,6 +114,39 @@ function Protect-VulkanObjs {
 }
 
 
+# -- Icon resource guard ------------------------------------------------------
+# 2026-10-15: icmg.exe shipped with NO icon/version/manifest resources. Cause:
+# -Target test exported ICMG_SKIP_RC=1 (which only gates icmg.rc on the icmg
+# target -- icmg_test never had an .rc), and any cmake regenerate during that
+# test build wrote a build.ninja without icmg.rc, so every later icmg build
+# silently lost its icon. Now: never set it for test, re-configure if the
+# generated graph lost icmg.rc, and fail the build / refuse install when the
+# exe has no RT_GROUP_ICON.
+function Get-IconGroupCount([string]$exe) {
+    if (-not ('IcmgRes' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices;
+public static class IcmgRes {
+  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern IntPtr LoadLibraryEx(string f, IntPtr h, uint fl);
+  [DllImport("kernel32.dll")] static extern bool FreeLibrary(IntPtr h);
+  public delegate bool EnumNameProc(IntPtr h, IntPtr t, IntPtr n, IntPtr p);
+  [DllImport("kernel32.dll")] static extern bool EnumResourceNames(IntPtr h, IntPtr t, EnumNameProc cb, IntPtr p);
+  public static int Count(string f, int type) {
+    IntPtr h = LoadLibraryEx(f, IntPtr.Zero, 0x22); if (h == IntPtr.Zero) return -1;
+    int n = 0; EnumResourceNames(h, (IntPtr)type, (a,b,c,d) => { n++; return true; }, IntPtr.Zero);
+    FreeLibrary(h); return n; }
+}
+"@
+    }
+    return [IcmgRes]::Count($exe, 14)   # 14 = RT_GROUP_ICON
+}
+
+function Test-NinjaHasRc {
+    $ninja = Join-Path $BuildDir 'build.ninja'
+    if (-not (Test-Path $ninja)) { return $true }   # fresh configure will add it
+    return [bool](Select-String -Path $ninja -Pattern 'icmg.rc' -SimpleMatch -Quiet)
+}
+
 # -- Install live bin (rename-kill-replace) ----------------------------------
 # Windows cannot overwrite an exe that is open. Safe sequence:
 #   1. Rename old -> .old  (NTFS allows rename on open handle)
@@ -124,6 +157,10 @@ function Install-LiveBin([string]$src) {
     $dest = "$env:USERPROFILE\bin\icmg.exe"
     $old  = "$env:USERPROFILE\bin\icmg.exe.old"
     if (-not (Test-Path (Split-Path $dest))) { return }
+    if ((Get-IconGroupCount $src) -lt 1) {
+        logline "[install] REFUSED: $src has no icon resource -- not replacing the live exe"
+        return
+    }
 
     if (Test-Path $dest) {
         if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue }
@@ -163,11 +200,17 @@ logline "cl: $cl"
 # configure if needed (uses $BuildDir on C:\)
 logline "build dir: $BuildDir"
 New-Item -ItemType Directory -Force $BuildDir | Out-Null
-# v1.79: for the test target, skip RC/manifest-embed at CONFIGURE time. The
-# mt.exe manifest-embed reopens the 33MB icmg_test.exe post-link, racing
-# Defender's real-time scan -> LNK1104. icmg_test needs no manifest. The ship
-# binary (-Target icmg) keeps its manifest (B:/ SxS popup fix).
-if ($Target -eq 'test') { $env:ICMG_SKIP_RC = '1' }
+# v1.79 skipped RC for -Target test to dodge the mt.exe manifest embed racing
+# Defender on the 33MB icmg_test.exe (LNK1104). Since 2026-10-15 that is done
+# by /MANIFEST:NO on icmg_test in CMakeLists.txt, so RC stays on for the ship
+# exe (icon + manifest, B:/ SxS popup fix) no matter which target ran last.
+# (ICMG_SKIP_RC is no longer exported for -Target test: it only gates icmg.rc,
+# and a regenerate under it dropped the icon from every later icmg build.)
+Remove-Item Env:ICMG_SKIP_RC -ErrorAction SilentlyContinue
+if ($Target -in 'icmg','both' -and -not (Test-NinjaHasRc)) {
+    logline '[icon-guard] build.ninja lost icmg.rc -- forcing re-configure'
+    $Reconfigure = $true
+}
 if ($Reconfigure -or -not (Test-Path "$BuildDir\CMakeCache.txt")) {
     logline '--- cmake configure (preset msvc-release) ---'
     # Override binaryDir to C:\icmg-build\build-msvc-full
@@ -183,10 +226,15 @@ if ($Target -in 'icmg','both') {
     logline '--- build icmg ---'
     $RC1 = Invoke-Build "cmake --build `"$BuildDir`" --target icmg --config Release --parallel $Jobs"
     logline "--- icmg rc=$RC1 ---"
+    if ($RC1 -eq 0) {
+        $built = if (Test-Path "$BuildDir\Release\icmg.exe") { "$BuildDir\Release\icmg.exe" } else { "$BuildDir\icmg.exe" }
+        $icons = Get-IconGroupCount $built
+        logline "[icon-guard] icmg.exe RT_GROUP_ICON=$icons"
+        if ($icons -lt 1) { logline '!!! icmg.exe has no icon resource'; $RC1 = 3 }
+    }
 }
 if ($Target -in 'test','both') {
     logline '--- build icmg_test ---'
-    $env:ICMG_SKIP_RC = '1'
     $RC2 = Invoke-Build "cmake --build `"$BuildDir`" --target icmg_test --config Release --parallel $Jobs"
     logline "--- icmg_test rc=$RC2 ---"
 }
@@ -238,7 +286,7 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
         }
     }
     if (Test-Path $instBin) {
-        # WHITELIST ONLY (2026-09-23, Cahyo-approved): ~/bin is a mixed PATH dir
+        # WHITELIST ONLY (2026-09-23): ~/bin is a mixed PATH dir
         # (other projects publish there too -- IDBE .NET DLLs live in it). The
         # old copy-everything layered 38 foreign DLLs into Release, which
         # pack-win.ps1 then shipped in the v2.23.0 zip. Same 22-DLL whitelist
@@ -265,7 +313,7 @@ if ($Target -in 'icmg','both' -and $RC1 -eq 0 -and (Test-Path $exeSrc)) {
         Copy-Item -Destination $relDir -Force
     $dllCount = (Get-ChildItem "$relDir\*.dll" -ErrorAction SilentlyContinue).Count
     logline "copied $dllCount runtime DLL(s) next to exe"
-    # 2026-07-07 (Cahyo): stopped auto-installing to the live ~/bin on every
+    # 2026-07-07: stopped auto-installing to the live ~/bin on every
     # build. Install-LiveBin kills any running icmg.exe first -- but other
     # sessions/tools may have their OWN icmg.exe running, and Stop-Process
     # against those fails with Access Denied (owned by a different session),

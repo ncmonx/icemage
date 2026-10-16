@@ -1,6 +1,6 @@
 // Game-sidecar pilot: project-scoped daemon pipe names.
 //
-// `icmg server --pipe <name>` lets a game project (e.g. ice-travian) run its
+// `icmg server --pipe <name>` lets a game project run its
 // own daemon beside the default dev daemon. Precedence:
 //   --pipe <name> flag  >  ICMG_SERVER_PIPE env  >  "icmg-server" default.
 // resolvePipeName() is a pure arg-parser: it extracts/strips the flag and
@@ -46,9 +46,9 @@ TEST("pipe name: default when no flag and no env") {
 }
 
 TEST("pipe name: --pipe flag wins and is stripped from args") {
-    std::vector<std::string> args = {"start", "--pipe", "icmg-travian"};
+    std::vector<std::string> args = {"start", "--pipe", "icmg-gameserver"};
     auto r = resolvePipeName(args);
-    ASSERT_EQ(r.name, std::string("icmg-travian"));
+    ASSERT_EQ(r.name, std::string("icmg-gameserver"));
     ASSERT_EQ(r.args.size(), 1u);
     ASSERT_EQ(r.args[0], std::string("start"));
 }

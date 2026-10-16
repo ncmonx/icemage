@@ -10,12 +10,12 @@ static bool has(const std::vector<std::string>& v, const std::string& x) {
 }
 
 TEST("entity: extracts url / ip / env / mention") {
-    auto e = extractEntities("see https://example.com/x at 10.0.0.5 set $HOME and %PATH% ask @cahyo");
+    auto e = extractEntities("see https://example.com/x at 10.0.0.5 set $HOME and %PATH% ask @alice");
     ASSERT_TRUE(has(e, "url:https://example.com/x"));
     ASSERT_TRUE(has(e, "ip:10.0.0.5"));
     ASSERT_TRUE(has(e, "env:HOME"));
     ASSERT_TRUE(has(e, "env:PATH"));
-    ASSERT_TRUE(has(e, "mention:cahyo"));
+    ASSERT_TRUE(has(e, "mention:alice"));
 }
 
 TEST("entity: dedups repeats") {

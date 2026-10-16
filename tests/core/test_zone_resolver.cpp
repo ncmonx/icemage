@@ -48,8 +48,8 @@ TEST("zone resolver: windows absolute path matches relative glob") {
     z.addRule("cli", "src/cli/**");
     z.addRule("core", "src/core/**");
     // Absolute paths as stored on Windows — must resolve to correct zone
-    ASSERT_EQ(z.resolveForPath("D:\\Data Kerja\\proj\\src\\cli\\commands\\foo.cpp"), std::string("cli"));
-    ASSERT_EQ(z.resolveForPath("D:/Data Kerja/proj/src/core/db.cpp"), std::string("core"));
+    ASSERT_EQ(z.resolveForPath("D:\\My Projects\\proj\\src\\cli\\commands\\foo.cpp"), std::string("cli"));
+    ASSERT_EQ(z.resolveForPath("D:/My Projects/proj/src/core/db.cpp"), std::string("core"));
     ASSERT_EQ(z.resolveForPath("D:/proj/src/other/baz.cpp"), std::string("default"));
 }
 

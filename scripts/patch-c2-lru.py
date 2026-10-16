@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """v1.45.0 C2 LRU cache patch for graph_store.cpp."""
 import sys
-pc = 'D:/Data Kerja/Personal/AI/icm-graph/src/graph/graph_store.cpp'
+pc = 'src/graph/graph_store.cpp'
 with open(pc, 'rb') as f:
     s = f.read()
 

@@ -4,7 +4,7 @@ $pkg = "C:\temp\icmg-pkg-$ver"
 if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
 New-Item -ItemType Directory -Path $pkg | Out-Null
 
-$buildDir = "D:\Data Kerja\Personal\AI\icm-graph\build-msvc-full"
+$buildDir = "$PSScriptRoot\..\build-msvc-full"
 Copy-Item "$buildDir\icmg.exe" $pkg
 # llama+ggml DLLs in bin/ subdir
 foreach ($d in @('llama.dll','ggml.dll','ggml-base.dll','ggml-cpu.dll','ggml-vulkan.dll')) {
@@ -17,7 +17,7 @@ foreach ($d in @('onnxruntime.dll','onnxruntime_providers_shared.dll')) {
 # Vulkan loader from system
 if (Test-Path 'C:\Windows\System32\vulkan-1.dll') { Copy-Item 'C:\Windows\System32\vulkan-1.dll' $pkg }
 
-$zip = "D:\Data Kerja\Personal\AI\icm-graph\icmg-$ver-win-x64.zip"
+$zip = "$PSScriptRoot\..\icmg-$ver-win-x64.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path "$pkg\*" -DestinationPath $zip
 $h = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()

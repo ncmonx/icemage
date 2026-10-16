@@ -5,7 +5,7 @@ REM
 REM Procedure: dumpbin /exports → parse → write .def → lib /def /out:.lib
 setlocal
 call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvars64.bat" >nul
-cd /d "D:\Data Kerja\Personal\AI\icm-graph\third_party\onnxruntime\lib"
+cd /d "%~dp0..\..\third_party\onnxruntime\lib"
 
 echo ==^> Extracting exports from onnxruntime.dll ...
 dumpbin /exports onnxruntime.dll > onnxruntime.exports.txt

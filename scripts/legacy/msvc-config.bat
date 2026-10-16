@@ -1,7 +1,7 @@
 @echo off
 setlocal
 call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvars64.bat" >nul
-cd /d "D:\Data Kerja\Personal\AI\icm-graph"
+cd /d "%~dp0..\.."
 REM v1.41.x build speed: do NOT wipe build-msvc by default — cmake handles
 REM delta config. Pass FRESH=1 to force wipe when toolchain/flags change:
 REM   set FRESH=1 && scripts\msvc-config.bat
