@@ -323,8 +323,8 @@ private:
     // ---- helpers ---------------------------------------------------------
     // Convert cwd into Claude project-dir encoding: replace each ':', '\',
     // '/' or ' ' with '-'. Example:
-    //   D:\Data Kerja\Personal\AI\icm-graph
-    //   → D--Data-Kerja-Personal-AI-icm-graph
+    //   D:\My Projects\icemage
+    //   → D--My-Projects-icemage
     // v1.9.0: detect current OS user (USERNAME on Win, USER on POSIX).
     static std::string currentUser() {
         const char* u = std::getenv("USERNAME");

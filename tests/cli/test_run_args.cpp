@@ -132,3 +132,56 @@ TEST("inline-yes: no prefix -> false") {
     ASSERT_FALSE(hasInlineYesPrefix({"FOO=1", "rm", "-rf", "x"}));   // unrelated var
     ASSERT_FALSE(hasInlineYesPrefix({"ICMG_ASSUME_YES=0", "rm", "x"}));
 }
+
+// ---------------------------------------------------------------------------
+// wflog #16755 (2026-10-16): `icmg run` spawned bash with the OLD quoting --
+// runQuoteArg escaped only `"`, so a token holding `\` went through unquoted
+// (bash ate one backslash per pair: `a\\b` -> `a\b`, `C:\dir\f` -> `C:dirf`)
+// and a `\"` pair re-opened/closed the quote early. Must follow the same MSYS
+// rule as the companion agent harness quote_arg_msys: escape `\` AND `"`.
+// Plus: anti-nest guard -- `icmg run icmg run <cmd>` must unwrap, not re-wrap.
+// ---------------------------------------------------------------------------
+using icmg::cli::runQuoteArg;
+
+TEST("quote-msys: backslash token is quoted + backslash-escaped") {
+    // token a\\b (two literal backslashes) -> "a\\\\b"
+    ASSERT_EQ(runQuoteArg("a\\\\b"), std::string("\"a\\\\\\\\b\""));
+}
+TEST("quote-msys: backslash+quote pair does not close the quote early") {
+    // token say\"hi -> "say\\\"hi"
+    ASSERT_EQ(runQuoteArg("say\\\"hi"), std::string("\"say\\\\\\\"hi\""));
+}
+TEST("quote-msys: windows path keeps its backslashes through bash -c") {
+    auto r = parseRunArgs({"type", "C:\\dir\\file.txt"});
+    ASSERT_CONTAINS(r.command, "\"C:\\\\dir\\\\file.txt\"");
+}
+TEST("quote-msys: plain token still unquoted (no churn)") {
+    ASSERT_EQ(runQuoteArg("abc"), std::string("abc"));
+    ASSERT_EQ(runQuoteArg("hello world"), std::string("\"hello world\""));
+}
+
+TEST("anti-nest: `icmg run <cmd>` argv is unwrapped") {
+    auto r = parseRunArgs({"icmg", "run", "echo", "hi"});
+    ASSERT_EQ(r.command, std::string("echo hi"));
+}
+TEST("anti-nest: inner icmg-run flags are merged, not executed") {
+    auto r = parseRunArgs({"icmg", "run", "--raw", "echo", "hi"});
+    ASSERT_TRUE(r.raw);
+    ASSERT_EQ(r.command, std::string("echo hi"));
+}
+TEST("anti-nest: doubly nested unwraps fully") {
+    auto r = parseRunArgs({"icmg", "run", "icmg", "run", "echo", "hi"});
+    ASSERT_EQ(r.command, std::string("echo hi"));
+}
+TEST("anti-nest: full-path icmg.exe wrapper also unwrapped") {
+    auto r = parseRunArgs({"C:\\bin\\icmg.exe", "run", "echo", "hi"});
+    ASSERT_EQ(r.command, std::string("echo hi"));
+}
+TEST("anti-nest: single-token nested shell line loses the wrapper") {
+    auto r = parseRunArgs({"icmg run ls | grep x"});
+    ASSERT_EQ(r.command, std::string("ls | grep x"));
+}
+TEST("anti-nest: other icmg subcommands are NOT unwrapped") {
+    auto r = parseRunArgs({"icmg", "recall", "x"});
+    ASSERT_EQ(r.command, std::string("icmg recall x"));
+}

@@ -1,4 +1,5 @@
 #include "exec_utils.hpp"
+#include "msys_quote.hpp"
 #include <stdexcept>
 #include <chrono>
 #include <array>
@@ -26,6 +27,32 @@ namespace {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
     }
+
+#ifdef _WIN32
+    // Build an ANSI environment block = current env + NAME=value override.
+    // Used as CreateProcessA lpEnvironment so the override is PER-SPAWN
+    // (thread-safe) instead of mutating the process-global environment.
+    std::string buildEnvBlockWith(const std::string& name, const std::string& value) {
+        std::string block;
+        LPCH envs = GetEnvironmentStringsA();
+        if (envs) {
+            for (LPCH p = envs; *p; p += strlen(p) + 1) {
+                std::string entry(p);
+                auto eq = entry.find('=');
+                if (eq != std::string::npos && eq > 0 &&
+                    _stricmp(entry.substr(0, eq).c_str(), name.c_str()) == 0)
+                    continue;  // drop any existing copy of the override var
+                block += entry;
+                block += '\0';
+            }
+            FreeEnvironmentStringsA(envs);
+        }
+        block += name + "=" + value;
+        block += '\0';
+        block += '\0';  // double-NUL terminator
+        return block;
+    }
+#endif
 }
 
 #ifdef _WIN32
@@ -73,49 +100,12 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
         }
     }
 
-    // Build command line using Windows CommandLineToArgvW-compatible quoting.
-    //
-    // Rules (from Raymond Chen / MSDN):
-    //   - Backslashes are literal UNLESS followed by a double-quote.
-    //   - 2N backslashes before a literal " → N backslashes + escaped "
-    //   - 2N+1 backslashes before a literal " → N backslashes + opening/closing "
-    //   - Trailing backslashes in a quoted arg must be doubled.
-    std::string cmd;
-    for (size_t i = 0; i < argv.size(); ++i) {
-        if (i) cmd += ' ';
-
-        const std::string& arg = argv[i];
-        bool needs_quote = arg.empty() ||
-                           arg.find_first_of(" \t\"") != std::string::npos;
-
-        if (!needs_quote) {
-            cmd += arg;
-            continue;
-        }
-
-        cmd += '"';
-        size_t j = 0;
-        while (j < arg.size()) {
-            // Count consecutive backslashes
-            size_t bs_count = 0;
-            while (j < arg.size() && arg[j] == '\\') { ++j; ++bs_count; }
-
-            if (j == arg.size()) {
-                // Trailing backslashes — double them before closing quote
-                for (size_t k = 0; k < bs_count * 2; ++k) cmd += '\\';
-            } else if (arg[j] == '"') {
-                // Backslashes before a quote — double them + escape the quote
-                for (size_t k = 0; k < bs_count * 2 + 1; ++k) cmd += '\\';
-                cmd += '"';
-                ++j;
-            } else {
-                // Ordinary backslashes — literal
-                for (size_t k = 0; k < bs_count; ++k) cmd += '\\';
-                cmd += arg[j++];
-            }
-        }
-        cmd += '"';
-    }
+    // Build the child command line with child-flavor-aware quoting
+    // (wflog #16755): native children get MSVCRT/CommandLineToArgvW rules;
+    // MSYS/Cygwin children (Git Bash usr/bin tools) get MSYS rules, because
+    // they re-split `\\` -> `\` / `\"` -> `"` inside quotes and would lose
+    // one backslash of every MSVCRT-quoted pair. See core/msys_quote.hpp.
+    std::string cmd = buildChildCmdline(argv);
 
     SECURITY_ATTRIBUTES sa{};
     sa.nLength = sizeof(sa);
@@ -354,6 +344,7 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     // (`/c/...`) instead of `C:\...` — yields "CreateProcess failed: 2"
     // even when binary IS on PATH from bash perspective.
     std::string full_cmd;
+    std::string child_env;  // per-spawn env block (wflog #16755); empty = inherit
     if (use_direct) {
         full_cmd = cmd_for_direct;  // direct exec, no shell wrap
     } else {
@@ -390,19 +381,26 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
             // versions, not Windows shadows.
             // Avoid -l (login): would source /etc/profile and OVERRIDE PATH
             // to MSYS-only, breaking tools the user added via Windows install.
-            std::string esc = cmd_line;
-            std::string out;
-            out.reserve(esc.size() + 16);
-            for (char c : esc) {
-                if (c == '"' || c == '\\') out.push_back('\\');
-                out.push_back(c);
-            }
-            // Inject PATH prefix inside bash invocation. Using single-quoted
-            // here-prefix so $PATH expands inside child bash to its inherited
+            // wflog #16755: do NOT embed cmd_line into the raw CreateProcess
+            // string with escaping -- bash.exe re-splits its cmdline with
+            // MSYS rules that do NOT halve `\\` runs, so the old
+            // escape-quote-and-backslash pass DOUBLED every backslash the
+            // caller sent (`C:\dir\f` arrived as `C:\\dir\\f`). Instead pass
+            // the command RAW through the child's environment (byte-exact,
+            // no quoting layer at all) and let bash eval it. The -c payload
+            // is then a CONSTANT containing no backslashes, so it parses the
+            // same under every candidate cmdline rule.
+            // THREAD-SAFETY: build a per-spawn environment BLOCK for
+            // lpEnvironment instead of SetEnvironmentVariableA -- the global
+            // env is process-wide and `icmg parallel` calls this from many
+            // threads at once (race: tasks swapped each other's commands).
+            child_env = buildEnvBlockWith("ICMG_BASH_CMD", cmd_line);
+            // Inject PATH prefix inside bash invocation. Using double-quoted
+            // expansion so $PATH expands inside child bash to its inherited
             // value. No profile load → low latency.
             full_cmd = "\"" + bash_path + "\" -c \""
                        "export PATH=\\\"/usr/bin:/mingw64/bin:$PATH\\\"; "
-                       + out + "\"";
+                       "eval \\\"$ICMG_BASH_CMD\\\"\"";
         } else {
             // Prefer pwsh (PS7+) or powershell (PS5) over cmd.exe on non-MSYS Windows.
             // Enables Select-String, Get-ChildItem, etc. without MSYS install.
@@ -470,8 +468,10 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     // When use_direct: pass app_name as lpApplicationName so Windows skips
     // its path-parsing heuristics (which choke on .dotfolder segments).
     LPCSTR lp_app = use_direct ? app_name.c_str() : nullptr;
+    // Per-spawn env block (bash branch sets ICMG_BASH_CMD); nullptr = inherit.
+    LPVOID lp_env = child_env.empty() ? nullptr : (LPVOID)child_env.data();
     bool ok = CreateProcessA(lp_app, cmdBuf.data(), nullptr, nullptr,
-                              TRUE, CREATE_NO_WINDOW, nullptr, nullptr,
+                              TRUE, CREATE_NO_WINDOW, lp_env, nullptr,
                               &si, &pi);
     CloseHandle(hOutW);
     CloseHandle(hErrW);

@@ -6,11 +6,11 @@ namespace icmg::tkil {
 //
 // Escaping rule: only \" (inside or outside quotes) is treated as an escaped
 // double-quote character.  All other backslashes are literal — this is
-// required so bare Windows paths like D:\Data Kerja\file are not mangled
+// required so bare Windows paths like D:\My Projects\file are not mangled
 // (the \D, \K sequences must NOT be consumed as escape sequences).
 //
 // To pass a path with spaces, wrap it in double quotes:
-//   git add "D:\Data Kerja\my file.cs"
+//   git add "D:\My Projects\my file.cs"
 std::vector<std::string> parseArgv(const std::string& command) {
     std::vector<std::string> argv;
     std::string token;
@@ -19,9 +19,18 @@ std::vector<std::string> parseArgv(const std::string& command) {
     for (size_t i = 0; i < command.size(); ++i) {
         char c = command[i];
 
-        // \" → literal " in all contexts (the only backslash escape we honour)
+        // \" → literal " in all contexts (backslash escape we honour everywhere)
         if (c == '\\' && i + 1 < command.size() && command[i + 1] == '"') {
             token += '"';
+            ++i;
+            continue;
+        }
+
+        // \\ → literal \ ONLY inside double quotes: inverts cli::runQuoteArg so
+        // the argv path round-trips exactly (wflog #16755). Outside quotes a
+        // backslash run stays literal so bare UNC paths (\\server\share) survive.
+        if (quote == '"' && c == '\\' && i + 1 < command.size() && command[i + 1] == '\\') {
+            token += '\\';
             ++i;
             continue;
         }

@@ -90,3 +90,29 @@ TEST("tier: warning summary with few lines shows all, no tail") {
 TEST("tier: empty output exit 0 → SUCCESS") {
     ASSERT_TRUE(classifyTier(0, "") == OutputTier::Success);
 }
+
+// ---------------------------------------------------------------------------
+// T10 (2026-10-15): benign git notices do not trip WARNING and are stripped
+// with a count. Before: "LF will be replaced by CRLF" lines filled the 3-line
+// head and hid the actual diff/status output.
+// ---------------------------------------------------------------------------
+TEST("tier: git CRLF / commit-graph notices are benign") {
+    using icmg::tkil::stripBenignNotices;
+    using icmg::tkil::tierIsBenignNotice;
+    const std::string crlf =
+        "warning: in the working copy of 'src/a.cpp', LF will be replaced by CRLF the next time Git touches it";
+    const std::string cg = "warning: unable to find all commit-graph files";
+    ASSERT_TRUE(tierIsBenignNotice(crlf));
+    ASSERT_TRUE(tierIsBenignNotice(cg));
+    ASSERT_TRUE(!tierIsBenignNotice("warning: unused variable x"));
+    ASSERT_TRUE(!tierIsBenignNotice("note: LF will be replaced by CRLF"));
+
+    const std::string out = crlf + "\r\n" + cg + "\n src/a.cpp | 2 +-\n 1 file changed\n";
+    ASSERT_TRUE(classifyTier(0, out) == OutputTier::Success);
+    int hidden = -1;
+    const std::string kept = stripBenignNotices(out, &hidden);
+    ASSERT_EQ(hidden, 2);
+    ASSERT_TRUE(kept == " src/a.cpp | 2 +-\n 1 file changed\n");
+    // A real warning next to the notices still wins.
+    ASSERT_TRUE(classifyTier(0, out + "warning: deprecated flag\n") == OutputTier::Warning);
+}

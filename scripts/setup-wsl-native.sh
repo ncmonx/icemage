@@ -9,7 +9,7 @@
 # this path + skips rsync staging entirely.
 set -euo pipefail
 
-WIN_REPO="/mnt/d/Data Kerja/Personal/AI/icm-graph"
+WIN_REPO="${WIN_REPO:-/mnt/c/path/to/icemage}"
 NATIVE_DIR="$HOME/icm-graph"
 
 if [[ ! -d "$WIN_REPO/.git" ]]; then

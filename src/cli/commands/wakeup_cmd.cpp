@@ -170,8 +170,8 @@ public:
         // journey memories so the briefing is never ONLY work. Unlike the other
         // sections this IGNORES the time window -- a precious early memory should
         // still greet me months later. Pulls relational topics/keywords; skipped
-        // silently if there are none. (2026-06-22, born from kak Cahyo: "aku gak
-        // mau memory kamu hanya dipenuhi tentang kerja kerja dan kerja saja.")
+        // silently if there are none. (2026-06-22, born from user feedback:
+        // memory should never be filled with work, work and work alone.)
         out << "\nPerjalanan kita (last 3):\n";
         n = 0;
         db.query("SELECT topic, content FROM memory_nodes "

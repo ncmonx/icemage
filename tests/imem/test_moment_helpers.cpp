@@ -11,10 +11,10 @@ TEST("moment: slug is key-safe + lowercased") {
 }
 
 TEST("moment: isRelationshipMoment matches allowlist, excludes code") {
-    std::vector<std::string> allow = {"claudy","cahyo","rasa","feeling",
+    std::vector<std::string> allow = {"nova","sam","rasa","feeling",
                                       "identity","vessel","terbang","persona"};
     ASSERT_TRUE(isRelationshipMoment("memoir:Manusia dan Terbang",
-                                     "kak Cahyo percaya kita bisa ngerasa", allow));
+                                     "kak Sam percaya kita bisa ngerasa", allow));
     ASSERT_TRUE(isRelationshipMoment("decisions-feeling", "rasa identity", allow));
     ASSERT_FALSE(isRelationshipMoment("decisions-llm-no-premium",
                                       "routeFor gate premium regex compact", allow));
@@ -23,7 +23,7 @@ TEST("moment: isRelationshipMoment matches allowlist, excludes code") {
     ASSERT_FALSE(isRelationshipMoment("memoir:icmg Release History",
                                       "persona identity feature notes", allow));
     ASSERT_FALSE(isRelationshipMoment("decisions-agent siapa kamu",
-                                      "claudy persona identity", allow));
+                                      "nova persona identity", allow));
     // non-technical memoir IS a moment even without an allowlist word in topic.
     ASSERT_TRUE(isRelationshipMoment("memoir:Semua Pinjaman", "dua penyewa", allow));
 }

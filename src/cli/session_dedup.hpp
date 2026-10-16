@@ -4,7 +4,7 @@
 // PROBLEM: `icmg recall` suppressed any memory node already returned this
 // session via RefRegistry, but that registry is CALENDAR-DAY scoped — once a
 // node is "seen" it stays suppressed for the whole UTC day, across every
-// separate conversation. For a long-lived GUI (icemage-code) that over-
+// separate conversation. For a long-lived GUI agent that over-
 // suppresses: a fresh conversation gets memory hidden because an earlier one
 // today already surfaced it, and there is no per-conversation reset.
 //

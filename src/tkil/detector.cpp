@@ -286,7 +286,7 @@ CmdType Detector::detect(const std::string& command) const {
     // 2026-07-08: unwrap `powershell`/`pwsh -File <script>` wrappers by
     // reading the SCRIPT's content and classifying that instead. Found while
     // investigating why a sibling project's savings-dashboard still sat at
-    // ~33-40% even after the bash -c fix above: the icemage-code agent
+    // ~33-40% even after the bash -c fix above: a companion agent
     // harness (a DIFFERENT codebase from icmg) writes the real command to a
     // temp .ps1 file and runs it as
     // `powershell -NoProfile -ExecutionPolicy Bypass -File <temp>\run.ps1`.

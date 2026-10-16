@@ -9,12 +9,12 @@ TEST("resume: empty in -> empty out (fresh install adds nothing)") {
 }
 
 TEST("resume: formats identity + moments section") {
-    std::vector<std::pair<std::string,std::string>> id = {{"core","Claudy"},{"roster","kapten=Cahyo"}};
+    std::vector<std::pair<std::string,std::string>> id = {{"core","Aria"},{"roster","kapten=Sam"}};
     std::vector<std::string> mom = {"manusia-terbang","semua-pinjaman"};
     std::string s = resumeSection(id, mom);
     ASSERT_CONTAINS(s, "## Persona / resume");
-    ASSERT_CONTAINS(s, "- core: Claudy");
-    ASSERT_CONTAINS(s, "- roster: kapten=Cahyo");
+    ASSERT_CONTAINS(s, "- core: Aria");
+    ASSERT_CONTAINS(s, "- roster: kapten=Sam");
     ASSERT_CONTAINS(s, "moments: manusia-terbang; semua-pinjaman");
 }
 

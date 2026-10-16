@@ -50,6 +50,43 @@ inline bool tierHasWarnKeyword(const std::string& lower_line) {
     return false;
 }
 
+// Git notices that say "warning" but carry no information about the command's
+// result. On Windows nearly every `git diff` / `git status` / `git add` prints
+// one per touched file ("LF will be replaced by CRLF"), plus "unable to find
+// all commit-graph files" on a stale graph. They tripped the WARNING tier and
+// the 3-line head summary then showed ONLY these notices and cut the real
+// output -- the command had to be re-run (measured twice in one session,
+// 2026-10-15). Matched as whole-notice shapes, never on a bare keyword.
+inline bool tierIsBenignNotice(const std::string& line) {
+    if (line.rfind("warning: ", 0) != 0) return false;
+    const bool crlf = line.find("in the working copy of '") != std::string::npos &&
+                      (line.find("LF will be replaced by CRLF") != std::string::npos ||
+                       line.find("CRLF will be replaced by LF") != std::string::npos);
+    const bool cgraph = line.find("unable to find all commit-graph files") != std::string::npos;
+    return crlf || cgraph;
+}
+
+// Drop benign notices before classification; `hidden` gets the count so the
+// caller can say they were removed (never silently).
+inline std::string stripBenignNotices(const std::string& out, int* hidden = nullptr) {
+    std::string kept;
+    kept.reserve(out.size());
+    int n = 0;
+    std::size_t pos = 0;
+    while (pos < out.size()) {
+        std::size_t nl = out.find('\n', pos);
+        const std::size_t end = nl == std::string::npos ? out.size() : nl + 1;
+        std::string line = out.substr(pos, end - pos);
+        std::string bare = line;
+        while (!bare.empty() && (bare.back() == '\n' || bare.back() == '\r')) bare.pop_back();
+        if (tierIsBenignNotice(bare)) ++n;
+        else kept += line;
+        pos = end;
+    }
+    if (hidden) *hidden = n;
+    return kept;
+}
+
 // Pure classifier: exit_code + full output → tier.
 inline OutputTier classifyTier(int exit_code, const std::string& full_output) {
     if (exit_code != 0) return OutputTier::Error;
@@ -58,6 +95,7 @@ inline OutputTier classifyTier(int exit_code, const std::string& full_output) {
     std::istringstream is(full_output);
     std::string line;
     while (std::getline(is, line)) {
+        if (tierIsBenignNotice(line)) continue;
         std::string lo = tierLower(line);
         if (tierHasErrorKeyword(lo)) return OutputTier::Error; // error wins immediately
         if (tierHasWarnKeyword(lo))  any_warn = true;

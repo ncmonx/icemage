@@ -9,8 +9,8 @@ using namespace icmg::core;
 TEST("service_singleton: Local namespace, per-user") {
     ASSERT_EQ(serviceMutexName("Administrator"),
               std::string("Local\\icmg-service-Administrator"));
-    ASSERT_EQ(serviceMutexName("cahyo"),
-              std::string("Local\\icmg-service-cahyo"));
+    ASSERT_EQ(serviceMutexName("alice"),
+              std::string("Local\\icmg-service-alice"));
 }
 
 TEST("service_singleton: never Global (elevation-required namespace)") {

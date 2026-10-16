@@ -1,5 +1,5 @@
 import sys
-p = 'D:/Data Kerja/Personal/AI/icm-graph/src/cli/commands/savings_cmd.cpp'
+p = 'src/cli/commands/savings_cmd.cpp'
 with open(p, 'rb') as f:
     s = f.read()
 

@@ -1,6 +1,6 @@
 // `icmg token-ledger` — REAL Anthropic API token meter (Gap #3).
 //
-// The GUI (icemage-code AgentLoop) flushes one row per turn:
+// The companion GUI agent harness flushes one row per turn:
 //   icmg token-ledger record --input N --output N --cache-read N
 //                            --cache-creation N [--model M] [--session SID]
 // `show` / `today` / `total` read it back; `icmg savings` also surfaces it as

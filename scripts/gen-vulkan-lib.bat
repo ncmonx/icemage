@@ -4,7 +4,7 @@ REM LunarG SDK skipped — system DLL has all loader exports we need.
 setlocal
 call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvars64.bat" >nul
 
-set OUT_DIR=D:\Data Kerja\Personal\AI\icm-graph\third_party\vulkan-lib
+set OUT_DIR=%~dp0..\third_party\vulkan-lib
 if not exist "%OUT_DIR%" mkdir "%OUT_DIR%"
 cd /d "%OUT_DIR%"
 
