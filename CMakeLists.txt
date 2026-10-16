@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.25.2 LANGUAGES CXX C)
+project(icmg VERSION 2.25.3 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -694,6 +694,7 @@ add_icmg_test(test_recall_index  tests/cli/test_recall_index.cpp)            # 2
 add_icmg_test(test_private_filter tests/cli/test_private_filter.cpp)         # 2026-06-15 <private> redaction
 add_icmg_test(test_wakeup_format  tests/cli/test_wakeup_format.cpp)          # 2026-06-15 wake-up icon legend + token cost
 add_icmg_test(test_harness_purge  tests/cli/test_harness_purge.cpp)          # 2026-10-15 run_all purge must not throw on unmappable names
+add_icmg_test(test_files_cmd_unicode tests/cli/test_files_cmd_unicode.cpp)   # 2026-10-16 icmg files must not throw 1113 on unmappable names
 add_icmg_test(test_store_autokw   tests/cli/test_store_autokw.cpp)           # 2026-06-15 auto-keyword (semantic-title v2)
 add_icmg_test(test_serve_health   tests/cli/test_serve_health.cpp)          # 2026-06-15 serve /api/health probe
 add_icmg_test(test_content_delta  tests/cli/test_content_delta.cpp)         # 2026-06-15 context --diff delta re-read

@@ -12,6 +12,7 @@
 
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/path_u8.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -132,14 +133,17 @@ public:
         std::error_code ec;
         fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
         if (ec) {
-            std::cerr << "icmg files: cannot iterate root: " << root.string()
+            std::cerr << "icmg files: cannot iterate root: " << core::pathU8(root)
                       << " (" << ec.message() << ")\n";
             return 1;
         }
         const fs::recursive_directory_iterator end_it;
-        for (; it != end_it; ++it) {
+        for (; it != end_it; it.increment(ec)) {
+            if (ec) { ec.clear(); continue; }
             std::error_code lec;
-            auto fname = it->path().filename().string();
+            // pathU8: .string() throws error 1113 on Windows for names the
+            // ANSI code page cannot represent (Cygwin-mangled / CJK names).
+            auto fname = core::pathU8(it->path().filename());
             // Skip noise dirs (and stop descending into them).
             if (it->is_directory(lec)
                 && (fname == ".git" || fname == "node_modules" || fname == "build"
@@ -150,11 +154,11 @@ public:
             }
             if (!it->is_regular_file(lec)) continue;
             if (!ext_filters.empty()) {
-                std::string ext = it->path().extension().string();
+                std::string ext = core::pathU8(it->path().extension());
                 if (std::find(ext_filters.begin(), ext_filters.end(), ext) == ext_filters.end())
                     continue;
             }
-            std::string rel = fs::relative(it->path(), root, ec).generic_string();
+            std::string rel = core::pathU8Generic(fs::relative(it->path(), root, ec));
             if (!patterns.empty()) {
                 bool m = false;
                 for (auto& re : patterns) {

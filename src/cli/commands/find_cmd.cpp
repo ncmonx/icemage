@@ -6,6 +6,7 @@
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
+#include "../../core/path_u8.hpp"
 #include "../../graph/graph_store.hpp"
 #include "../../graph/graph_centrality.hpp"
 #include "../find_slices.hpp"
@@ -28,12 +29,9 @@ namespace {
 namespace fs = std::filesystem;
 
 // Convert fs::path -> UTF-8 std::string without throwing on non-ACP names
-// (.string() raises error 1113 for unmappable chars on Windows). Works for
-// both C++17 (u8string -> std::string) and C++20 (u8string -> std::u8string).
-inline std::string pathU8(const fs::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
+// (.string() raises error 1113 for unmappable chars on Windows). Helper now
+// shared in core/path_u8.hpp.
+using icmg::core::pathU8;
 
 bool isSkipDir(const std::string& name) {
     static const std::set<std::string> skip = {
