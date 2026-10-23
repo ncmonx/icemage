@@ -283,7 +283,8 @@ INPUT=$(cat)
 cmd=$(printf '%s' "$INPUT" | icmg hookio get tool_input.command 2>/dev/null)
 # Record EVERY icmg sync sub-command in the (possibly chained / env-prefixed)
 # command line so the Stop-hook ritual gate clears (known-issue #33370).
-icmg ritual saw-line "$cmd" >/dev/null 2>&1 || true
+_sid=$(printf '%s' "$INPUT" | icmg hookio get session_id 2>/dev/null)
+icmg ritual saw-line "$cmd" ${_sid:+--session "$_sid"} >/dev/null 2>&1 || true
 # discipline + recall-gate operate on the first real sub (strip VAR= prefixes).
 _c="$cmd"
 while [[ "$_c" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]] ]]; do _c="${_c#* }"; done
@@ -766,7 +767,9 @@ static const char* GRAPH_UPDATE_SH = R"BASH(#!/usr/bin/env bash
 command -v icmg >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
 printf '%s' "$INPUT" | icmg hook posttooluse-edit 2>/dev/null || true
-[[ "${ICMG_NO_RITUAL_GATE:-0}" = "1" ]] || icmg ritual touch >/dev/null 2>&1 || true
+# Per-session ritual state (bug:ritual-gate-false-positive): key by hook session_id.
+_sid=$(printf '%s' "$INPUT" | icmg hookio get session_id 2>/dev/null)
+[[ "${ICMG_NO_RITUAL_GATE:-0}" = "1" ]] || icmg ritual touch ${_sid:+--session "$_sid"} >/dev/null 2>&1 || true
 exit 0
 )BASH";
 

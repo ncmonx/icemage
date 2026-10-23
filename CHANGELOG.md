@@ -4,6 +4,22 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.25.4
+
+**Ritual gate no longer blocks innocent parallel sessions.** The sync-ritual
+state file was ONE per project (`.icmg/ritual.state`), so every concurrent
+agent session in the same folder shared the edit counter: session B with zero
+edits got blocked at Stop because session A had edited.
+
+- **Per-session state key** (`src/cli/ritual_gate.hpp`) — the gate state file
+  is now keyed per session. Key priority: explicit `--session <id>` flag >
+  hook JSON `session_id` > env `ICMG_SESSION_ID`; sanitized to
+  `[A-Za-z0-9_-]`, max 64 chars, so it is always a safe file name.
+- **Back-compat** — when no session id is known the legacy shared file is
+  used, so hooks installed before this fix keep working unchanged.
+
+2 new tests. **2549/2549 ✓.**
+
 ## v2.25.3
 
 **`icmg files` no longer dies with system error 1113 on unmappable file

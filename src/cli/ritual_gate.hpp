@@ -159,4 +159,31 @@ inline std::vector<RitualStep> parseSyncStepsFromCommandLine(const std::string& 
     return out;
 }
 
+// Per-session state key (bug:ritual-gate-false-positive, 2026-10-23).
+// The state file used to be ONE per project (.icmg/ritual.state), so every
+// concurrent agent session in the same folder shared the edit counter: session
+// B with zero edits got blocked at Stop because session A had edited. The key
+// isolates state per session. Priority: explicit --session flag > hook JSON
+// `session_id` > env ICMG_SESSION_ID. Sanitized to [A-Za-z0-9_-], max 64 chars,
+// so it is always a safe file name. Empty = no session known -> caller uses the
+// legacy shared file (back-compat with hooks installed before this fix).
+inline std::string sanitizeRitualSessionKey(const std::string& raw) {
+    std::string out;
+    for (char c : raw) {
+        if (out.size() >= 64) break;
+        if (std::isalnum((unsigned char)c) || c == '-' || c == '_') out += c;
+    }
+    return out;
+}
+
+inline std::string chooseRitualSessionKey(const std::string& flagSid,
+                                          const std::string& hookSid,
+                                          const std::string& envSid) {
+    for (const std::string* s : {&flagSid, &hookSid, &envSid}) {
+        std::string k = sanitizeRitualSessionKey(*s);
+        if (!k.empty()) return k;
+    }
+    return "";
+}
+
 }  // namespace icmg::cli

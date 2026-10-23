@@ -30,6 +30,9 @@
 #include "../../core/registry.hpp"
 #include "../../core/rule_telemetry.hpp"
 #include "../ritual_gate.hpp"
+#include "../../core/stdin_util.hpp"
+#include <nlohmann/json.hpp>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -43,7 +46,41 @@ namespace icmg::cli {
 
 namespace {
 
-fs::path statePath() { return fs::path(".icmg") / "ritual.state"; }
+// Per-session state (bug:ritual-gate-false-positive): one file per session under
+// .icmg/ritual/<key>.state so concurrent sessions in one project never share the
+// edit counter. Empty key -> legacy shared .icmg/ritual.state (old hooks).
+constexpr int kStaleSessionDays = 7;   // prune per-session files older than this
+std::string g_sessionKey;              // set once in run() before any load/save
+
+fs::path sessionDir() { return fs::path(".icmg") / "ritual"; }
+
+fs::path statePath() {
+    if (g_sessionKey.empty()) return fs::path(".icmg") / "ritual.state";
+    return sessionDir() / (g_sessionKey + ".state");
+}
+
+// Best-effort: drop per-session files no one touched for kStaleSessionDays.
+void pruneStaleSessions() {
+    std::error_code ec;
+    if (!fs::is_directory(sessionDir(), ec)) return;
+    const auto cutoff = fs::file_time_type::clock::now() -
+                        std::chrono::hours(24 * kStaleSessionDays);
+    for (auto& e : fs::directory_iterator(sessionDir(), ec)) {
+        std::error_code ec2;
+        auto t = fs::last_write_time(e.path(), ec2);
+        if (!ec2 && t < cutoff) fs::remove(e.path(), ec2);
+    }
+}
+
+// session_id from a hook JSON payload on stdin (Stop hook pipes it directly).
+std::string hookSessionFromStdin() {
+    std::string raw = core::slurpStdinSafe();
+    if (raw.empty()) return "";
+    auto j = nlohmann::json::parse(raw, nullptr, false);
+    if (j.is_discarded() || !j.is_object()) return "";
+    auto it = j.find("session_id");
+    return (it != j.end() && it->is_string()) ? it->get<std::string>() : "";
+}
 
 struct DiskState {
     int changedCount = 0;             // # edits since last clear (0 = not changed)
@@ -109,6 +146,8 @@ public:
             "  check                 Exit 0 = satisfied, 2 = owed (for scripting)\n"
             "  gate                  If owed, print Stop-hook block JSON (else nothing)\n"
             "  clear                 Reset state (ritual completed)\n\n"
+            "State is per session: --session <id> > hook JSON session_id (gate, on\n"
+            "stdin) > env ICMG_SESSION_ID > legacy shared .icmg/ritual.state.\n\n"
             "Required after a change: store + wflog (the judgment steps). Graph auto-\n"
             "scans at turn end; graph/zone/verify are advisory (tracked, never block).\n"
             "Opt out of the gate: ICMG_NO_RITUAL_GATE=1.\n";
@@ -118,7 +157,18 @@ public:
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         const std::string action = args[0];
 
+        // Resolve the per-session key. Only `gate` reads stdin (the Stop hook
+        // pipes its JSON there); edit/bash hooks pass --session explicitly.
+        {
+            const char* env = std::getenv("ICMG_SESSION_ID");
+            std::string flagSid = flagValue(args, "--session");
+            std::string hookSid = (flagSid.empty() && action == "gate")
+                                      ? hookSessionFromStdin() : "";
+            g_sessionKey = chooseRitualSessionKey(flagSid, hookSid, env ? env : "");
+        }
+
         if (action == "touch") {
+            pruneStaleSessions();
             DiskState d = load();
             d.changedCount += 1;
             save(d);
@@ -152,6 +202,7 @@ public:
             // joined by &&/||/;/|. Replaces the fragile single-token `saw` parse
             // in the Bash hook (which missed `RAW=1 icmg store` and chained cmds).
             if (args.size() < 2) return 0;
+            if (args[1] == "--session") return 0;      // no command line given
             auto steps = parseSyncStepsFromCommandLine(args[1]);
             if (steps.empty()) return 0;
             DiskState d = load();
@@ -190,7 +241,8 @@ public:
         RitualVerdict v = evaluateRitual(toCore(d));
 
         if (action == "status") {
-            std::cout << "icmg ritual: "
+            std::cout << "icmg ritual [" << (g_sessionKey.empty() ? "shared" : g_sessionKey)
+                      << "]: "
                       << (d.changedCount == 0 ? "no pending change"
                           : (v.owed ? "OWED" : "satisfied"))
                       << " (" << d.changedCount << " edit(s) since last sync)\n";
