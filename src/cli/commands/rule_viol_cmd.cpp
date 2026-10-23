@@ -6,6 +6,7 @@
 //   list [--limit N]          — recent violations
 //   clear                     — drop all rows
 #include "../base_command.hpp"
+#include "../action_taxonomy.hpp"   // v2.26.0 leash audit
 #include "../../core/registry.hpp"
 #include "../../core/rule_telemetry.hpp"
 
@@ -27,9 +28,13 @@ public:
         std::cout <<
             "Usage: icmg rule-viol <subcommand> [args]\n\n"
             "Subcommands:\n"
-            "  record <rule_id> [ctx]   Append violation row (called from leash hook)\n"
+            "  record <rule_id> [ctx] [--session S]\n"
+            "                           Append violation row (called from leash hook).\n"
+            "                           ctx is auto-classified to an action class\n"
+            "                           (git.push.force, fs.rm.recursive, ...) and S\n"
+            "                           is recorded as the ACTOR (agent session).\n"
             "  stats [--limit N]        Top-N rules by count (default 5)\n"
-            "  list  [--limit N]        Recent violations (default 20)\n"
+            "  list  [--limit N]        Recent violations, actor-attributed (default 20)\n"
             "  clear                    DELETE all rows (admin reset)\n";
     }
 
@@ -38,9 +43,26 @@ public:
         const std::string& sub = args[0];
         if (sub == "record") {
             if (args.size() < 2) { std::cerr << "rule-viol record: <rule_id> required\n"; return 1; }
-            std::string ctx = args.size() > 2 ? args[2] : "";
-            core::RuleTelemetry::record(args[1], "", ctx);
-            std::cout << "{\"ok\":true}\n";
+            // v2.26.0: actor attribution + action taxonomy (zabta.ai lesson:
+            // audit must name the AGENT session, not the human owner).
+            std::string sess = flagValue(args, "--session");
+            std::string ctx  = (args.size() > 2 && args[2].rfind("--", 0) != 0) ? args[2] : "";
+            std::string action = classifyAction(ctx);
+            if (!action.empty()) ctx = "[action=" + action + "] " + ctx;
+            core::RuleTelemetry::record(args[1], sess, ctx);
+            std::cout << "{\"ok\":true,\"action\":\"" << action << "\"}\n";
+            return 0;
+        }
+        if (sub == "list") {
+            int limit = 20;
+            try { limit = std::stoi(flagValue(args, "--limit", "20")); } catch (...) {}
+            auto rows = core::RuleTelemetry::recent(limit);
+            std::cout << "icmg rule-viol list (" << rows.size() << " recent, newest first):\n";
+            for (const auto& r : rows) {
+                std::cout << "  [" << r.at << "] " << r.rule_id
+                          << "  actor=" << r.session_id
+                          << "  " << r.ctx.substr(0, 100) << "\n";
+            }
             return 0;
         }
         if (sub == "stats") {

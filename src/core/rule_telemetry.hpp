@@ -20,6 +20,14 @@ struct RuleViolationSummary {
     std::string last_ctx;
 };
 
+// v2.26.0: one raw violation row (leash audit trail: `icmg rule-viol list`).
+struct RuleViolationRow {
+    std::string rule_id;
+    std::string session_id;   // ACTOR: agent session, not the human user
+    std::string ctx;          // may embed "[action=<class>] " prefix
+    std::int64_t at = 0;
+};
+
 class RuleTelemetry {
 public:
     // Record a violation. Best-effort; swallows DB errors.
@@ -36,6 +44,9 @@ public:
 
     // Top-N rules by total violation count across all sessions (for R8 auto-pin).
     static std::vector<RuleViolationSummary> topByCount(int n = 5);
+
+    // v2.26.0: most recent rows, newest first (actor-attributed audit trail).
+    static std::vector<RuleViolationRow> recent(int limit = 20);
 
     // Clear all rows (admin reset).
     static int clearAll();

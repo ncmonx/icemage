@@ -377,6 +377,32 @@ TEST("claudemd: restore copies latest backup content to target") {
 }
 
 
+// -- v2.26.0 docs-drift helpers (claudemd_lint.hpp) ---------------------------
+#include "../../src/cli/claudemd_lint.hpp"
+#include "../../src/cli/base_command.hpp"
+#include "../../src/core/registry.hpp"
+
+TEST("lint-claudemd: extractIcmgSubcommand parses icmg refs") {
+    using icmg::cli::extractIcmgSubcommand;
+    ASSERT_EQ(extractIcmgSubcommand("icmg recall \"query\""), std::string("recall"));
+    ASSERT_EQ(extractIcmgSubcommand("icmg graph symbol Foo"), std::string("graph"));
+    ASSERT_EQ(extractIcmgSubcommand("git log"), std::string(""));
+    ASSERT_EQ(extractIcmgSubcommand("icmg"), std::string(""));
+    ASSERT_EQ(extractIcmgSubcommand("icmg --help"), std::string(""));
+}
+
+TEST("lint-claudemd: registry resolves real vs fake subcommands") {
+    auto& reg = icmg::core::Registry<icmg::cli::BaseCommand>::instance();
+    ASSERT_TRUE(reg.has("recall"));
+    ASSERT_TRUE(!reg.has("definitely-not-a-command"));
+}
+
+TEST("lint-claudemd: precedence sentence non-empty, mentions code") {
+    auto s = icmg::cli::precedenceSentence();
+    ASSERT_TRUE(!s.empty());
+    ASSERT_TRUE(s.find("code") != std::string::npos);
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

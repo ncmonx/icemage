@@ -4,6 +4,30 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.26.0
+
+**Four web-research-backed capabilities** (internet deep-research 2026-10-23,
+`docs/plans/2026-10-23-feature-research-non-memory.md`). All extend existing
+commands, deterministic, zero-LLM:
+
+- **`icmg lint-claudemd`** — validates every backticked `icmg <sub>` reference
+  in CLAUDE.md/AGENTS.md against the live command Registry and suggests a
+  one-sentence precedence guard (stale instruction files beat code 90.1% of
+  the time, arXiv 2610.30571). New: `src/cli/claudemd_lint.hpp`.
+- **`icmg rule-viol` actor audit** — destructive-action taxonomy
+  (`src/cli/action_taxonomy.hpp`) + actor-attributed audit trail:
+  `record --session <id>` stores the agent session as actor; `list` shows it.
+  Closes the "audit blamed the human" gap (zabta.ai incident).
+- **`icmg test-select --risk / --runner`** — per-file LOW/MED/HIGH risk from
+  the impact closure (`src/cli/test_risk.hpp`) and `--runner ctest` emits a
+  ready `-LE local-llm` regex; git CRLF-warning noise filtered (selective
+  verification, SWE-VERIFIER arXiv 2610.30284).
+- **`icmg run --txn` (lite)** — git-tree snapshot before the command, then
+  changeset review with `--txn-diff`, decide with `--txn-commit` /
+  `--txn-abort`; `.icmg` excluded (`src/cli/txn_guard.hpp`).
+
+11 new tests. **2560/2560 ✓.**
+
 ## v2.25.4
 
 **Ritual gate no longer blocks innocent parallel sessions.** The sync-ritual
