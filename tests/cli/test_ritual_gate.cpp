@@ -78,6 +78,22 @@ TEST("ritual: stepName round-trips the labels") {
 // never recorded, and the Stop-hook ritual gate misfired forever. These pin the
 // pure parser that fixes both: strip leading VAR= prefixes + scan all segments.
 
+// ---- per-session state key (bug:ritual-gate-false-positive) ---------------
+TEST("ritual session key: flag beats hook beats env") {
+    ASSERT_EQ(chooseRitualSessionKey("f1", "h1", "e1"), std::string("f1"));
+    ASSERT_EQ(chooseRitualSessionKey("", "h1", "e1"),   std::string("h1"));
+    ASSERT_EQ(chooseRitualSessionKey("", "", "e1"),     std::string("e1"));
+    ASSERT_EQ(chooseRitualSessionKey("", "", ""),       std::string(""));
+}
+
+TEST("ritual session key: sanitized to a safe file name") {
+    ASSERT_EQ(sanitizeRitualSessionKey("../a b/c:d"), std::string("abcd"));
+    ASSERT_EQ(sanitizeRitualSessionKey("30e6d652-1a_x"), std::string("30e6d652-1a_x"));
+    ASSERT_EQ(sanitizeRitualSessionKey(std::string(100, 'a')).size(), (size_t)64);
+    // all-junk input falls through to the next source
+    ASSERT_EQ(chooseRitualSessionKey("///", "h1", ""), std::string("h1"));
+}
+
 TEST("ritual parse: plain single sync command") {
     auto v = parseSyncStepsFromCommandLine("icmg store --topic x \"y\"");
     ASSERT_EQ(v.size(), (size_t)1);
