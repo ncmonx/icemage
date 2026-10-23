@@ -185,3 +185,40 @@ TEST("anti-nest: other icmg subcommands are NOT unwrapped") {
     auto r = parseRunArgs({"icmg", "recall", "x"});
     ASSERT_EQ(r.command, std::string("icmg recall x"));
 }
+
+// -- v2.26.0: patch-risk scoring + txn state helpers --------------------------
+#include "../../src/cli/test_risk.hpp"
+#include "../../src/cli/txn_guard.hpp"
+#include <set>
+
+TEST("risk: impact count maps to level") {
+    using icmg::cli::riskLevel;
+    ASSERT_EQ(riskLevel(30, "src/x.cpp"), std::string("HIGH"));
+    ASSERT_EQ(riskLevel(10, "src/x.cpp"), std::string("MED"));
+    ASSERT_EQ(riskLevel(2,  "src/x.cpp"), std::string("LOW"));
+}
+
+TEST("risk: shared core header is HIGH regardless of count") {
+    ASSERT_EQ(icmg::cli::riskLevel(0, "src/core/db.hpp"), std::string("HIGH"));
+}
+
+TEST("risk: ctest regex from selected test files") {
+    std::set<std::string> t{"tests/cli/test_a.cpp", "tests/x/test_b.cpp"};
+    ASSERT_EQ(icmg::cli::ctestRegexFor(t), std::string("(test_a|test_b)"));
+}
+
+TEST("txn: state roundtrip") {
+    icmg::cli::TxnState s; s.tree = "abc123"; s.ts = 1700000000;
+    auto parsed = icmg::cli::parseTxnState(icmg::cli::serializeTxnState(s));
+    ASSERT_EQ(parsed.tree, std::string("abc123"));
+    ASSERT_TRUE(parsed.ts == 1700000000);
+}
+
+TEST("txn: parse garbage yields empty state") {
+    ASSERT_TRUE(icmg::cli::parseTxnState("not json").tree.empty());
+}
+
+TEST("txn: state path lands under .icmg") {
+    auto p = icmg::cli::txnStatePathFor("/repo");
+    ASSERT_TRUE(p.find(".icmg/txn-state.json") != std::string::npos);
+}

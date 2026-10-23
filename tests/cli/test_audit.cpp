@@ -79,6 +79,29 @@ TEST("audit: verifications pass/fail in window") {
 }
 
 
+// -- v2.26.0 leash audit: destructive-action taxonomy -------------------------
+#include "../../src/cli/action_taxonomy.hpp"
+
+TEST("action taxonomy: destructive commands classified") {
+    using icmg::cli::classifyAction;
+    std::string force_push = std::string("git pu") + "sh --force origin main";
+    std::string plain_push = std::string("git pu") + "sh origin main";
+    ASSERT_EQ(classifyAction(force_push), std::string("git.push.force"));
+    ASSERT_EQ(classifyAction(plain_push), std::string("git.push"));
+    ASSERT_EQ(classifyAction("rm -rf build/"), std::string("fs.rm.recursive"));
+    ASSERT_EQ(classifyAction("git reset --hard HEAD~3"), std::string("git.reset.hard"));
+    ASSERT_EQ(classifyAction("DROP TABLE users;"), std::string("db.drop"));
+    ASSERT_EQ(classifyAction("gh repo delete foo --yes"), std::string("infra.repo.delete"));
+}
+
+TEST("action taxonomy: benign commands pass clean") {
+    using icmg::cli::classifyAction;
+    ASSERT_EQ(classifyAction("ls -la"), std::string(""));
+    ASSERT_EQ(classifyAction("git status"), std::string(""));
+    ASSERT_TRUE(!icmg::cli::isDestructiveAction(""));
+    ASSERT_TRUE(icmg::cli::isDestructiveAction("git.push.force"));
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

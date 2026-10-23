@@ -11,6 +11,7 @@
 // Saves "run all tests" cycles where 1-3 tests would suffice.
 
 #include "../base_command.hpp"
+#include "../test_risk.hpp"   // v2.26.0 patch-risk scoring
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -43,8 +44,11 @@ public:
             "graph). Avoids 'run all tests' on large repos.\n\n"
             "Options:\n"
             "  --ref REF      Compare against REF (default: working tree vs index)\n"
-            "  --runner CMD   Wrap output in runner: pytest|vitest|jest|cargo|dotnet|none\n"
+            "  --runner CMD   Wrap output in runner: pytest|vitest|jest|cargo|dotnet|ctest|none\n"
             "                 default: 'none' (just list files)\n"
+            "  --risk         Per-file risk grade (LOW/MED/HIGH from impact closure;\n"
+            "                 HIGH recommends the full suite -- SWE-VERIFIER-style\n"
+            "                 selective verification)\n"
             "  --json         Machine-readable output\n"
             "  --depth N      Reverse-impact graph depth (default 2)\n";
     }
@@ -54,6 +58,7 @@ public:
         std::string ref    = flagValue(args, "--ref");
         std::string runner = flagValue(args, "--runner", "none");
         bool json_out      = hasFlag(args, "--json");
+        bool risk          = hasFlag(args, "--risk");   // v2.26.0
         int depth = 2;
         try { depth = std::stoi(flagValue(args, "--depth", "2")); } catch (...) {}
 
@@ -71,7 +76,11 @@ public:
         std::string line;
         while (std::getline(iss, line)) {
             while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
-            if (!line.empty()) changed.push_back(line);
+            // v2.26.0: git may emit "warning: ... working copy ..." (CRLF
+            // advice) on the merged stream -- those are not file paths.
+            if (!line.empty() && line.rfind("warning:", 0) != 0 &&
+                line.find("working copy") == std::string::npos)
+                changed.push_back(line);
         }
         if (changed.empty()) {
             if (json_out) std::cout << "{\"selected\":[],\"reason\":\"no diff\"}\n";
@@ -98,11 +107,18 @@ public:
             }
         }
 
-        // 2c. Reverse-impact via graph
+        // 2c. Reverse-impact via graph (+ per-file impact size for --risk)
+        std::vector<std::pair<std::string, std::string>> risks;   // file -> level
+        std::string overall = "LOW";
         for (auto& f : changed) {
             auto upstreams = store.impact(f, depth);
             for (auto& u : upstreams) {
                 if (isTestPath(u.path)) tests.insert(u.path);
+            }
+            if (risk) {
+                std::string lvl = riskLevel(upstreams.size(), f);
+                risks.emplace_back(f, lvl);
+                if (lvl == "HIGH" || (lvl == "MED" && overall == "LOW")) overall = lvl;
             }
         }
 
@@ -114,7 +130,9 @@ public:
                 if (i++) std::cout << ",";
                 std::cout << "\"" << t << "\"";
             }
-            std::cout << "]}\n";
+            std::cout << "]";
+            if (risk) std::cout << ",\"risk\":\"" << overall << "\"";
+            std::cout << "}\n";
             return 0;
         }
 
@@ -130,6 +148,16 @@ public:
                   << " test file(s) cover diff (" << changed.size()
                   << " changed):\n";
         for (auto& t : tests) std::cout << "  " << t << "\n";
+
+        if (risk) {
+            std::cout << "\nRisk (impact closure, depth " << depth << "):\n";
+            for (auto& [f, lvl] : risks)
+                std::cout << "  " << lvl << "  " << f << "\n";
+            std::cout << "Overall: " << overall;
+            if (overall == "HIGH")
+                std::cout << "  -> recommend FULL suite (shared/core or wide blast radius)";
+            std::cout << "\n";
+        }
 
         std::string runner_cmd = wrap(runner, tests);
         if (!runner_cmd.empty()) {
@@ -167,6 +195,9 @@ private:
     static std::string wrap(const std::string& runner,
                              const std::set<std::string>& tests) {
         if (runner == "none" || runner.empty()) return "";
+        // v2.26.0: ctest runner emits a -R regex over test-file stems (works
+        // with the mono icmg_test binary registered per-test in ctest).
+        if (runner == "ctest") return "ctest -R \"" + ctestRegexFor(tests) + "\"";
         std::ostringstream os;
         if      (runner == "pytest")  os << "pytest";
         else if (runner == "vitest")  os << "npx vitest run";

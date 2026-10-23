@@ -73,6 +73,28 @@ std::vector<RuleViolationSummary> RuleTelemetry::topByCount(int n) {
     return out;
 }
 
+// v2.26.0: actor-attributed audit trail for `icmg rule-viol list`.
+std::vector<RuleViolationRow> RuleTelemetry::recent(int limit) {
+    std::vector<RuleViolationRow> out;
+    if (limit <= 0) return out;
+    try {
+        GlobalDb& gdb = GlobalDb::instance();
+        gdb.db().query(
+            "SELECT rule_id, session_id, ctx, occurred_at FROM rule_violations "
+            "ORDER BY occurred_at DESC LIMIT " + std::to_string(limit),
+            {}, [&](const Row& r){
+                if (r.size() < 4) return;
+                RuleViolationRow row;
+                row.rule_id    = r[0];
+                row.session_id = r[1];
+                row.ctx        = r[2];
+                try { row.at = std::stoll(r[3]); } catch (...) {}
+                out.push_back(std::move(row));
+            });
+    } catch (...) {}
+    return out;
+}
+
 int RuleTelemetry::clearAll() {
     try {
         GlobalDb& gdb = GlobalDb::instance();

@@ -10,6 +10,7 @@
 // Reports each as OK / MISSING / RENAMED suggestion.
 
 #include "../base_command.hpp"
+#include "../claudemd_lint.hpp"   // v2.26.0 docs-drift helpers
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -96,6 +97,18 @@ public:
                 std::string tok = (*it)[1].str();
                 if (tok.empty() || seen.count(tok)) continue;
                 seen.insert(tok);
+                // v2.26.0 docs-drift: validate `icmg <sub>` refs against the
+                // live command registry (arXiv 2610.30571: stale instruction
+                // files beat the code 90.1% of the time).
+                std::string sub = extractIcmgSubcommand(tok);
+                if (!sub.empty()) {
+                    Hit h; h.token = tok; h.kind = "command";
+                    bool known = core::Registry<BaseCommand>::instance().has(sub);
+                    if (known) { h.status = "ok"; ++ok_count; }
+                    else       { h.status = "missing"; ++miss_count; }
+                    hits.push_back(h);
+                    continue;
+                }
                 // Skip flags + shell commands + tokens with spaces
                 if (std::regex_search(tok, flag_hint)) continue;
                 if (std::regex_search(tok, shell_hint)) continue;
@@ -145,6 +158,9 @@ public:
                       << miss_count << " stale.\n";
             if (miss_count > 0) {
                 std::cout << "  Update CLAUDE.md or run `icmg graph scan` if graph is stale.\n";
+                // v2.26.0: one-sentence precedence guard (arXiv 2610.30571).
+                std::cout << "  Precedence guard (paste into the file):\n    "
+                          << precedenceSentence() << "\n";
             }
         }
 
