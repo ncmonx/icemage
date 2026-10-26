@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.26.0 LANGUAGES CXX C)
+project(icmg VERSION 2.27.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1014,6 +1014,7 @@ add_icmg_test(test_file_time             tests/core/test_file_time.cpp)         
 add_icmg_test(test_emit_agents_md        tests/cli/test_emit_agents_md.cpp)       # 2026-07-05 feature #2: emit-agents-md cross-tool config sync
 add_icmg_test(test_compress_prompt       tests/cli/test_compress_prompt.cpp)      # 2026-07-06 feature #6: honesty-gated prompt compressor
 add_icmg_test(test_tool_wiring           tests/cli/test_tool_wiring.cpp)          # gap G6: init --all-tools multi-host wiring
+add_icmg_test(test_host_wiring           tests/cli/test_host_wiring.cpp)          # 2026-10-26 host-compat: MCP auto-wiring + Gemini hooks parity
 
 # Python sidecar tests (multimodal ingest: office docx/xlsx + graceful deps).
 # G1 gap vs graphify. Runs only if a Python 3 interpreter is found; the test

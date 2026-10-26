@@ -4,6 +4,40 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.27.0
+
+**2026 host-compatibility audit** -- icmg now wires itself correctly into
+every major AI coding host (audited against each host's official docs,
+2026-10-26). All extend `icmg init --all-tools`; deterministic, zero-LLM:
+
+- **Fixed stale rules-file targets** (`src/cli/tool_wiring.hpp`) -- gemini
+  now writes `GEMINI.md` (was a never-read `.gemini/icmg.md`), windsurf
+  writes `.windsurf/rules/` (`.windsurfrules` deprecated but still
+  detected), and the AGENTS.md readers (zed, codex, amp, opencode) get an
+  idempotent managed block in `AGENTS.md` that never touches user content
+  and no-ops when init's full icmg block is already present.
+- **Five new hosts** -- cline (`.clinerules/`), antigravity
+  (`.agents/rules/` with `model_decision` frontmatter for progressive
+  disclosure), roo (`.roo/rules/`), kilo (`.kilocode/rules/`), junie
+  (`.junie/guidelines.md`). 13 hosts total.
+- **MCP auto-wiring** (`src/cli/mcp_wiring.hpp`, new) -- registers the
+  42-tool icmg MCP server with every detected host: project `.mcp.json`
+  (Claude Code), cursor + vscode `mcp.json` (stdio-typed), gemini
+  `settings.json`, windsurf home config. Merge-only: user keys and a
+  customized `icmg` entry are never clobbered; unparseable configs are
+  left untouched.
+- **Gemini CLI hook parity** (`src/cli/gemini_hook_wiring.hpp`, new) --
+  SessionStart -> `icmg session-inject` (same JSON both hosts expect) and
+  BeforeTool `read_file|read_many_files` -> `icmg hook pretooluse-read
+  --format gemini`. The new `--format gemini` flag translates the Claude
+  PreToolUse output schema (deny -> decision/reason, updatedInput ->
+  `tool_input` merge with `absolute_path`, additionalContext ->
+  systemMessage) and the input side accepts Gemini's `absolute_path`.
+- **Docs debt cleared** -- 107 undocumented commands indexed in CLAUDE.md
+  command-families section; `lint-claudemd` now reports 0 stale.
+
+20 new tests. **2584/2584 ✓.**
+
 ## v2.26.0
 
 **Four web-research-backed capabilities** (internet deep-research 2026-10-23,
