@@ -16,6 +16,8 @@
 #include "../base_command.hpp"
 #include "../presence_hook.hpp"   // me-everywhere heartbeat hook template
 #include "../tool_wiring.hpp"     // G6: --all-tools multi-host CLI wiring
+#include "../mcp_wiring.hpp"      // 2026-10: MCP server auto-registration per host
+#include "../gemini_hook_wiring.hpp" // 2026-10: Gemini CLI SessionStart hook parity
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
@@ -1494,8 +1496,9 @@ public:
             "Options:\n"
             "  --no-hooks      Skip .claude/ setup\n"
             "  --tool <name>   Target tool: claude-code (default) | cursor | windsurf | zed |\n"
-            "                  codex | copilot | opencode | gemini | amp (v1.21.0; native\n"
-            "                  install for non-claude-code is hint-only for now)\n"
+            "                  codex | copilot | opencode | gemini | amp | cline |\n"
+            "                  antigravity | roo | kilo | junie (hint-only; use\n"
+            "                  --all-tools for native wiring)\n"
             "  --all-tools     Wire EVERY detected host CLI in one shot (drops a routing\n"
             "                  rule at each tool's config path). Claude Code still gets the\n"
             "                  full native hook setup.\n"
@@ -1558,19 +1561,47 @@ public:
                 }
             }
             std::cout << "  --all-tools: " << wired << " wired, " << skipped
-                      << " skipped (not detected). Claude Code setup continues below.\n\n";
+                      << " skipped (not detected). Claude Code setup continues below.\n";
+            // 2026-10 host-compat audit: also register the icmg MCP server with
+            // every detected host (a rules file alone cannot expose icmg as a
+            // callable tool), and wire the Gemini CLI SessionStart hook (its
+            // hook schema matches Claude Code; `icmg session-inject` emits the
+            // exact JSON both expect).
+            int mcp_wired = 0;
+            for (const auto& mt : mcpwiring::knownMcpTargets()) {
+                bool mpresent = mcpwiring::isHostPresent(mt, troot, thome);
+                if (!mpresent && !hasFlag(args, "--strict")) continue;
+                fs::path mw = mcpwiring::writeMcpConfig(mt, troot, thome);
+                if (!mw.empty()) {
+                    ++mcp_wired;
+                    std::cout << "    [ok] mcp: " << mt.name << " -> "
+                              << mt.configRelPath
+                              << (mpresent ? "" : " (proactive)") << "\n";
+                }
+            }
+            if (fs::exists(troot / ".gemini") || hasFlag(args, "--strict")) {
+                if (geminihooks::wireGeminiHooks(troot / ".gemini" / "settings.json"))
+                    std::cout << "    [ok] gemini hooks: SessionStart -> icmg session-inject\n";
+            }
+            std::cout << "  --all-tools: " << mcp_wired
+                      << " MCP config(s) registered.\n\n";
         }
         if (tool != "claude-code" && !all_tools) {
             std::cout << "  --tool " << tool << ": auto-install not yet implemented (v1.21.x+).\n"
-                      << "  Manual config locations:\n"
-                      << "    cursor    .cursor/rules/\n"
-                      << "    windsurf  .windsurfrules\n"
-                      << "    zed       .zed/settings.json\n"
-                      << "    codex     ~/.codex/hooks.json\n"
-                      << "    copilot   .github/hooks/icm.json\n"
-                      << "    opencode  ~/.config/opencode/plugins/icm.ts\n"
-                      << "    gemini    ~/.gemini/settings.json\n"
-                      << "    amp       (see Amp docs)\n"
+                      << "  Manual config locations (audited 2026-10):\n"
+                      << "    cursor       .cursor/rules/icmg.mdc\n"
+                      << "    windsurf     .windsurf/rules/ (.windsurfrules deprecated)\n"
+                      << "    zed          AGENTS.md (also .rules)\n"
+                      << "    codex        AGENTS.md\n"
+                      << "    copilot      .github/copilot-instructions.md\n"
+                      << "    opencode     AGENTS.md\n"
+                      << "    gemini       GEMINI.md + .gemini/settings.json (mcpServers, hooks)\n"
+                      << "    amp          AGENTS.md\n"
+                      << "    cline        .clinerules/\n"
+                      << "    antigravity  .agents/rules/ + AGENTS.md\n"
+                      << "    roo          .roo/rules/   | kilo  .kilocode/rules/\n"
+                      << "    junie        .junie/guidelines.md\n"
+                      << "  Tip: `icmg init --all-tools` wires every detected host automatically.\n"
                       << "  Falling through to default Claude Code setup.\n\n";
         }
 

@@ -21,6 +21,7 @@
 
 #include "../base_command.hpp"
 #include "../bash_redirect.hpp"   // v2.11.2 pipe-aware redirect classifier
+#include "../gemini_hook_wiring.hpp" // 2026-10: Claude->Gemini hook schema translation
 #include "../context_budget.hpp"   // v2.x: passive context-budget meter
 #include "../../core/registry.hpp"
 #include "../../core/stdin_util.hpp"
@@ -84,8 +85,12 @@ public:
         std::cout <<
             "Usage: icmg hook <event> [options]\n\n"
             "Events:\n"
-            "  userprompt          UserPromptSubmit â€” drift + recall + path-ctx merged\n"
+            "  userprompt          UserPromptSubmit -- drift + recall + path-ctx merged\n"
             "                      Reads JSON stdin, emits additionalContext JSON.\n\n"
+            "Options:\n"
+            "  --format gemini     Emit Gemini CLI hook schema (BeforeTool decision/\n"
+            "                      reason + tool_input merge) instead of Claude Code's.\n"
+            "                      pretooluse-read also accepts absolute_path input.\n\n"
             "Designed for Claude Code .claude/hooks/ scripts: consolidates 4-5\n"
             "separate icmg invocations into one, eliminating per-prompt fork overhead.\n";
     }
@@ -143,6 +148,12 @@ public:
     int run(const std::vector<std::string>& args) override {
         if (args.empty() || hasFlag(args, "--help")) { usage(); return 0; }
         const std::string& event = args[0];
+
+        // 2026-10 host-compat: `--format gemini` translates the PreToolUse
+        // output into the Gemini CLI BeforeTool schema (decision/reason,
+        // hookSpecificOutput.tool_input merge, systemMessage). Input side
+        // accepts Gemini's `absolute_path` argument name too.
+        gemini_fmt_ = flagValue(args, "--format") == "gemini";
 
         // v2.11.2: bash-advice -- pure pipe-aware redirect classifier. Takes the
         // command either as argv (`icmg hook bash-advice "<cmd>"`) or on stdin.
@@ -854,6 +865,18 @@ private:
     }
 
     // ---- pretooluse-read handler ------------------------------------------
+
+    bool gemini_fmt_ = false;
+
+    // Emit a PreToolUse hook output in the host's expected schema.
+    void emitPre(const json& claude_out) {
+        if (gemini_fmt_) {
+            json g = geminihooks::toGeminiPre(claude_out);
+            if (!g.empty()) std::cout << icmg::core::safeDump(g) << "\n";
+            return;
+        }
+        std::cout << icmg::core::safeDump(claude_out) << "\n";
+    }
     //
     // Replaces icmg-shrink-read.sh chain. Emits permissionDecision=allow
     // with capped updatedInput.limit + icmg context overlay as additionalContext.
@@ -870,6 +893,11 @@ private:
                 auto& ti = j["tool_input"];
                 if (ti.contains("file_path") && ti["file_path"].is_string())
                     file_path = ti["file_path"].get<std::string>();
+                // Gemini CLI read_file uses `absolute_path`; read_many_files
+                // passes `paths` (skipped -- per-file routing n/a there).
+                if (file_path.empty() && ti.contains("absolute_path") &&
+                    ti["absolute_path"].is_string())
+                    file_path = ti["absolute_path"].get<std::string>();
                 if (ti.contains("offset") && ti["offset"].is_number())
                     orig_offset = ti["offset"].get<int>();
                 if (ti.contains("limit") && ti["limit"].is_number())
@@ -899,7 +927,7 @@ private:
                     "`icmg graph symbol <Name>` for a function body, or `icmg context "
                     + file_path + " --lines A-B` for a targeted slice. "
                     "Bypass: `icmg strict audit off` or ICMG_STRICT_AUDIT=0.";
-                std::cout << icmg::core::safeDump(out) << "\n";
+                emitPre(out);
                 return 0;
             }
         }
@@ -916,7 +944,7 @@ private:
                 "[dedup] " + file_path + " already read this session. "
                 "Use `icmg context " + file_path + " --lines A-B` for targeted slice, "
                 "or confirm re-read is needed.";
-            std::cout << icmg::core::safeDump(out) << "\n";
+            emitPre(out);
             return 0;
         }
 
@@ -964,7 +992,7 @@ private:
                         "[F8 auto-spill] file " + std::to_string((long long)sz)
                         + "B > threshold; full copy saved to " + spill.string()
                         + ". Default Read capped to first 50 lines; expand only if needed.";
-                    std::cout << icmg::core::safeDump(out) << "\n";
+                    emitPre(out);
                     return 0;
                 }
             }
@@ -1013,7 +1041,7 @@ private:
         out["hookSpecificOutput"]["updatedInput"]["file_path"] = file_path;
         out["hookSpecificOutput"]["updatedInput"]["limit"] = cap;
         out["hookSpecificOutput"]["additionalContext"] = ctx.str();
-        std::cout << icmg::core::safeDump(out) << "\n";
+        emitPre(out);
         return 0;
     }
 
