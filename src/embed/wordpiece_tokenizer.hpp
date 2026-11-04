@@ -39,6 +39,16 @@ public:
     // attention_mask = 1 for real tokens, 0 for padding.
     Tokens encode(const std::string& text, int max_len = 256) const;
 
+    // Cross-encoder pair: [CLS] a [SEP] b [SEP], token_type 0 for the first
+    // segment (incl. its SEP), 1 for the second. Unpadded; when over max_len
+    // the longer side is trimmed first (HF "longest_first").
+    struct PairTokens {
+        std::vector<int64_t> input_ids;
+        std::vector<int64_t> attention_mask;
+        std::vector<int64_t> token_type_ids;
+    };
+    PairTokens encodePair(const std::string& a, const std::string& b, int max_len = 256) const;
+
     // Sub-utilities exposed for tests.
     static std::string toLower(const std::string& s);
     static std::vector<std::string> splitWhitespacePunct(const std::string& s);

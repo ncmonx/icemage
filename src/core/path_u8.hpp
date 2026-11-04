@@ -26,4 +26,14 @@ inline std::string pathU8Generic(const std::filesystem::path& p) {
     return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
 }
 
+// Inverse: UTF-8 std::string -> fs::path without the deprecated
+// fs::u8path (C++20 STL4021). Keeps spaces / non-ASCII intact on Windows.
+inline std::filesystem::path u8ToPath(const std::string& s) {
+#if defined(__cpp_char8_t)
+    return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
+#else
+    return std::filesystem::u8path(s);
+#endif
+}
+
 }  // namespace icmg::core

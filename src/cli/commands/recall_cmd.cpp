@@ -19,6 +19,7 @@
 #include "../../core/profile_store.hpp"
 #include "../../core/user_identity.hpp"
 #include "../../imem/moment_helpers.hpp"
+#include "../../imem/recall_rerank.hpp"  // 2026-11-01: --rerank N
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -63,6 +64,8 @@ public:
             "  --topic X       Filter by topic prefix\n"
             "  --zone Z        Restrict corpus to zone (sharper IDF, faster)\n"
             "  --semantic      Hybrid BM25+vec recall (Phase 23). Falls back to BM25 if no embedder.\n"
+            "  --rerank N      Cross-encoder rerank of the top N (1-100; default + --semantic paths;\n"
+            "                  needs ~/.icmg/embed/ms-marco-MiniLM-L-6-v2.onnx, else BM25 order kept)\n"
             "  --alpha N       Blend weight 0..1 (1=BM25 only, 0=vec only, default 0.5)\n"
             "  --pure          Equivalent to --semantic --alpha 0\n"
             "  --causal        Expand BM25 hits 1-hop over causal edges (feature #1; see `memory link`)\n"
@@ -136,6 +139,9 @@ public:
         std::string at_commit = flagValue(args, "--at-commit");
         int limit = 10;
         try { limit = std::stoi(flagValue(args, "--limit", "10")); } catch (...) {}
+        // 2026-11-01: --rerank N = cross-encoder rerank of the top N (opt-in).
+        int rerank_n = imem::parseRerankN(flagValue(args, "--rerank"));
+        bool rerank_applied = false;
 
         // --as-of: brain v2.22 #1 time-travel recall. Accepts unix epoch,
         // relative duration (7d/24h/30m = that long AGO), or YYYY-MM-DD.
@@ -252,12 +258,19 @@ public:
         } else if (autoTier) {
             results = store.recallAuto(query, limit);
         } else if (semantic) {
-            results = store.recallSemantic(query, limit, alpha);
+            results = imem::applyRecallRerank(query,
+                store.recallSemantic(query, imem::rerankFetchLimit(limit, rerank_n), alpha),
+                rerank_n, limit, &rerank_applied);
         } else if (unseen) {
             results = store.recallUnseen(query, session_id, limit, fuzzy);
         } else {
-            results = store.recall(query, limit, fuzzy);
+            results = imem::applyRecallRerank(query,
+                store.recall(query, imem::rerankFetchLimit(limit, rerank_n), fuzzy),
+                rerank_n, limit, &rerank_applied);
         }
+        if (rerank_n > 0 && !rerank_applied)
+            std::cerr << "[icmg recall] --rerank: cross-encoder unavailable "
+                         "(~/.icmg/embed/ms-marco-MiniLM-L-6-v2.onnx); BM25 order kept\n";
 
         // --since post-filter: erase nodes created before the requested cutoff epoch.
         if (since_epoch > 0) {

@@ -48,6 +48,25 @@ TEST("redirect: quoted message warns about quotes") {
     ASSERT_CONTAINS(d.message, "quotes");
 }
 
+// 2026-10-31, seen live: a command holding `"` was pasted between double
+// quotes unescaped, so the copied advice split in bash and failed.
+TEST("redirect: inner double quotes -> single-quoted advice") {
+    auto d = classifyBashRedirect("ls -la \"/d/Data Kerja/x\" 2>&1 | python p.py");
+    ASSERT_TRUE(d.kind == RedirectKind::RedirectQuoted);
+    ASSERT_CONTAINS(d.message, "`icmg run 'ls -la \"/d/Data Kerja/x\" 2>&1 | python p.py'`");
+}
+
+TEST("redirect: single quote inside is escaped as '\\''") {
+    auto d = classifyBashRedirect("echo \"it's\" | someproc");
+    ASSERT_CONTAINS(d.message, "`icmg run 'echo \"it'\\''s\" | someproc'`");
+}
+
+TEST("redirect: $ and backslash force single quotes (no expansion)") {
+    ASSERT_CONTAINS(classifyBashRedirect("echo $HOME | someproc").message,
+                    "`icmg run 'echo $HOME | someproc'`");
+    ASSERT_CONTAINS(icmg::cli::redir_detail::shellQuote("a\\b"), "'a\\b'");
+}
+
 // --- logical-or is NOT a pipe ---
 
 TEST("redirect: logical-or is not treated as a pipe") {

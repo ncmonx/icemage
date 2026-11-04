@@ -389,6 +389,18 @@ void string_to_spv_func(std::string name, std::string in_path, std::string out_p
                 if (pos != std::string::npos) {
                     dep.replace(pos, out_path.length(), target_cpp);
                 }
+                // icemage patch: glslc writes dep paths with raw spaces, so a source
+                // tree under "D:/Data Kerja/..." splits into bogus deps that ninja
+                // always sees as missing -> every shader regenerated on every build.
+                // Escape spaces inside the shader source dir (Make/ninja "\ " syntax).
+                std::string src_dir = in_path.substr(0, in_path.find_last_of("/\\") + 1);
+                if (src_dir.find(' ') != std::string::npos) {
+                    std::string esc;
+                    for (char c : src_dir) { if (c == ' ') esc += '\\'; esc += c; }
+                    for (size_t p = dep.find(src_dir); p != std::string::npos; p = dep.find(src_dir, p + esc.size())) {
+                        dep.replace(p, src_dir.size(), esc);
+                    }
+                }
                 write_binary_file(target_cpp + ".d", dep);
             }
         }

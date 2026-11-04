@@ -14,6 +14,8 @@
 #include "../../src/core/db.hpp"
 #include "../../src/compress/learned_glossary.hpp"
 
+#include <cstdio>
+
 using namespace icmg;
 
 namespace {
@@ -50,7 +52,10 @@ TEST("LG: suggest returns only phrases at/above minHits") {
 
 TEST("LG: learning persists across a fresh store on same db (session boundary)") {
     // file-backed db so a second store instance reopens the same data.
-    core::Db db("learned_glossary_test.db");
+    // Start clean: a leftover file from an earlier run would inflate hits.
+    constexpr const char* kDbFile = "learned_glossary_test.db";
+    std::remove(kDbFile);
+    core::Db db(kDbFile);
     {
         compress::LearnedGlossary lg(db);
         lg.recordUse(g({{"G1", "persisted phrase value"}}), 4);

@@ -4,6 +4,67 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.28.0
+
+**Memory benchmarks: LongMemEval + LoCoMo, and a stronger recall stack.**
+`icmg bench-recall --dataset longmemeval|locomo <file.json>` scores the
+memory engine on the two standard AI-memory benchmarks (retrieval-only
+Recall@k / NDCG@k, no LLM judge). Every corpus runs in an isolated
+`:memory:` brain, never touching the project DB or the shared daemon cache.
+
+- **Default retrieval pipeline** (applied only when the ONNX model is
+  present, plain BM25 otherwise): cross-encoder rerank of the top 20 with
+  150-word max-passage chunks (`--no-rerank` opts out) + hybrid BM25/dense
+  blend at alpha 0.3 (`--no-semantic` opts out; an explicit `--semantic`
+  keeps alpha 0.5).
+- **BM25 word tokenizer is now the default** for live recall too: split on
+  non-alnum ASCII, UTF-8 bytes kept, English stopwords dropped
+  (`ICMG_BM25_TOKENIZER=legacy` reverts).
+- **Live recall rerank** -- `icmg recall --rerank N` (and the MCP
+  `icmg_recall` param) re-orders hits with the same cross-encoder
+  (ms-marco-MiniLM-L-6-v2, one ONNX session, 2 passages per memory). Opt-in;
+  costs ~5 s with chunking.
+- **Bench flags** -- `--semantic [--alpha A]`, `--granularity user-session`
+  (one doc per LongMemEval session, user turns only), `--no-as-of`,
+  `--score-abstention`, `--rerank N --rerank-chunk W`, ablation stages
+  `--fusion blend|rrf --enrich --neighbours --chunk --user-view --temporal
+  --group --mmr`, preset `--pipeline v2`. Progress line on stderr every 30 s
+  with ETA, so `--json` stdout stays clean.
+- **Fixes** -- the pipeline now honours `--score-abstention` (before,
+  every `_abs` question ranked empty under any pipeline flag);
+  `--dataset` runs no longer route through the shared daemon (one LoCoMo
+  corpus took 5m26s instead of 4.7s and flushed the live recall cache);
+  bash-advice hook quotes a command holding quotes as one shell word.
+
+**Results** (default pipeline vs plain BM25):
+
+LongMemEval_s, 500 questions, `--granularity user-session --no-as-of
+--score-abstention`:
+
+| Run | any@1 | any@5 | any@10 | all@5 | NDCG@10 |
+|---|---|---|---|---|---|
+| BM25 | .854 | .952 | .966 | .820 | .881 |
+| + rerank 20 / chunk 150 | .936 | .964 | .968 | .876 | .927 |
+| **+ semantic 0.3 (default)** | **.942** | **.982** | **.990** | **.926** | **.956** |
+
+Biggest gains: multi-session all@5 .789 -> .910, single-session-preference
+any@5 .767 -> .833.
+
+LoCoMo10, 1536 questions:
+
+| Run | any@1 | any@5 | any@10 | all@5 | NDCG@10 |
+|---|---|---|---|---|---|
+| BM25 | .308 | .542 | .626 | .456 | .430 |
+| + rerank 20 / chunk 150 | .501 | .648 | .680 | .535 | .550 |
+| **+ semantic 0.3 (default)** | **.514** | **.701** | **.741** | **.575** | **.584** |
+| `--pipeline v2` (opt-in, slower) | .528 | .766 | .827 | .636 | .636 |
+
+Caveat: retrieval-only numbers, measured on our harness. Other projects
+report different metric definitions, so these are not a head-to-head
+leaderboard claim.
+
+57 new tests. **2641/2641 ✓.**
+
 ## v2.27.0
 
 **2026 host-compatibility audit** -- icmg now wires itself correctly into

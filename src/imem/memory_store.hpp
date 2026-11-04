@@ -137,6 +137,14 @@ public:
                                        int64_t as_of_epoch,
                                        int limit = 10);
 
+    // 2026-10-29: hybrid BM25+cosine recall over the as-of view (bench-recall
+    // --dataset --semantic). Side-effect free like recallAsOf; alpha=1 or no
+    // embedder -> identical to recallAsOf ranking.
+    std::vector<MemoryNode> recallSemanticAsOf(const std::string& query,
+                                               int64_t as_of_epoch,
+                                               int limit = 10,
+                                               double alpha = 0.5);
+
     // Save query to history.
     void logQuery(const std::string& query, int result_count);
     // Gap #5: overload that also records an estimated token metric for the
@@ -167,6 +175,11 @@ private:
     mutable std::unordered_map<int64_t, std::vector<float>> embed_cache_;
     mutable bool embed_cache_warmed_ = false;
     void warmEmbedCache(int dim) const;
+    // Shared BM25+cosine blend (recallSemantic + recallSemanticAsOf). No side effects.
+    std::vector<MemoryNode> hybridRerank(const std::string& query,
+                                         std::vector<MemoryNode> cand,
+                                         int limit, double alpha,
+                                         bool* reranked) const;
 
     MemoryNode rowToNode(const core::Row& row) const;
     std::vector<MemoryNode> findSimilar(const std::string& topic,

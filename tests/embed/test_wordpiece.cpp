@@ -131,6 +131,35 @@ TEST("wordpiece: missing vocab returns false") {
     ASSERT_FALSE(t.ready());
 }
 
+TEST("wordpiece: encodePair builds CLS a SEP b SEP with segment ids") {
+    auto path = makeFixtureVocab();
+    WordPieceTokenizer t;
+    t.loadVocab(path);
+    auto p = t.encodePair("fix login", "hello world", 64);
+    // Unpadded: [CLS] fix login [SEP] hello world [SEP]
+    std::vector<int64_t> ids = {101, 105, 106, 102, 103, 104, 102};
+    ASSERT_EQ((int)p.input_ids.size(), 7);
+    for (int i = 0; i < 7; ++i) ASSERT_EQ(p.input_ids[i], ids[i]);
+    std::vector<int64_t> seg = {0, 0, 0, 0, 1, 1, 1};
+    for (int i = 0; i < 7; ++i) ASSERT_EQ(p.token_type_ids[i], seg[i]);
+    for (auto m : p.attention_mask) ASSERT_EQ(m, (int64_t)1);
+    fs::remove(path);
+}
+
+TEST("wordpiece: encodePair truncates the longer side first") {
+    auto path = makeFixtureVocab();
+    WordPieceTokenizer t;
+    t.loadVocab(path);
+    // budget 8 = 3 specials + 5 tokens; query has 1, doc has 6 -> doc cut to 4.
+    auto p = t.encodePair("fix", "hello world fix login bug auth", 8);
+    ASSERT_EQ((int)p.input_ids.size(), 8);
+    ASSERT_EQ(p.input_ids[1], (int64_t)105);   // query kept whole
+    ASSERT_EQ(p.input_ids[2], (int64_t)102);
+    ASSERT_EQ(p.input_ids[3], (int64_t)103);   // doc head kept
+    ASSERT_EQ(p.input_ids[7], (int64_t)102);   // final SEP
+    fs::remove(path);
+}
+
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }

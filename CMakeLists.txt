@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.27.0 LANGUAGES CXX C)
+project(icmg VERSION 2.28.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -715,6 +715,7 @@ add_icmg_test(test_layout_extractor tests/style_clone/test_layout_extractor.cpp)
 add_icmg_test(test_db           tests/core/test_db.cpp)
 add_icmg_test(test_db_prepared  tests/core/test_db_prepared.cpp)
 add_icmg_test(test_scorer       tests/imem/test_scorer.cpp)
+add_icmg_test(test_bm25_tokenize tests/imem/test_bm25_tokenize.cpp)  # 2026-11-03 opt-in word tokenizer
 add_icmg_test(test_semantic_dedup tests/imem/test_semantic_dedup.cpp)
 add_icmg_test(test_importance_decay tests/imem/test_importance_decay.cpp)  # v1.23.0 (TDD: M2)
 add_icmg_test(test_tier_rank     tests/imem/test_tier_rank.cpp)  # A1: tier tie-breaker
@@ -930,6 +931,7 @@ add_icmg_test(test_recall_asof   tests/imem/test_recall_asof.cpp)  # brain v2.22
 add_icmg_test(test_recall_gaps   tests/imem/test_recall_gaps.cpp)  # brain v2.22 #2: retrieval-failure ledger
 add_icmg_test(test_grounding_scan tests/imem/test_grounding_scan.cpp) # 2026-09-23 IDE-C: grounding scan
 add_icmg_test(test_bench_replay  tests/imem/test_bench_replay.cpp)  # 2026-09-23 IDE-A: replay bench
+add_icmg_test(test_recall_rerank tests/imem/test_recall_rerank.cpp)  # 2026-11-01 live recall --rerank
 add_icmg_test(test_recall_confidence tests/imem/test_recall_confidence.cpp) # 2026-09-23 IDE-B: MemCalib cue
 add_icmg_test(test_graph_coherence tests/core/test_graph_coherence.cpp) # 2026-09-23 IDE-E: TopoCompress pull
 add_icmg_test(test_asof_parse    tests/cli/test_asof_parse.cpp)    # brain v2.22 #1: --as-of parsing

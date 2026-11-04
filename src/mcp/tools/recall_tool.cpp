@@ -2,6 +2,8 @@
 #include "../../core/registry.hpp"
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
+#include "../../imem/recall_rerank.hpp"  // 2026-11-01: opt-in "rerank"
+#include <algorithm>
 
 namespace icmg::mcp {
 
@@ -17,6 +19,7 @@ public:
             {"query",  "string",  "Search query",                    true},
             {"limit",  "integer", "Max results (default 10)",        false},
             {"topic",  "string",  "Filter by topic prefix",          false},
+            {"rerank", "integer", "Cross-encoder rerank of the top N (1-100, opt-in; slower, sharper)", false},
         };
     }
 
@@ -25,6 +28,8 @@ protected:
         requireStr(args, "query", 1000);
         if (args.contains("limit") && !args["limit"].is_number_integer())
             throw McpError(-32602, "limit must be integer");
+        if (args.contains("rerank") && !args["rerank"].is_number_integer())
+            throw McpError(-32602, "rerank must be integer");
     }
 
     json callImpl(const json& args, core::Db& db) override {
@@ -38,7 +43,9 @@ protected:
         if (!topic.empty()) {
             nodes = store.recallByTopic(topic, limit);
         } else {
-            nodes = store.recall(query, limit);
+            int rr = std::max(0, std::min(imem::kRecallRerankMax, getInt(args, "rerank", 0)));
+            nodes = imem::applyRecallRerank(
+                query, store.recall(query, imem::rerankFetchLimit(limit, rr)), rr, limit);
         }
 
         json arr = json::array();
