@@ -2,6 +2,10 @@
 //
 // `icmg bench-recall [--file <path>] [--json] [--semantic]`
 // `icmg bench-recall --replay [--days N] [--max N] [--json]`   (2026-09-23)
+// `icmg bench-recall --dataset longmemeval|locomo <file.json> [--granularity
+//      session|turn] [--k 1,5,10] [--max N] [--json] [--per-question]`
+//      (2026-10-29: standard memory benchmarks, Tier 1 retrieval-only; runs on
+//       an isolated in-memory brain per corpus -- see imem/bench_dataset_run)
 //
 // Reads a scenario file (default `bench/recall_scenarios.txt`). Each non-blank,
 // non-`#` line is one scenario:
@@ -27,6 +31,10 @@
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include "../../imem/bench_replay.hpp"
+#include "../../imem/bench_dataset_run.hpp"
+#include "../bench_pipeline_flags.hpp"
+#include "../../imem/bench_rerank_pool.hpp"
+#include "../../imem/bench_embed_pool.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -84,7 +92,11 @@ public:
     void usage() const override {
         std::cout <<
             "Usage: icmg bench-recall [--file <path>] [--json] [--semantic]\n"
-            "       icmg bench-recall --replay [--days N] [--max N] [--json]\n\n"
+            "       icmg bench-recall --replay [--days N] [--max N] [--json]\n"
+            "       icmg bench-recall --dataset longmemeval|locomo <file.json>\n"
+            "            [--granularity session|turn|user-session] [--k 1,5,10] [--max N]\n"
+            "            [--json] [--per-question] [--semantic [--alpha A]]\n"
+            "            [--pipeline v2 | --fusion rrf --enrich --chunk N ...]\n\n"
             "Scenario file format (one per line):\n"
             "  <query>|<expect-csv>[|<top-k>]\n\n"
             "  # comments and blank lines ignored\n\n"
@@ -92,6 +104,15 @@ public:
             "--replay: replay real past queries from query_history; report\n"
             "  hit-rate, regressed queries, and answer token cost.\n"
             "  --days N   history window (default 30)   --max N  cap (default 200)\n"
+            "--dataset: standard memory benchmark, retrieval-only (no LLM).\n"
+            "  longmemeval = longmemeval_s/_m/_oracle .json (granularity default session)\n"
+            "  locomo      = locomo10.json (granularity default turn)\n"
+            "  Each corpus loads into an isolated in-memory brain (your DB is untouched);\n"
+            "  recall is bi-temporal as-of the question date. Reports recall_any@k,\n"
+            "  recall_all@k, NDCG@k per category. --max N limits corpora (smoke run).\n"
+            "  --semantic: hybrid BM25+cosine (needs embedder); --alpha = BM25 weight\n"
+            "    (default 0.5, 1 = pure BM25). Falls back to bm25 if no embedder.\n"
+            << benchPipelineUsage() <<
             "Exits 1 if any scenario fails (gate-friendly).\n";
     }
 
@@ -99,6 +120,7 @@ public:
         if (hasFlag(args, "--help") || hasFlag(args, "-h")) { usage(); return 0; }
 
         if (hasFlag(args, "--replay")) return runReplay(args);
+        if (hasFlag(args, "--dataset")) return runDataset(args);
 
         std::string file = flagValue(args, "--file");
         if (file.empty()) file = "bench/recall_scenarios.txt";
@@ -233,6 +255,68 @@ public:
 
         return failed == 0 ? 0 : 1;
     }
+    // 2026-10-29: LongMemEval / LoCoMo retrieval benchmark.
+    int runDataset(const std::vector<std::string>& args) {
+        std::string ds = flagValue(args, "--dataset");
+        std::string file = flagValue(args, "--file");
+        if (file.empty()) {   // positional: first arg after the dataset name
+            for (size_t i = 0; i + 1 < args.size(); ++i)
+                if (args[i] == "--dataset" && i + 2 < args.size() &&
+                    args[i + 2].rfind("--", 0) != 0) { file = args[i + 2]; break; }
+        }
+        if (ds.empty() || file.empty()) {
+            std::cerr << "bench-recall --dataset: need <longmemeval|locomo> <file.json>\n";
+            return 1;
+        }
+        std::string gran = flagValue(args, "--granularity");
+        if (gran.empty()) gran = (ds == "locomo") ? "turn" : "session";
+        imem::BenchGranularity granEnum{};
+        if (!imem::parseBenchGranularity(gran, granEnum)) {
+            std::cerr << "bench-recall: --granularity must be session|turn|user-session\n";
+            return 1;
+        }
+        if (granEnum == imem::BenchGranularity::UserSession && ds != "longmemeval") {
+            std::cerr << "bench-recall: --granularity user-session is longmemeval-only\n";
+            return 1;
+        }
+        auto ks = imem::parseBenchKs(flagValue(args, "--k"));
+        int maxCorpora = 0;
+        try { std::string m = flagValue(args, "--max"); if (!m.empty()) maxCorpora = std::stoi(m); }
+        catch (...) {}
+        imem::BenchRunOptions opt;
+        opt.semantic = hasFlag(args, "--semantic");
+        try { std::string a = flagValue(args, "--alpha"); if (!a.empty()) opt.alpha = std::stod(a); }
+        catch (...) {}
+        if (opt.alpha < 0.0 || opt.alpha > 1.0) {
+            std::cerr << "bench-recall: --alpha must be in [0,1]\n";
+            return 1;
+        }
+        if (auto perr = parseBenchPipelineFlags(args, gran == "turn", opt); !perr.empty()) {
+            std::cerr << "bench-recall: " << perr << "\n";
+            return 1;
+        }
+        applyBenchDefaults(args,
+                           {imem::BenchRerankPool::instance().available(),
+                            imem::BenchEmbedPool::instance().available()},
+                           opt);
+        try {
+            auto rep = imem::runBenchDatasetFile(
+                ds, file,
+                granEnum,
+                ks, maxCorpora, opt);
+            if (rep.corpora == 0) {
+                std::cerr << "bench-recall: no corpus objects found in " << file << "\n";
+                return 1;
+            }
+            std::cout << imem::formatBenchReport(rep, ks, hasFlag(args, "--json"),
+                                                 hasFlag(args, "--per-question"));
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "bench-recall --dataset: " << e.what() << "\n";
+            return 1;
+        }
+    }
+
     // IDE-A (2026-09-23): replay real past queries against the CURRENT brain.
     // hit-rate = still answerable; regressed = answered then, silent now
     // (forget/prune/eviction damage); avg tokens = injection cost per answer.

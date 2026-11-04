@@ -10,6 +10,7 @@
 // Reference: BERT tokenizer.basic_tokenize + tokenizer.wordpiece_tokenize
 //            (https://github.com/google-research/bert/blob/master/tokenization.py)
 #include "wordpiece_tokenizer.hpp"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <cctype>
@@ -127,6 +128,34 @@ WordPieceTokenizer::Tokens WordPieceTokenizer::encode(const std::string& text, i
         t.attention_mask.push_back(i < real ? 1 : 0);
 
     return t;
+}
+
+WordPieceTokenizer::PairTokens
+WordPieceTokenizer::encodePair(const std::string& a, const std::string& b, int max_len) const {
+    auto pieces = [this](const std::string& s) {
+        std::vector<int64_t> ids;
+        for (auto& w : splitWhitespacePunct(toLower(s)))
+            for (auto id : wordpieceSplit(w)) ids.push_back(id);
+        return ids;
+    };
+    auto ta = pieces(a), tb = pieces(b);
+    const size_t budget = max_len > 3 ? (size_t)max_len - 3 : 0;
+    while (ta.size() + tb.size() > budget) {
+        if (tb.size() >= ta.size() && !tb.empty()) tb.pop_back();
+        else if (!ta.empty()) ta.pop_back();
+        else break;
+    }
+    PairTokens p;
+    p.input_ids.push_back(CLS_ID);
+    p.input_ids.insert(p.input_ids.end(), ta.begin(), ta.end());
+    p.input_ids.push_back(SEP_ID);
+    const size_t firstLen = p.input_ids.size();
+    p.input_ids.insert(p.input_ids.end(), tb.begin(), tb.end());
+    p.input_ids.push_back(SEP_ID);
+    p.attention_mask.assign(p.input_ids.size(), 1);
+    p.token_type_ids.assign(p.input_ids.size(), 1);
+    std::fill(p.token_type_ids.begin(), p.token_type_ids.begin() + firstLen, 0);
+    return p;
 }
 
 } // namespace icmg::embed

@@ -1,4 +1,5 @@
 #include "scorer.hpp"
+#include "bm25_tokenize.hpp"
 #include "memory_tier.hpp"   // A1: tier tie-breaker for recall ranking
 #include <algorithm>
 #include <chrono>
@@ -15,6 +16,9 @@ Scorer& Scorer::instance() {
 }
 
 std::vector<std::string> Scorer::tokenize(const std::string& text) const {
+    // 2026-11-03: word tokenizer is the default; ICMG_BM25_TOKENIZER=legacy keeps
+    // the whitespace path below. See bm25_tokenize.hpp.
+    if (bm25WordTokenizerFromEnv()) return wordTokenize(text);
     std::vector<std::string> tokens;
     std::istringstream ss(text);
     std::string t;

@@ -101,6 +101,44 @@ TEST("vec_search: limit respected after rerank") {
 }
 
 
+// 2026-10-29: recallSemanticAsOf -- hybrid recall over the bi-temporal as-of
+// view (used by bench-recall --dataset --semantic). Must (a) hide nodes valid
+// after as_of, (b) be side-effect free (no frequency bump, no query log) so a
+// benchmark question cannot bias the next one, (c) degrade to the as-of BM25
+// ranking at alpha=1 / without an embedder.
+static int countRows(icmg::core::Db& db, const std::string& sql) {
+    int n = 0;
+    db.query(sql, {}, [&](const icmg::core::Row& r) { if (!r.empty()) n = std::stoi(r[0]); });
+    return n;
+}
+
+TEST("vec_search: recallSemanticAsOf honours as_of and is side-effect free") {
+    icmg::core::Db db(":memory:");
+    setupSchema(db);
+    db.run("ALTER TABLE memory_nodes ADD COLUMN valid_from INTEGER NOT NULL DEFAULT 0");
+    icmg::imem::MemoryStore store(db);
+    auto put = [&](const std::string& t, const std::string& c, int64_t vf) {
+        icmg::imem::MemoryNode n; n.topic = t; n.content = c; n.valid_from = vf;
+        n.git_sha = "test";
+        return store.store(n, true);
+    };
+    int64_t early = put("corgi biscuit", "my corgi is named biscuit", 1000);
+    put("corgi trick", "biscuit the corgi learned a trick", 9000);  // future
+    put("kyoto trip", "plan a trip to kyoto", 1500);
+    icmg::imem::Scorer::instance().invalidate();
+    int histBefore = countRows(db, "SELECT COUNT(*) FROM query_history");
+
+    for (double alpha : {1.0, 0.5}) {
+        auto r = store.recallSemanticAsOf("corgi name", 5000, 5, alpha);
+        ASSERT_FALSE(r.empty());
+        ASSERT_EQ(r[0].id, early);
+        for (const auto& n : r) ASSERT_TRUE(n.content.find("trick") == std::string::npos);
+    }
+    ASSERT_EQ(countRows(db, "SELECT COUNT(*) FROM query_history"), histBefore);
+    ASSERT_EQ(countRows(db, "SELECT frequency FROM memory_nodes WHERE id=" +
+                            std::to_string(early)), 1);
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

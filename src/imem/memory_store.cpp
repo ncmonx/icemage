@@ -828,40 +828,45 @@ std::vector<MemoryNode> MemoryStore::recallSemantic(const std::string& query,
         return cand;
     }
 
-    // Step 2: try to embed query.
-    // v1.28.0: cached singleton — first call inside this process pays the
-    // ONNX cold-load (~5-6s on Win NTFS); subsequent calls reuse the
-    // session. Cuts test_vec_search ctest from 31s to <1s by removing
-    // 5x redundant cold-loads across 5 sub-tests.
-    auto* embedder = embed::cachedEmbedder();
-    if (!embedder) {
-        // Graceful fallback: return BM25 results unchanged.
+    // Steps 2-5 (embed query, load doc vectors, min-max BM25, hybrid blend)
+    // live in hybridRerank() -- shared with recallSemanticAsOf (2026-10-29).
+    bool reranked = false;
+    auto out = hybridRerank(query, std::move(cand), limit, alpha, &reranked);
+    if (!out.empty()) bumpFrequency(out[0].id);
+    logQuery(query + (reranked ? " [semantic alpha=" + std::to_string(alpha) + "]"
+                               : std::string(" [semantic no-embedder]")),
+             (int)out.size());
+    return out;
+}
+
+// 2026-10-29: shared hybrid BM25+cosine rerank (extracted from recallSemantic,
+// math unchanged). cand must come from Scorer::rank (bm25_score populated).
+// Side-effect free: no frequency bump, no query log. *reranked = false when no
+// embedder / empty query vector -> returns the BM25 order truncated to limit.
+std::vector<MemoryNode> MemoryStore::hybridRerank(const std::string& query,
+                                                  std::vector<MemoryNode> cand,
+                                                  int limit, double alpha,
+                                                  bool* reranked) const {
+    if (reranked) *reranked = false;
+    auto bm25Only = [&]() {
         if ((int)cand.size() > limit) cand.resize(limit);
-        if (!cand.empty()) bumpFrequency(cand[0].id);
-        logQuery(query + " [semantic no-embedder]", (int)cand.size());
-        return cand;
-    }
+        return std::move(cand);
+    };
+    auto* embedder = embed::cachedEmbedder();
+    if (!embedder) return bm25Only();
     auto qvec = embedder->embed(query);
     int dim = embedder->dim();
-    if (qvec.empty()) {
-        if ((int)cand.size() > limit) cand.resize(limit);
-        return cand;
-    }
+    if (qvec.empty()) return bm25Only();
 
-    // Step 3: load doc embeddings for candidate ids.
-    // v1.1.0 Task 3: hot-path cache. Warm once per MemoryStore lifetime;
-    // subsequent recalls skip the EmbedStore DB query entirely.
+    // Doc embeddings: hot-path cache warmed once per MemoryStore lifetime.
     warmEmbedCache(dim);
     std::unordered_map<int64_t, std::vector<float>> by_id;
     {
         std::vector<int64_t> miss_ids;
         for (auto& n : cand) {
             auto it = embed_cache_.find(n.id);
-            if (it != embed_cache_.end()) {
-                by_id.emplace(n.id, it->second);
-            } else {
-                miss_ids.push_back(n.id);
-            }
+            if (it != embed_cache_.end()) by_id.emplace(n.id, it->second);
+            else miss_ids.push_back(n.id);
         }
         if (!miss_ids.empty()) {
             embed::EmbedStore es(db_);
@@ -873,39 +878,19 @@ std::vector<MemoryNode> MemoryStore::recallSemantic(const std::string& query,
         }
     }
 
-    // Step 4: BM25 normalisation (max-score = 1).
-    // 2026-07-07 fix: use the REAL bm25_score magnitude (already populated by
-    // Scorer::rank() into each MemoryNode) via min-max normalization, instead
-    // of a rank-POSITION fallback (top=1.0, decreasing by index regardless of
-    // actual relevance gap). The old fallback distorted the hybrid blend: two
-    // near-tied candidates got maximally different weight, and two wildly
-    // different candidates got merely adjacent weight -- because it only
-    // looked at list position, never the real score magnitude.
+    // Real BM25 magnitude, min-max normalised (2026-07-07 fix; not rank slot).
     std::vector<double> raw_bm25;
     raw_bm25.reserve(cand.size());
     for (auto& n : cand) raw_bm25.push_back(n.bm25_score);
     auto bm25_norm = Scorer::normalizeMinMax(raw_bm25);
-    int N = (int)cand.size();
-    auto bm_norm = [&](int idx) { return bm25_norm[idx]; };
 
-    // Step 5: hybrid blend.
-    // 2026-07-07: entity-linking top-up (Mem0-style, deterministic/zero-LLM).
-    // extractEntities() already tags candidate.keywords with "type:value"
-    // tokens (url/ip/env/mention) at CAPTURE time, but recallSemantic never
-    // cross-references the QUERY's own entities against them. A query that
-    // names the same concrete env-var/URL/@mention as a memory now gets a
-    // small, capped boost on top of the BM25+cosine blend -- a real-overlap
-    // signal neither BM25 nor cosine can see on their own. Scoped ONLY to
-    // this hybrid path (not the pure-BM25 alpha==1 / no-embedder early
-    // returns above) to keep this change's surface small and match what's
-    // covered by the new tests -- extending those paths is a follow-up.
+    // Hybrid blend + Mem0-style entity-overlap top-up (2026-07-07).
     static constexpr double kEntityBoostWeight = 0.15;
     auto query_entities = extractEntities(query);
     struct Scored { MemoryNode node; double score; };
     std::vector<Scored> blended;
     blended.reserve(cand.size());
-    for (int i = 0; i < N; ++i) {
-        double bm = bm_norm(i);
+    for (size_t i = 0; i < cand.size(); ++i) {
         double cs = 0.0;
         auto it = by_id.find(cand[i].id);
         if (it != by_id.end()) {
@@ -914,20 +899,37 @@ std::vector<MemoryNode> MemoryStore::recallSemantic(const std::string& query,
         }
         double ent = query_entities.empty() ? 0.0
             : Scorer::entityOverlapScore(query_entities, cand[i].keywords);
-        double s = alpha * bm + (1.0 - alpha) * cs + kEntityBoostWeight * ent;
-        blended.push_back({cand[i], s});
+        double s = alpha * bm25_norm[i] + (1.0 - alpha) * cs + kEntityBoostWeight * ent;
+        blended.push_back({std::move(cand[i]), s});
     }
-    std::sort(blended.begin(), blended.end(),
-              [](const Scored& a, const Scored& b) { return a.score > b.score; });
+    std::stable_sort(blended.begin(), blended.end(),
+                     [](const Scored& a, const Scored& b) { return a.score > b.score; });
 
     std::vector<MemoryNode> out;
     out.reserve(std::min(limit, (int)blended.size()));
     for (int i = 0; i < (int)blended.size() && i < limit; ++i)
         out.push_back(std::move(blended[i].node));
-
-    if (!out.empty()) bumpFrequency(out[0].id);
-    logQuery(query + " [semantic alpha=" + std::to_string(alpha) + "]", (int)out.size());
+    if (reranked) *reranked = true;
     return out;
+}
+
+// 2026-10-29: hybrid recall over the bi-temporal as-of view. Like recallAsOf
+// it is side-effect free (bench questions must not bias each other).
+std::vector<MemoryNode> MemoryStore::recallSemanticAsOf(const std::string& query,
+                                                        int64_t as_of_epoch,
+                                                        int limit, double alpha) {
+    if (alpha < 0.0) alpha = 0.0;
+    if (alpha > 1.0) alpha = 1.0;
+    auto corpus = allAsOf(as_of_epoch);
+    if (corpus.empty()) return {};
+    auto& scorer = Scorer::instance();
+    scorer.fit(corpus);
+    auto cand = scorer.rank(query, corpus, std::max(limit * 5, 50));
+    if (alpha >= 0.999) {
+        if ((int)cand.size() > limit) cand.resize(limit);
+        return cand;
+    }
+    return hybridRerank(query, std::move(cand), limit, alpha, nullptr);
 }
 
 void MemoryStore::bumpFrequency(int64_t id) {

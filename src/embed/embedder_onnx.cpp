@@ -18,6 +18,7 @@
 #ifdef ICMG_HAS_ONNX
 
 #include "embedder.hpp"
+#include "onnx_api.hpp"
 #include "wordpiece_tokenizer.hpp"
 #include "../core/logger.hpp"
 
@@ -37,26 +38,6 @@ namespace fs = std::filesystem;
 namespace icmg::embed {
 
 namespace {
-
-// Load API once.
-// v1.57 S3: version-walk fallback. The vendored headers declare
-// ORT_API_VERSION=25 (ORT 1.22+) but the bundled onnxruntime.dll is 1.17.1
-// (supports up to API 17). GetApi(25) on that DLL returns nullptr and the
-// next deref crashes with "API version [25] not available". Request the
-// header version first, then walk DOWN until the DLL returns a non-null
-// table. The embedder only calls ORT functions present since API 11
-// (CreateEnv/CreateSession/Run/tensor helpers), so a v17 table is safe.
-const OrtApi* ortApi() {
-    static const OrtApi* api = [] () -> const OrtApi* {
-        const OrtApiBase* base = OrtGetApiBase();
-        if (!base) return nullptr;
-        for (uint32_t v = ORT_API_VERSION; v >= 1; --v) {
-            if (const OrtApi* a = base->GetApi(v)) return a;
-        }
-        return nullptr;
-    }();
-    return api;
-}
 
 #define ORT_CHECK(expr, ctx) \
     do { OrtStatus* _s = (expr); \

@@ -83,6 +83,24 @@ inline bool hasRealPipe(const std::string& cmd) {
            (cmd.find('|') != std::string::npos && cmd.find("||") == std::string::npos);
 }
 
+// Quote a whole command as ONE shell word for the `icmg run <...>` advice.
+// 2026-10-31: the advice used to paste the command between double quotes with
+// no escaping, so a command that itself held `"` (cd "D:/a b" && ls | sort)
+// came out split: the inner quote closed the outer one and bash ran a mangled
+// command ("ls -la /d/Data: No such file"). Models copied that advice
+// verbatim, it failed, and they blamed the hook. Plain double quotes are kept
+// when they are safe (readable, and the pinned form older advice used);
+// otherwise POSIX single quotes, with ' written as '\''.
+inline std::string shellQuote(const std::string& cmd) {
+    if (cmd.find_first_of("\"$`\\") == std::string::npos) return "\"" + cmd + "\"";
+    std::string out = "'";
+    for (char c : cmd) {
+        if (c == '\'') out += "'\\''";
+        else out += c;
+    }
+    return out + "'";
+}
+
 }  // namespace redir_detail
 
 // Classify a noisy command (already matched the bash PATTERN gate). `cmd` is the
@@ -102,7 +120,7 @@ inline RedirectDecision classifyBashRedirect(const std::string& cmd_in) {
         }
         d.kind = RedirectKind::RedirectQuoted;
         d.message = "This is a pipe. Wrap the WHOLE pipeline so icmg filters it: "
-                    "`icmg run \"" + cmd + "\"` (the quotes matter -- unquoted, the "
+                    "`icmg run " + shellQuote(cmd) + "` (the quotes matter -- unquoted, the "
                     "outer shell splits the pipe and the tail stage leaks to native). "
                     "Bypass: RAW=1.";
         return d;

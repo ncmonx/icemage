@@ -35,6 +35,7 @@
 #include "../../core/hooks/internals.hpp"
 #include "../../daemon/rule_daemon_client.hpp"
 #include "../../imem/memory_store.hpp"
+#include "../../imem/recall_rerank.hpp"  // 2026-11-01: ICMG_RECALL_RERANK opt-in
 #include "../../imem/recall_confidence.hpp"  // 2026-09-23 IDE-B: MemCalib cue
 #include "../../compress/write_expander.hpp"   // v1.25.0 (W3)
 #include "../../core/cross_turn_dedup.hpp"
@@ -588,7 +589,12 @@ private:
             auto& cfg = core::Config::instance();
             core::Db db(cfg.projectDbPath("."));
             imem::MemoryStore mem(db);
-            auto results = mem.recall(prompt, recall_limit, false);
+            // 2026-11-01: ICMG_RECALL_RERANK=N -> cross-encoder reorders the top N
+            // (opt-in; BM25 score kept, so RECALL_MIN_SCORE still gates below).
+            const int rerank_n = imem::rerankNFromEnv();
+            auto results = imem::applyRecallRerank(prompt,
+                mem.recall(prompt, imem::rerankFetchLimit(recall_limit, rerank_n), false),
+                rerank_n, recall_limit);
             std::ostringstream rec_out;
             int added = 0;
             for (auto& m : results) {
