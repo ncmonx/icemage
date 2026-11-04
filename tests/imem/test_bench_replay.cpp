@@ -379,6 +379,7 @@ TEST("bench-run: semantic mode keeps as_of isolation and ranks evidence") {
 // 2026-10-31: experimental retrieval stages (RRF, chunking, temporal, MMR).
 #include "../../src/imem/bench_retrieval.hpp"
 #include "../../src/imem/bench_pipeline.hpp"
+#include "../../src/imem/bench_embed_pool.hpp"
 #include "../../src/cli/bench_pipeline_flags.hpp"
 
 TEST("bench-retrieval: rrf rewards agreement across lists") {
@@ -485,7 +486,12 @@ TEST("bench-pipeline: dense rrf with chunks and user view ranks evidence") {
     c.docs = {{"s1", "user: sourdough starters and hydration\nassistant: sure", 1000},
               {"s2", "user: My corgi Biscuit loves the beach\nassistant: cute", 2000}};
     BenchQuestion q; q.id = "q"; q.category = "c";
-    q.question = "what is the name of my dog"; q.evidence = {"s2"}; q.as_of = 5000;
+    // 2026-11-04: CI has no embed model, so dense is off there and a query with
+    // no word overlap ranks nothing. Paraphrase only when vectors exist; the
+    // chunk + user-view + rrf path is exercised either way.
+    q.question = BenchEmbedPool::instance().available() ? "what is the name of my dog"
+                                                        : "what is my corgi called";
+    q.evidence = {"s2"}; q.as_of = 5000;
     c.questions = {q};
     BenchRunOptions opt; opt.semantic = true; opt.fusion = "rrf";
     opt.chunkWords = 4; opt.userView = true; opt.mmrLambda = 0.7;
