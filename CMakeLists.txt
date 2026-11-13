@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() -- harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.29.1 LANGUAGES CXX C)
+project(icmg VERSION 2.30.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 -- enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -761,6 +761,10 @@ add_icmg_test(test_global_db    tests/core/test_global_db.cpp)
 add_icmg_test(test_atomic_file      tests/core/test_atomic_file.cpp)       # issue #277: validate-first atomic write
 add_icmg_test(test_source_encoding  tests/core/test_source_encoding.cpp)   # issue #277: no BOM in src/
 add_icmg_test(test_update_swap      tests/cli/test_update_swap.cpp)        # issue #277: rollback never loses exe
+add_icmg_test(test_ref_flow         tests/cli/test_ref_flow.cpp)            # v2.30.0 Model-AI ref flow: pure policy
+add_icmg_test(test_ai_ref_store     tests/imem/test_ai_ref_store.cpp)       # v2.30.0 Model-AI ref store
+add_icmg_test(test_ref_writeback    tests/cli/test_ref_writeback.cpp)       # v2.30.0 Model-AI ref write-back
+add_icmg_test(test_ref_lookup       tests/cli/test_ref_lookup.cpp)          # v2.30.0 Model-AI ref lookup
 add_icmg_test(test_abbr         tests/abbr/test_abbr.cpp)
 add_icmg_test(test_sp           tests/sp/test_sp.cpp)
 add_icmg_test(test_import       tests/import/test_import.cpp)
@@ -845,6 +849,7 @@ add_icmg_test(test_lint_style tests/cli/test_lint_style.cpp)
 add_icmg_test(test_known_issue_auto tests/cli/test_known_issue_auto.cpp)
 add_icmg_test(test_config     tests/cli/test_config.cpp)
 add_icmg_test(test_init_hook  tests/cli/test_init_hook.cpp)
+add_icmg_test(test_init_imports tests/cli/test_init_imports.cpp)   # issue #279: update never slims CLAUDE.md
 add_icmg_test(test_presence_hook  tests/cli/test_presence_hook.cpp)
 add_icmg_test(test_zone_config tests/cli/test_zone_config.cpp)
 add_icmg_test(test_review tests/cli/test_review.cpp)
