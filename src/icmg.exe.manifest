@@ -3,9 +3,9 @@
   <assemblyIdentity type="win32" name="ncmonx.icmg" version="1.78.0.0" processorArchitecture="amd64"/>
   <!--
     Private SxS DLL isolation. Each <file> entry forces the Win loader to
-    treat the named DLL as a "private assembly" of icmg.exe â€” search ONLY
+    treat the named DLL as a "private assembly" of icmg.exe — search ONLY
     in the app directory, never fall through to PATH. This eliminates
-    the "B:\ â€” system cannot find drive" popup that fired during loader
+    the "B:\ — system cannot find drive" popup that fired during loader
     PATH scan for transitive deps of onnxruntime/wasmtime/tree-sitter.
   -->
   <file name="onnxruntime.dll"/>

@@ -118,6 +118,10 @@ public:
     // Bump frequency + update last_used.
     void bumpFrequency(int64_t id);
 
+    // Observed-reuse signal (2026-11-12): the agent explicitly fetched these
+    // ids (recall --get). Each distinct id is bumped once per call.
+    void markReused(const std::vector<int64_t>& ids);
+
     // Get single node by id (including deleted).
     MemoryNode get(int64_t id) const;
 

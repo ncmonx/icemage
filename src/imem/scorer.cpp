@@ -1,4 +1,5 @@
 #include "scorer.hpp"
+#include "actr_activation.hpp"   // 2026-11-11: ICMG_RECENCY=actr
 #include "bm25_tokenize.hpp"
 #include "memory_tier.hpp"   // A1: tier tie-breaker for recall ranking
 #include <algorithm>
@@ -211,10 +212,18 @@ Scorer::ScoreDetail Scorer::scoreDetailed(const std::string& query,
                                            const MemoryNode& node) const {
     ScoreDetail d;
     d.bm25           = bm25(query, node);
-    // v1.20.0 (M1): access-aware decay — hot memos decay slower.
-    d.recency        = accessAwareDecay(node.last_used, node.frequency);
-    // log(2 + freq): floor at log(2)≈0.69 so unvisited nodes (freq=0) are still rankable.
-    d.freq           = std::log(2.0 + node.frequency);
+    if (actrRecencyFromEnv()) {
+        // 2026-11-11 opt-in: ACT-R base-level activation folds recency AND
+        // use count into one power-law multiplier (actr_activation.hpp).
+        d.recency = actrRecencyMultAt(node.frequency, node.last_used, node.created_at,
+                                      actrNowSec());
+        d.freq    = 1.0;
+    } else {
+        // v1.20.0 (M1): access-aware decay — hot memos decay slower.
+        d.recency = accessAwareDecay(node.last_used, node.frequency);
+        // log(2 + freq): floor at log(2)≈0.69 so unvisited nodes (freq=0) are still rankable.
+        d.freq    = std::log(2.0 + node.frequency);
+    }
 
     static const double mult[4] = {0.5, 1.0, 1.5, 2.0};
     int imp = std::max(0, std::min(3, node.importance));

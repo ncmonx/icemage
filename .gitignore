@@ -89,10 +89,14 @@ build-msvc-full/
 .icemage/hooks.json
 .icemage/hooks/.version
 .icemage/hooks/.discover-last
+.icemage/rules-read.txt
 .icemage/hooks/auto-recall.ps1
 .icemage/hooks/discover-nudge.ps1
 .icemage/hooks/search-nudge.ps1
 .icemage/sessions/
+# per-turn session logs written by the icemage runtime (local only)
+.icemage/walkthroughs/
+.icemage/gate-ledger/
 
 # Python bytecode (multimodal sidecar)
 __pycache__/

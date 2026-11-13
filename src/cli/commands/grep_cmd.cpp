@@ -254,7 +254,7 @@ public:
         // Normal mode uses safeExecShell so Tkil filter + token cap apply.
         core::ExecResult r;
         if (smart_mode) {
-            // Direct argv exec â€” no shell interpolation, no cmd.exe mangling.
+            // Direct argv exec — no shell interpolation, no cmd.exe mangling.
             r = core::safeExec(rg_argv, false, 30000);
         } else {
             std::string cmd;

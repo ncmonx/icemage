@@ -402,6 +402,11 @@ public:
             if (comma == std::string::npos) break;
             pos = comma + 1;
         }
+        // Observed reuse (2026-11-12, research item 6): fetching the detail is
+        // the agent choosing this memory -- the honest "it was used" signal.
+        std::vector<int64_t> used;
+        for (const auto& n : got) used.push_back(n.id);
+        store.markReused(used);
         if (json) printJson(got);
         else      printFull(got);
         return 0;

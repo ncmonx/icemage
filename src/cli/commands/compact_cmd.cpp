@@ -13,6 +13,8 @@
 //   icmg compact --out handoff.md   # override output path
 
 #include "../base_command.hpp"
+#include "../compaction_digest.hpp"
+#include "../../core/utf8_prefix.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -35,12 +37,16 @@ namespace icmg::cli {
 
 namespace {
 
-// Extract first sentence (up to first '.', '!', '?' or 120 chars).
+constexpr size_t kSentenceBytes = 120;  // first-sentence fallback cap
+constexpr size_t kNowMdBytes    = 800;  // .remember/now.md cap
+constexpr size_t kRecentMdBytes = 600;  // .remember/recent.md cap
+
+// Extract first sentence (see sentenceEnd: "v2.28.0" stays whole) or the
+// first 120 bytes on a UTF-8 boundary when there is no sentence end.
 std::string firstSentence(const std::string& s) {
-    size_t end = s.find_first_of(".!?\n");
-    if (end == std::string::npos) end = std::min(s.size(), (size_t)120);
-    else end = std::min(end + 1, s.size());
-    std::string r = s.substr(0, end);
+    size_t end = sentenceEnd(s);
+    std::string r = end == std::string::npos ? core::utf8Prefix(s, kSentenceBytes)
+                                             : s.substr(0, end);
     // strip leading whitespace
     size_t a = r.find_first_not_of(" \t\r\n");
     return a == std::string::npos ? "" : r.substr(a);
@@ -85,7 +91,7 @@ public:
             "  --print-only    Print to stdout only, no file write\n"
             "  --quiet         Suppress [compact] prefix lines\n\n"
             "Tip: paste the output as session context for the next turn.\n"
-            "     Saves 60-80%% tokens vs re-reading full history.\n";
+            "     Saves 60-80% tokens vs re-reading full history.\n";
     }
 
     int run(const std::vector<std::string>& args) override {
@@ -134,14 +140,15 @@ public:
 
         if (!now_md.empty()) {
             ss << "## Current focus (.remember/now.md)\n";
-            // cap at 800 chars
-            std::string cap = now_md.size() > 800 ? now_md.substr(0, 800) + "\n...[truncated]" : now_md;
+            std::string cap = now_md.size() > kNowMdBytes
+                ? core::utf8Prefix(now_md, kNowMdBytes) + "\n...[truncated]" : now_md;
             ss << cap << "\n\n";
         }
 
         if (!recent_md.empty()) {
             ss << "## Recent work (.remember/recent.md)\n";
-            std::string cap = recent_md.size() > 600 ? recent_md.substr(0, 600) + "\n...[truncated]" : recent_md;
+            std::string cap = recent_md.size() > kRecentMdBytes
+                ? core::utf8Prefix(recent_md, kRecentMdBytes) + "\n...[truncated]" : recent_md;
             ss << cap << "\n";
         }
 

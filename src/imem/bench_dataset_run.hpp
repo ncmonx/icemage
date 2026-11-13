@@ -32,6 +32,9 @@ struct BenchRunOptions {
     double mmrLambda   = 1.0;    // <1: MMR diversification of the top pool
     int    rerankTop   = 0;      // >0: cross-encoder rerank of the final top N
     int    rerankChunk = 0;      // >0: rerank on N-word passages, doc = max passage
+    double prfBeta     = 0.0;    // >0: RM3 pseudo-relevance feedback, lexical interp. weight
+    double coverLambda = 0.0;    // >0: coverage-greedy head (new query terms weight)
+    double rerankGate  = 0.0;    // >0: skip rerank on top-1 margin >= this + full coverage
 
     // 2026-11-02: ignore question dates (every doc visible). LongMemEval_s has
     // 41/470 questions whose evidence is dated after question_date; the
@@ -45,7 +48,7 @@ struct BenchRunOptions {
     bool pipeline() const {
         return !fusion.empty() || enrich || neighbours > 0 || chunkWords > 0 ||
                userView || temporal > 0 || groupBeta > 0 || mmrLambda < 1.0 ||
-               rerankTop > 0;
+               rerankTop > 0 || prfBeta > 0 || coverLambda > 0;
     }
 };
 

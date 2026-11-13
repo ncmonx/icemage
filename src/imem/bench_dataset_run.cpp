@@ -176,18 +176,21 @@ std::string describePipeline(const BenchRunOptions& o) {
         if (o.fusion == "rrf") s += " fusion=rrf";
         else { std::snprintf(b, sizeof b, " fusion=blend alpha=%.2f", o.alpha); s += b; }
     }
+    if (o.prfBeta > 0) { std::snprintf(b, sizeof b, " prf=%.2f", o.prfBeta); s += b; }
     if (o.enrich) s += " enrich";
     if (o.neighbours > 0) s += " nbr=" + std::to_string(o.neighbours);
     if (o.chunkWords > 0) s += " chunk=" + std::to_string(o.chunkWords);
     if (o.userView) s += " user-view";
     if (o.temporal > 0) { std::snprintf(b, sizeof b, " temporal=%.2f", o.temporal); s += b; }
     if (o.groupBeta > 0) { std::snprintf(b, sizeof b, " group=%.2f", o.groupBeta); s += b; }
+    if (o.coverLambda > 0) { std::snprintf(b, sizeof b, " cover=%.2f", o.coverLambda); s += b; }
     if (o.mmrLambda < 1.0) { std::snprintf(b, sizeof b, " mmr=%.2f", o.mmrLambda); s += b; }
     if (o.rerankTop > 0)
         s += " rerank=" + std::to_string(o.rerankTop) +
              (BenchRerankPool::instance().available() ? "" : "(unavailable)");
     if (o.rerankTop > 0 && o.rerankChunk > 0)
         s += " rerank-chunk=" + std::to_string(o.rerankChunk);
+    if (o.rerankGate > 0) { std::snprintf(b, sizeof b, " gate=%.2f", o.rerankGate); s += b; }
     return s;
 }
 
@@ -206,6 +209,7 @@ BenchFileReport runBenchDatasetFile(const std::string& dataset,
     if (dataset != "longmemeval" && dataset != "locomo")
         throw std::runtime_error("unknown dataset '" + dataset +
                                  "' (expected longmemeval | locomo)");
+    resetBenchRerankGateStats();
     std::ifstream f(path, std::ios::binary);
     if (!f) throw std::runtime_error("cannot read dataset file: " + path);
     std::stringstream ss;
@@ -244,6 +248,11 @@ BenchFileReport runBenchDatasetFile(const std::string& dataset,
         }
     });
     rep.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    if (opt.rerankGate > 0) {
+        const auto g = benchRerankGateStats();
+        std::cerr << "[bench] rerank gate skipped " << g.skipped << "/" << g.considered
+                  << " questions" << std::endl;
+    }
     return rep;
 }
 

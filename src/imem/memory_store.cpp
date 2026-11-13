@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <cmath>
 #include <unordered_map>
+#include <set>
 
 namespace icmg::imem {
 
@@ -936,6 +937,12 @@ void MemoryStore::bumpFrequency(int64_t id) {
     int64_t now = nowEpoch();
     db_.run("UPDATE memory_nodes SET frequency=frequency+1, last_used=? WHERE id=?",
             {std::to_string(now), std::to_string(id)});
+}
+
+void MemoryStore::markReused(const std::vector<int64_t>& ids) {
+    std::set<int64_t> seen;
+    for (int64_t id : ids)
+        if (id > 0 && seen.insert(id).second) bumpFrequency(id);
 }
 
 void MemoryStore::logQuery(const std::string& query, int result_count) {

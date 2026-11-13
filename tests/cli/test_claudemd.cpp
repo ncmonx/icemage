@@ -403,6 +403,60 @@ TEST("lint-claudemd: precedence sentence non-empty, mentions code") {
     ASSERT_TRUE(s.find("code") != std::string::npos);
 }
 
+// -- v2.26.1 false-positive cleanup helpers -----------------------------------
+
+TEST("lint-claudemd: placeholder tokens are skipped") {
+    using icmg::cli::isPlaceholderToken;
+    ASSERT_TRUE(isPlaceholderToken("src/*.cpp"));
+    ASSERT_TRUE(isPlaceholderToken("tests/**/test_*.cpp"));
+    ASSERT_TRUE(isPlaceholderToken("tests/cli/test_<cmd>.cpp"));
+    ASSERT_TRUE(isPlaceholderToken("~/.icmg/config.json"));
+    ASSERT_TRUE(isPlaceholderToken("![release](https://img.shields.io/x)"));
+    ASSERT_TRUE(!isPlaceholderToken("src/cli/dispatcher.cpp"));
+}
+
+TEST("lint-claudemd: macro/env ALL-CAPS tokens are skipped") {
+    using icmg::cli::isMacroOrEnvToken;
+    ASSERT_TRUE(isMacroOrEnvToken("GLOB_RECURSE"));
+    ASSERT_TRUE(isMacroOrEnvToken("ICMG_WIRE_DIR"));
+    ASSERT_TRUE(isMacroOrEnvToken("FILEVERSION"));
+    ASSERT_TRUE(!isMacroOrEnvToken("FileVersion"));
+    ASSERT_TRUE(!isMacroOrEnvToken("batch_builder"));
+}
+
+TEST("lint-claudemd: lowercase tool/target names are skipped") {
+    using icmg::cli::isToolNameToken;
+    ASSERT_TRUE(isToolNameToken("powershell"));
+    ASSERT_TRUE(isToolNameToken("ccache"));
+    ASSERT_TRUE(isToolNameToken("pytest"));
+    ASSERT_TRUE(isToolNameToken("icmg_lib"));
+    ASSERT_TRUE(!isToolNameToken("FindCommand"));
+    ASSERT_TRUE(!isToolNameToken("LoadLibrary"));
+}
+
+TEST("lint-claudemd: module basename candidates for snake_case tokens") {
+    using icmg::cli::basenameCandidates;
+    auto v = basenameCandidates("batch_builder");
+    bool has_hpp = false, has_cpp = false;
+    for (auto& c : v) {
+        if (c == "batch_builder.hpp") has_hpp = true;
+        if (c == "batch_builder.cpp") has_cpp = true;
+    }
+    ASSERT_TRUE(has_hpp);
+    ASSERT_TRUE(has_cpp);
+}
+
+TEST("lint-claudemd: ignore directive parsed from doc text") {
+    using icmg::cli::parseIgnoreList;
+    auto ig = parseIgnoreList(
+        "# Doc\n<!-- lint-claudemd-ignore: FileVersion ProductVersion LoadLibrary -->\nbody");
+    ASSERT_TRUE(ig.count("FileVersion") == 1);
+    ASSERT_TRUE(ig.count("LoadLibrary") == 1);
+    ASSERT_TRUE(ig.count("NotListed") == 0);
+    auto none = parseIgnoreList("# Doc without directive\n");
+    ASSERT_TRUE(none.empty());
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

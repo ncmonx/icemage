@@ -30,6 +30,7 @@
 #include "../content_delta.hpp"
 #include "../context_batch.hpp"
 #include "../symbol_bundle.hpp"
+#include "../budget_ladder.hpp"   // 2026-11-11: over-budget body ladder
 #include "../../core/secret_scanner.hpp"
 // v1.32.0 B4: pack --rerank via warm-pool LLM.
 #include "../../llm/warm_pool.hpp"
@@ -829,12 +830,34 @@ public:
                     } else {
                         std::string b2 = body;
                         bool truncated = b2.size() > budget;
-                        if (truncated) b2.resize(budget);
+                        std::string rung;
+                        if (truncated) {
+                            // 2026-11-11 budget ladder: whole lines + signatures of
+                            // the cut-off symbols instead of a mid-line byte cut.
+                            std::vector<LadderSig> sigs;
+                            {
+                                std::vector<std::string> bl;
+                                std::istringstream is(body);
+                                for (std::string ln; std::getline(is, ln);) bl.push_back(ln);
+                                for (auto& s : store.childrenOf(node->id)) {
+                                    if (s.line_start <= 0 || s.line_start > (int)bl.size()) continue;
+                                    std::string sg = bl[(size_t)s.line_start - 1];
+                                    while (!sg.empty() && (sg.back() == '\r' || sg.back() == ' ' || sg.back() == '\t'))
+                                        sg.pop_back();
+                                    sigs.push_back({(int)s.line_start, sg});
+                                }
+                            }
+                            auto lr = fitBodyToBudget(body, sigs,
+                                                      budget > 2 * kLadderHeadroom ? budget - kLadderHeadroom : budget);
+                            if (!lr.text.empty()) { b2 = lr.text; rung = lr.rung; }
+                            else b2.resize(budget);   // first line alone exceeds the budget
+                        }
                         const char* why = explicit_diff ? "; --diff baseline seeded, full shown"
                                         : diff_reset     ? "; baseline reset, full shown"
                                                          : "";
                         out << "\n--- Content (" << resolved << why
                             << (truncated ? "; truncated" : "")
+                            << (rung.empty() ? "" : " (" + rung + ")")
                             << ") ---\n" << b2;
                         if (truncated) out << "\n--- [content truncated; raise --max-bytes for more] ---\n";
                     }
