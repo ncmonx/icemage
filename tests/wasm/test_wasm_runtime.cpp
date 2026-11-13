@@ -4,8 +4,34 @@
 #include "../../src/wasm/wasm_runtime.hpp"
 #include "../../src/tkil/filters/wasm_filter.hpp"
 #include <chrono>
+#include <cstdio>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 #include <fstream>
 #include <filesystem>
+
+// CPU time consumed by the calling thread, in microseconds.
+static long long threadCpuMicros() {
+#ifdef _WIN32
+    FILETIME c, e, k, u;
+    if (!GetThreadTimes(GetCurrentThread(), &c, &e, &k, &u)) return 0;
+    auto v = [](const FILETIME& f) {
+        return ((unsigned long long)f.dwHighDateTime << 32) | f.dwLowDateTime;
+    };
+    return (long long)((v(k) + v(u)) / 10);   // 100ns ticks -> us
+#else
+    timespec ts{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    return (long long)ts.tv_sec * 1000000LL + ts.tv_nsec / 1000;
+#endif
+}
+
 using namespace icmg::wasm;
 namespace fs = std::filesystem;
 
@@ -106,11 +132,16 @@ TEST("wasm_runtime: cached module 1000 calls under budget") {
     WasmSkill s; s.name="up"; s.abi="filter-v1"; s.wasmPath=writeTemp("icmg-up.wat", UPPER_WAT);
     std::string out, rerr;
     runWasmFilter(s, "warmup", WasmLimits{}, out, rerr);   // compile + cache
-    auto t0 = std::chrono::steady_clock::now();
+    // Budget on the calling thread's CPU time, not wall time. On a busy shared
+    // machine (79-100% CPU from other processes) wall time for the same 1000
+    // calls swung 1.57s -> 3.7s and even the per-call median hit 32ms: that is
+    // the scheduler, not wasm cost. Thread CPU time measures what the call
+    // actually costs, so the <2ms/call budget still catches real regressions.
+    long long c0 = threadCpuMicros();
     for (int i=0;i<1000;i++) runWasmFilter(s, "abcabcabc", WasmLimits{}, out, rerr);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::steady_clock::now()-t0).count();
-    ASSERT_TRUE(ms < 2000);   // avg <2ms/call or WASM unsuitable for hot path
+    long long cpu_ms = (threadCpuMicros() - c0) / 1000;
+    std::fprintf(stderr, "    wasm 1000 cached calls: %lld ms thread CPU\n", cpu_ms);
+    ASSERT_TRUE(cpu_ms < 2000);   // avg <2ms/call or WASM unsuitable for hot path
 }
 
 TEST("wasm_filter: adapts skill to FilterResult (uppercases)") {

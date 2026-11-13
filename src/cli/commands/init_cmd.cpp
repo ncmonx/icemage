@@ -31,6 +31,7 @@
 #include "../../core/schedule_helper.hpp"
 #include "../../core/service_install.hpp"
 #include "../sayless_migrate.hpp"
+#include "../init_imports.hpp"     // #279: import chain, --no-import / --slim
 #include <nlohmann/json.hpp>
 #include "../../core/hook_sanitize.hpp"
 #include "../../core/ide_settings.hpp"
@@ -1508,6 +1509,9 @@ public:
             "  --no-agents     Skip AGENTS.md update\n"
             "  --no-embedder   Skip embedder sidecar drop\n"
             "  --no-scan       Skip initial graph scan\n"
+            "  --no-import     Skip background CLAUDE.md/plan/skill imports\n"
+            "  --slim          Also slim CLAUDE.md to a pointer stub (opt-in;\n"
+            "                  default imports without rewriting the file)\n"
             "  --no-backup     Skip backup auto-on (default: enable hourly snapshot)\n"
             "  --no-maintain   Skip maintain auto-on (default: enable 6h hygiene)\n"
             "  --no-mirror     Skip mirror auto-on (default: enable 15m dual-mirror)\n"
@@ -1708,6 +1712,10 @@ public:
         //   in multi-user installs. Detaching ensures init returns immediately;
         //   imports complete async and write into the same project DB.
         // Logs written to .icmg/init-imports.log for post-mortem.
+        // Issue #279: imports are skippable (--no-import, used by update)
+        // and never slim CLAUDE.md unless --slim is passed explicitly.
+        const bool slim_import = initSlimRequested(args);
+        if (initImportsEnabled(args))
 #ifdef _WIN32
         {
             // v1.78.4: use CreateProcessA(bInheritHandles=FALSE) so grandchild
@@ -1718,7 +1726,7 @@ public:
             std::string log_path = (root / ".icmg" / "init-imports.log").string();
             std::string cmd_str =
                 "cmd.exe /C \"set ICMG_NO_AUTOSPAWN=1 && "
-                "(icmg claudemd import --slim & icmg plan import & icmg skill index)"
+                "(" + initImportChain(slim_import, " & ") + ")"
                 " > \"\"" + log_path + "\"\" 2>&1\"";
             std::vector<char> cmdBuf(cmd_str.begin(), cmd_str.end());
             cmdBuf.push_back('\0');
@@ -1744,7 +1752,7 @@ public:
             std::string log_path = (root / ".icmg" / "init-imports.log").string();
             std::string bg_cmd =
                 "ICMG_NO_AUTOSPAWN=1 nohup sh -c '"
-                "icmg claudemd import --slim; icmg plan import; icmg skill index"
+                + initImportChain(slim_import, "; ") +
                 "' > \"" + log_path + "\" 2>&1 &";
             core::safeExecShell(bg_cmd, true, 3000);
             std::cout << "  imports:       claudemd / plan / skill running in background\n";

@@ -9,6 +9,8 @@
 #include "../../llm/warm_pool.hpp"
 #include "../../llm/smart_router.hpp"
 #include "../../llm/llama_runner.hpp"
+// v2.30.0 Model-AI ref flow write-back.
+#include "../../cli/ref_writeback.hpp"
 
 #include <nlohmann/json.hpp>
 #include <cstdlib>
@@ -80,6 +82,12 @@ std::string runStopHook(const std::string& stdin_raw) {
             }
         }
     } catch (...) {}
+
+    // v2.30.0 Model-AI ref flow: store a problem->solution ref for verified
+    // work ("Simpan Result / Ref"). Synchronous on purpose: a detached thread
+    // dies with the short-lived hook process. Bounded: reads the transcript
+    // tail only; ICMG_REF_WRITEBACK=0 disables.
+    (void)::icmg::cli::refflow::runRefWritebackHook(stdin_raw);
 
     // Async: heavyweight work that the agent doesn't need synchronously.
     // Detach so the hook handler can return immediately. std::thread dtor

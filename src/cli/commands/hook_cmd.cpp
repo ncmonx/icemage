@@ -37,6 +37,9 @@
 #include "../../imem/memory_store.hpp"
 #include "../../imem/recall_rerank.hpp"  // 2026-11-01: ICMG_RECALL_RERANK opt-in
 #include "../../imem/recall_confidence.hpp"  // 2026-09-23 IDE-B: MemCalib cue
+#include "../../imem/ai_ref_store.hpp"       // v2.30.0 Model-AI ref flow
+#include "../ref_lookup.hpp"                 // v2.30.0 Model-AI ref flow
+#include "../../core/path_u8.hpp"
 #include "../../compress/write_expander.hpp"   // v1.25.0 (W3)
 #include "../../core/cross_turn_dedup.hpp"
 #include "../strict_audit.hpp"            // v2.0.13: strict audit read/MCP deny      // v2.0.0 C2: cross-turn near-dup gate
@@ -583,8 +586,22 @@ private:
             } catch (...) {}
         }
 
+        // 1b. v2.30.0 Model-AI ref flow ("Cek Ref"): problem->solution refs
+        // solved before in any project, from the exe-dir Model-AI DB.
+        double best_ref_score = 0.0;
+        if (budgetOk() && !cli::refflow::writebackDisabledByEnv(
+                              std::getenv(cli::refflow::kRefLookupEnv))) {
+            auto sec = cli::refflow::modelAiRefSection(
+                imem::modelAiRefDb(), prompt, cli::refflow::kRefLookupLimit,
+                [](const std::string& k) { return isNodeInjected(k); },
+                [](const std::string& k) { markNodeInjected(k); });
+            best_ref_score = sec.best_score;
+            if (!sec.text.empty()) msg << sec.text;
+        }
+
         // 2. Memory recall — top N hits (adaptive limit, T3 threshold, T1 dedup).
         int local_hits = 0;
+        double best_local_score = 0.0;
         if (budgetOk()) try {
             auto& cfg = core::Config::instance();
             core::Db db(cfg.projectDbPath("."));
@@ -606,6 +623,7 @@ private:
                 if (core::dedupAgainstWindowFile(m.topic, sessionInjectedSlicesPath(), 0.85))
                     continue;
                 markNodeInjected(nid);
+                if (m.score > best_local_score) best_local_score = m.score;
                 std::string topic = m.topic;
                 if (topic.size() > 80) topic = topic.substr(0, 77) + "...";
                 // IDE-B (MemCalib): one-word calibration cue so the model
@@ -621,30 +639,38 @@ private:
             }
         } catch (...) {}
 
-        // 2b. Cross-project recall fallback when local hits sparse.
-        if (budgetOk() && local_hits < 2 && std::getenv("ICMG_CROSS_PROJECT") == nullptr) {
+        // 2b. Cross-project fallback (projects B/C). v2.30.0 gate: only when
+        // neither a Model-AI ref nor a >= med local hit answered ("Ada Ref?").
+        // Registry rows are filtered by isShareableProject (no Temp/system/
+        // home/build/cwd) and the scan is bounded by a wall-clock budget.
+        (void)local_hits;
+        if (budgetOk() &&
+            !cli::refflow::refFlowGate(best_ref_score, best_local_score, RECALL_MIN_SCORE) &&
+            std::getenv("ICMG_CROSS_PROJECT") == nullptr) {
             try {
-                std::string gdb = std::string(core::icmgGlobalDir()) + "/global.db";
-                core::Db gd(gdb);
-                std::vector<std::pair<std::string, std::string>> projs;
-                gd.query("SELECT name, path FROM projects", {},
-                         [&](const core::Row& r){
-                             if (r.size() >= 2) projs.push_back({r[0], r[1]});
-                         });
+                core::Db gd(core::Config::instance().globalDbPath());
+                const std::string cwd = fs::current_path().string();
+                auto projs = cli::refflow::shareableProjects(gd, core::homeDir(), cwd);
                 std::ostringstream xmsg;
                 int xhits = 0;
-                std::string cwd = fs::current_path().string();
-                for (auto& [pname, ppath] : projs) {
-                    if (!budgetOk() || xhits >= 3) break;
-                    if (ppath == cwd) continue;
-                    std::string pdb = ppath + "/.icmg/data.db";
-                    if (!fs::exists(pdb)) continue;
+                const auto x_start = std::chrono::steady_clock::now();
+                auto xBudgetOk = [&]() {
+                    return budgetOk() &&
+                           std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - x_start).count()
+                               < cli::refflow::kCrossProjectBudgetMs;
+                };
+                for (auto& pe : projs) {
+                    const std::string& pname = pe.name;
+                    if (!xBudgetOk() || xhits >= cli::refflow::kCrossProjectMaxHits) break;
+                    const std::string& pdb = pe.db_path;
+                    if (!fs::exists(core::u8ToPath(pdb))) continue;
                     try {
                         core::Db pd(pdb);
                         imem::MemoryStore pm(pd);
-                        auto pres = pm.recall(prompt, 2, false);
+                        auto pres = pm.recall(prompt, cli::refflow::kCrossProjectPerProject, false);
                         for (auto& m : pres) {
-                            if (xhits >= 3 || !budgetOk()) break;
+                            if (xhits >= cli::refflow::kCrossProjectMaxHits || !budgetOk()) break;
                             if (m.score < RECALL_MIN_SCORE) continue;     // T3
                             std::string xid = "x:" + pname + ":" + std::to_string(m.id);
                             if (isNodeInjected(xid)) continue;             // T1

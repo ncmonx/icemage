@@ -22,6 +22,10 @@
 #include "../../imem/recall_rerank.hpp"  // 2026-11-01: --rerank N
 #include <iostream>
 #include <iomanip>
+#include "../ref_flow.hpp"                   // v2.30.0 Model-AI ref flow
+#include "../../imem/ai_ref_store.hpp"
+#include "../../core/path_utils.hpp"
+#include <nlohmann/json.hpp>
 #include <string>
 #include <chrono>
 #include <algorithm>
@@ -70,7 +74,11 @@ public:
             "  --pure          Equivalent to --semantic --alpha 0\n"
             "  --causal        Expand BM25 hits 1-hop over causal edges (feature #1; see `memory link`)\n"
             "  --auto-tier     Cheap BM25 by default; escalate to semantic only for hard queries (feature #3)\n"
-            "  --all-projects  Cross-project recall (aggregates from registered projects)\n"
+            "  --all-projects  Cross-project recall (aggregates from registered projects;\n"
+            "                  Temp/system/home/build dirs are skipped)\n"
+            "  --refs          Search the Model-AI ref DB (problem -> solution refs written\n"
+            "                  back from verified work in any project; v2.30.0)\n"
+            "  --forget-ref ID Delete one Model-AI ref (stale or noisy write-back)\n"
             "  --fuzzy         Fuzzy search fallback\n"
             "  --at-commit SHA Filter to memories stored at a specific git commit (prefix ok)\n"
             "  --as-of T       Time-travel: recall what was believed at T (epoch,\n"
@@ -100,6 +108,11 @@ public:
         {
             std::string ids = flagValue(args, "--get");
             if (!ids.empty()) return runGet(ids, hasFlag(args, "--json"));
+        }
+        // v2.30.0: --forget-ref <id> drops a stale/noisy Model-AI ref. No query needed.
+        {
+            std::string rid = flagValue(args, "--forget-ref");
+            if (!rid.empty()) return runForgetRef(rid);
         }
         // A2: --last-session surfaces the single most-recent session snapshot +
         // last wflog (Open items flagged). Onboards you back into where you left
@@ -217,6 +230,7 @@ public:
             std::cerr << "icmg recall: query required\n";
             return 1;
         }
+        if (hasFlag(args, "--refs")) return runRefs(query, limit, json);
 
         // v2.21 research B: adaptive recall depth. A fixed top-N over-fetches
         // for routine tasks and under-fetches for cross-module work. --adaptive
@@ -485,6 +499,54 @@ public:
 private:
     // Phase 21 Task 5: cross-project recall — iterate registered projects,
     // recall top-K from each, merge + re-sort by score, return top-K overall.
+    // v2.30.0 Model-AI ref flow: `icmg recall --refs <q>`.
+    int runRefs(const std::string& query, int limit, bool json_out) {
+        try {
+            imem::AiRefStore store(imem::modelAiRefDb());
+            auto refs = store.search(query, limit);
+            if (json_out) {
+                nlohmann::json arr = nlohmann::json::array();
+                for (const auto& r : refs)
+                    arr.push_back({{"id", r.id}, {"score", r.score}, {"project", r.project},
+                                   {"problem", r.problem}, {"solution", r.solution},
+                                   {"verified_by", r.verified_by}, {"used", r.used_count}});
+                std::cout << arr.dump(2, ' ', false, nlohmann::json::error_handler_t::replace)
+                          << "\n";
+                return 0;
+            }
+            if (refs.empty()) {
+                std::cout << "No Model-AI refs for: " << query << " (" << store.count()
+                          << " stored)\n";
+                return 0;
+            }
+            for (const auto& r : refs) {
+                std::cout << "[ref:" << r.id << "][" << (int)r.score << "]"
+                          << (r.project.empty() ? "" : " (" + r.project + ")") << " "
+                          << r.problem << "\n    -> " << r.solution << "\n";
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "icmg recall --refs: " << e.what() << "\n";
+            return 1;
+        }
+    }
+
+    int runForgetRef(const std::string& rid) {
+        try {
+            long long id = std::stoll(rid);
+            imem::AiRefStore store(imem::modelAiRefDb());
+            if (!store.remove(id)) {
+                std::cerr << "icmg recall --forget-ref: no ref " << id << "\n";
+                return 1;
+            }
+            std::cout << "Forgot Model-AI ref " << id << "\n";
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "icmg recall --forget-ref: " << e.what() << "\n";
+            return 1;
+        }
+    }
+
     // Each child Db opens read-only via the existing Config override path.
     std::vector<imem::MemoryNode>
     recallAllProjects(const std::string& query, int limit, bool fuzzy) {
@@ -497,8 +559,11 @@ private:
                 std::cerr << "icmg recall: no registered projects (use `icmg project register`)\n";
                 return all;
             }
+            const std::string home = core::homeDir();
             for (auto& p : projects) {
                 if (p.db_path.empty()) continue;
+                // v2.30.0: never mine scratch/system/home/build dirs (cwd stays in).
+                if (!cli::refflow::isShareableProject(p.path, home, "")) continue;
                 try {
                     core::Db pdb(p.db_path);
                     imem::MemoryStore pstore(pdb);

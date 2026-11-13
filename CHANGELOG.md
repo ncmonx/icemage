@@ -4,6 +4,35 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.30.0
+
+**Model-AI ref flow (problem -> solution refs shared across projects) and a
+fix for #279.**
+
+- Fix #279: `icmg update --apply` no longer rewrites your `CLAUDE.md`. Its
+  hook refresh runs `init --install-hooks ... --no-import`, so the background
+  CLAUDE.md / plan / skill imports do not run. Plain `icmg init` still imports
+  CLAUDE.md into the graph but no longer slims it into a pointer stub. Slimming
+  is opt-in: `icmg init --slim` or `icmg claudemd import --slim`.
+  `icmg claudemd restore` still recovers a file slimmed by v2.29.x.
+- New: Model-AI ref DB, stored next to `icmg.exe` in `icmg-persona.db`.
+  When a task finishes with edits and a passing verification (exit 0), the
+  Stop hook writes a short problem -> solution ref (files touched + the verify
+  command) back to this DB. Near-duplicates are skipped and at most 3 refs are
+  written per session. Set `ICMG_REF_WRITEBACK=0` to turn this off.
+- The prompt hook checks Model-AI refs first, then project memory. It looks
+  in other registered projects only when neither source has a confident hit
+  (ref coverage >= 0.5 or a local hit of at least `med` tier). That lookup is
+  limited to 800 ms and 3 hits. Set `ICMG_REF_LOOKUP=0` to turn off the
+  Model-AI lookup.
+- `icmg recall --refs <q>` searches the Model-AI ref DB.
+  `icmg recall --forget-ref <id>` deletes a stale or noisy ref.
+- `recall --all-projects` and the cross-project lookup now skip scratch,
+  temp, build, home and system folders that were registered by accident.
+- Fixed mojibake in the README v2.29.1 entry.
+- Test: the wasm "1000 cached calls" budget now measures thread CPU time
+  instead of wall time, so it no longer fails on a busy machine.
+
 ## v2.29.1
 
 **Hotfix for #277: hook reinstall and self-update can no longer destroy

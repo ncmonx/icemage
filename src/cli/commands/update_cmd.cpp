@@ -16,6 +16,7 @@
 #include "../../core/db.hpp"
 #include "../../core/path_utils.hpp"
 #include "../../core/update_lock.hpp"   // v1.78.4: shared lock helpers
+#include "../init_imports.hpp"       // #279: hook refresh never imports/slims user docs
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -886,16 +887,14 @@ private:
                 // bloat — 32+ stuck icmg-core procs).
 #ifdef _WIN32
                 std::string cmd = "set ICMG_NO_AUTOSPAWN=1 && \""
-                                + self.string() + "\" init --install-hooks --force "
-                                  "--no-agents --no-embedder --no-scan";
+                                + self.string() + "\" init " + kUpdateInitRefreshFlags;
 #else
                 std::string cmd = "ICMG_NO_AUTOSPAWN=1 \""
-                                + self.string() + "\" init --install-hooks --force "
-                                  "--no-agents --no-embedder --no-scan";
+                                + self.string() + "\" init " + kUpdateInitRefreshFlags;
 #endif
                 auto res = core::safeExecShell(cmd, false, 15000);
                 if (res.exit_code == 0) {
-                    std::cout << "  Hooks refreshed.\n\n";
+                    std::cout << "  Hooks refreshed (CLAUDE.md / AGENTS.md left untouched).\n\n";
                 } else {
                     std::cerr << "  Hook refresh skipped (exit=" << res.exit_code << ").\n";
                 }
@@ -926,16 +925,14 @@ private:
                             std::string cmd = "set ICMG_NO_AUTOSPAWN=1 && "
                                               "cd /d \"" + p + "\" && \""
                                            + self.string()
-                                           + "\" init --install-hooks --force "
-                                             "--no-agents --no-embedder --no-scan "
+                                           + "\" init " + kUpdateInitRefreshFlags + " "
                                              "--no-backup --no-maintain --no-mirror "
                                              "--no-sentinel --no-auto-upgrade";
 #else
                             std::string cmd = "ICMG_NO_AUTOSPAWN=1 "
                                               "cd \"" + p + "\" && \""
                                            + self.string()
-                                           + "\" init --install-hooks --force "
-                                             "--no-agents --no-embedder --no-scan "
+                                           + "\" init " + kUpdateInitRefreshFlags + " "
                                              "--no-backup --no-maintain --no-mirror "
                                              "--no-sentinel --no-auto-upgrade";
 #endif
