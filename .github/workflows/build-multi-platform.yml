@@ -25,7 +25,9 @@ jobs:
             runner: ubuntu-latest
             arch: x64
           - os: macos-arm64
-            runner: macos-14
+            # macos-latest (2026-11-13): GitHub retired the macos-14 image
+            # ("macos-14-arm64-us-default is not supported"), job cancelled in 1s.
+            runner: macos-latest
             arch: arm64
           # macOS Intel (macos-13) deferred — runner pool low-capacity, Apple
           # Silicon is primary. Add back in v0.59.0 if Intel demand surfaces.
