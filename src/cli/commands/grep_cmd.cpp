@@ -27,6 +27,7 @@
 #include "../../graph/graph_store.hpp"
 #include "../grep_symbols.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <regex>
 #include <set>
@@ -249,25 +250,16 @@ public:
             }
         }
 
-        // Dispatch: --smart uses direct argv (safeExec) to bypass cmd.exe
-        // quote-stripping which breaks alternation parens on Windows.
-        // Normal mode uses safeExecShell so Tkil filter + token cap apply.
-        core::ExecResult r;
-        if (smart_mode) {
-            // Direct argv exec — no shell interpolation, no cmd.exe mangling.
-            r = core::safeExec(rg_argv, false, 30000);
-        } else {
-            std::string cmd;
-            for (auto& a : rg_argv) {
-                if (!cmd.empty()) cmd += " ";
-                bool needs_q = a.find(' ') != std::string::npos
-                            || a.find('{') != std::string::npos
-                            || a.find('*') != std::string::npos;
-                if (needs_q) cmd += "\"" + a + "\"";
-                else         cmd += a;
-            }
-            r = core::safeExecShell(cmd, false, 30000);
-        }
+        // Dispatch: ALWAYS direct argv exec (#281). The old non-smart path
+        // joined rg_argv into one shell string with naive quoting and ran it
+        // through bash eval / PowerShell, so a pattern holding `|`, `(` or `"`
+        // was split or executed ("namaGudang(: command not found"). safeExec
+        // hands every element to rg verbatim -- no shell, no cmd.exe mangling.
+        core::ExecResult r = core::safeExec(rg_argv, false, 30000);
+        // rg on Windows ends lines with CRLF; std::cout in text mode turns
+        // each '\n' into CRLF again -> "\r\r\n". Normalize to '\n' once here.
+        for (std::string* s : {&r.out, &r.err})
+            s->erase(std::remove(s->begin(), s->end(), '\r'), s->end());
 
         if (symbols_mode) {
             // Parse rg rows, resolve each match's enclosing symbol from the

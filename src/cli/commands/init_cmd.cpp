@@ -32,6 +32,7 @@
 #include "../../core/service_install.hpp"
 #include "../sayless_migrate.hpp"
 #include "../init_imports.hpp"     // #279: import chain, --no-import / --slim
+#include "../hook_preserve.hpp"    // #281: refresh keeps user-edited hooks
 #include <nlohmann/json.hpp>
 #include "../../core/hook_sanitize.hpp"
 #include "../../core/ide_settings.hpp"
@@ -1210,6 +1211,8 @@ process.stdin.on('end', () => {
   // Flags first, then -- to end options, then positional pattern+path
   const grepArgs = ['grep']
   if (ti['-i'] || ti.case_insensitive) grepArgs.push('-i')
+  if (ti.literal || ti.fixed_strings) grepArgs.push('-F')
+  if (ti.multiline) grepArgs.push('-U', '--multiline-dotall')
   if (ti.output_mode === 'files_with_matches') grepArgs.push('--files-with-matches')
   if (ti.output_mode === 'count') grepArgs.push('--count')
   if (glob) grepArgs.push('--glob', glob)
@@ -1217,7 +1220,15 @@ process.stdin.on('end', () => {
   const lA = safeInt(ti['-A']); if (lA) grepArgs.push('-A', lA)
   const lB = safeInt(ti['-B']); if (lB) grepArgs.push('-B', lB)
   grepArgs.push('-e', pattern, '--', searchPath)
-  const grepOut = run(grepArgs)
+  let grepOut = run(grepArgs)
+  // #281 safety net: if the icmg grep path ever hits a shell again (old
+  // binary, broken PATH), rerun rg directly with argv -- no shell, no eval.
+  const BUG_SIG = /command not found|is not recognized|unexpected EOF|CommandNotFound/
+  if (BUG_SIG.test(grepOut)) {
+    const rgArgs = ['-n', '--no-heading', '--color', 'never'].concat(grepArgs.slice(1))
+    const rr = spawnSync(process.env.ICMG_RG_EXE || 'rg', rgArgs, { encoding: 'utf8', maxBuffer: 4*1024*1024 })
+    if (!rr.error) grepOut = '[rg fallback]\n' + ((rr.stdout || '') + (rr.stderr || '')).trim()
+  }
 
   // Combine: loop banner first (most urgent), then intent slices, graph, grep.
   let out = ''
@@ -1518,6 +1529,9 @@ public:
             "  --no-sentinel   Skip sentinel watchdog (default: enable 15m health check)\n"
             "  --no-auto-upgrade  Skip shadow upgrade daily check (default: enable)\n"
             "  --force         Overwrite existing files\n"
+            "  --overwrite-hooks  Replace hooks you edited locally (default keeps\n"
+            "                  them and drops the new template as <file>.icmg-new;\n"
+            "                  the replaced copy goes to .claude/.icmg-hook-backup/)\n"
             "  --strict-read   Hard-deny Read on large non-source files (>20KB);\n"
             "                  source extensions (.cs/.ts/.cpp/...) stay soft-mode\n";
     }
@@ -1533,6 +1547,7 @@ public:
         bool no_mirror   = hasFlag(args, "--no-mirror");
         bool force       = hasFlag(args, "--force");
         bool strict_read = hasFlag(args, "--strict-read");
+        overwrite_hooks_ = hasFlag(args, kOverwriteHooksFlag);
         // v1.21.0 (I1, partial): --tool flag accepts cursor/windsurf/zed/codex/
         // copilot/opencode/gemini/amp. Currently emits a hint pointing at
         // each tool's per-project config location so the user can wire icmg
@@ -1888,6 +1903,11 @@ public:
     }
 
 private:
+    // #281: hook-refresh state (see hook_preserve.hpp).
+    fs::path claude_dir_;
+    std::map<std::string, std::string> hook_manifest_;
+    bool overwrite_hooks_ = false;
+
     // v1.20.5: ensure jq is on PATH. PostToolUse hooks use jq inline for
     // cheap JSON extraction. On Windows attempt download of the official
     // standalone jq.exe into icmg.exe's install dir (which is already on
@@ -1961,9 +1981,12 @@ private:
         int n = 0;
         fs::create_directories(root / ".claude" / "hooks");
 
-        // Drop hook scripts — always overwrite so upgrades fix stale/buggy hooks
-        // (e.g. old versions with & background that caused WAL 65GB growth).
-        // Users who need custom hooks should use --no-hooks and manage manually.
+        // Drop hook scripts -- upgrade pristine hooks so stale/buggy ones get
+        // fixed (e.g. old versions with & background that caused WAL 65GB
+        // growth), but KEEP hooks the user edited (#281): writeFile() checks
+        // each file against the hash recorded in .claude/.icmg-hook-manifest.json.
+        claude_dir_ = root / ".claude";
+        hook_manifest_ = loadHookManifest(claude_dir_);
         n += writeFile(root / ".claude" / "hooks" / "icmg-bash-rewrite.sh", BASH_REWRITE_SH, true);
         n += writeFile(root / ".claude" / "hooks" / "icmg-shrink-read.sh", SHRINK_READ_SH, true);
         // Phase 45 T3: cap-output PostToolUse hook (auto-shrink Bash >50KB).
@@ -2095,6 +2118,10 @@ private:
         // v2.4.3: grep-hook.js — PreToolUse:Grep interceptor (graph search + icmg grep).
         // Written to .claude/ (not hooks/) so `node .claude/grep-hook.js` resolves from cwd.
         n += writeFile(root / ".claude" / "grep-hook.js", GREP_HOOK_JS, true);
+        // #281: persist what we wrote (last hook file above) so the next
+        // refresh can tell a pristine hook from a locally edited one.
+        if (!saveHookManifest(claude_dir_, hook_manifest_))
+            std::cerr << "  ! cannot write .claude/" << kHookManifestName << "\n";
 
         // Ensure .claude/settings.json has PreToolUse:Grep entry for grep-hook.js.
         // Create from scratch if absent; merge/deduplicate if already present.
@@ -2972,8 +2999,13 @@ private:
         return n > 0 ? 1 : 0;
     }
 
+    // Writes one hook file. #281: a hook the user edited since icmg last wrote
+    // it is KEPT (new template goes to <file>.icmg-new); legacy files with no
+    // manifest record are backed up to .claude/.icmg-hook-backup/ first.
     int writeFile(const fs::path& p, const std::string& content, bool force) {
-        if (fs::exists(p) && !force) {
+        std::error_code ec;
+        bool exists = fs::exists(p, ec);
+        if (exists && !force) {
             std::cout << "  = " << p.filename().string() << " (exists; --force to overwrite)\n";
             return 0;
         }
@@ -2984,12 +3016,61 @@ private:
                       << ": template is not valid UTF-8 (build encoding bug)\n";
             return 0;
         }
+        std::string key = claude_dir_.empty()
+            ? p.filename().generic_string()
+            : p.lexically_relative(claude_dir_).generic_string();
+        std::string current;
+        if (exists) {
+            std::ifstream in(p, std::ios::binary);
+            std::stringstream ss;
+            ss << in.rdbuf();
+            current = ss.str();
+        }
+        auto rec = hook_manifest_.find(key);
+        std::string recorded = rec == hook_manifest_.end() ? "" : rec->second;
+        std::string rel = fs::relative(p, fs::current_path(), ec).string();
+        if (rel.empty()) rel = p.string();
         std::string err;
+        switch (decideHookAction(exists, current, content, recorded, overwrite_hooks_)) {
+        case HookAction::Unchanged:
+            hook_manifest_[key] = hookHash(content);
+            fs::remove(fs::path(p.string() + kHookNewSuffix), ec);
+            std::cout << "  = " << rel << " (up to date)\n";
+            return 1;
+        case HookAction::KeepUser: {
+            fs::path side = p.string() + kHookNewSuffix;
+            if (!core::writeFileAtomic(side, content, &err)) {
+                std::cerr << "  ! cannot write " << side.filename().string() << ": " << err << "\n";
+                return 0;
+            }
+            std::cout << "  ~ " << rel << " kept (edited locally); new template -> "
+                      << rel << kHookNewSuffix << " (" << kOverwriteHooksFlag
+                      << " to replace)\n";
+            return 0;
+        }
+        case HookAction::BackupAndWrite: {
+            fs::path bak = claude_dir_ / kHookBackupDir / key;
+            fs::create_directories(bak.parent_path(), ec);
+            if (!core::writeFileAtomic(bak, current, &err)) {
+                std::cerr << "  ! cannot back up " << rel << " (" << err
+                          << "); left untouched\n";
+                return 0;
+            }
+            std::cout << "  ! " << rel << " differed from the icmg template; previous copy saved to .claude/"
+                      << kHookBackupDir << "/" << key << "\n";
+            break;
+        }
+        case HookAction::Create:
+        case HookAction::Upgrade:
+            break;
+        }
         if (!core::writeFileAtomic(p, content, &err)) {
             std::cerr << "  ! cannot write " << p.filename().string() << ": " << err << "\n";
             return 0;
         }
-        std::cout << "  + " << fs::relative(p, fs::current_path()).string() << "\n";
+        hook_manifest_[key] = hookHash(content);
+        fs::remove(fs::path(p.string() + kHookNewSuffix), ec);
+        std::cout << "  + " << rel << "\n";
         return 1;
     }
 

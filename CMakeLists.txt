@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() -- harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.30.0 LANGUAGES CXX C)
+project(icmg VERSION 2.30.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 -- enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -701,6 +701,8 @@ add_icmg_test(test_store_autokw   tests/cli/test_store_autokw.cpp)           # 2
 add_icmg_test(test_serve_health   tests/cli/test_serve_health.cpp)          # 2026-06-15 serve /api/health probe
 add_icmg_test(test_content_delta  tests/cli/test_content_delta.cpp)         # 2026-06-15 context --diff delta re-read
 add_icmg_test(test_grep_symbols   tests/cli/test_grep_symbols.cpp)           # 2026-06-15 grep --symbols enclosing-symbol grouping
+add_icmg_test(test_grep_argv      tests/cli/test_grep_argv.cpp)              # 2026-11-13 #281 grep pattern as single argv (no shell eval)
+add_icmg_test(test_hook_preserve  tests/cli/test_hook_preserve.cpp)          # 2026-11-13 #281 hook refresh keeps user-edited hooks
 add_icmg_test(test_context_batch  tests/cli/test_context_batch.cpp)          # 2026-06-15 context batch read-many arg split
 add_icmg_test(test_symbol_bundle  tests/cli/test_symbol_bundle.cpp)          # 2026-06-15 context --symbol cross-file bundle
 add_icmg_test(test_install_version tests/cli/test_install_version.cpp)        # 2026-06-15 smart-install version cache

@@ -4,6 +4,28 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.30.1
+
+**Hotfix for #281: Grep patterns with `|`, `(` or `"` broke, and
+`update --apply` reset locally edited hooks.**
+
+- Fix: `icmg grep` now passes the pattern to `rg` as a single argv element.
+  The old path joined the rg arguments into one shell string and ran it
+  through bash / PowerShell, so `a|b`, `foo\(` and `dataField="x"` were
+  split or executed (`command not found`, `unexpected EOF`). No shell is
+  involved any more, so any regex or literal works.
+- Fix: the hook refresh run by `icmg update --apply` (and `init --force`)
+  no longer resets hooks you edited. `init` records the hash of every hook it
+  writes in `.claude/.icmg-hook-manifest.json`. On refresh, a hook that still
+  matches its recorded hash is upgraded. A hook you edited is kept and the new
+  template is written next to it as `<file>.icmg-new`. Pass
+  `init --overwrite-hooks` to replace edited hooks anyway. Hooks from older
+  versions (no manifest yet) that differ from the template are copied to
+  `.claude/.icmg-hook-backup/` before they are replaced.
+- The generated `grep-hook.js` passes `literal` / `multiline` through to rg
+  and falls back to calling `rg` directly (argv, no shell) if the
+  `icmg grep` output shows a shell error.
+
 ## v2.30.0
 
 **Model-AI ref flow (problem -> solution refs shared across projects) and a
