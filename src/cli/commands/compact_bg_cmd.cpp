@@ -14,6 +14,8 @@
 //   - LLM cold (first load this proc):  ~5-12 s (model load + infer)
 //   - Regex fallback:                   <100 ms
 #include "../base_command.hpp"
+#include "../compaction_digest.hpp"
+#include "../../core/utf8_prefix.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/db.hpp"
 #include "../../core/config.hpp"
@@ -43,22 +45,11 @@ std::string nowStamp() {
     return std::string(buf);
 }
 
-// Naive regex-like distill: extract first sentence per hit, dedup-cap.
-std::string regexDistill(const std::vector<imem::MemoryNode>& hits, int max_lines = 8) {
-    std::ostringstream o;
-    o << "auto-compact regex-distill " << nowStamp() << "\n";
-    int n = 0;
-    for (const auto& h : hits) {
-        if (n >= max_lines) break;
-        std::string c = h.content;
-        // first sentence (up to period/newline).
-        auto stop = c.find_first_of(".\n");
-        if (stop != std::string::npos) c = c.substr(0, stop);
-        if (c.size() > 140) c = c.substr(0, 137) + "...";
-        o << "- " << h.topic << ": " << c << "\n";
-        ++n;
-    }
-    return o.str();
+// Extractive distill: verbatim first sentence per hit + its source id
+// (truncate/drop only, never rephrase -- compaction_digest.hpp).
+std::string regexDistill(const std::vector<imem::MemoryNode>& hits) {
+    return "auto-compact regex-distill " + nowStamp() + "\n"
+         + extractiveDigest(hits, kCompactDigestLines, kCompactSentenceBytes);
 }
 
 } // namespace
@@ -95,7 +86,11 @@ public:
         auto& cfg = core::Config::instance();
         core::Db db(cfg.projectDbPath("."));
         imem::MemoryStore mem(db);
-        auto hits = mem.recall(query, limit, false);
+        // Never compact a compaction: over-fetch, then drop auto-compact-* /
+        // session-snapshot* / session:* so a summary is always rebuilt from
+        // originals (2026-05-31: two LLM nodes restated each other 2 min apart).
+        auto hits = compactionInputs(
+            mem.recall(query, limit * kCompactRecallOverfetch, false), (size_t)limit);
         if (hits.empty()) {
             std::cerr << "icmg compact-bg: no hits to summarize for query=\"" << query << "\"\n";
             return 0;
@@ -131,7 +126,8 @@ public:
                        << "Drop chit-chat. Output format: `- <topic>: <fact>`. No prose.\n\n";
                     for (size_t i = 0; i < hits.size(); ++i) {
                         std::string body = hits[i].content;
-                        if (body.size() > 280) body = body.substr(0, 277) + "...";
+                        if (body.size() > kCompactLlmBodyBytes)
+                            body = core::utf8Prefix(body, kCompactLlmBodyBytes - 3) + "...";
                         pp << (i + 1) << ". " << hits[i].topic << ": " << body << "\n";
                     }
                     pp << "\nSummary:\n";
@@ -156,6 +152,10 @@ public:
             }
         }
         if (summary.empty()) summary = regexDistill(hits);
+        // Provenance: every line must be traceable to its originals (the
+        // 2026-05-31 LLM node carried a "Postgres" fact found in no memory row).
+        if (!summary.empty() && summary.back() != '\n') summary += "\n";
+        summary += sourceIdsLine(hits);
 
         if (dry_run) {
             std::cout << "=== compact-bg dry-run (method=" << used_method

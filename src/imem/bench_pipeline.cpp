@@ -2,6 +2,9 @@
 #include "bench_pipeline.hpp"
 
 #include "bench_embed_pool.hpp"
+#include <atomic>
+#include "bench_expand.hpp"
+#include "bench_gate_trace.hpp"
 #include "bench_rerank_pool.hpp"
 #include "bench_retrieval.hpp"
 #include "memory_store.hpp"
@@ -26,6 +29,53 @@ constexpr int kRerankOverlapDiv = 4; // passage overlap = chunk / 4
 
 // "sid" of a doc only when it really is a turn inside a session.
 bool isTurnId(const std::string& id) { return benchGroupOf(id) != id; }
+
+std::atomic<long long> gGateConsidered{0}, gGateSkipped{0};
+
+// RM3 (--prf): question + expansion terms from the top lexical hits run as a
+// second as-of lexical query; per-doc normalized scores interpolated
+// (1-beta)*orig + beta*exp. ids/norm are rewritten sorted by the new score.
+void applyPrf(const std::string& question, int64_t asOf, int poolN,
+              const std::vector<BenchDoc>& docs,
+              const std::unordered_map<std::string, size_t>& docIdx,
+              const std::unordered_map<int64_t, size_t>& docOfNode,
+              MemoryStore& store, double beta,
+              std::vector<std::string>& ids, std::vector<double>& norm) {
+    const auto& sc = Scorer::instance();
+    std::vector<std::vector<std::string>> fbTok;
+    std::vector<double> fbScore;
+    for (size_t i = 0; i < ids.size() && (int)i < kPrfFeedbackDocs; ++i) {
+        auto it = docIdx.find(ids[i]);
+        if (it == docIdx.end()) continue;
+        fbTok.push_back(sc.tokenize(docs[it->second].text));
+        fbScore.push_back(norm[i] > 0 ? norm[i] : 1e-3);   // min-max gives the last hit 0
+    }
+    auto terms = rm3ExpansionTerms(sc.tokenize(question), fbTok, fbScore, kPrfTerms);
+    if (terms.empty()) return;
+    // q' keeps the original terms (RM3, not pure RM1): an expansion-only
+    // query drifts (LoCoMo any@1 .308 -> .172 at beta .5, 2026-11-11).
+    std::string expQ = question;
+    for (const auto& t : terms) expQ += " " + t.term;
+
+    std::vector<std::string> eIds;
+    std::vector<double> eRaw;
+    for (const auto& h : store.recallAsOf(expQ, asOf, poolN)) {
+        auto it = docOfNode.find(h.id);
+        if (it == docOfNode.end()) continue;
+        eIds.push_back(docs[it->second].id);
+        eRaw.push_back(h.bm25_score);
+    }
+    auto eNorm = Scorer::normalizeMinMax(eRaw);
+    std::map<std::string, double> s;
+    for (size_t i = 0; i < ids.size(); ++i) s[ids[i]] += (1.0 - beta) * norm[i];
+    for (size_t i = 0; i < eIds.size(); ++i) s[eIds[i]] += beta * eNorm[i];
+    std::vector<std::pair<std::string, double>> v(s.begin(), s.end());
+    std::stable_sort(v.begin(), v.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+    if ((int)v.size() > poolN) v.resize(poolN);
+    ids.clear();
+    norm.clear();
+    for (auto& [id, x] : v) { ids.push_back(id); norm.push_back(x); }
+}
 
 }  // namespace
 
@@ -97,9 +147,20 @@ runBenchPipeline(const std::vector<BenchDoc>& docs,
         if (embedded) *embedded = n;
     }
 
+    const std::string tracePath = gateTracePath();
+    auto tokensOf = [&](const std::string& id) {
+        auto it = docIdx.find(id);
+        return it == docIdx.end() ? std::vector<std::string>{}
+                                  : Scorer::instance().tokenize(docs[it->second].text);
+    };
+    auto topK = [maxK](const std::vector<std::string>& v) {
+        return std::vector<std::string>(v.begin(), v.begin() + std::min<size_t>(v.size(), maxK));
+    };
+
     std::vector<std::vector<std::string>> out;
     out.reserve(questions.size());
     for (const auto& q : questions) {
+        GateTrace trace;
         std::vector<std::string> ranked;
         if ((q.abstention && !opt.scoreAbstention) || q.evidence.empty()) {
             out.push_back(ranked);
@@ -118,6 +179,14 @@ runBenchPipeline(const std::vector<BenchDoc>& docs,
             bmRaw.push_back(h.bm25_score);
         }
         auto bmNorm = Scorer::normalizeMinMax(bmRaw);
+        if (!tracePath.empty() && !bmIds.empty()) {
+            trace.bmS1 = bmRaw[0];
+            trace.bmS2 = bmRaw.size() > 1 ? bmRaw[1] : 0.0;
+            trace.bmCov = queryCoverage(tokensOf(bmIds[0]), Scorer::instance().tokenize(q.question));
+        }
+        if (opt.prfBeta > 0 && !bmIds.empty())
+            applyPrf(q.question, asOf, poolN, docs, docIdx, docOfNode, store, opt.prfBeta,
+                     bmIds, bmNorm);
 
         // ---- dense (full scan of the as-of view, not a BM25 rerank) ----
         std::map<std::string, double> cosOf;
@@ -199,8 +268,41 @@ runBenchPipeline(const std::vector<BenchDoc>& docs,
             for (const auto& c : cand) ranked.push_back(c.first);
         }
 
+        // ---- coverage-greedy head (--cover) ----
+        if (opt.coverLambda > 0 && ranked.size() > 1) {
+            const auto& sc = Scorer::instance();
+            const size_t h = std::min<size_t>(ranked.size(), kCoverPool);
+            std::vector<std::pair<std::string, double>> head;
+            std::map<std::string, std::vector<std::string>> toks;
+            for (size_t i = 0; i < h; ++i) {
+                head.push_back({ranked[i], score[ranked[i]]});
+                auto it = docIdx.find(ranked[i]);
+                if (it != docIdx.end()) toks[ranked[i]] = sc.tokenize(docs[it->second].text);
+            }
+            auto sel = coverSelect(head, toks, sc.tokenize(q.question), opt.coverLambda,
+                                   opt.coverLambda * kCoverMuPerLam, (int)h);
+            std::copy(sel.begin(), sel.end(), ranked.begin());
+        }
+
         // ---- cross-encoder rerank of the final head ----
-        if (rerankOn && !ranked.empty()) {
+        bool gateSkip = false;
+        if (!tracePath.empty() && !ranked.empty()) {
+            trace.fusedS1 = score[ranked[0]];
+            trace.fusedS2 = ranked.size() > 1 ? score[ranked[1]] : 0.0;
+            trace.fusedCov = queryCoverage(tokensOf(ranked[0]), Scorer::instance().tokenize(q.question));
+            trace.pre = topK(ranked);
+        }
+        if (rerankOn && opt.rerankGate > 0 && !ranked.empty()) {
+            gGateConsidered.fetch_add(1);
+            auto it = docIdx.find(ranked[0]);
+            const double s2 = ranked.size() > 1 ? score[ranked[1]] : 0.0;
+            gateSkip = it != docIdx.end() &&
+                       rerankGateSkip(score[ranked[0]], s2,
+                                      Scorer::instance().tokenize(docs[it->second].text),
+                                      Scorer::instance().tokenize(q.question), opt.rerankGate);
+            if (gateSkip) gGateSkipped.fetch_add(1);
+        }
+        if (rerankOn && !gateSkip && !ranked.empty()) {
             const size_t n = std::min<size_t>(ranked.size(), opt.rerankTop);
             std::vector<std::string> texts;
             texts.reserve(n);
@@ -228,9 +330,25 @@ runBenchPipeline(const std::vector<BenchDoc>& docs,
             ranked = rerankHead(ranked, scores, (int)n);
         }
         if ((int)ranked.size() > maxK) ranked.resize(maxK);
+        if (!tracePath.empty()) {
+            trace.qid = q.id;
+            trace.category = q.category;
+            trace.post = ranked;
+            trace.gold = q.evidence;
+            appendGateTrace(tracePath, trace);
+        }
         out.push_back(std::move(ranked));
     }
     return out;
+}
+
+RerankGateStats benchRerankGateStats() {
+    return {gGateConsidered.load(), gGateSkipped.load()};
+}
+
+void resetBenchRerankGateStats() {
+    gGateConsidered = 0;
+    gGateSkipped = 0;
 }
 
 }  // namespace icmg::imem

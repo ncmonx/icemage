@@ -4,6 +4,81 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.29.0
+
+**Memory + token research pack: new opt-in retrieval stages, safer
+compaction, smarter context cuts.** Everything below is opt-in or a strict
+quality fix; default recall ranking is unchanged from v2.28.0.
+
+Memory benchmark stages (`icmg bench-recall --dataset ...`):
+
+- `--prf B` -- RM3 pseudo-relevance feedback: the question plus the top-10
+  feedback terms run as a second lexical query, interpolated with weight B.
+- `--cover L` -- coverage-greedy top 30: favours memories that add new query
+  terms and penalises redundancy.
+- `--rerank-gate T` -- skips the cross-encoder when the fused top-1 has a
+  clear margin and covers every query term; the skip count goes to stderr.
+- `ICMG_BENCH_GATE_TRACE=<file.jsonl>` -- logs, per question, the BM25 and
+  fused top-1/top-2 scores, query coverage, the ranking before and after the
+  cross-encoder, and the gold ids, so any gate policy can be replayed offline
+  without re-running the model. Ranking is unchanged while tracing.
+
+A/B on our harness (BM25-only base, `--no-semantic --no-rerank`;
+LongMemEval_s 500 q user-session, LoCoMo10 1536 q):
+
+| stage | LongMemEval_s | LoCoMo10 |
+|---|---|---|
+| `--prf 0.2` | all@5 .820 -> .840, NDCG@10 .881 -> .891 | any@1 .308 -> .290 (worse) |
+| `--prf 0.5` | all@5 .820 -> .854, NDCG@10 .881 -> .892 | any@1 .308 -> .229 (drift) |
+| `--cover 1.0` | all@5 .820 -> .794 (worse) | any@1 .308 -> .337 |
+
+Each stage helps one dataset and hurts the other, so none of them became a
+default.
+
+Rerank-gate study (default pipeline: semantic alpha 0.3 + rerank 20, replayed
+from the trace; replay reproduces the official run exactly):
+
+| gate policy | LoCoMo10 skip / dNDCG@10 | LongMemEval_s skip / dNDCG@10 |
+|---|---|---|
+| `--rerank-gate 0.3` (fused margin + full coverage) | 1.6% / -0.001 | 2.4% / 0.000 |
+| BM25 margin >= 0.4, no coverage | 15.5% / -0.009 | 35.2% / -0.006 |
+| no rerank at all | 100% / -0.121 | 100% / -0.034 |
+| oracle (skip only when rerank cannot help) | 61.9% / +0.016 | 81.2% / +0.008 |
+
+The headroom is real, but no score-margin signal finds it on both datasets
+(AUC <= .62 on LoCoMo10), so the cross-encoder stays on for every query and
+the gate stays opt-in.
+
+Live memory:
+
+- `ICMG_RECENCY=actr` -- opt-in ACT-R base-level activation (Petrov 2006
+  approximation) in place of exp recency x log(2+freq). No benchmark claim:
+  LongMemEval/LoCoMo carry no usage history.
+- `recall --get <ids>` counts as reuse: each fetched memory gets one
+  frequency + last-used bump, feeding the existing frequency/recency terms.
+- Compaction fidelity for `compact-bg`: summaries are rebuilt from original
+  memories only (never from earlier compactions or session snapshots), every
+  line carries its source `[#id]`, sentence cuts no longer stop at version
+  dots ("v2.28.0" -> "v2"), and byte caps cut on a UTF-8 character boundary.
+
+Token:
+
+- `icmg context` over budget keeps whole lines plus the signatures of the
+  cut-off symbols (prefix + skeleton, then skeleton, then line truncate)
+  instead of cutting mid-line.
+
+Fixes:
+
+- 199 double-encoded UTF-8 sequences (mojibake) repaired: 163 in hook advice
+  messages, the AGENTS.md routing block written by `icmg init`, and docs,
+  plus 36 in `CMakeLists.txt` comments and messages. Agents previously read a
+  garbled "ABSOLUTE RULE ... icmg FIRST" header in every initialised project.
+- Dense-RRF pipeline test no longer assumes a local embedding model (fixes
+  CI on machines without ONNX models).
+
+31 new tests -- **2672/2672 tests pass**, with and without an embedder
+(`ICMG_EMBEDDER=none`).
+
 ## v2.28.0
 
 **Memory benchmarks: LongMemEval + LoCoMo, and a stronger recall stack.**
@@ -537,10 +612,10 @@ research, closed: Office ingest (`.docx`/`.xlsx`), audio/video transcription
 
 ## v2.11.0
 
-**Covenant + task store: deterministic cross-session injection.** (1) **`icmg covenant add/list/inject`:** a must-hold rule store that emits ALL active covenants on every SessionStart and post-compact â€” full enumeration, never BM25-sampled, never silently truncated. `--max-items` cap always emits a visible `[+N more]` marker. Empty store emits nothing. (2) **`icmg task add/list/doing/done/reopen/inject`:** a parked-work-item store that survives across sessions and compaction. `inject` outputs open tasks (`todo`+`doing`) with `doing` listed first; done tasks are silent. (3) **Hook wiring:** `icmg-covenant-task-session.sh` fires on every SessionStart and post-compact. Opt-out via `ICMG_NO_COVENANT_TASK=1`. Migration `0045` adds `covenant` + `task` tables with zone partitioning, priority ordering, and soft-enable/disable. **2027/2027 ctest (Windows + Linux), +17 new tests.**
+**Covenant + task store: deterministic cross-session injection.** (1) **`icmg covenant add/list/inject`:** a must-hold rule store that emits ALL active covenants on every SessionStart and post-compact — full enumeration, never BM25-sampled, never silently truncated. `--max-items` cap always emits a visible `[+N more]` marker. Empty store emits nothing. (2) **`icmg task add/list/doing/done/reopen/inject`:** a parked-work-item store that survives across sessions and compaction. `inject` outputs open tasks (`todo`+`doing`) with `doing` listed first; done tasks are silent. (3) **Hook wiring:** `icmg-covenant-task-session.sh` fires on every SessionStart and post-compact. Opt-out via `ICMG_NO_COVENANT_TASK=1`. Migration `0045` adds `covenant` + `task` tables with zone partitioning, priority ordering, and soft-enable/disable. **2027/2027 ctest (Windows + Linux), +17 new tests.**
 ## v2.10.0
 
-**Graphify parity: a natural-language queryable knowledge graph, markdown/shell extractors, and edge-confidence labels.** (1) **`icmg graph-query query "<NL>"`:** ask the code graph in plain language �?" seeds from FTS search, expands a bidirectional BFS subgraph (depth + max-node capped), and answers via the local LLM when available, else prints the raw subgraph (`--no-llm`/`--json`, always offline-safe). **`icmg graph-query explain "<node>"`** describes a node and its 1-hop neighbors. Path and report intentionally reuse the existing `graph-path` / `graph-report` (no duplicate commands). (2) **Markdown + shell symbol extractors:** `.md`/`.markdown`/`.rst`/`.txt` map H1/H2/H3 to symbols and `[text](target)` / `[[wikilink]]` to graph edges; `.sh`/`.bash`/`.zsh`/`.ps1`/`.psm1` map `function foo()` to symbols and `source ./lib.sh` to edges. (3) **Edge-confidence labels:** every `graph_edges` row now carries `EXTRACTED` (direct parse) / `INFERRED` (name-match heuristic) / `AMBIGUOUS` (low-confidence) so the query engine knows how much to trust each link. (4) **Router precision fix:** `icmg suggest` / `map` / `ask` now match curated synonym keywords, so "who calls this function" routes to `graph-callers` (not `graph-callees`). (5) **De-dup:** `graph-clean` is now a thin alias for `graph-prune` (was a byte-for-byte duplicate). Also fixed a latent Phase-1 bug where the edge-confidence migration was mis-placed (global vs project DB + missing from embedded migrations), so the column is now created in shipped binaries. **2010/2010 ctest (Windows + Linux), +12 new tests.**
+**Graphify parity: a natural-language queryable knowledge graph, markdown/shell extractors, and edge-confidence labels.** (1) **`icmg graph-query query "<NL>"`:** ask the code graph in plain language -- seeds from FTS search, expands a bidirectional BFS subgraph (depth + max-node capped), and answers via the local LLM when available, else prints the raw subgraph (`--no-llm`/`--json`, always offline-safe). **`icmg graph-query explain "<node>"`** describes a node and its 1-hop neighbors. Path and report intentionally reuse the existing `graph-path` / `graph-report` (no duplicate commands). (2) **Markdown + shell symbol extractors:** `.md`/`.markdown`/`.rst`/`.txt` map H1/H2/H3 to symbols and `[text](target)` / `[[wikilink]]` to graph edges; `.sh`/`.bash`/`.zsh`/`.ps1`/`.psm1` map `function foo()` to symbols and `source ./lib.sh` to edges. (3) **Edge-confidence labels:** every `graph_edges` row now carries `EXTRACTED` (direct parse) / `INFERRED` (name-match heuristic) / `AMBIGUOUS` (low-confidence) so the query engine knows how much to trust each link. (4) **Router precision fix:** `icmg suggest` / `map` / `ask` now match curated synonym keywords, so "who calls this function" routes to `graph-callers` (not `graph-callees`). (5) **De-dup:** `graph-clean` is now a thin alias for `graph-prune` (was a byte-for-byte duplicate). Also fixed a latent Phase-1 bug where the edge-confidence migration was mis-placed (global vs project DB + missing from embedded migrations), so the column is now created in shipped binaries. **2010/2010 ctest (Windows + Linux), +12 new tests.**
 
 ## v2.9.0
 

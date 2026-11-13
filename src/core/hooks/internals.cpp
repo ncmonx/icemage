@@ -339,7 +339,7 @@ static const BashDenyRule kBashDenyRules[] = {
     {"grep -R",       "use icmg run grep ..."},
     {"find . ",       "use icmg run find ... (filtered)"},
     {"find /",        "use icmg run find ..."},
-    {"powershell ",   "use icmg run <cmd> â€” powershell launches console subprocess"},
+    {"powershell ",   "use icmg run <cmd> — powershell launches console subprocess"},
     {"powershell.exe","use icmg run <cmd>"},
     {"pwsh ",         "use icmg run <cmd>"},
     {"cmd /c ",       "use icmg run <cmd> directly"},
@@ -408,7 +408,7 @@ std::string runPreToolUseEnforce(const std::string& stdin_raw) {
         }
     } catch (...) { return allowJson(); }
 
-    // Allow icmg's own invocations â€” they're the legitimate path.
+    // Allow icmg's own invocations — they're the legitimate path.
     auto is_icmg_invocation = [&](){
         return starts_with(command, "icmg ") ||
                starts_with(command, "/icmg ") ||
@@ -461,7 +461,7 @@ std::string runPreToolUseEnforce(const std::string& stdin_raw) {
             }
             if (line_count > 500) {
                 std::string r = "file " + std::to_string(line_count)
-                              + " lines â€” use icmg context " + file_path;
+                              + " lines — use icmg context " + file_path;
                 auditDeny("Read", file_path, r);
                 return denyJson(r);
             }
@@ -602,7 +602,7 @@ std::string runUserPromptSkillSuggest(const std::string& user_prompt) {
         const auto& top = results[0];
         if (top.score < 0.20) return "";
 
-        // Build hint block (â‰¤600 chars total).
+        // Build hint block (≤600 chars total).
         std::string excerpt = top.content.size() > 400
                             ? top.content.substr(0, 400)
                             : top.content;
@@ -640,7 +640,7 @@ std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
     static const char* kFailPatterns[] = {
         "FAIL ",
         "FAIL:",
-        "Ã— FAIL ",
+        "× FAIL ",
         "FAILED tests",
         "Error:",
         "error:",
@@ -711,7 +711,7 @@ std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
                 });
 
             if (!neighbors.empty()) {
-                out << " â€” neighbors: ";
+                out << " — neighbors: ";
                 for (size_t i = 0; i < neighbors.size(); ++i) {
                     if (i > 0) out << ", ";
                     out << neighbors[i];
@@ -729,12 +729,12 @@ std::string runPostToolUseTestFailContext(const std::string& tool_input_command,
                     ContextNodeStore cns(db);
                     auto nodes = cns.search(stem, "", 2, 0.05);
                     if (!nodes.empty()) {
-                        out << " â€” context: " << nodes[0].title;
+                        out << " — context: " << nodes[0].title;
                     }
                 }
             }
         } catch (...) {
-            // fail-soft: no DB or any error â†’ just list the path
+            // fail-soft: no DB or any error → just list the path
         }
         out << "\n";
     }

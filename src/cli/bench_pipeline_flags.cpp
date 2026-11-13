@@ -91,12 +91,15 @@ std::string parseBenchPipelineFlags(const std::vector<std::string>& args, bool t
     if (!num(args, "--temporal", 0, 5, opt.temporal, err)) return err;
     if (!num(args, "--group", 0, 5, opt.groupBeta, err)) return err;
     if (!num(args, "--mmr", 0, 1, opt.mmrLambda, err)) return err;
+    if (!num(args, "--prf", 0, 1, opt.prfBeta, err)) return err;
+    if (!num(args, "--cover", 0, 5, opt.coverLambda, err)) return err;
     double rr = opt.rerankTop;
     if (!num(args, "--rerank", 0, kRerankMax, rr, err)) return err;
     opt.rerankTop = (int)rr;
     double rc = opt.rerankChunk;
     if (!num(args, "--rerank-chunk", 0, kRerankChunkMax, rc, err)) return err;
     opt.rerankChunk = (int)rc;
+    if (!num(args, "--rerank-gate", 0, 1, opt.rerankGate, err)) return err;
     return "";
 }
 
@@ -114,6 +117,10 @@ const char* benchPipelineUsage() {
         "    --temporal B       boost docs inside a time window parsed from the question\n"
         "    --group B          lift turns by their session's best score (two-tier)\n"
         "    --mmr L            MMR diversification of the top 50 (L<1; multi-hop)\n"
+        "    --prf B            RM3 pseudo-relevance feedback: 2nd lexical query from the\n"
+        "                       top-10 hits' terms, interpolated with weight B (0..1)\n"
+        "    --cover L          coverage-greedy top 30: favour docs adding query terms not\n"
+        "                       yet covered, penalise near-duplicates (L 0..5; multi-hop)\n"
         "    --rerank N         cross-encoder rerank of the final top N (ms-marco-MiniLM-L-6-v2;\n"
         "                       ~/.icmg/embed/ms-marco-MiniLM-L-6-v2.onnx or ICMG_RERANK_MODEL;\n"
         "                       DEFAULT 20 + --rerank-chunk 150 when the model is present)\n"
@@ -122,6 +129,8 @@ const char* benchPipelineUsage() {
         "                       embed model is present)\n"
         "    --rerank-chunk W   rerank W-word passages (best 4 per doc by query overlap),\n"
         "                       doc score = max passage (long docs overflow the 256-token pair)\n"
+        "    --rerank-gate T    skip the cross-encoder when the top-1 score margin\n"
+        "                       (s1-s2)/s1 >= T and top-1 holds every query term\n"
         "    ICMG_BENCH_THREADS=N  parallel embedding workers (default hw-2, max 8)\n"
         "    --no-as-of         ignore question dates: every doc visible (LongMemEval_s has\n"
         "                       evidence dated after question_date; ICM/MemPalace runs see all)\n"

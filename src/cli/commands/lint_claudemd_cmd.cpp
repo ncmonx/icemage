@@ -92,11 +92,15 @@ public:
             std::ifstream f(target);
             std::stringstream buf; buf << f.rdbuf();
             std::string text = buf.str();
+            // v2.26.1: per-file opt-out directive
+            auto ignore = parseIgnoreList(text);
             for (auto it = std::sregex_iterator(text.begin(), text.end(), tick_re);
                  it != std::sregex_iterator(); ++it) {
                 std::string tok = (*it)[1].str();
                 if (tok.empty() || seen.count(tok)) continue;
                 seen.insert(tok);
+                if (ignore.count(tok)) continue;            // v2.26.1
+                if (isPlaceholderToken(tok)) continue;      // v2.26.1: globs/<tpl>/~ paths
                 // v2.26.0 docs-drift: validate `icmg <sub>` refs against the
                 // live command registry (arXiv 2610.30571: stale instruction
                 // files beat the code 90.1% of the time).
@@ -121,10 +125,20 @@ public:
                     if (node) { h.status = "ok"; ++ok_count; }
                     else      { h.status = "missing"; ++miss_count; }
                 } else if (std::regex_match(tok, symbol_hint)) {
+                    // v2.26.1: skip macros/env vars + known external tools
+                    if (isMacroOrEnvToken(tok) || isToolNameToken(tok)) continue;
                     h.kind = "symbol";
                     auto syms = store.findSymbol(tok);
-                    if (!syms.empty()) { h.status = "ok"; ++ok_count; }
-                    else               { h.status = "missing"; ++miss_count; }
+                    bool found = !syms.empty();
+                    if (!found) {
+                        // v2.26.1: snake_case doc refs usually name a FILE
+                        // (batch_builder -> batch_builder.hpp/.cpp)
+                        for (auto& cand : basenameCandidates(tok)) {
+                            if (!store.findByBasename(cand).empty()) { found = true; break; }
+                        }
+                    }
+                    if (found) { h.status = "ok"; ++ok_count; }
+                    else       { h.status = "missing"; ++miss_count; }
                 } else {
                     continue;  // not a path or symbol candidate
                 }

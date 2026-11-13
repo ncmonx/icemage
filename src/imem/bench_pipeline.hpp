@@ -26,4 +26,12 @@ runBenchPipeline(const std::vector<BenchDoc>& docs,
                  MemoryStore& store, const BenchRunOptions& opt,
                  int maxK, int* embedded);
 
+// --rerank-gate accounting, process-wide (corpora may run on several threads).
+struct RerankGateStats {
+    long long considered = 0;   // questions that reached the rerank stage
+    long long skipped    = 0;   // ...of which the gate skipped the cross-encoder
+};
+RerankGateStats benchRerankGateStats();
+void resetBenchRerankGateStats();
+
 }  // namespace icmg::imem

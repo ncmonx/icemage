@@ -3,11 +3,11 @@ cmake_minimum_required(VERSION 3.28)
 # v1.41.0 REAL Modules pilot. Experimental `import std` feature requires CMake
 # opted-in via UUID key BEFORE project() call. clang64 (libc++) ships std.cppm
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
-# Set UNCONDITIONAL before project() â€” harmless when ICMG_USE_MODULES=OFF.
+# Set UNCONDITIONAL before project() -- harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.28.0 LANGUAGES CXX C)
+project(icmg VERSION 2.29.0 LANGUAGES CXX C)
 
-set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 â€” enables std::format/expected/concepts/ranges
+set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 -- enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -69,7 +69,7 @@ endif()
 # ODR collision risk on file-static names). Enable: cmake -B build -DICMG_UNITY_BUILD=ON
 option(ICMG_UNITY_BUILD "Merge .cpp files into batches for faster compilation" OFF)
 
-# v1.41.0: C++23 Modules opt-in scaffold. Default OFF â€” actual `import std;`
+# v1.41.0: C++23 Modules opt-in scaffold. Default OFF -- actual `import std;`
 # conversion deferred until GCC + libstdc++ ship stable Modules support for
 # template-heavy code. When ON, future v1.41.x will emit FILE_SET CXX_MODULES.
 option(ICMG_USE_MODULES "Enable C++23 import std; modules pilot (experimental)" OFF)
@@ -77,11 +77,11 @@ if(ICMG_USE_MODULES)
     # v1.41.0: per-target opt-in (avoid global CMAKE_CXX_MODULE_STD which
     # propagates to C-only sqlite3). icmg_lib gets the property below.
     add_compile_definitions(ICMG_USE_MODULES_PILOT=1)
-    message(STATUS "icmg: ICMG_USE_MODULES=ON â€” REAL Modules pilot (persona_cmd uses import std;)")
+    message(STATUS "icmg: ICMG_USE_MODULES=ON -- REAL Modules pilot (persona_cmd uses import std;)")
 endif()
 
 # ---------------------------------------------------------------------------
-# Third-party: SQLite3 amalgamation (auto-downloaded if missing ï¿½ gitignored)
+# Third-party: SQLite3 amalgamation (auto-downloaded if missing -- gitignored)
 # ---------------------------------------------------------------------------
 set(SQLITE_AMALGAMATION_VERSION "3470100")  # 3.47.1, year 2024
 set(SQLITE_AMALGAMATION_ZIP "sqlite-amalgamation-${SQLITE_AMALGAMATION_VERSION}.zip")
@@ -107,7 +107,7 @@ if(NOT EXISTS ${SQLITE_DIR}/sqlite3.c)
     endif()
 endif()
 
-# nlohmann/json single-header (gitignored ï¿½ auto-fetch if missing)
+# nlohmann/json single-header (gitignored -- auto-fetch if missing)
 set(NLOHMANN_JSON_VERSION "3.11.3")
 set(NLOHMANN_JSON_URL "https://github.com/nlohmann/json/releases/download/v${NLOHMANN_JSON_VERSION}/json.hpp")
 set(NLOHMANN_DIR ${CMAKE_SOURCE_DIR}/third_party/nlohmann)
@@ -124,7 +124,7 @@ endif()
 
 # v1.76: encryption-at-rest. When ICMG_USE_ENCRYPTION=ON (default), build the
 # `sqlite3` target from the vendored SQLCipher amalgamation with the Windows
-# CNG crypto provider (BCrypt â€” no new DLL; bcrypt/crypt32 are system libs).
+# CNG crypto provider (BCrypt -- no new DLL; bcrypt/crypt32 are system libs).
 # SQLCipher without a PRAGMA key behaves exactly like plain SQLite, so existing
 # plaintext DBs keep working; encryption is runtime opt-in (icmg encrypt enable).
 option(ICMG_USE_ENCRYPTION "Build sqlite3 from SQLCipher (encryption-at-rest capable)" ON)
@@ -186,7 +186,7 @@ add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE third_party)
 
 # ---------------------------------------------------------------------------
-# icmg_lib â€” all src/ except main.cpp (shared by binary + tests)
+# icmg_lib -- all src/ except main.cpp (shared by binary + tests)
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE ALL_SOURCES "src/*.cpp")
 list(FILTER ALL_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
@@ -201,7 +201,7 @@ if(ICMG_USE_MODULES)
 endif()
 
 # v1.26.0 (P1): precompiled headers. The 5 biggest hitters by parse cost
-# across ~250 TUs â€” `<nlohmann/json.hpp>` alone is ~26 k LOC and appears in
+# across ~250 TUs -- `<nlohmann/json.hpp>` alone is ~26 k LOC and appears in
 # ~70% of icmg_lib sources. PCH cuts cold-compile phase ~10-20%. Opt-out
 # via -DICMG_NO_PCH=ON when PCH-induced parse errors surface on exotic
 # toolchains (rare).
@@ -241,7 +241,7 @@ if(UNIX)
 endif()
 
 # ---------------------------------------------------------------------------
-# Phase 33 â€” optional backends. Both default OFF; system-detected on opt-in.
+# Phase 33 -- optional backends. Both default OFF; system-detected on opt-in.
 # ---------------------------------------------------------------------------
 option(ICMG_USE_ONNX        "Build ONNX Runtime embedder backend (Phase 33+)" OFF)
 option(ICMG_USE_TREESITTER  "Build tree-sitter AST symbol extractor (Phase 33+)" OFF)
@@ -255,7 +255,7 @@ if(ICMG_USE_ONNX)
     if(WIN32)
         set(ORT_ARCHIVE "onnxruntime-win-x64-${ORT_VERSION}.zip")
         # v1.43+ MSVC link needs .lib import library (gen via scripts/gen-onnxruntime-lib.bat).
-        # MinGW ld can link against .dll directly â€” keeps existing behaviour.
+        # MinGW ld can link against .dll directly -- keeps existing behaviour.
         if(MSVC)
             set(ORT_LIB_NAME "onnxruntime.lib")
         else()
@@ -290,7 +290,7 @@ if(ICMG_USE_ONNX)
             if(UNIX)
                 # v0.59.0: POSIX uses tar + cp -R so symlinks (.dylib / .so chain)
                 # are preserved. CMake file(ARCHIVE_EXTRACT) + file(COPY)
-                # dereference them ï¿½ produced "unsupported mach-o filetype" on
+                # dereference them -- produced "unsupported mach-o filetype" on
                 # macOS because the .X.Y.Z.dylib alias became broken.
                 execute_process(
                     COMMAND tar -xzf ${CMAKE_BINARY_DIR}/_ort_archive
@@ -303,7 +303,7 @@ if(ICMG_USE_ONNX)
                         COMMAND bash -c "cp -RP ${CMAKE_BINARY_DIR}/_ort_unpack/*/lib/* ${ORT_LIB_DIR}/")
                 endif()
             else()
-                # Windows .zip ï¿½ no symlinks in ORT-Win archive.
+                # Windows .zip -- no symlinks in ORT-Win archive.
                 file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/_ort_archive
                      DESTINATION ${CMAKE_BINARY_DIR}/_ort_unpack)
                 file(GLOB_RECURSE _ort_libs
@@ -349,7 +349,7 @@ endif()
 
 if(ICMG_USE_TREESITTER)
     # v0.59.0: vendor libtree-sitter source. Previously used find_library which
-    # picked up apt's v0.20.x on Linux ï¿½ ABI-incompatible with v0.26 vendored
+    # picked up apt's v0.20.x on Linux -- ABI-incompatible with v0.26 vendored
     # grammars (silent empty parse trees). Building from source pinned to v0.24.5
     # guarantees grammar-runtime ABI match (parser.h v14).
     # Vendored grammars (parser.c LANGUAGE_VERSION 15) require runtime = v0.25.
@@ -363,7 +363,7 @@ if(ICMG_USE_TREESITTER)
         file(MAKE_DIRECTORY ${TS_RUNTIME_DIR})
         # CMake file(DOWNLOAD) follow_redirect handling is patchy on some
         # systems (TLS cert chain, redirect to codeload.github.com). Use curl
-        # via execute_process ï¿½ universally available on CI runners (preinstalled
+        # via execute_process -- universally available on CI runners (preinstalled
         # on Win/Linux/macOS) and on MSYS2 dev workstations.
         # -k bypasses local CA-bundle errors (broken cert chain on some MSYS2
         # installs). Source integrity is verified by tarball content + grammar
@@ -408,7 +408,7 @@ if(ICMG_USE_TREESITTER)
     set(TS_C_GRAMMAR ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-c/src/parser.c)
     if(EXISTS ${TS_C_GRAMMAR})
         message(STATUS "icmg: tree-sitter ENABLED (vendored runtime v${TS_RUNTIME_VERSION}, C grammar vendored)")
-        # Vendored grammar â€” pure C, no extra deps.
+        # Vendored grammar -- pure C, no extra deps.
         add_library(tree_sitter_c STATIC ${TS_C_GRAMMAR})
         target_include_directories(tree_sitter_c PRIVATE
             ${CMAKE_SOURCE_DIR}/third_party/tree-sitter-c/src
@@ -476,7 +476,7 @@ if(ICMG_USE_TREESITTER)
             endif()
         endforeach()
 
-        # v0.59.0: vendored libtree-sitter is static ï¿½ no more libtree-sitter*.dll
+        # v0.59.0: vendored libtree-sitter is static -- no more libtree-sitter*.dll
         # / wasmtime.dll / libzstd.dll runtime dependency. libwinpthread is still
         # needed (std::thread on MinGW posix-thread model) UNLESS the binary is
         # statically linked, which icmg.exe does via target_link_options below.
@@ -553,13 +553,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     endif()
 elseif(MSVC)
     # v1.41.x MSVC equivalent of --whole-archive. /WHOLEARCHIVE forces all
-    # icmg_lib.lib .obj files to be linked even if no symbol is referenced â€”
+    # icmg_lib.lib .obj files to be linked even if no symbol is referenced --
     # required so static-init ICMG_REGISTER_COMMAND macros pull every cmd in.
     target_link_libraries(icmg PRIVATE icmg_lib)
     target_link_options(icmg PRIVATE "/WHOLEARCHIVE:icmg_lib")
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Static link runtime â†’ portable exe (no mingw DLL deps).
+    # Static link runtime -> portable exe (no mingw DLL deps).
     if(WIN32)
         target_link_options(icmg PRIVATE
             -static-libgcc -static-libstdc++
@@ -598,20 +598,20 @@ enable_testing()
 # breaking 62/115 ctest entries. Pragmatic ship: per-exe model retained.
 # Build-time wins from PCH (~15%) + PowerShell matcher widen + RAW=1 nag.
 # Future mono attempt requires TEST() name audit + DB/service singleton
-# teardown between cases â€” out of scope for v1.26.0.
-# v2.0 fix: define these BEFORE add_icmg_test runs â€” otherwise on a fresh
+# teardown between cases -- out of scope for v1.26.0.
+# v2.0 fix: define these BEFORE add_icmg_test runs -- otherwise on a fresh
 # CMake cache the macro sees ICMG_MONO_TEST undefined and wrongly builds the
 # per-exe path (195 phantom ctest entries that Not-Run under mono).
-option(ICMG_PER_EXE_TEST "Build per-exe tests (one binary per file, ~74 exes) â€” only for isolation debugging" OFF)
+option(ICMG_PER_EXE_TEST "Build per-exe tests (one binary per file, ~74 exes) -- only for isolation debugging" OFF)
 option(ICMG_MONO_TEST "Build single icmg_test binary (DEFAULT ON v1.40.0; saves ~2.5 min link + 1.5 GB disk)" ON)
 if(ICMG_PER_EXE_TEST)
     set(ICMG_MONO_TEST OFF CACHE BOOL "" FORCE)
-    message(STATUS "icmg: ICMG_PER_EXE_TEST=ON â€” disabling mono, building per-exe tests (slow path)")
+    message(STATUS "icmg: ICMG_PER_EXE_TEST=ON -- disabling mono, building per-exe tests (slow path)")
 endif()
 
 macro(add_icmg_test name source_file)
     # v1.40.0: always collect into ICMG_ALL_TEST_SOURCES (mono needs it).
-    # When ICMG_MONO_TEST=ON (default), skip per-exe target â€” only mono builds.
+    # When ICMG_MONO_TEST=ON (default), skip per-exe target -- only mono builds.
     set_property(GLOBAL APPEND PROPERTY ICMG_ALL_TEST_SOURCES ${source_file})
     if(NOT ICMG_MONO_TEST)
         add_executable(${name} ${source_file})
@@ -665,6 +665,8 @@ add_icmg_test(test_wasm_skill    tests/wasm/test_wasm_skill.cpp)
 add_icmg_test(test_wasm_runtime tests/wasm/test_wasm_runtime.cpp)
 add_icmg_test(test_wasm_extractor tests/wasm/test_wasm_extractor.cpp)  # extractor-v1 ABI: manifest + output mapper (pure)
 add_icmg_test(test_context_budget tests/cli/test_context_budget.cpp)
+add_icmg_test(test_budget_ladder tests/cli/test_budget_ladder.cpp)  # 2026-11-11 context budget ladder
+add_icmg_test(test_compaction_digest tests/cli/test_compaction_digest.cpp)  # 2026-11-12 compaction fidelity (CliffCompaction)
 add_icmg_test(test_dense_summary tests/cli/test_dense_summary.cpp)  # odysseus-inspired dense compaction summary (AGPL-clean reimpl)
 add_icmg_test(test_persona_local_only tests/core/test_persona_local_only.cpp)
 add_icmg_test(test_write_queue   tests/core/test_write_queue.cpp)
@@ -722,6 +724,7 @@ add_icmg_test(test_tier_rank     tests/imem/test_tier_rank.cpp)  # A1: tier tie-
 add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomize T1
 add_icmg_test(test_memory_source tests/imem/test_memory_source.cpp)  # provenance: memory source (ctor guarded-ALTER)
 add_icmg_test(test_bitemporal    tests/imem/test_bitemporal.cpp)  # feature #5: bi-temporal fact invalidation
+add_icmg_test(test_mark_reused  tests/imem/test_mark_reused.cpp)  # 2026-11-12 observed-reuse signal (recall --get)
 add_icmg_test(test_causal        tests/imem/test_causal.cpp)  # feature #1: causal-fact retrieval
 add_icmg_test(test_retrieval_tier tests/imem/test_retrieval_tier.cpp)  # feature #3: two-tier recall scheduling
 add_icmg_test(test_skill_bank    tests/imem/test_skill_bank.cpp)  # feature #7: trajectory -> skill-bank distillation
@@ -912,7 +915,7 @@ add_icmg_test(test_hook_skill_suggest tests/core/test_hook_skill_suggest.cpp)
 
 # v1.26.0: previously 3 standalone test exes (test_claudemd / test_backup /
 # test_diff_summary) bypassed the macro because they didn't need icmg_lib.
-# Mono icmg_test target absorbs them â€” their .obj is tiny vs the link saving
+# Mono icmg_test target absorbs them -- their .obj is tiny vs the link saving
 # of dropping 3 separate executables.
 add_icmg_test(test_claudemd      tests/cli/test_claudemd.cpp)
 add_icmg_test(test_backup        tests/cli/test_backup.cpp)
@@ -931,6 +934,8 @@ add_icmg_test(test_recall_asof   tests/imem/test_recall_asof.cpp)  # brain v2.22
 add_icmg_test(test_recall_gaps   tests/imem/test_recall_gaps.cpp)  # brain v2.22 #2: retrieval-failure ledger
 add_icmg_test(test_grounding_scan tests/imem/test_grounding_scan.cpp) # 2026-09-23 IDE-C: grounding scan
 add_icmg_test(test_bench_replay  tests/imem/test_bench_replay.cpp)  # 2026-09-23 IDE-A: replay bench
+add_icmg_test(test_bench_expand  tests/imem/test_bench_expand.cpp)  # 2026-11-11 RM3/cover/gate stages
+add_icmg_test(test_actr_activation tests/imem/test_actr_activation.cpp)  # 2026-11-11 ICMG_RECENCY=actr
 add_icmg_test(test_recall_rerank tests/imem/test_recall_rerank.cpp)  # 2026-11-01 live recall --rerank
 add_icmg_test(test_recall_confidence tests/imem/test_recall_confidence.cpp) # 2026-09-23 IDE-B: MemCalib cue
 add_icmg_test(test_graph_coherence tests/core/test_graph_coherence.cpp) # 2026-09-23 IDE-E: TopoCompress pull
@@ -1031,7 +1036,7 @@ endif()
 # ---------------------------------------------------------------------------
 # v1.29.0 #2: opt-in mono icmg_test binary. Collapses 122 link steps into 1.
 # Build saving target: ~40-50% of test-link phase (each per-exe is ~17MB
-# whole-archive link from libicmg_lib.a â€” mono only links once).
+# whole-archive link from libicmg_lib.a -- mono only links once).
 #
 # Each tests/**/test_*.cpp has its `int main()` guarded by ICMG_MONO_TEST.
 # When this option is ON, the guards collapse, mono_main.cpp provides the
@@ -1040,12 +1045,12 @@ endif()
 # attempt to hang).
 #
 # Per-exe model REMAINS the default (this option is OFF unless flipped).
-# When ON, per-exe targets still build alongside â€” both work.
+# When ON, per-exe targets still build alongside -- both work.
 # ---------------------------------------------------------------------------
-# (ICMG_MONO_TEST options moved earlier â€” see before macro add_icmg_test)
+# (ICMG_MONO_TEST options moved earlier -- see before macro add_icmg_test)
 if(ICMG_MONO_TEST)
     get_property(_ICMG_TEST_SRCS GLOBAL PROPERTY ICMG_ALL_TEST_SOURCES)
-    message(STATUS "icmg: ICMG_MONO_TEST=ON â€” building mono icmg_test (${_ICMG_TEST_SRCS} sources collected)")
+    message(STATUS "icmg: ICMG_MONO_TEST=ON -- building mono icmg_test (${_ICMG_TEST_SRCS} sources collected)")
     add_executable(icmg_test ${_ICMG_TEST_SRCS} tests/mono_main.cpp)
     target_compile_definitions(icmg_test PRIVATE
         ICMG_MONO_TEST=1
@@ -1085,13 +1090,13 @@ endif()
 
 # ---------------------------------------------------------------------------
 # v1.31.0 A1: llama.cpp vendored under third_party/llama.cpp/ (tag b9297).
-# Opt-in via -DICMG_USE_LLAMA=ON. Default OFF â€” preserves baseline icmg.exe
+# Opt-in via -DICMG_USE_LLAMA=ON. Default OFF -- preserves baseline icmg.exe
 # size (~25MB) and zero impact when feature off.
 #
 # Backends:
 #   - CPU (GGML_CPU=ON, always when llama enabled)
 #   - Vulkan opt-in: -DICMG_LLAMA_VULKAN=ON (forwards to GGML_VULKAN)
-#   - Other GPU backends (CUDA/SYCL/OpenCL/Metal/etc.) NOT vendored â€”
+#   - Other GPU backends (CUDA/SYCL/OpenCL/Metal/etc.) NOT vendored --
 #     gitignored to keep repo size sane. Custom builds may sideload.
 #
 # When ON: ICMG_HAS_LLAMA=1 compile def propagates to icmg_lib.
@@ -1106,7 +1111,7 @@ option(ICMG_USE_LLAMA "Build with local LLM via vendored llama.cpp (opt-in)" OFF
 # stabilizes (b9298+ may fix).
 option(ICMG_LLAMA_VULKAN "Enable Vulkan backend for llama.cpp (requires ICMG_USE_LLAMA=ON)" OFF)
 if(ICMG_USE_LLAMA)
-    message(STATUS "icmg: ICMG_USE_LLAMA=ON â€” vendoring llama.cpp from third_party/llama.cpp/")
+    message(STATUS "icmg: ICMG_USE_LLAMA=ON -- vendoring llama.cpp from third_party/llama.cpp/")
     # v1.40.0 B1-toolchain-fix: force-disable GGML_NATIVE (-march=native AVX
     # intrinsics) + GGML_CCACHE wrapper. Both trigger c++.exe crash
     # (0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND) on MSYS2 GCC 15.2 when
@@ -1128,7 +1133,7 @@ if(ICMG_USE_LLAMA)
     set(LLAMA_STANDALONE      OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_HTML      OFF CACHE BOOL "" FORCE)
     # LLAMA_BUILD_COMMON triggers vendor/cpp-httplib subdir which we didn't
-    # vendor (server REST infra unneeded â€” icmg uses libllama directly).
+    # vendor (server REST infra unneeded -- icmg uses libllama directly).
     # OFF for now; LlamaRunner replicates the few helpers we need.
     set(LLAMA_BUILD_COMMON    OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS     OFF CACHE BOOL "" FORCE)
@@ -1138,7 +1143,7 @@ if(ICMG_USE_LLAMA)
     set(LLAMA_BUILD_UI        OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_APP       OFF CACHE BOOL "" FORCE)
     set(LLAMA_CURL            OFF CACHE BOOL "" FORCE)
-    # GGML backend selection â€” CPU always; Vulkan per ICMG_LLAMA_VULKAN.
+    # GGML backend selection -- CPU always; Vulkan per ICMG_LLAMA_VULKAN.
     set(GGML_CPU              ON  CACHE BOOL "" FORCE)
     set(GGML_VULKAN           ${ICMG_LLAMA_VULKAN} CACHE BOOL "" FORCE)
     # Explicitly disable GPU backends we did NOT vendor.
@@ -1159,9 +1164,9 @@ if(ICMG_USE_LLAMA)
     endif()
     # v1.47.0: eliminate shared-PDB race on ggml-vulkan target.
     # 250+ shader .cpp files write debug info to ONE PDB by default
-    # under /MP parallel cl.exe â†’ "Cannot open compiler generated
+    # under /MP parallel cl.exe -> "Cannot open compiler generated
     # file: Invalid argument" intermittent fail. /Z7 embeds debug
-    # info in the .obj itself, no shared PDB â†’ zero race.
+    # info in the .obj itself, no shared PDB -> zero race.
     if(MSVC AND TARGET ggml-vulkan)
         target_compile_options(ggml-vulkan PRIVATE /Z7)
     endif()
