@@ -7,6 +7,7 @@
 //      side-effect free, so question order cannot bias later questions)
 #pragma once
 #include "bench_dataset.hpp"
+#include "bench_expand.hpp"
 #include "bench_metrics.hpp"
 #include <string>
 #include <vector>
@@ -35,6 +36,8 @@ struct BenchRunOptions {
     double prfBeta     = 0.0;    // >0: RM3 pseudo-relevance feedback, lexical interp. weight
     double coverLambda = 0.0;    // >0: coverage-greedy head (new query terms weight)
     double rerankGate  = 0.0;    // >0: skip rerank on top-1 margin >= this + full coverage
+    int    adjacent    = 0;      // >0: +-W same-session turns of the top seeds join the rerank head
+    int    adjacentSeeds = kAdjacentSeeds;
 
     // 2026-11-02: ignore question dates (every doc visible). LongMemEval_s has
     // 41/470 questions whose evidence is dated after question_date; the
@@ -48,7 +51,7 @@ struct BenchRunOptions {
     bool pipeline() const {
         return !fusion.empty() || enrich || neighbours > 0 || chunkWords > 0 ||
                userView || temporal > 0 || groupBeta > 0 || mmrLambda < 1.0 ||
-               rerankTop > 0 || prfBeta > 0 || coverLambda > 0;
+               rerankTop > 0 || prfBeta > 0 || coverLambda > 0 || adjacent > 0;
     }
 };
 

@@ -9,6 +9,7 @@
 
 #include "../base_command.hpp"
 #include "../defender_decision.hpp"   // v1.75 #187: idempotent Defender gate
+#include "../update_swap.hpp"         // #277: rollback never loses the exe
 #include "../../core/registry.hpp"
 #include "../../core/version.hpp"
 #include "../../core/exec_utils.hpp"
@@ -38,6 +39,8 @@ using nlohmann::json;
 namespace icmg::cli {
 
 static const char* CURRENT_VERSION = icmg::core::ICMG_VERSION;
+// #277: rollback could not restore the old binary (the new one is kept).
+static constexpr int kExitRollbackFailed = 10;
 static const char* REPO            = "ncmonx/icemage";
 
 // Returns -1 if a < b, 0 if equal, +1 if a > b. Tolerant to "v" prefix.
@@ -653,7 +656,7 @@ private:
         for (int _attempt = 0; _attempt < 3; ++_attempt) {
             ec = {};
             fs::rename(self, bak, ec);
-            if (!ec) break;
+            if (!ec) { touchNow(bak); break; }  // #277: fresh mtime so doctor keeps it
 #ifdef _WIN32
             Sleep(300);
 #else
@@ -859,17 +862,15 @@ private:
         if (dll_mismatch > 0 && !no_auto_rollback) {
             std::cerr << "icmg update: AUTO-ROLLBACK triggered ("
                       << dll_mismatch << " DLL(s) failed integrity).\n"
-                      << "  Restoring " << bak.string() << " → " << self.string() << "\n";
-            std::error_code rec;
-            fs::path swap_p = self; swap_p += ".swap";
-            fs::rename(self, swap_p, rec);
-            fs::rename(bak, self, rec);
-            if (!rec) {
-                fs::remove(swap_p, rec);
+                      << "  Restoring " << bak.string() << " -> " << self.string() << "\n";
+            auto rb = rollbackSwap(self, bak);
+            if (rb.ok) {
                 std::cerr << "  Rollback complete. Re-run `icmg update --apply --skip-verify` to bypass.\n";
                 return 9;
             }
-            std::cerr << "  Rollback FAILED: " << rec.message() << "\n";
+            std::cerr << "  Rollback FAILED: " << rb.message << "\n";
+            clearUpdatingLock();
+            return kExitRollbackFailed;
         }
 
         // Auto-refresh hooks for any project context: .icmg/, .claude/hooks/, or .claude/settings.local.json.
@@ -990,9 +991,13 @@ private:
             // expect the NEW binary's version, not the old CURRENT_VERSION.
             version_ok = (vr.exit_code == 0 && !vr.out.empty());
 
-            std::string dcmd = "\"" + self.string() + "\" doctor";
+            // #277: --dry-run so the self-test never mutates the user's
+            // project or archives our fresh .bak. It checks that the new binary
+            // runs doctor to completion (0 = clean, 1 = findings); project
+            // findings are not a reason to roll the binary back.
+            std::string dcmd = "\"" + self.string() + "\" doctor --dry-run";
             auto dr = core::safeExecShell(dcmd, true, 15000);
-            bool doctor_ok = (dr.exit_code == 0);
+            bool doctor_ok = (dr.exit_code == 0 || dr.exit_code == 1);
 
             if (version_ok && doctor_ok) {
                 std::ofstream st(core::icmgGlobalDir()
@@ -1003,17 +1008,15 @@ private:
                 std::cerr << "  Self-test FAILED: version_ok=" << version_ok
                           << " doctor_ok=" << doctor_ok << "\n"
                           << "  Auto-rollback to " << bak.string() << "...\n";
-                std::error_code rec;
-                fs::path swap_p = self; swap_p += ".swap";
-                fs::rename(self, swap_p, rec);
-                fs::rename(bak, self, rec);
-                if (!rec) {
-                    fs::remove(swap_p, rec);
+                auto rb = rollbackSwap(self, bak);
+                if (rb.ok) {
                     std::cerr << "  Rollback complete. Run `icmg update --apply"
                               << " --skip-verify --no-self-test` to bypass.\n";
                     return 9;
                 }
-                std::cerr << "  Rollback FAILED: " << rec.message() << "\n";
+                std::cerr << "  Rollback FAILED: " << rb.message << "\n";
+                clearUpdatingLock();
+                return kExitRollbackFailed;
             }
         }
 

@@ -1,4 +1,4 @@
-﻿// `icmg safe-rollback` — safely restore a file to HEAD, protecting uncommitted work.
+// `icmg safe-rollback` — safely restore a file to HEAD, protecting uncommitted work.
 //
 // Solves AI failure mode: AI runs `git checkout <file>` / `git restore` /
 // `git reset --hard` without checking disk-vs-HEAD age, wiping uncommitted work.

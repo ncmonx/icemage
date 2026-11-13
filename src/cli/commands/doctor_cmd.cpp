@@ -114,7 +114,10 @@ public:
         fs::path hooks = root / ".claude" / "hooks";
         if (!fs::exists(hooks)) {
             ++issues;
-            std::cout << "  ! [hooks] .claude/hooks missing — run `icmg init` first.\n";
+            // #277 bug 2: say which directory was checked -- doctor works on
+            // the current directory, not on a registered project root.
+            std::cout << "  ! [hooks] " << hooks.generic_string()
+                      << " missing -- run `icmg init` there, or run `icmg doctor` from the project root.\n";
         } else {
             const char* required[] = {
                 "icmg-bash-rewrite.sh", "icmg-shrink-read.sh",

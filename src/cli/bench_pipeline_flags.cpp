@@ -93,6 +93,12 @@ std::string parseBenchPipelineFlags(const std::vector<std::string>& args, bool t
     if (!num(args, "--mmr", 0, 1, opt.mmrLambda, err)) return err;
     if (!num(args, "--prf", 0, 1, opt.prfBeta, err)) return err;
     if (!num(args, "--cover", 0, 5, opt.coverLambda, err)) return err;
+    d = opt.adjacent;
+    if (!num(args, "--adjacent", 0, imem::kAdjacentMax, d, err)) return err;
+    opt.adjacent = (int)d;
+    d = opt.adjacentSeeds;
+    if (!num(args, "--adjacent-seeds", 1, imem::kAdjacentSeedsMax, d, err)) return err;
+    opt.adjacentSeeds = (int)d;
     double rr = opt.rerankTop;
     if (!num(args, "--rerank", 0, kRerankMax, rr, err)) return err;
     opt.rerankTop = (int)rr;
@@ -121,6 +127,8 @@ const char* benchPipelineUsage() {
         "                       top-10 hits' terms, interpolated with weight B (0..1)\n"
         "    --cover L          coverage-greedy top 30: favour docs adding query terms not\n"
         "                       yet covered, penalise near-duplicates (L 0..5; multi-hop)\n"
+        "    --adjacent W       the top --adjacent-seeds S (default 10) hits pull their +-W\n"
+        "                       same-session turns into the rerank head (W 1..3; turn docs)\n"
         "    --rerank N         cross-encoder rerank of the final top N (ms-marco-MiniLM-L-6-v2;\n"
         "                       ~/.icmg/embed/ms-marco-MiniLM-L-6-v2.onnx or ICMG_RERANK_MODEL;\n"
         "                       DEFAULT 20 + --rerank-chunk 150 when the model is present)\n"

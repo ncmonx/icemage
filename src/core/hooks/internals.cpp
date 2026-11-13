@@ -1,4 +1,4 @@
-﻿#include "internals.hpp"
+#include "internals.hpp"
 
 #include "../config.hpp"
 #include "../db.hpp"

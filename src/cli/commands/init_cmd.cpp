@@ -1,4 +1,4 @@
-﻿// `icmg init` — bootstrap a project for icmg-aware AI agents.
+// `icmg init` — bootstrap a project for icmg-aware AI agents.
 //
 // Creates / updates:
 //   .claude/settings.local.json  — installs Bash-rewrite + Read-shrink hooks
@@ -18,6 +18,7 @@
 #include "../tool_wiring.hpp"     // G6: --all-tools multi-host CLI wiring
 #include "../mcp_wiring.hpp"      // 2026-10: MCP server auto-registration per host
 #include "../gemini_hook_wiring.hpp" // 2026-10: Gemini CLI SessionStart hook parity
+#include "../../core/atomic_file.hpp"   // #277: validate-first atomic writes
 #include "../../core/registry.hpp"
 #include "../../core/exec_utils.hpp"
 #include "../../core/config.hpp"
@@ -2575,8 +2576,20 @@ private:
                 }
             }
         }
-        std::ofstream f(sp);
-        f << cfg.dump(2) << "\n";
+        // #277: render first, then swap in atomically. Previously the
+        // ofstream truncated the file before dump() threw, leaving 0 bytes.
+        std::string rendered;
+        try {
+            rendered = cfg.dump(2) + "\n";
+        } catch (const std::exception& e) {
+            std::cerr << "  ! .claude/settings.local.json NOT changed: " << e.what() << "\n";
+            return n;
+        }
+        std::string werr;
+        if (!core::writeFileAtomic(sp, rendered, &werr)) {
+            std::cerr << "  ! .claude/settings.local.json NOT changed: " << werr << "\n";
+            return n;
+        }
         std::cout << "  + .claude/settings.local.json (hooks installed)\n";
         ++n;
 
@@ -2956,8 +2969,18 @@ private:
             std::cout << "  = " << p.filename().string() << " (exists; --force to overwrite)\n";
             return 0;
         }
-        std::ofstream f(p);
-        f << content;
+        // #277: never write a template that is not valid UTF-8 (a mis-encoded
+        // build would otherwise mojibake every hook), and write atomically.
+        if (!core::isValidUtf8(content)) {
+            std::cerr << "  ! refused to write " << p.filename().string()
+                      << ": template is not valid UTF-8 (build encoding bug)\n";
+            return 0;
+        }
+        std::string err;
+        if (!core::writeFileAtomic(p, content, &err)) {
+            std::cerr << "  ! cannot write " << p.filename().string() << ": " << err << "\n";
+            return 0;
+        }
         std::cout << "  + " << fs::relative(p, fs::current_path()).string() << "\n";
         return 1;
     }

@@ -4,6 +4,28 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.29.1
+
+**Hotfix for #277: hook reinstall and self-update can no longer destroy
+state.**
+
+- `icmg doctor` / `icmg init` hook reinstall now writes
+  `.claude/settings.local.json` atomically and validates it first: a failed
+  reinstall leaves the previous file intact instead of an empty one.
+- Hook scripts are written as UTF-8, so em-dashes and arrows in the shipped
+  hooks no longer turn into mojibake on non-UTF-8 Windows code pages.
+- `icmg update --apply` swaps the binary with a rename-aside + rollback, and
+  `safe-rollback` reuses the same path: a failed swap always restores the
+  previous `icmg.exe` instead of leaving none.
+- Removed a stray UTF-8 BOM from `src/core/db.cpp`; a new test keeps `src/`
+  BOM-free.
+- Bench-only (experimental): `bench-recall --adjacent W [--adjacent-seeds S]`
+  pulls the +-W same-session turns of the top S hits into the rerank head.
+  Bench tests (`tests/**/test_bench_*.cpp`) are now opt-in in the test
+  binary: set `ICMG_TEST_BENCH=1` or pass a filter.
+
+Tests: 2686/2686 passing (2625 default + 61 opt-in bench).
+
 ## v2.29.0
 
 **Memory + token research pack: new opt-in retrieval stages, safer

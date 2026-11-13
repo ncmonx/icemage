@@ -32,6 +32,28 @@ bool isTurnId(const std::string& id) { return benchGroupOf(id) != id; }
 
 std::atomic<long long> gGateConsidered{0}, gGateSkipped{0};
 
+// --adjacent: same-session turns around `id` in corpus order, nearest first and
+// the following turn before the preceding one (answers follow questions).
+// Only stored docs (nodeId > 0); non-turn docs have no neighbours.
+std::vector<std::string> sessionNeighbours(const std::string& id, int w,
+                                           const std::vector<BenchDoc>& docs,
+                                           const std::unordered_map<std::string, size_t>& docIdx,
+                                           const std::vector<int64_t>& nodeIds) {
+    std::vector<std::string> out;
+    auto it = docIdx.find(id);
+    if (it == docIdx.end() || !isTurnId(id)) return out;
+    const size_t i = it->second;
+    const std::string g = benchGroupOf(id);
+    auto take = [&](size_t j) {
+        if (j < docs.size() && nodeIds[j] > 0 && benchGroupOf(docs[j].id) == g) out.push_back(docs[j].id);
+    };
+    for (int d = 1; d <= w; ++d) {
+        take(i + (size_t)d);
+        if (i >= (size_t)d) take(i - (size_t)d);
+    }
+    return out;
+}
+
 // RM3 (--prf): question + expansion terms from the top lexical hits run as a
 // second as-of lexical query; per-doc normalized scores interpolated
 // (1-beta)*orig + beta*exp. ids/norm are rewritten sorted by the new score.
@@ -303,7 +325,15 @@ runBenchPipeline(const std::vector<BenchDoc>& docs,
             if (gateSkip) gGateSkipped.fetch_add(1);
         }
         if (rerankOn && !gateSkip && !ranked.empty()) {
-            const size_t n = std::min<size_t>(ranked.size(), opt.rerankTop);
+            size_t n = std::min<size_t>(ranked.size(), opt.rerankTop);
+            if (opt.adjacent > 0) {
+                std::map<std::string, std::vector<std::string>> adj;
+                for (size_t i = 0; i < n && (int)i < opt.adjacentSeeds; ++i)
+                    adj[ranked[i]] = sessionNeighbours(ranked[i], opt.adjacent, docs, docIdx, nodeIds);
+                auto ex = adjacentExpandHead(ranked, adj, opt.adjacentSeeds, (int)n);
+                ranked = std::move(ex.ids);
+                n = (size_t)ex.head;
+            }
             std::vector<std::string> texts;
             texts.reserve(n);
             for (size_t i = 0; i < n; ++i) {

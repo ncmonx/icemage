@@ -102,4 +102,25 @@ std::vector<std::string> coverSelect(const std::vector<std::pair<std::string, do
     return out;
 }
 
+AdjacentHead adjacentExpandHead(const std::vector<std::string>& ranked,
+                                const std::map<std::string, std::vector<std::string>>& adj,
+                                int seeds, int head) {
+    AdjacentHead r;
+    std::set<std::string> placed;
+    auto place = [&](const std::string& id) {
+        if (placed.insert(id).second) r.ids.push_back(id);
+    };
+    const size_t h = std::min(ranked.size(), (size_t)std::max(head, 0));
+    for (size_t i = 0; i < h; ++i) {
+        place(ranked[i]);
+        if ((int)i >= seeds) continue;
+        auto it = adj.find(ranked[i]);
+        if (it != adj.end())
+            for (const auto& nb : it->second) place(nb);
+    }
+    r.head = (int)r.ids.size();
+    for (size_t i = h; i < ranked.size(); ++i) place(ranked[i]);
+    return r;
+}
+
 }  // namespace icmg::imem

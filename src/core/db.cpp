@@ -1,4 +1,4 @@
-﻿#include "db.hpp"
+#include "db.hpp"
 #include "migrator.hpp"
 #include "embedded_migrations.hpp"
 #include "path_utils.hpp"

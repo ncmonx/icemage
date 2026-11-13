@@ -108,6 +108,48 @@ TEST("cover: --cover parses, labels and turns the pipeline on") {
     ASSERT_FALSE(icmg::cli::parseBenchPipelineFlags({"--cover", "-1"}, false, bad).empty());
 }
 
+// 2026-11-12: 233/360 LoCoMo questions whose gold misses the pre-rerank top-20
+// have it within +-2 turns of a top-20 hit (question turn ranks, answer turn
+// does not). --adjacent W pulls same-session neighbours into the rerank head.
+TEST("adjacent: seeds keep order, neighbours follow their seed, rest after") {
+    const std::vector<std::string> ranked = {"D1:5", "D2:3", "D3:1", "D4:9", "D1:6"};
+    const std::map<std::string, std::vector<std::string>> adj = {
+        {"D1:5", {"D1:6", "D1:4"}}, {"D2:3", {"D2:4"}}, {"D3:1", {"D3:2"}}};
+    auto r = adjacentExpandHead(ranked, adj, /*seeds=*/2, /*head=*/3);
+    // head: D1:5 +D1:6 +D1:4, D2:3 +D2:4, D3:1 (not a seed -> no neighbours)
+    const std::vector<std::string> want = {"D1:5", "D1:6", "D1:4", "D2:3", "D2:4", "D3:1", "D4:9"};
+    ASSERT_TRUE(r.ids == want);
+    ASSERT_EQ(r.head, 6);   // rerank head grows by the 3 pulled-in neighbours
+}
+
+TEST("adjacent: no neighbours / seeds 0 -> identity with head = min(head, n)") {
+    const std::vector<std::string> ranked = {"a", "b", "c"};
+    auto r = adjacentExpandHead(ranked, {}, 5, 2);
+    ASSERT_TRUE(r.ids == ranked);
+    ASSERT_EQ(r.head, 2);
+    auto z = adjacentExpandHead(ranked, {{"a", {"x"}}}, 0, 10);
+    ASSERT_TRUE(z.ids == ranked);
+    ASSERT_EQ(z.head, 3);
+    auto e = adjacentExpandHead({}, {}, 5, 5);
+    ASSERT_TRUE(e.ids.empty());
+    ASSERT_EQ(e.head, 0);
+}
+
+TEST("adjacent: --adjacent parses, labels, is range-checked, turns pipeline on") {
+    BenchRunOptions opt;
+    ASSERT_EQ(icmg::cli::parseBenchPipelineFlags({"--adjacent", "1"}, false, opt), std::string(""));
+    ASSERT_EQ(opt.adjacent, 1);
+    ASSERT_EQ(opt.adjacentSeeds, kAdjacentSeeds);
+    ASSERT_TRUE(opt.pipeline());
+    ASSERT_CONTAINS(describePipeline(opt), std::string("adj=1x10"));
+    BenchRunOptions s;
+    ASSERT_EQ(icmg::cli::parseBenchPipelineFlags({"--adjacent", "2", "--adjacent-seeds", "5"}, false, s),
+              std::string(""));
+    ASSERT_EQ(s.adjacentSeeds, 5);
+    BenchRunOptions bad;
+    ASSERT_FALSE(icmg::cli::parseBenchPipelineFlags({"--adjacent", "9"}, false, bad).empty());
+}
+
 TEST("gate: skip rerank only on a clear margin AND full query coverage by top-1") {
     const std::vector<std::string> q = {"corgi", "frisbee"};
     ASSERT_TRUE(rerankGateSkip(1.0, 0.4, {"corgi", "frisbee", "beach"}, q, 0.5));   // margin .6
