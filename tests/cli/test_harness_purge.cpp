@@ -55,6 +55,29 @@ TEST("test-harness: purgeStaleTestDbs survives a filename with no ANSI mapping")
     std::error_code ec; fs::remove_all(d, ec);
 }
 
+// 2026-11-13: bench tests (tests/**/test_bench_*.cpp) are opt-in. Skipped by
+// default; run with ICMG_TEST_BENCH=1 or by naming them in --filter.
+TEST("test-harness: isOptInBenchFile matches only test_bench_* sources") {
+    using icmg::test::isOptInBenchFile;
+    ASSERT_TRUE(isOptInBenchFile("tests/imem/test_bench_expand.cpp"));
+    ASSERT_TRUE(isOptInBenchFile("D:\\x\\tests\\cli\\test_bench_cmd.cpp"));
+    ASSERT_TRUE(!isOptInBenchFile("tests/cli/test_harness_purge.cpp"));
+    ASSERT_TRUE(!isOptInBenchFile("tests/imem/test_recall_bench_dir/test_x.cpp"));
+    ASSERT_TRUE(!isOptInBenchFile(""));
+}
+
+TEST("test-harness: skipOptIn skips bench unless env set or filter given") {
+    using icmg::test::skipOptIn;
+    const char* bench = "tests/imem/test_bench_replay.cpp";
+    const char* plain = "tests/cli/test_x.cpp";
+    ASSERT_TRUE(skipOptIn(bench, "", nullptr));     // default: skip
+    ASSERT_TRUE(skipOptIn(bench, "", "0"));         // explicit off
+    ASSERT_TRUE(skipOptIn(bench, "", ""));          // empty = off
+    ASSERT_TRUE(!skipOptIn(bench, "", "1"));        // opt-in
+    ASSERT_TRUE(!skipOptIn(bench, "replay", nullptr)); // filter = explicit ask
+    ASSERT_TRUE(!skipOptIn(plain, "", nullptr));    // normal tests always run
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

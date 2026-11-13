@@ -184,6 +184,7 @@ std::string describePipeline(const BenchRunOptions& o) {
     if (o.temporal > 0) { std::snprintf(b, sizeof b, " temporal=%.2f", o.temporal); s += b; }
     if (o.groupBeta > 0) { std::snprintf(b, sizeof b, " group=%.2f", o.groupBeta); s += b; }
     if (o.coverLambda > 0) { std::snprintf(b, sizeof b, " cover=%.2f", o.coverLambda); s += b; }
+    if (o.adjacent > 0) s += " adj=" + std::to_string(o.adjacent) + "x" + std::to_string(o.adjacentSeeds);
     if (o.mmrLambda < 1.0) { std::snprintf(b, sizeof b, " mmr=%.2f", o.mmrLambda); s += b; }
     if (o.rerankTop > 0)
         s += " rerank=" + std::to_string(o.rerankTop) +

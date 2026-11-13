@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <filesystem>
 #include <system_error>
+#include <cstdlib>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -22,7 +23,29 @@ namespace icmg::test {
 struct TestCase {
     std::string name;
     std::function<void()> fn;
+    std::string file;   // __FILE__ of the TEST(); drives opt-in groups
 };
+
+// 2026-11-13: bench tests are opt-in. Any TEST() defined in a source whose
+// basename starts with kOptInBenchPrefix is skipped by default; it runs when
+// kOptInBenchEnv is set to a non-empty value other than "0", or when the
+// caller passes a --filter (naming tests is an explicit request to run them).
+inline constexpr const char* kOptInBenchPrefix = "test_bench_";
+inline constexpr const char* kOptInBenchEnv    = "ICMG_TEST_BENCH";
+
+inline bool isOptInBenchFile(const std::string& file) {
+    const auto slash = file.find_last_of("/\\");
+    const std::string base = (slash == std::string::npos) ? file : file.substr(slash + 1);
+    return base.rfind(kOptInBenchPrefix, 0) == 0;
+}
+
+inline bool skipOptIn(const std::string& file, const std::string& filter,
+                      const char* env_value) {
+    if (!isOptInBenchFile(file)) return false;
+    if (!filter.empty()) return false;
+    const bool env_on = env_value && *env_value && std::string(env_value) != "0";
+    return !env_on;
+}
 
 inline std::vector<TestCase>& registry() {
     static std::vector<TestCase> r;
@@ -84,10 +107,24 @@ inline int run_all(const std::string& filter = "") {
     // Cygwin-mangled "C\uF03AUsers..." log in the cwd). Uncaught there, that
     // aborted the whole binary (0xC0000409, bash reports 127) before test #1.
     purgeStaleTestDbs(".");
-    int passed = 0, failed = 0, skipped = 0;
+    int passed = 0, failed = 0, skipped = 0, opt_in_skipped = 0;
+    // Read-only lookup of a flag; MSVC C4996 (_dupenv_s nag) would fire in
+    // every test TU that includes this header.
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#endif
+    const char* bench_env = std::getenv(kOptInBenchEnv);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     for (auto& tc : registry()) {
         if (!filter.empty() && tc.name.find(filter) == std::string::npos) {
             ++skipped;
+            continue;
+        }
+        if (skipOptIn(tc.file, filter, bench_env)) {
+            ++opt_in_skipped;
             continue;
         }
         try {
@@ -106,6 +143,9 @@ inline int run_all(const std::string& filter = "") {
     }
     std::cout << "\n" << passed << " passed, " << failed << " failed";
     if (skipped > 0) std::cout << " (" << skipped << " skipped by filter)";
+    if (opt_in_skipped > 0)
+        std::cout << " (" << opt_in_skipped << " bench skipped; set "
+                  << kOptInBenchEnv << "=1 to run)";
     std::cout << "\n";
     // v1.26.0: ctest entry with mis-matched filter returns 0-passed. Treat
     // that as failure so the misalignment is visible (v1.27 audit will rename
@@ -118,8 +158,8 @@ inline int run_all(const std::string& filter = "") {
 }
 
 struct Registrar {
-    Registrar(const char* name, std::function<void()> fn) {
-        registry().push_back({name, std::move(fn)});
+    Registrar(const char* name, std::function<void()> fn, const char* file = "") {
+        registry().push_back({name, std::move(fn), file ? file : ""});
     }
 };
 
@@ -175,7 +215,7 @@ inline void assert_not_contains(const std::string& haystack, const std::string& 
 
 #define TEST(name) \
     static void ICMG_TEST_FN(__LINE__)(); \
-    static ::icmg::test::Registrar ICMG_TEST_REG(__LINE__)(name, ICMG_TEST_FN(__LINE__)); \
+    static ::icmg::test::Registrar ICMG_TEST_REG(__LINE__)(name, ICMG_TEST_FN(__LINE__), __FILE__); \
     static void ICMG_TEST_FN(__LINE__)()
 
 #define ASSERT_TRUE(cond) \

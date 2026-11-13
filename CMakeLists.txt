@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() -- harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.29.0 LANGUAGES CXX C)
+project(icmg VERSION 2.29.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 -- enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -758,6 +758,9 @@ add_icmg_test(test_init_project_register  tests/cli/test_init_project_register.c
 add_icmg_test(test_rules        tests/rules/test_rules.cpp)
 add_icmg_test(test_data_store   tests/data/test_data_store.cpp)
 add_icmg_test(test_global_db    tests/core/test_global_db.cpp)
+add_icmg_test(test_atomic_file      tests/core/test_atomic_file.cpp)       # issue #277: validate-first atomic write
+add_icmg_test(test_source_encoding  tests/core/test_source_encoding.cpp)   # issue #277: no BOM in src/
+add_icmg_test(test_update_swap      tests/cli/test_update_swap.cpp)        # issue #277: rollback never loses exe
 add_icmg_test(test_abbr         tests/abbr/test_abbr.cpp)
 add_icmg_test(test_sp           tests/sp/test_sp.cpp)
 add_icmg_test(test_import       tests/import/test_import.cpp)
