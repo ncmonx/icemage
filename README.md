@@ -86,6 +86,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## ✨ What's new
 
+- **v2.30.2** — **Hotfix #283.** The `icmg init` AGENTS.md template now shows `icmg zone add <subsystem> <path-glob>` (the old `--zone` example made junk zones), and `zone add` rejects flag-like, empty or extra arguments without creating a zone.
 - **v2.30.1** — **Hotfix #281.** `icmg grep` hands the pattern to `rg` as one argv element (no shell), so Grep patterns with `|`, `(` or `"` work. `update --apply` keeps hooks you edited (new template goes to `<file>.icmg-new`; `init --overwrite-hooks` to replace).
 - **v2.30.0** — **Model-AI ref flow + fix #279.** Verified fixes are written back as problem -> solution refs next to `icmg.exe` and offered first in any project (`recall --refs`, `--forget-ref`, `ICMG_REF_WRITEBACK=0` / `ICMG_REF_LOOKUP=0`); other projects are searched only when no confident hit. `update --apply` no longer slims your `CLAUDE.md` (slimming is opt-in via `init --slim`). **2658/2658 tests ✓.**
 - **v2.29.1** — **Hotfix #277.** Hook reinstall (`doctor`/`init`) writes `settings.local.json` atomically and validated (never empties it on failure), hooks are written as UTF-8 (no mojibake), and `update --apply` / `safe-rollback` always restore the previous `icmg.exe` if the swap fails. Bench tests are now opt-in (`ICMG_TEST_BENCH=1`). **2686/2686 tests ✓.**

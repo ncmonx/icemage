@@ -3,6 +3,7 @@
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../core/zone_resolver.hpp"
+#include "../zone_args.hpp"
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -94,8 +95,9 @@ public:
     }
 
     int run(const std::vector<std::string>& args) override {
-        if (args.size() < 2) {
-            std::cerr << "icmg zone add: requires <name> <glob>\n";
+        // #283: reject flag-like / malformed args BEFORE any DB write.
+        if (auto err = validateZoneAddArgs(args); !err.empty()) {
+            std::cerr << "icmg zone add: " << err << "\n";
             return 1;
         }
         auto& cfg = core::Config::instance();
