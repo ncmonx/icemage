@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() -- harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.30.1 LANGUAGES CXX C)
+project(icmg VERSION 2.30.2 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 -- enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -854,7 +854,7 @@ add_icmg_test(test_init_hook  tests/cli/test_init_hook.cpp)
 add_icmg_test(test_init_imports tests/cli/test_init_imports.cpp)   # issue #279: update never slims CLAUDE.md
 add_icmg_test(test_presence_hook  tests/cli/test_presence_hook.cpp)
 add_icmg_test(test_zone_config tests/cli/test_zone_config.cpp)
-add_icmg_test(test_zone_add_args tests/cli/test_zone_add_args.cpp)
+add_icmg_test(test_zone_add_args tests/cli/test_zone_add_args.cpp)              # 2026-11-17 #283 zone add rejects flag-like args
 add_icmg_test(test_review tests/cli/test_review.cpp)
 add_icmg_test(test_audit tests/cli/test_audit.cpp)
 add_icmg_test(test_drive_dialog_match tests/cli/test_drive_dialog_match.cpp)  # popup-killer B:/ predicate (heuristic 3)

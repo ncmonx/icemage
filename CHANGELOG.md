@@ -4,6 +4,20 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.30.2
+
+**Hotfix for #283: the AGENTS.md template taught a wrong `zone add` form
+that created junk zones.**
+
+- Fix: the "MANDATORY post-change sync" step written by `icmg init` now says
+  `icmg zone add <subsystem> <path-glob>`. The old text,
+  `icmg zone add <path> --zone <subsystem>`, created a zone named after the
+  path with the literal glob `--zone`, which matches nothing.
+- Fix: `icmg zone add` validates its arguments before writing anything. A
+  name or glob that starts with `--`, an empty argument, or more than two
+  arguments (an unquoted glob with spaces) now exits 1 with a usage hint and
+  creates no zone. Existing junk zones can be removed with `icmg zone rm`.
+
 ## v2.30.1
 
 **Hotfix for #281: Grep patterns with `|`, `(` or `"` broke, and
