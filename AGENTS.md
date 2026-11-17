@@ -165,7 +165,7 @@ Heuristic: if your next 2+ steps don't share a file write or depend on each othe
 After EVERY change (edit / fix / feature / refactor / doc), run all five before the task is done:
 1. `icmg graph update` — refresh the graph (nodes/edges/symbols)
 2. `icmg store decisions-<area> "<what+why>"` — persist the decision/learning (topic is POSITIONAL; `--topic T` also accepted)
-3. `icmg zone add <path> --zone <subsystem>` — tag the touched subsystem
+3. `icmg zone add <subsystem> <path-glob>` — tag the touched subsystem
 4. `icmg wflog save --goal "<goal>" --decisions "<summary>"` — record the workflow step
 5. `icmg verify --command "<test/build>"` — record verification in the audit trail
 Run independent ones together via `icmg parallel`. Checklist: graph ✓ store ✓ zone ✓ wflog ✓ verify ✓ — not all five means the change is incomplete.

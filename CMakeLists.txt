@@ -854,6 +854,7 @@ add_icmg_test(test_init_hook  tests/cli/test_init_hook.cpp)
 add_icmg_test(test_init_imports tests/cli/test_init_imports.cpp)   # issue #279: update never slims CLAUDE.md
 add_icmg_test(test_presence_hook  tests/cli/test_presence_hook.cpp)
 add_icmg_test(test_zone_config tests/cli/test_zone_config.cpp)
+add_icmg_test(test_zone_add_args tests/cli/test_zone_add_args.cpp)
 add_icmg_test(test_review tests/cli/test_review.cpp)
 add_icmg_test(test_audit tests/cli/test_audit.cpp)
 add_icmg_test(test_drive_dialog_match tests/cli/test_drive_dialog_match.cpp)  # popup-killer B:/ predicate (heuristic 3)
