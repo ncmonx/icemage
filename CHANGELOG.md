@@ -4,6 +4,22 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.30.3
+
+**Hotfix for #285: `icmg run` mangled non-ASCII arguments on Windows.**
+
+- Fix: icmg was ANSI end to end on Windows. `main()` got argv already
+  converted to the ANSI code page, and children were spawned with
+  `CreateProcessA` plus an ANSI environment block. Characters outside
+  cp1252 were best-fitted or replaced (U+2502 became `|`, CJK became `?`).
+- icmg now reads its own command line with `GetCommandLineW` and keeps it
+  UTF-8 internally. `safeExec` / `safeExecShell` (used by `icmg run`,
+  `icmg grep`, `icmg parallel`, ...) spawn with `CreateProcessW` and a wide
+  `CREATE_UNICODE_ENVIRONMENT` block. Arguments, the shell command text and
+  inherited environment variables now reach the child byte-for-byte.
+- New helper `src/core/win_utf8` (UTF-8 <-> UTF-16, wide argv, wide env
+  block) and test `test_win_utf8` (8 cases, 3 of them spawn a real child).
+
 ## v2.30.2
 
 **Hotfix for #283: the AGENTS.md template taught a wrong `zone add` form
