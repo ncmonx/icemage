@@ -1,5 +1,6 @@
 #include "exec_utils.hpp"
 #include "msys_quote.hpp"
+#include "win_utf8.hpp"
 #include <stdexcept>
 #include <chrono>
 #include <array>
@@ -28,31 +29,6 @@ namespace {
             std::chrono::steady_clock::now().time_since_epoch()).count();
     }
 
-#ifdef _WIN32
-    // Build an ANSI environment block = current env + NAME=value override.
-    // Used as CreateProcessA lpEnvironment so the override is PER-SPAWN
-    // (thread-safe) instead of mutating the process-global environment.
-    std::string buildEnvBlockWith(const std::string& name, const std::string& value) {
-        std::string block;
-        LPCH envs = GetEnvironmentStringsA();
-        if (envs) {
-            for (LPCH p = envs; *p; p += strlen(p) + 1) {
-                std::string entry(p);
-                auto eq = entry.find('=');
-                if (eq != std::string::npos && eq > 0 &&
-                    _stricmp(entry.substr(0, eq).c_str(), name.c_str()) == 0)
-                    continue;  // drop any existing copy of the override var
-                block += entry;
-                block += '\0';
-            }
-            FreeEnvironmentStringsA(envs);
-        }
-        block += name + "=" + value;
-        block += '\0';
-        block += '\0';  // double-NUL terminator
-        return block;
-    }
-#endif
 }
 
 #ifdef _WIN32
@@ -124,7 +100,7 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
         SetHandleInformation(hErrR, HANDLE_FLAG_INHERIT, 0);
     }
 
-    STARTUPINFOA si{};
+    STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.hStdOutput = hOutW;
     si.hStdError  = hErrW;
@@ -135,10 +111,11 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
     PROCESS_INFORMATION pi{};
     auto t0 = now_ms();
 
-    std::vector<char> cmdBuf(cmd.begin(), cmd.end());
-    cmdBuf.push_back('\0');
+    // #285: wide spawn -- cmd is UTF-8, CreateProcessA would re-encode it
+    // through the ANSI code page and mangle anything outside it.
+    std::wstring cmdBuf = utf8ToWide(cmd);
 
-    bool ok = CreateProcessA(nullptr, cmdBuf.data(), nullptr, nullptr,
+    bool ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr,
                               TRUE, CREATE_NO_WINDOW, nullptr, nullptr,
                               &si, &pi);
     CloseHandle(hOutW);
@@ -307,7 +284,7 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     // folders like `C:\Users\X\.local\bin\app.exe` even with /s /c quoting,
     // emitting "is not recognized as ... command".
     // Workaround: when first token is a quoted absolute path, call
-    // CreateProcessA with lpApplicationName set explicitly — Windows uses
+    // CreateProcessW with lpApplicationName set explicitly — Windows uses
     // the path as-is without parsing. Shell features (pipes, &&, redirects)
     // are NOT supported in this fast path; we detect them and fall through.
     bool use_direct = false;
@@ -330,7 +307,7 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
             if (absolute && !has_shell) {
                 use_direct = true;
                 app_name = candidate;
-                cmd_for_direct = cmd_line;  // keep quotes — CreateProcessA expects it
+                cmd_for_direct = cmd_line;  // keep quotes — CreateProcessW expects it
             }
         }
     }
@@ -344,7 +321,7 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     // (`/c/...`) instead of `C:\...` — yields "CreateProcess failed: 2"
     // even when binary IS on PATH from bash perspective.
     std::string full_cmd;
-    std::string child_env;  // per-spawn env block (wflog #16755); empty = inherit
+    std::wstring child_env;  // per-spawn wide env block (wflog #16755); empty = inherit
     if (use_direct) {
         full_cmd = cmd_for_direct;  // direct exec, no shell wrap
     } else {
@@ -394,7 +371,7 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
             // lpEnvironment instead of SetEnvironmentVariableA -- the global
             // env is process-wide and `icmg parallel` calls this from many
             // threads at once (race: tasks swapped each other's commands).
-            child_env = buildEnvBlockWith("ICMG_BASH_CMD", cmd_line);
+            child_env = wideEnvBlockWith("ICMG_BASH_CMD", cmd_line);  // #285: wide, UTF-8 safe
             // Inject PATH prefix inside bash invocation. Using double-quoted
             // expansion so $PATH expands inside child bash to its inherited
             // value. No profile load → low latency.
@@ -430,7 +407,7 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
                 if (ch == '"') esc += "\\\"";
                 else esc += ch;
             }
-            // Quote the FULL shell path so CreateProcessA uses it verbatim (no
+            // Quote the FULL shell path so CreateProcessW uses it verbatim (no
             // PATH search) -- fixes "CreateProcess failed: 2" on non-MSYS Windows
             // (PS5 lives in a System32 subdir, Store pwsh is an app alias).
             full_cmd = "\"" + s_shell + "\" -NoProfile -NonInteractive -Command \"" + esc + "\"";        }
@@ -451,7 +428,7 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
         SetHandleInformation(hErrR, HANDLE_FLAG_INHERIT, 0);
     }
 
-    STARTUPINFOA si{};
+    STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.hStdOutput = hOutW;
     si.hStdError  = hErrW;
@@ -462,16 +439,16 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     PROCESS_INFORMATION pi{};
     auto t0 = now_ms();
 
-    std::vector<char> cmdBuf(full_cmd.begin(), full_cmd.end());
-    cmdBuf.push_back('\0');
+    std::wstring cmdBuf = utf8ToWide(full_cmd);  // #285: wide spawn
 
     // When use_direct: pass app_name as lpApplicationName so Windows skips
     // its path-parsing heuristics (which choke on .dotfolder segments).
-    LPCSTR lp_app = use_direct ? app_name.c_str() : nullptr;
+    const std::wstring wapp = use_direct ? utf8ToWide(app_name) : std::wstring();
+    LPCWSTR lp_app = use_direct ? wapp.c_str() : nullptr;
     // Per-spawn env block (bash branch sets ICMG_BASH_CMD); nullptr = inherit.
     LPVOID lp_env = child_env.empty() ? nullptr : (LPVOID)child_env.data();
-    bool ok = CreateProcessA(lp_app, cmdBuf.data(), nullptr, nullptr,
-                              TRUE, CREATE_NO_WINDOW, lp_env, nullptr,
+    bool ok = CreateProcessW(lp_app, cmdBuf.data(), nullptr, nullptr,
+                              TRUE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, lp_env, nullptr,
                               &si, &pi);
     CloseHandle(hOutW);
     CloseHandle(hErrW);
