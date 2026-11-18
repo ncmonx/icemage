@@ -12,6 +12,7 @@
 #include "core/migrator.hpp"
 #include "core/logger.hpp"
 #include "core/exec_utils.hpp"
+#include "core/win_utf8.hpp"
 #include "core/path_utils.hpp"
 #include "core/version_check.hpp"
 #include "core/crash_hint.hpp"
@@ -227,8 +228,16 @@ int main(int argc, char* argv[]) {
     // commands like `icmg run node --version` would eat --version globally
     // and never reach the subprocess.
     bool seen_subcommand = false;
+    // #285: on Windows the CRT argv is ANSI (text outside the code page is
+    // already lost). Read the wide command line instead; fall back to argv
+    // only if the two parsers ever disagree on the argument count.
+    std::vector<std::string> raw_args(argv, argv + argc);
+#ifdef _WIN32
+    if (auto w = icmg::core::processArgvUtf8(); static_cast<int>(w.size()) == argc)
+        raw_args = std::move(w);
+#endif
     for (int i = 1; i < argc; ++i) {
-        std::string a = argv[i];
+        std::string a = raw_args[i];
         if (!seen_subcommand) {
             if (a == "--verbose" || a == "-v") { verbose = true; continue; }
             if (a == "--version")              { show_version = true; continue; }

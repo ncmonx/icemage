@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() -- harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.30.2 LANGUAGES CXX C)
+project(icmg VERSION 2.30.3 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 -- enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1026,6 +1026,7 @@ add_icmg_test(test_mine                  tests/cli/test_mine.cpp)               
 add_icmg_test(test_bugfix_v161           tests/core/test_bugfix_v161.cpp)         # v1.61 bugfix
 add_icmg_test(test_exec_timeout          tests/core/test_exec_timeout.cpp)        # v1.78.4 bug2: safeExecShell pipe-block
 add_icmg_test(test_msys_quote            tests/core/test_msys_quote.cpp)          # wflog #16755: MSYS-vs-MSVCRT child quoting
+add_icmg_test(test_win_utf8             tests/core/test_win_utf8.cpp)            # #285 non-ASCII argv/env/cmdline reach children via wide spawn
 add_icmg_test(test_updating_lock         tests/core/test_updating_lock.cpp)       # v1.78.4 bug1: updating.lock startup check
 add_icmg_test(test_throw_site            tests/core/test_throw_site.cpp)          # #222: err126 throw-site capture
 add_icmg_test(test_file_time             tests/core/test_file_time.cpp)           # #222 ROOT FIX: clock_cast-free file mtime

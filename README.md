@@ -86,6 +86,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## ✨ What's new
 
+- **v2.30.3** — **Hotfix #285.** `icmg run` on Windows passes non-ASCII arguments, command text and environment variables to the child unchanged (wide argv + `CreateProcessW`); `│`, `é`, `中` no longer turn into `|` / `?`.
 - **v2.30.2** — **Hotfix #283.** The `icmg init` AGENTS.md template now shows `icmg zone add <subsystem> <path-glob>` (the old `--zone` example made junk zones), and `zone add` rejects flag-like, empty or extra arguments without creating a zone.
 - **v2.30.1** — **Hotfix #281.** `icmg grep` hands the pattern to `rg` as one argv element (no shell), so Grep patterns with `|`, `(` or `"` work. `update --apply` keeps hooks you edited (new template goes to `<file>.icmg-new`; `init --overwrite-hooks` to replace).
 - **v2.30.0** — **Model-AI ref flow + fix #279.** Verified fixes are written back as problem -> solution refs next to `icmg.exe` and offered first in any project (`recall --refs`, `--forget-ref`, `ICMG_REF_WRITEBACK=0` / `ICMG_REF_LOOKUP=0`); other projects are searched only when no confident hit. `update --apply` no longer slims your `CLAUDE.md` (slimming is opt-in via `init --slim`). **2658/2658 tests ✓.**
