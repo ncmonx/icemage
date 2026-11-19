@@ -86,6 +86,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## ✨ What's new
 
+- **v2.30.4** — **Follow-up #285.** Non-ASCII install dirs and project paths work on Windows (all process/path APIs wide or UTF-8, process code page UTF-8); text saved by older builds in the ANSI code page is re-encoded to UTF-8 once.
 - **v2.30.3** — **Hotfix #285.** `icmg run` on Windows passes non-ASCII arguments, command text and environment variables to the child unchanged (wide argv + `CreateProcessW`); `│`, `é`, `中` no longer turn into `|` / `?`.
 - **v2.30.2** — **Hotfix #283.** The `icmg init` AGENTS.md template now shows `icmg zone add <subsystem> <path-glob>` (the old `--zone` example made junk zones), and `zone add` rejects flag-like, empty or extra arguments without creating a zone.
 - **v2.30.1** — **Hotfix #281.** `icmg grep` hands the pattern to `rg` as one argv element (no shell), so Grep patterns with `|`, `(` or `"` work. `update --apply` keeps hooks you edited (new template goes to `<file>.icmg-new`; `init --overwrite-hooks` to replace).
