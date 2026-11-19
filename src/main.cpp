@@ -14,6 +14,7 @@
 #include "core/exec_utils.hpp"
 #include "core/win_utf8.hpp"
 #include "core/path_utils.hpp"
+#include "core/path_u8.hpp"
 #include "core/version_check.hpp"
 #include "core/crash_hint.hpp"
 #include "core/dll_trace.hpp"
@@ -39,14 +40,14 @@ namespace fs = std::filesystem;
 // time. We remove them at startup; ignore any still-locked ones (some other
 // icmg instance may still hold a handle).
 static void sweepDllOldSidecars() {
-    char buf[1024]; DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
-    if (n == 0) return;
-    fs::path bin = buf;
+    const std::string self = icmg::core::selfExePath();
+    if (self.empty()) return;
+    fs::path bin = icmg::core::u8ToPath(self);
     fs::path dir = bin.parent_path();
     std::error_code ec;
     for (auto& e : fs::directory_iterator(dir, ec)) {
         if (ec) { ec.clear(); continue; }
-        const std::string& name = e.path().filename().string();
+        const std::string name = icmg::core::pathU8(e.path().filename());
         if (name.find(".dll.old-") == std::string::npos) continue;
         std::error_code rm;
         fs::remove(e.path(), rm);  // best-effort; locked sidecars stay
@@ -332,7 +333,7 @@ int main(int argc, char* argv[]) {
                     bool orphan_ok = false;
                     std::string exe = icmg::core::selfExePath();
                     if (!exe.empty()) {
-                        fs::path exe_dir = fs::path(exe).parent_path();
+                        fs::path exe_dir = icmg::core::u8ToPath(exe).parent_path();
                         fs::path orphan = exe_dir / "icmg-orphan.db";
                         try {
                             icmg::core::ensureProjectDb(orphan.string());

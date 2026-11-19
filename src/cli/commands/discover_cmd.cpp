@@ -29,6 +29,7 @@
 #ifdef _WIN32
   #include <windows.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -209,7 +210,7 @@ public:
 
     static std::string locateSelf() {
 #ifdef _WIN32
-        char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+        std::string buf = icmg::core::moduleFileNameUtf8();
         return buf;
 #else
         return "icmg";

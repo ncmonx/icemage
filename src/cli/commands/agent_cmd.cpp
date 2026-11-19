@@ -45,6 +45,7 @@
   #include <unistd.h>
   #include <cstdlib>
 #endif
+#include "../../core/win_api_utf8.hpp"  // moduleFileNameUtf8 (#285)
 
 namespace icmg::cli {
 
@@ -173,7 +174,7 @@ public:
             std::string pack_cmd;
 #ifdef _WIN32
             // Locate icmg.exe alongside this binary.
-            char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+            std::string buf = icmg::core::moduleFileNameUtf8();
             pack_cmd = std::string("\"") + buf + "\" pack \"" + escape(task) + "\" --max-bytes 4096";
             if (hasFlag(args, "--no-think"))    pack_cmd += " --no-think";
             if (hasFlag(args, "--concise"))     pack_cmd += " --concise";

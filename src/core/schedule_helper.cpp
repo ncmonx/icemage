@@ -11,6 +11,7 @@
 #ifdef _WIN32
   #include <windows.h>
 #endif
+#include "win_api_utf8.hpp"  // moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 
@@ -33,9 +34,8 @@ std::string icmgTaskHash(const std::string& project_path) {
 // Look up the running binary's path. File-local helper.
 static std::string selfExePath() {
 #ifdef _WIN32
-    char buf[1024];
-    DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
-    if (n > 0 && n < sizeof(buf)) return std::string(buf, n);
+    std::string self = icmg::core::moduleFileNameUtf8();
+    if (!self.empty()) return self;
     return "icmg";
 #else
     try { return fs::canonical("/proc/self/exe").string(); }

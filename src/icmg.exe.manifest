@@ -21,6 +21,17 @@
       </requestedPrivileges>
     </security>
   </trustInfo>
+  <!--
+    #285 follow-up: make the process ANSI code page UTF-8 (Win10 1903+).
+    icmg keeps every std::string as UTF-8 (argv comes from GetCommandLineW),
+    so fs::path(std::string), path.string() and the remaining A APIs must
+    decode UTF-8 too; with the cp1252 default, "cafe-acute" paths broke.
+  -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>

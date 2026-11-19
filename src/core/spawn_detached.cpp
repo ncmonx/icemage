@@ -6,6 +6,7 @@
   #include <unistd.h>
   #include <sys/types.h>
 #endif
+#include "win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace icmg::core {
 
@@ -22,7 +23,7 @@ bool spawnDetached(const std::vector<std::string>& argv) {
     buf.push_back(0);
     STARTUPINFOA si{}; si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessA(
+    BOOL ok = icmg::core::createProcessUtf8(
         nullptr, buf.data(), nullptr, nullptr, FALSE,
         DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
         nullptr, nullptr, &si, &pi);

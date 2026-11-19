@@ -22,6 +22,7 @@
 #ifdef _WIN32
 #  include <windows.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 
@@ -73,7 +74,7 @@ static void writeSystemVersion(const std::string& ver) {
 
 static fs::path selfPath() {
 #ifdef _WIN32
-    char buf[2048]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    std::string buf = icmg::core::moduleFileNameUtf8();
     return buf;
 #else
     return fs::canonical("/proc/self/exe");

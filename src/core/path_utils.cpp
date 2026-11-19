@@ -1,4 +1,5 @@
 #include "path_utils.hpp"
+#include "path_u8.hpp"
 #include <filesystem>
 #include <fstream>
 #include <cstdlib>
@@ -10,6 +11,7 @@
 #  include <windows.h>
 #  include <shlobj.h>
 #  include <aclapi.h>     // SetEntriesInAclA, SetNamedSecurityInfoA
+#  include "win_api_utf8.hpp"
 #  include <sddl.h>       // ConvertStringSidToSidA
 #  pragma comment(lib, "advapi32.lib")
 #elif defined(__APPLE__)
@@ -108,10 +110,7 @@ bool isSQLiteFile(const std::string& path) {
 
 std::string selfExePath() {
 #ifdef _WIN32
-    char buf[1024];
-    DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
-    if (n == 0 || n >= sizeof(buf)) return {};
-    return std::string(buf, n);
+    return moduleFileNameUtf8();  // UTF-8, no MAX_PATH cap (#285)
 #elif defined(__APPLE__)
     char buf[4096];
     uint32_t sz = sizeof(buf);
@@ -136,7 +135,9 @@ std::string selfExePath() {
 std::string personaDbPath() {
     std::string exe = selfExePath();
     if (exe.empty()) return {};
-    fs::path exe_dir = fs::path(exe).parent_path();
+    // DB paths still follow the project-wide ANSI .string() convention
+    // (projectDbPath / ensureProjectDb); only the exe path itself is UTF-8.
+    fs::path exe_dir = u8ToPath(exe).parent_path();
     return (exe_dir / "icmg-persona.db").string();
 }
 

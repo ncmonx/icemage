@@ -47,6 +47,7 @@
 #  define NOMINMAX
 #  include <windows.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -1753,7 +1754,7 @@ public:
             // (icmg skill index / claudemd / plan -- console apps) allocated a FRESH
             // console window => visible popup flash on `init --force`. With
             // CREATE_NO_WINDOW alone cmd.exe gets a HIDDEN console the children inherit.
-            if (CreateProcessA(nullptr, cmdBuf.data(), nullptr, nullptr,
+            if (icmg::core::createProcessUtf8(nullptr, cmdBuf.data(), nullptr, nullptr,
                                FALSE, CREATE_NO_WINDOW,
                                nullptr, nullptr, &si, &pi)) {
                 CloseHandle(pi.hProcess);
@@ -1835,9 +1836,8 @@ public:
                 }
             }
           if (!_defender_skip) {
-            char self_path[1024];
-            DWORD n = GetModuleFileNameA(nullptr, self_path, sizeof(self_path));
-            if (n > 0 && n < sizeof(self_path)) {
+            const std::string self_path = icmg::core::moduleFileNameUtf8();
+            if (!self_path.empty()) {
                 std::string exe = self_path;
                 for (auto& c : exe) if (c == '\\') c = '/';
                 std::string cl = "powershell.exe -NoProfile -NonInteractive -Command "
@@ -1846,7 +1846,7 @@ public:
                 cl_buf.push_back('\0');
                 STARTUPINFOA si{}; si.cb = sizeof(si);
                 PROCESS_INFORMATION pi{};
-                if (CreateProcessA(nullptr, cl_buf.data(), nullptr, nullptr,
+                if (icmg::core::createProcessUtf8(nullptr, cl_buf.data(), nullptr, nullptr,
                                    FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
                     WaitForSingleObject(pi.hProcess, 5000);
                     DWORD ec = 1;
@@ -1923,9 +1923,8 @@ private:
 
 #ifdef _WIN32
         // Locate icmg.exe install dir; download jq.exe sibling.
-        char self_path[1024];
-        DWORD n = GetModuleFileNameA(nullptr, self_path, sizeof(self_path));
-        if (n == 0 || n >= sizeof(self_path)) {
+        const std::string self_path = icmg::core::moduleFileNameUtf8();
+        if (self_path.empty()) {
             std::cout << "  jq:         not found (could not locate install dir)\n";
             return;
         }

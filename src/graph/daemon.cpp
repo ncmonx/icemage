@@ -27,6 +27,7 @@
 #  include <unistd.h>
 #  include <fcntl.h>
 #endif
+#include "../core/win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 
@@ -192,8 +193,7 @@ void Daemon::start(const std::string& root, const std::string& dbPath,
 
 #if defined(_WIN32)
     // Windows: CreateProcess with same exe + --daemon flag
-    char exe[512] = {};
-    GetModuleFileNameA(nullptr, exe, sizeof(exe));
+    const std::string exe = icmg::core::moduleFileNameUtf8();
     std::string cmd = std::string("\"") + exe + "\" --daemon-watch \"" + root
                       + "\" --daemon-db \"" + dbPath + "\"";
 
@@ -201,7 +201,7 @@ void Daemon::start(const std::string& root, const std::string& dbPath,
     cmd_buf.push_back('\0');
     STARTUPINFOA si = {}; si.cb = sizeof(si);
     PROCESS_INFORMATION pi = {};
-    if (!CreateProcessA(nullptr, cmd_buf.data(), nullptr, nullptr, FALSE,
+    if (!icmg::core::createProcessUtf8(nullptr, cmd_buf.data(), nullptr, nullptr, FALSE,
                         CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                         nullptr, nullptr, &si, &pi)) {
         throw DaemonError("Failed to start daemon process");

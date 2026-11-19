@@ -23,6 +23,7 @@
 #ifdef _WIN32
   #include <windows.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // moduleFileNameUtf8 (#285)
 
 #include <chrono>
 #include <ctime>
@@ -655,8 +656,7 @@ private:
         if (sk && *sk && std::string(sk) != "0") return out;
         std::string bin;
 #ifdef _WIN32
-        char buf[1024]; DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
-        if (n > 0) bin = buf;
+        bin = icmg::core::moduleFileNameUtf8();
 #endif
         if (bin.empty()) {
             const char* e = std::getenv("ICMG_BIN");

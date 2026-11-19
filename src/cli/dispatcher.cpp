@@ -25,6 +25,7 @@
   #include <unistd.h>
   #include <signal.h>
 #endif
+#include "../core/win_api_utf8.hpp"  // moduleFileNameUtf8 (#285)
 
 // Pull in all registered commands (each file registers via ICMG_REGISTER_COMMAND)
 // The linker needs to see these TUs to trigger static-init registration.
@@ -138,10 +139,11 @@ Dispatcher::Dispatcher() {}
 static void sweepStaleOldFiles() {
     namespace fs = std::filesystem;
     try {
-        char buf[1024];
 #ifdef _WIN32
-        GetModuleFileNameA(nullptr, buf, sizeof(buf));
+        const std::string buf = icmg::core::moduleFileNameUtf8();
+        if (buf.empty()) return;
 #else
+        char buf[1024];
         ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
         if (n <= 0) return;
         buf[n] = '\0';
@@ -191,7 +193,7 @@ static void applyPendingUpgrade() {
     namespace fs = std::filesystem;
     fs::path self;
 #ifdef _WIN32
-    char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    std::string buf = icmg::core::moduleFileNameUtf8();
     self = buf;
 #else
     try { self = fs::canonical("/proc/self/exe"); } catch (...) { return; }

@@ -33,6 +33,7 @@
   #include <sys/stat.h>
   #include <unistd.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -316,7 +317,7 @@ private:
 
     static fs::path selfPath() {
 #ifdef _WIN32
-        char buf[1024]; GetModuleFileNameA(nullptr, buf, sizeof(buf));
+        std::string buf = icmg::core::moduleFileNameUtf8();
         return buf;
 #else
         return fs::canonical("/proc/self/exe");
@@ -429,7 +430,7 @@ private:
             cl_buf.push_back('\0');
             STARTUPINFOA si{}; si.cb = sizeof(si);
             PROCESS_INFORMATION pi{};
-            bool launched = CreateProcessA(nullptr, cl_buf.data(), nullptr, nullptr,
+            bool launched = icmg::core::createProcessUtf8(nullptr, cl_buf.data(), nullptr, nullptr,
                                            FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
             if (!launched) {
                 std::cerr << "icmg update: failed to launch powershell.exe (err="
@@ -774,7 +775,7 @@ private:
             si_s.dwFlags = STARTF_USESHOWWINDOW;
             si_s.wShowWindow = SW_HIDE;
             PROCESS_INFORMATION pi_s{};
-            if (CreateProcessA(self.string().c_str(), buf.data(),
+            if (icmg::core::createProcessUtf8(self.string().c_str(), buf.data(),
                                nullptr, nullptr, FALSE,
                                CREATE_NO_WINDOW | DETACHED_PROCESS
                                | CREATE_NEW_PROCESS_GROUP,
@@ -837,7 +838,7 @@ private:
                 cl_buf.push_back('\0');
                 STARTUPINFOA si{}; si.cb = sizeof(si);
                 PROCESS_INFORMATION pi{};
-                if (CreateProcessA(nullptr, cl_buf.data(), nullptr, nullptr,
+                if (icmg::core::createProcessUtf8(nullptr, cl_buf.data(), nullptr, nullptr,
                                    FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
                     WaitForSingleObject(pi.hProcess, 5000);
                     DWORD ec = 1;
@@ -1093,7 +1094,7 @@ private:
         std::string cmd = "cmd.exe /c \"\"" + script.string() + "\"\"";
         std::vector<char> mut(cmd.begin(), cmd.end());
         mut.push_back(0);
-        BOOL ok = CreateProcessA(nullptr, mut.data(), nullptr, nullptr, FALSE,
+        BOOL ok = icmg::core::createProcessUtf8(nullptr, mut.data(), nullptr, nullptr, FALSE,
                                   CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                                   nullptr, nullptr, &si, &pi);
         if (!ok) return false;

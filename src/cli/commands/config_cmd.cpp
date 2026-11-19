@@ -234,8 +234,9 @@ private:
         const char* ed = std::getenv("EDITOR");
 #ifdef _WIN32
         if (!ed) {
-            // ShellExecuteA opens notepad without spawning a cmd.exe relay.
-            ShellExecuteA(nullptr, "open", path.string().c_str(),
+            // ShellExecuteW opens notepad without spawning a cmd.exe relay
+            // (wide path, so non-ASCII config dirs open too, #285).
+            ShellExecuteW(nullptr, L"open", path.c_str(),
                           nullptr, nullptr, SW_SHOWNORMAL);
             return 0;
         }

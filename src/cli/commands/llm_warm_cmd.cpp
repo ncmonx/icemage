@@ -16,6 +16,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 
@@ -71,7 +72,7 @@ int doStart() {
     PROCESS_INFORMATION pi{};
     std::vector<char> cmdbuf(cmdline.begin(), cmdline.end());
     cmdbuf.push_back(0);
-    BOOL ok = CreateProcessA(
+    BOOL ok = icmg::core::createProcessUtf8(
         nullptr, cmdbuf.data(), nullptr, nullptr, FALSE,
         DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
         nullptr, nullptr, &si, &pi);
