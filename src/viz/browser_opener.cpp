@@ -6,14 +6,14 @@
   #include <windows.h>
   #include <shellapi.h>
 #endif
+#include "../core/win_api_utf8.hpp"
 
 namespace icmg::viz {
 
 bool openInBrowser(const std::string& path) {
 #if defined(_WIN32)
-    // Use ShellExecuteA — returns > 32 on success
-    HINSTANCE res = ShellExecuteA(nullptr, "open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    return reinterpret_cast<INT_PTR>(res) > 32;
+    // ShellExecuteW via the UTF-8 wrapper (#285): non-ASCII paths open.
+    return icmg::core::shellExecuteUtf8("open", path);
 #elif defined(__APPLE__)
     std::string cmd = "open \"" + path + "\" 2>/dev/null &";
     return std::system(cmd.c_str()) == 0;

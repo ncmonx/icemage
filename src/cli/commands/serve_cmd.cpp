@@ -45,6 +45,7 @@
   using socket_t = int;
   static int closesocket_compat(socket_t s) { return close(s); }
 #endif
+#include "../../core/win_api_utf8.hpp"  // shellExecuteUtf8 (#285)
 
 namespace icmg::cli {
 
@@ -454,7 +455,7 @@ private:
     std::time_t start_time_ = 0;   // 2026-06-15: server start, for health uptime
     static void tryOpenBrowser(const std::string& url) {
 #ifdef _WIN32
-        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        (void)icmg::core::shellExecuteUtf8("open", url);
 #elif defined(__APPLE__)
         std::system(("open " + url).c_str());
 #else

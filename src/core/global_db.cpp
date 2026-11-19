@@ -1,4 +1,5 @@
 #include "global_db.hpp"
+#include "legacy_text_repair.hpp"
 #include "embedded_migrations.hpp"
 #include "path_utils.hpp"
 #include "config.hpp"
@@ -30,6 +31,7 @@ void GlobalDb::init() {
     std::string db_path = global_dir + "/global.db";
     db_ = std::make_unique<core::Db>(db_path);
     runGlobalMigrations();
+    (void)repairLegacyAnsiText(*db_, systemAnsiCodePage());  // #285b
 }
 
 core::Db& GlobalDb::db() {

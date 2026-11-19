@@ -42,6 +42,7 @@
 #  include <sys/un.h>
 #  include <cstring>
 #endif
+#include "../../core/win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -343,14 +344,13 @@ private:
         // Background: spawn self with --foreground, detached.
 #ifdef _WIN32
         {
-            char self_path[1024];
-            GetModuleFileNameA(nullptr, self_path, sizeof(self_path));
+            const std::string self_path = icmg::core::moduleFileNameUtf8();
             std::string cmd = std::string("\"") + self_path + "\" daemon start --foreground";
             std::vector<char> cl(cmd.begin(), cmd.end());
             cl.push_back('\0');
             STARTUPINFOA si{}; si.cb = sizeof(si);
             PROCESS_INFORMATION pi{};
-            bool ok = CreateProcessA(nullptr, cl.data(), nullptr, nullptr, FALSE,
+            bool ok = icmg::core::createProcessUtf8(nullptr, cl.data(), nullptr, nullptr, FALSE,
                                      CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                                      nullptr, nullptr, &si, &pi);
             if (!ok) {

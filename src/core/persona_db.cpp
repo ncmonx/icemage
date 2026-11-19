@@ -4,6 +4,7 @@
 #include "db.hpp"
 #include "global_db.hpp"
 #include "path_utils.hpp"
+#include "legacy_text_repair.hpp"
 
 #include <memory>
 #include <mutex>
@@ -30,6 +31,7 @@ void initOnce() {
                 "  updated_at INTEGER)");
             db->run("CREATE INDEX IF NOT EXISTS ix_user_personas_updated "
                     "ON user_personas(updated_at DESC)");
+            (void)repairLegacyAnsiText(*db, systemAnsiCodePage());  // #285b
             g_db = std::move(db);
             g_available = true;
             // Make readable by all Win users / SYSTEM service.

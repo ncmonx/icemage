@@ -3,6 +3,7 @@
 #include "embedded_migrations.hpp"
 #include "path_utils.hpp"
 #include "db_key.hpp"   // v1.76: encryption-at-rest key application
+#include "legacy_text_repair.hpp"  // #285b one-time cp->UTF-8 row repair
 #include <sqlite3.h>
 #include <algorithm>
 #include <cctype>
@@ -335,6 +336,8 @@ void ensureProjectDb(const std::string& db_path) {
     Db db(db_path);
     Migrator migrator;
     migrator.runAll(db);
+    // #285b: rows written by pre-UTF-8 builds are re-encoded once.
+    (void)repairLegacyAnsiText(db, systemAnsiCodePage());
 
     // v1.56 hotfix: relax Win ACL on the .icmg directory AND the DB file so
     // BUILTIN\Users + SYSTEM gain full control. Without this, a DB created

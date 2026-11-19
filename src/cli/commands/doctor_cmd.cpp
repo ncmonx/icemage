@@ -23,6 +23,7 @@
 #ifdef _WIN32
   #include <windows.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // moduleFileNameUtf8 (#285)
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -67,8 +68,8 @@ public:
         if (hasFlag(args, "--deps")) {
             std::string exeDir = ".";
 #ifdef _WIN32
-            char eb[1024]; DWORD en = GetModuleFileNameA(nullptr, eb, sizeof(eb));
-            if (en) { std::string p(eb, en); auto s = p.find_last_of("\\/");
+            std::string p = icmg::core::moduleFileNameUtf8();
+            if (!p.empty()) { auto s = p.find_last_of("\\/");
                       if (s != std::string::npos) exeDir = p.substr(0, s); }
 #endif
             std::vector<std::string> cands = {
@@ -386,10 +387,9 @@ private:
 
     static fs::path selfPath() {
 #ifdef _WIN32
-        char buf[1024];
-        DWORD len = GetModuleFileNameA(nullptr, buf, sizeof(buf));
-        if (len == 0) return {};
-        return fs::path(buf);
+        std::string self = icmg::core::moduleFileNameUtf8();
+        if (self.empty()) return {};
+        return fs::path(self);
 #else
         std::error_code ec;
         return fs::canonical("/proc/self/exe", ec);

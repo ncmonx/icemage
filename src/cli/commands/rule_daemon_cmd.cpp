@@ -25,6 +25,7 @@
   #include <unistd.h>
   #include <signal.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 using namespace icmg::daemon;
@@ -110,7 +111,7 @@ public:
             PROCESS_INFORMATION pi{};
             si.cb = sizeof(si);
             std::string cmd = "icmg rule-daemon run";
-            if (CreateProcessA(nullptr, &cmd[0], nullptr, nullptr, FALSE,
+            if (icmg::core::createProcessUtf8(nullptr, &cmd[0], nullptr, nullptr, FALSE,
                                CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                                nullptr, nullptr, &si, &pi)) {
                 writePid((int)pi.dwProcessId);

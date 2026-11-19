@@ -32,6 +32,7 @@
   #include <signal.h>
   #include <fcntl.h>
 #endif
+#include "../core/win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -47,8 +48,7 @@ std::string findScript() {
     }
     fs::path bin;
 #ifdef _WIN32
-    char wbuf[1024]; DWORD wn = GetModuleFileNameA(nullptr, wbuf, sizeof(wbuf));
-    bin = fs::path(std::string(wbuf, wn));
+    bin = fs::path(icmg::core::moduleFileNameUtf8());
 #elif defined(__APPLE__)
     {
         char mbuf[4096]; uint32_t msz = sizeof(mbuf);
@@ -156,7 +156,7 @@ private:
 
         std::string cmd = "\"" + py + "\" -u \"" + script + "\"";
         std::vector<char> cmdBuf(cmd.begin(), cmd.end()); cmdBuf.push_back(0);
-        BOOL ok = CreateProcessA(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE,
+        BOOL ok = icmg::core::createProcessUtf8(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE,
                                  CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi_);
         CloseHandle(in_r); CloseHandle(out_w);
         if (!ok) {

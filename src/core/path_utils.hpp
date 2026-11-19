@@ -49,7 +49,8 @@ inline std::string resolveWireDir(const char* envVal, const std::string& fallbac
 std::string wireDir();
 
 // Cross-platform self executable path.
-// Windows: GetModuleFileNameA. Linux: /proc/self/exe via canonical.
+// Returned as UTF-8: build a path from it with u8ToPath(), not fs::path().
+// Windows: GetModuleFileNameW (#285). Linux: /proc/self/exe via canonical.
 // macOS: _NSGetExecutablePath + canonical. Returns "" on failure.
 std::string selfExePath();
 

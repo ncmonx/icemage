@@ -4,6 +4,28 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.30.4
+
+**Follow-up to #285: non-ASCII paths work everywhere on Windows, and text
+written by older builds is repaired.**
+
+- Fix: v2.30.3 made `icmg run` pass arguments through unchanged, but the rest
+  of icmg still used ANSI Windows APIs. An install dir or project path with
+  characters outside the system code page (`cafe-acute`, CJK, box-drawing)
+  broke self-location, daemon/update/init spawns and "open in browser".
+- Every `CreateProcessA`, `GetModuleFileNameA` and `ShellExecuteA` call in the
+  C++ sources now goes through `src/core/win_api_utf8` (`createProcessUtf8`,
+  `moduleFileNameUtf8`, `shellExecuteUtf8`, backed by the wide APIs).
+  `selfExePath()` is wide too.
+- `icmg.exe.manifest` sets the process ANSI code page to UTF-8 (Windows 10
+  1903+), so `std::filesystem` and remaining narrow calls decode UTF-8 too.
+- One-time repair: TEXT values that older builds stored in the system ANSI
+  code page (invalid UTF-8) are re-encoded to UTF-8 in the project, global and
+  persona DBs. Runs once per DB, recorded in table `icmg_text_repair`. Valid
+  UTF-8, ASCII, BLOBs and FTS virtual/shadow tables are not touched; FTS
+  indexes stay in sync through their triggers.
+- Tests: `test_win_api_utf8`, `test_legacy_text_repair`. Full suite 2694/2694.
+
 ## v2.30.3
 
 **Hotfix for #285: `icmg run` mangled non-ASCII arguments on Windows.**

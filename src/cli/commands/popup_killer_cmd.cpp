@@ -40,6 +40,7 @@
 #ifdef _WIN32
 #  include <windows.h>
 #endif
+#include "../../core/win_api_utf8.hpp"  // createProcessUtf8 / moduleFileNameUtf8 (#285)
 
 namespace fs = std::filesystem;
 
@@ -247,13 +248,13 @@ private:
         // Lets every hook call `ensure` (self-heal) at ~zero cost when alive.
         HANDLE existing = OpenMutexA(SYNCHRONIZE, FALSE, "Local\\icmg_popup_killer");
         if (existing) { CloseHandle(existing); return 0; }
-        char self[MAX_PATH];
-        if (!GetModuleFileNameA(nullptr, self, MAX_PATH)) return 1;
+        const std::string self = icmg::core::moduleFileNameUtf8();
+        if (self.empty()) return 1;
         std::string cmd = std::string("\"") + self + "\" popup-killer run";
         std::vector<char> buf(cmd.begin(), cmd.end()); buf.push_back('\0');
         STARTUPINFOA si{}; si.cb = sizeof(si);
         PROCESS_INFORMATION pi{};
-        if (CreateProcessA(nullptr, buf.data(), nullptr, nullptr, FALSE,
+        if (icmg::core::createProcessUtf8(nullptr, buf.data(), nullptr, nullptr, FALSE,
                            DETACHED_PROCESS | CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
             CloseHandle(pi.hProcess);
             CloseHandle(pi.hThread);
