@@ -4,7 +4,7 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
-## Unreleased
+## v2.31.0
 
 **#288: memories carry their author, and private ones stay private when
 several OS accounts share one project folder.**
