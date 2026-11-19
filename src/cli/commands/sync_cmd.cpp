@@ -175,7 +175,8 @@ private:
             sql = "SELECT id, topic, content, keywords, importance, created_at, "
                   "       COALESCE(zone,'default'), COALESCE(created_by,''), "
                   "       COALESCE(row_version,0), deleted_at "
-                  "FROM memory_nodes ORDER BY id";
+                  // #288: private memories never leave this machine via sync.
+                  "FROM memory_nodes WHERE visibility <> 'private' ORDER BY id";
         } else if (tbl == "graph_nodes") {
             sql = "SELECT id, COALESCE(kind,'file'), COALESCE(symbol_name,''), path, COALESCE(lang,''), "
                   "       COALESCE(line_start,0), COALESCE(line_end,0), "

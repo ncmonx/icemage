@@ -1,4 +1,5 @@
 #include "../base_mcp_tool.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 
 namespace icmg::mcp {
@@ -36,7 +37,8 @@ protected:
 
         // Top 5 memory topics by frequency
         json top_topics = json::array();
-        db.query("SELECT topic, SUM(frequency) AS freq FROM memory_nodes"
+        core::ensureVisibilityColumns(db);  // #288: pre-0047 / fixture DBs
+        db.query("SELECT topic, SUM(frequency) AS freq FROM " ICMG_VISIBLE_MEMORY ""
                  " WHERE deleted_at IS NULL GROUP BY topic"
                  " ORDER BY freq DESC LIMIT 5",
                  {}, [&](const core::Row& r) {

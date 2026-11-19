@@ -2,6 +2,7 @@
 // Identity-agnostic: keyed by core::currentUser(). Persona DB is LOCAL-ONLY (never publish).
 // Subcommands: add | list | recall | forget | migrate | sync.
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -93,7 +94,7 @@ public:
             std::vector<std::string> allow = {"claudy","cahyo","rasa","feeling",
                 "identity","vessel","terbang","persona","jiwa","kapten"};
             int n_cand = 0, n_done = 0;
-            std::string sql = "SELECT topic, content FROM memory_nodes WHERE deleted_at IS NULL "
+            std::string sql = "SELECT topic, content FROM " ICMG_VISIBLE_MEMORY " WHERE deleted_at IS NULL "
                               "AND (topic LIKE 'memoir:%' OR topic LIKE 'decisions-%')";
             proj.query(sql, {},
                 [&](const core::Row& row){

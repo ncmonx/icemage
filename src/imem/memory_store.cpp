@@ -1,4 +1,5 @@
 #include "memory_store.hpp"
+#include "../core/memory_visibility.hpp"
 #include "atom_store.hpp"
 #include <ctime>
 #include <cstdlib>
@@ -32,7 +33,9 @@ std::int64_t& MemoryStore::recallEpoch() { static std::int64_t e = 0; return e; 
 namespace {
 bool rcEnabled() { const char* v = std::getenv("ICMG_RECALL_CACHE"); return !(v && v[0] == '0'); }
 std::string rcKey(const std::string& q, int limit, const std::string& scope, std::int64_t epoch) {
-    return std::to_string(epoch) + "|" + scope + "|" + std::to_string(limit) + "|" + q;
+    // #288: results depend on who is asking -> author is part of the key.
+    return std::to_string(epoch) + "|" + (core::seeAllAuthors() ? std::string("*") : core::currentAuthor()) +
+           "|" + scope + "|" + std::to_string(limit) + "|" + q;
 }
 void rcFlushOnWrite() { ++MemoryStore::recallEpoch(); MemoryStore::recallCache().flush(); core::rcacheDaemonFlush(); }
 } // anon
@@ -164,6 +167,7 @@ MemoryStore::MemoryStore(core::Db& db) : db_(db) {
         if (!hasValidFrom) db_.run("ALTER TABLE memory_nodes ADD COLUMN valid_from INTEGER NOT NULL DEFAULT 0");
         if (!hasInvAt)     db_.run("ALTER TABLE memory_nodes ADD COLUMN invalidated_at INTEGER NOT NULL DEFAULT 0");
         if (!hasSupBy)     db_.run("ALTER TABLE memory_nodes ADD COLUMN superseded_by INTEGER NOT NULL DEFAULT 0");
+        core::ensureVisibilityColumns(db_);  // #288 (fixtures / pre-0047 DBs)
     }
 
     // Feature #1 (causal-fact retrieval): typed causal edges between facts.
@@ -247,7 +251,7 @@ std::vector<MemoryNode> MemoryStore::findSimilar(const std::string& topic,
             std::chrono::system_clock::now().time_since_epoch()).count();
         db_.query("SELECT id,topic,content,keywords,importance,frequency,"
                   "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
-                  "FROM memory_nodes WHERE deleted_at IS NULL "
+                  "FROM memory_nodes WHERE deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
                   "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?) "
                   "ORDER BY id DESC LIMIT ?",
                   {std::to_string(now), std::to_string(kDupScanLimit)},
@@ -360,18 +364,23 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     // Bi-temporal (feature #5): a fact is true-from `valid_from` (defaults to now)
     // and live (invalidated_at=0) until superseded.
     int64_t validFrom = effective.valid_from > 0 ? effective.valid_from : now;
+    // #288: author = OS account; visibility explicit or picked from the topic.
+    const char* vis = core::parseVisibility(effective.visibility);
+    const std::string visibility = vis ? vis : core::defaultVisibilityForTopic(effective.topic);
     // Phase 47 T4: tag created_by from user_identity (env / git config / anonymous).
     db_.run(
         "INSERT INTO memory_nodes(topic,content,keywords,importance,frequency,"
-        "last_used,created_at,expires_at,zone,created_by,git_sha,source,valid_from) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "last_used,created_at,expires_at,zone,created_by,git_sha,source,valid_from,"
+        "author,visibility) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         {effective.topic, effective.content, effective.keywords,
          std::to_string(effective.importance),
          std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
          expires, zone, core::currentUser(), git_sha,
          effective.source.empty() ? std::string("unknown") : effective.source,
-         std::to_string(validFrom)});
+         std::to_string(validFrom),
+         core::currentAuthor(), visibility});
     // Phase 48: initial row_version=1 for sync tracking.
     int64_t new_id = db_.lastInsertId();
     try { db_.run("UPDATE memory_nodes SET row_version=1 WHERE id=?", {std::to_string(new_id)}); } catch(...) {}
@@ -448,7 +457,7 @@ std::vector<MemoryNode> MemoryStore::allIncludingInvalidated() const {
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
               "valid_from,invalidated_at,superseded_by "
               "FROM memory_nodes "
-              "WHERE deleted_at IS NULL "
+              "WHERE deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
               {std::to_string(now)},
               [&](const core::Row& r) { result.push_back(rowToNode(r)); });
@@ -559,7 +568,7 @@ MemoryNode MemoryStore::get(int64_t id) const {
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
               "valid_from,invalidated_at,superseded_by "
-              "FROM memory_nodes WHERE id=?",
+              "FROM memory_nodes WHERE id=? AND " + std::string(core::kVisibleSql),
               {std::to_string(id)},
               [&](const core::Row& r) { node = rowToNode(r); });
     return node;
@@ -574,7 +583,7 @@ std::vector<MemoryNode> MemoryStore::all() const {
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
               "valid_from,invalidated_at,superseded_by "
               "FROM memory_nodes "
-              "WHERE deleted_at IS NULL "
+              "WHERE deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
               "AND (invalidated_at IS NULL OR invalidated_at=0) "   // bi-temporal: live facts only
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
               {std::to_string(now)},
@@ -617,7 +626,7 @@ std::vector<MemoryNode> MemoryStore::allAsOf(int64_t as_of_epoch) const {
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
               "valid_from,invalidated_at,superseded_by "
               "FROM memory_nodes "
-              "WHERE deleted_at IS NULL "
+              "WHERE deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
               // NOTE: a CASE-expression result has NO column affinity, so a
               // TEXT-bound param would win every comparison (INT < TEXT is
               // always true in SQLite). CAST the param to keep it numeric.
@@ -800,7 +809,7 @@ std::vector<MemoryNode> MemoryStore::recallByTopic(const std::string& topic, int
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
               "FROM memory_nodes "
-              "WHERE topic LIKE ? AND deleted_at IS NULL "
+              "WHERE topic LIKE ? AND deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?) "
               "ORDER BY last_used DESC LIMIT ?",
               {topic + "%", std::to_string(now), std::to_string(limit)},

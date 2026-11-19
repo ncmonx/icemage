@@ -4,6 +4,7 @@
 #include "path_utils.hpp"
 #include "db_key.hpp"   // v1.76: encryption-at-rest key application
 #include "legacy_text_repair.hpp"  // #285b one-time cp->UTF-8 row repair
+#include "memory_visibility.hpp"   // #288 icmg_can_see()
 #include <sqlite3.h>
 #include <algorithm>
 #include <cctype>
@@ -60,6 +61,7 @@ Db::Db(const std::string& path) {
     }
 
     applyPragmas();
+    registerVisibilitySql(db_);  // #288: icmg_can_see() for memory reads
 
     // Phase 59 T2: defensive schema repair — auto-run pending embedded migrations
     // if user_version lags behind embedded latest. Closes "row_version missing"

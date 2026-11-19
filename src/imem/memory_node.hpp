@@ -27,6 +27,9 @@ struct MemoryNode {
     int64_t     invalidated_at = 0;  // unix epoch, 0 = live/current
     int64_t     superseded_by  = 0;  // id of the node that replaced this one, 0 = none
 
+    // #288: 'private' (author only) | 'team'. Empty on write = default from topic.
+    std::string visibility;
+
     // Computed at query time — not stored in DB
     double      score       = 0.0;
     double      bm25_score  = 0.0;

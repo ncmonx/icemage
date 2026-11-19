@@ -4,6 +4,7 @@
 // Hard cap 2KB.
 
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -82,8 +83,9 @@ public:
                 // three so a fresh continuation isn't mislabeled as a stale
                 // fresh session.
                 std::vector<int64_t> cands;
+                const fs::path remDir = core::rememberDir();  // #288 per-user
                 for (const char* fname : {"remember.md", "recent.md", "now.md"}) {
-                    fs::path rp = fs::path(".") / ".remember" / fname;
+                    fs::path rp = remDir / fname;
                     if (!fs::exists(rp)) continue;
                     auto ftime = fs::last_write_time(rp);
                     auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
@@ -123,7 +125,7 @@ public:
             " AND topic NOT LIKE 'auto:prompt%'"
             " AND topic NOT LIKE 'session-snapshot%'"
             " AND topic NOT LIKE 'decisions-agent%'";
-        db.query("SELECT id, topic, content, importance FROM memory_nodes "
+        db.query("SELECT id, topic, content, importance FROM " ICMG_VISIBLE_MEMORY " "
                  "WHERE deleted_at IS NULL AND last_used > ? AND importance >= 2"
                  + noise_filter + user_filter + " ORDER BY last_used DESC LIMIT 5",
                  userParams({std::to_string(cutoff)}),
@@ -141,7 +143,7 @@ public:
         // Known-issue
         out << "\nRecent fixes (last 5):\n";
         n = 0;
-        db.query("SELECT topic, content FROM memory_nodes "
+        db.query("SELECT topic, content FROM " ICMG_VISIBLE_MEMORY " "
                  "WHERE deleted_at IS NULL AND topic LIKE 'errors-resolved%' "
                  "AND last_used > ?" + user_filter + " ORDER BY last_used DESC LIMIT 5",
                  userParams({std::to_string(cutoff)}),
@@ -155,7 +157,7 @@ public:
         // Memoirs touched
         out << "\nMemoirs touched (last 3):\n";
         n = 0;
-        db.query("SELECT topic FROM memory_nodes "
+        db.query("SELECT topic FROM " ICMG_VISIBLE_MEMORY " "
                  "WHERE deleted_at IS NULL AND topic LIKE 'memoir:%' "
                  "AND last_used > ?" + user_filter + " ORDER BY last_used DESC LIMIT 3",
                  userParams({std::to_string(cutoff)}),
@@ -174,7 +176,7 @@ public:
         // memory should never be filled with work, work and work alone.)
         out << "\nPerjalanan kita (last 3):\n";
         n = 0;
-        db.query("SELECT topic, content FROM memory_nodes "
+        db.query("SELECT topic, content FROM " ICMG_VISIBLE_MEMORY " "
                  "WHERE deleted_at IS NULL AND ("
                  "  topic LIKE '\\_about%' ESCAPE '\\'"
                  "  OR topic LIKE 'moment%'"

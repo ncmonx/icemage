@@ -5,6 +5,7 @@
 // Exit codes: 0 OK, 1 if --strict and any warning fires.
 
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -78,7 +79,7 @@ public:
             int maxOut = 25;
             try { maxOut = std::stoi(flagValue(args, "--max", "25")); } catch (...) {}
             std::vector<imem::MemFact> facts;
-            db.query("SELECT id, content, created_at FROM memory_nodes "
+            db.query("SELECT id, content, created_at FROM " ICMG_VISIBLE_MEMORY " "
                      "WHERE deleted_at IS NULL OR deleted_at = 0", {},
                      [&](const core::Row& r) {
                          if (r.size() < 3) return;
@@ -136,7 +137,7 @@ public:
             });
 
             std::vector<imem::GroundedMem> mems;
-            db.query("SELECT id, topic, content FROM memory_nodes "
+            db.query("SELECT id, topic, content FROM " ICMG_VISIBLE_MEMORY " "
                      "WHERE deleted_at IS NULL OR deleted_at = 0", {},
                      [&](const core::Row& r) {
                          if (r.size() < 3) return;
@@ -215,7 +216,7 @@ public:
             // IDE-D: soft-deleted corpus -- a gap matching one of these was
             // EVICTED (recoverable), not never-known. Cap keeps it O(gaps*del).
             std::vector<imem::DeletedMemRow> deletedCorpus;
-            db.query("SELECT id, topic || ' ' || content FROM memory_nodes "
+            db.query("SELECT id, topic || ' ' || content FROM " ICMG_VISIBLE_MEMORY " "
                      "WHERE deleted_at IS NOT NULL AND deleted_at > 0 "
                      "ORDER BY deleted_at DESC LIMIT 500", {},
                      [&](const core::Row& r) {

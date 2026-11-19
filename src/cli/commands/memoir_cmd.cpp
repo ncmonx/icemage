@@ -10,6 +10,7 @@
 // post-mortems, architecture rationales, customer interview synthesis.
 
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
@@ -112,7 +113,7 @@ private:
         try { limit = std::stoi(flagValue(args, "--limit", "20")); } catch (...) {}
         std::string zone = flagValue(args, "--zone");
         std::string sql = "SELECT id, topic, importance, frequency, last_used, "
-                          "       LENGTH(content) FROM memory_nodes "
+                          "       LENGTH(content) FROM " ICMG_VISIBLE_MEMORY " "
                           "WHERE topic LIKE 'memoir:%' AND deleted_at IS NULL";
         std::vector<std::string> params;
         if (!zone.empty()) { sql += " AND zone=?"; params.push_back(zone); }
@@ -329,7 +330,7 @@ private:
         // Pull memoirs.
         struct M { int64_t id; std::string topic; std::string keywords; };
         std::vector<M> memoirs;
-        db.query("SELECT id, topic, COALESCE(keywords,'') FROM memory_nodes "
+        db.query("SELECT id, topic, COALESCE(keywords,'') FROM " ICMG_VISIBLE_MEMORY " "
                  "WHERE topic LIKE 'memoir:%' AND deleted_at IS NULL", {},
                  [&](const core::Row& r){
                      if (r.size() < 3) return;
@@ -403,7 +404,7 @@ private:
 
         std::string sql = "SELECT id, topic, content, importance, "
                           "COALESCE(keywords,''), zone, created_at "
-                          "FROM memory_nodes WHERE topic LIKE 'memoir:%' "
+                          "FROM " ICMG_VISIBLE_MEMORY " WHERE topic LIKE 'memoir:%' "
                           "AND deleted_at IS NULL";
         std::vector<std::string> params;
         if (!filter.empty()) {

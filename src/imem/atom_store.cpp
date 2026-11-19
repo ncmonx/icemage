@@ -1,5 +1,6 @@
 // v1.79.0 ICM dual-memory: see atom_store.hpp
 #include "atom_store.hpp"
+#include "../core/memory_visibility.hpp"
 #include "atom_split.hpp"
 #include "atom_llm.hpp"
 #include "../embed/embedder.hpp"
@@ -91,7 +92,8 @@ std::vector<int64_t> AtomStore::recallAtomSources(const std::string& query, int 
     db_.query(
         "SELECT a.source_node_id FROM memory_atoms_fts f "
         "JOIN memory_atoms a ON a.id=f.rowid "
-        "WHERE memory_atoms_fts MATCH ? AND a.deleted_at=0 "
+        "JOIN memory_nodes n ON n.id=a.source_node_id "
+        "WHERE memory_atoms_fts MATCH ? AND a.deleted_at=0 AND " + core::visibleSqlFor("n") + " "
         "ORDER BY rank LIMIT ?",
         { query, std::to_string(limit * 4) },
         [&](const core::Row& r) {

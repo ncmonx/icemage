@@ -14,6 +14,7 @@
 // Frontend uses textContent + createElement (no innerHTML / no XSS surface).
 
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 #include "../../core/json_safe.hpp"   // v1.68.1 safeDump
 #include "../../core/config.hpp"
@@ -557,7 +558,7 @@ private:
         core::Db db(cfg.projectDbPath("."));
         std::ostringstream o; o << "[";
         bool first = true;
-        db.query("SELECT id,topic,importance,zone FROM memory_nodes "
+        db.query("SELECT id,topic,importance,zone FROM " ICMG_VISIBLE_MEMORY " "
                  "WHERE deleted_at IS NULL ORDER BY last_used DESC LIMIT ?",
                  {std::to_string(n)},
                  [&](const core::Row& r){

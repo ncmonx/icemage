@@ -1,4 +1,5 @@
 #include "exporter.hpp"
+#include "../core/memory_visibility.hpp"  // #288
 #include <sstream>
 
 namespace icmg::exporter {
@@ -30,9 +31,10 @@ std::string Exporter::jsonStr(const std::string& s) {
 void Exporter::writeMemoryNodes(std::ostream& out) const {
     out << "\"memory_nodes\":[\n";
     bool first = true;
+    core::ensureVisibilityColumns(db_);  // #288: pre-0047 / fixture DBs
     db_.query("SELECT id,topic,content,COALESCE(keywords,''),importance,frequency,"
               "COALESCE(last_used,0),created_at,COALESCE(expires_at,0),"
-              "COALESCE(deleted_at,0) FROM memory_nodes"
+              "COALESCE(deleted_at,0) FROM " ICMG_VISIBLE_MEMORY ""
               " WHERE deleted_at IS NULL OR deleted_at=0 ORDER BY id",
               {},
               [&](const core::Row& r) {

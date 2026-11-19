@@ -1,4 +1,5 @@
 #include "server.hpp"
+#include "../core/memory_visibility.hpp"  // #288
 #include "mcp_toolset.hpp"  // v2.0.0 Dynamic Toolsets
 #include <cstdlib>
 #include "../core/version.hpp"
@@ -325,7 +326,8 @@ void McpServer::handleListResources(const json& req) {
               });
 
     // Top 20 recent memory nodes.
-    db_.query("SELECT id, topic FROM memory_nodes "
+    core::ensureVisibilityColumns(db_);  // #288: pre-0047 / fixture DBs
+    db_.query("SELECT id, topic FROM " ICMG_VISIBLE_MEMORY " "
               "WHERE deleted_at IS NULL "
               "ORDER BY last_used DESC LIMIT 20",
               {},
@@ -355,8 +357,9 @@ json McpServer::readResourceUri(const std::string& uri) {
 
     json out;
     if (kind == "memory") {
+        core::ensureVisibilityColumns(db_);  // #288: pre-0047 / fixture DBs
         db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-                  "last_used,created_at,zone FROM memory_nodes WHERE id=?",
+                  "last_used,created_at,zone FROM " ICMG_VISIBLE_MEMORY " WHERE id=?",
                   {ident},
                   [&](const core::Row& r) {
                       if (r.size() < 9) return;

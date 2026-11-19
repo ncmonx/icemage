@@ -5,6 +5,7 @@
 // time. Auto-updates stamp on read unless --peek.
 
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 #include "../../core/path_utils.hpp"
 #include "../../core/db.hpp"
@@ -97,7 +98,7 @@ public:
             int n_mem = 0;
             db.query(
                 "SELECT topic, substr(content, 1, 120), created_at "
-                "FROM memory_nodes WHERE created_at > ? "
+                "FROM " ICMG_VISIBLE_MEMORY " WHERE created_at > ? "
                 "ORDER BY created_at DESC LIMIT ?",
                 { std::to_string(since), std::to_string(limit) },
                 [&](const core::Row& row) {
