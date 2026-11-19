@@ -4,6 +4,28 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.31.0
+
+**#288: memories carry their author, and private ones stay private when
+several OS accounts share one project folder.**
+
+- Every memory row now records its author (Windows user SID, POSIX `uid:<n>`,
+  or `ICMG_USER`) and a visibility: `private` (author only) or `team`
+  (everyone). Migration 0047 adds both columns.
+- New memories pick a default from the topic: session, memoir, moment,
+  persona, feeling, profile, handoff and `_*` notes are `private`; decisions,
+  known issues, corrections and architecture notes are `team`. Override with
+  `icmg store --private|--team`.
+- Recall, pack, wake-up, cross-recall, MCP tools and the prompt auto-inject
+  hooks show your own memories plus `team` ones, never another account's
+  `private` ones. `icmg recall --all-authors` lifts the filter explicitly.
+- Existing rows (no author) count as `team`, so nothing changes until you
+  opt in. `icmg memory retag <ids>|--topic <prefix> --private|--team` marks
+  them; it changes only your own rows and untagged ones (which become yours).
+- `.remember/<user>/now.md` and `recent.md` are read when that folder exists
+  (wake-up, `icmg compact`); otherwise the shared `.remember/` as before.
+- Tests: `test_memory_visibility`.
+
 ## v2.30.4
 
 **Follow-up to #285: non-ASCII paths work everywhere on Windows, and text

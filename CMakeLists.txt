@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.28)
 # Modules-capable on Win. MSYS2 mingw64 (libstdc++) NOT yet.
 # Set UNCONDITIONAL before project() -- harmless when ICMG_USE_MODULES=OFF.
 set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "451f2fe2-a8a2-47c3-bc32-94786d8fc91b")
-project(icmg VERSION 2.30.4 LANGUAGES CXX C)
+project(icmg VERSION 2.31.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)  # v1.40.0 M1+: bumped 20 -> 23 per phased plan  # v1.40.0 M1: bumped from 17 -- enables std::format/expected/concepts/ranges
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -725,6 +725,7 @@ add_icmg_test(test_importance_decay tests/imem/test_importance_decay.cpp)  # v1.
 add_icmg_test(test_tier_rank     tests/imem/test_tier_rank.cpp)  # A1: tier tie-breaker
 add_icmg_test(test_atom_store    tests/imem/test_atom_store.cpp)  # v1.79 atomize T1
 add_icmg_test(test_memory_source tests/imem/test_memory_source.cpp)  # provenance: memory source (ctor guarded-ALTER)
+add_icmg_test(test_memory_visibility tests/imem/test_memory_visibility.cpp)  # #288 per-author memory visibility
 add_icmg_test(test_bitemporal    tests/imem/test_bitemporal.cpp)  # feature #5: bi-temporal fact invalidation
 add_icmg_test(test_mark_reused  tests/imem/test_mark_reused.cpp)  # 2026-11-12 observed-reuse signal (recall --get)
 add_icmg_test(test_causal        tests/imem/test_causal.cpp)  # feature #1: causal-fact retrieval

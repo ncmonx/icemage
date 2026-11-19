@@ -6,6 +6,7 @@
 // can prune separately via `icmg memory prune --topic 'auto:%'`.
 
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/stdin_util.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
@@ -72,7 +73,7 @@ public:
             try { limit = std::stoi(flagValue(args, "--limit", "20")); } catch (...) {}
             int shown = 0;
             db.query(
-                "SELECT topic, content FROM memory_nodes"
+                "SELECT topic, content FROM " ICMG_VISIBLE_MEMORY ""
                 " WHERE topic LIKE 'auto:%' OR topic LIKE 'session:%'"
                 " ORDER BY last_used DESC LIMIT ?",
                 {std::to_string(limit)},

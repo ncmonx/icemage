@@ -5,6 +5,7 @@
 // score by (1 + 0.2 * (avg-2.5)/2.5) — capped at +/- 0.2.
 
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -94,7 +95,7 @@ private:
         }
         // Pick top BM25 hit via existing memory_nodes table (avoid Scorer bias loop).
         int64_t top_id = 0;
-        db.query("SELECT id FROM memory_nodes "
+        db.query("SELECT id FROM " ICMG_VISIBLE_MEMORY " "
                  "WHERE deleted_at IS NULL AND (topic LIKE ? OR content LIKE ?) "
                  "ORDER BY frequency DESC, last_used DESC LIMIT 1",
                  {"%" + q + "%", "%" + q + "%"},

@@ -15,6 +15,7 @@
 #include "../base_command.hpp"
 #include "../compaction_digest.hpp"
 #include "../../core/utf8_prefix.hpp"
+#include "../../core/memory_visibility.hpp"  // #288 rememberDir
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -125,8 +126,9 @@ public:
         } catch (...) { /* DB unavailable */ }
 
         // --- Gather .remember/ files ---
-        std::string now_md    = readFileSafe(".remember/now.md");
-        std::string recent_md = readFileSafe(".remember/recent.md");
+        const fs::path remDir = core::rememberDir();  // #288 per-user
+        std::string now_md    = readFileSafe(remDir / "now.md");
+        std::string recent_md = readFileSafe(remDir / "recent.md");
 
         // --- Build summary ---
         std::ostringstream ss;

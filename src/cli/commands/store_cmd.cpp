@@ -1,5 +1,6 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
@@ -34,6 +35,10 @@ public:
             "  --kw k1,k2,...                  Comma-separated keywords\n"
             "  --ttl <days>                    Expire after N days\n"
             "  --force                         Store even if duplicate detected\n"
+            "  --private | --team              Who sees it when several OS accounts share\n"
+            "                                  this project (#288). Default from topic:\n"
+            "                                  session/persona/feeling notes private,\n"
+            "                                  decisions/known issues/corrections team.\n"
             "  <private>..</private>           Inline regions are redacted before storage\n"
             "  --json                          JSON output\n";
     }
@@ -100,6 +105,12 @@ public:
         node.keywords   = kw;
         node.importance = imem::importanceFromName(imp_str);
         node.source     = flagValue(args, "--source", "unknown");
+        if (hasFlag(args, "--private") && hasFlag(args, "--team")) {
+            std::cerr << "icmg store: --private and --team are exclusive\n";
+            return 2;
+        }
+        if (hasFlag(args, "--private")) node.visibility = core::kVisibilityPrivate;
+        if (hasFlag(args, "--team"))    node.visibility = core::kVisibilityTeam;
 
         if (!ttl_str.empty()) {
             try {

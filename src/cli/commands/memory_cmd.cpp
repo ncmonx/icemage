@@ -1,4 +1,5 @@
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -405,6 +406,7 @@ public:
             "  history [--limit N]                             Recent recall queries\n"
             "  forget <id>                                     Soft-delete node\n"
             "  restore <id>                                    Restore deleted node\n"
+            "  retag <ids>|--topic P --private|--team          Who sees it in a shared folder\n"
             "  purge [--days N]                                Hard-delete old soft-deleted (default 30d)\n"
             "  decay [--threshold-days N] [--dry-run]          Reduce importance of stale nodes\n"
             "\n"
@@ -428,6 +430,7 @@ public:
         else if (sub == "cache")   registered = "memory-cache";
         else if (sub == "history") registered = "memory-history";
         else if (sub == "invalidate") registered = "memory-invalidate";
+        else if (sub == "retag")   registered = "memory-retag";   // #288
         else if (sub == "link")    registered = "memory-link";
         else if (sub == "purge")   registered = "memory-purge";
         else if (sub == "decay")   registered = "memory-decay";
@@ -531,7 +534,7 @@ public:
         // Build query: not deleted, age beyond cutoff, importance ≤ N,
         // last_used <=cutoff_recent OR null, optional topic LIKE.
         std::string sql =
-            "SELECT id, topic, importance, created_at, last_used, frequency FROM memory_nodes "
+            "SELECT id, topic, importance, created_at, last_used, frequency FROM " ICMG_VISIBLE_MEMORY " "
             "WHERE deleted_at IS NULL "
             "  AND created_at < ? "
             "  AND importance <= ? "

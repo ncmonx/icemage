@@ -1,4 +1,5 @@
 #include "internals.hpp"
+#include "../memory_visibility.hpp"  // #288
 
 #include "../config.hpp"
 #include "../db.hpp"
@@ -1313,7 +1314,7 @@ std::string runUserPromptKnownIssueInject(const std::string& user_prompt) {
         std::ostringstream out;
         int n = 0;
         db.query(
-            "SELECT topic, content FROM memory_nodes "
+            "SELECT topic, content FROM " ICMG_VISIBLE_MEMORY " "
             "WHERE deleted_at IS NULL AND topic LIKE 'errors-resolved%' "
             "AND (" + like_or + ") "
             "ORDER BY last_used DESC LIMIT 2",
@@ -1361,7 +1362,7 @@ std::string runUserPromptFailInject(const std::string& user_prompt) {
         std::ostringstream out;
         int n = 0;
         db.query(
-            "SELECT topic, content FROM memory_nodes "
+            "SELECT topic, content FROM " ICMG_VISIBLE_MEMORY " "
             "WHERE deleted_at IS NULL AND topic LIKE 'fail:%' "
             "AND (" + like_or + ") "
             "ORDER BY last_used DESC LIMIT 2",
@@ -1497,7 +1498,7 @@ int runStopAmnesiaScan(const std::string& ai_response) {
         std::int64_t first_id = 0;
         std::string first_topic;
         db.query(
-            "SELECT id, topic FROM memory_nodes "
+            "SELECT id, topic FROM " ICMG_VISIBLE_MEMORY " "
             "WHERE deleted_at IS NULL AND last_used >= ? "
             "AND (topic LIKE ? OR content LIKE ?) "
             "ORDER BY last_used DESC LIMIT 1",

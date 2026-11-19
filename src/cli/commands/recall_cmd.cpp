@@ -1,4 +1,5 @@
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../recall_json.hpp"   // v1.70.0 #176
 #include "../recall_index.hpp"  // 2026-06-15 progressive-disclosure
 #include "../../core/registry.hpp"
@@ -94,6 +95,7 @@ public:
             "  --get IDS       Layer-2: fetch full content for comma-separated ids\n"
             "  --by topic|file Group --index output (default: topic; file=by graph-node ref)\n"
             "  --json          JSON output\n"
+            "  --all-authors   Include other OS accounts' private memories (#288)\n"
             "  --since EPOCH   Only return nodes created at or after EPOCH (unix seconds).\n"
             "                  Accepts relative durations: 7d, 24h, 30m (from now).\n";
     }
@@ -102,6 +104,9 @@ public:
         if (args.empty() || args[0] == "--help" || args[0] == "-h") {
             usage(); return 0;
         }
+
+        // #288: explicit opt-in to see other OS accounts' private memories.
+        core::SeeAllAuthorsScope all_authors(hasFlag(args, "--all-authors"));
 
         // 2026-06-15 progressive disclosure: --get <ids> fetches full detail for
         // the IDs the agent picked from a prior --index view. No query needed.
@@ -437,7 +442,7 @@ public:
         // Most-recent session snapshot: reserved topic prefixes, newest by time.
         db.query(
             "SELECT topic, content, COALESCE(last_used, created_at) AS ts "
-            "FROM memory_nodes WHERE deleted_at IS NULL AND ("
+            "FROM " ICMG_VISIBLE_MEMORY " WHERE deleted_at IS NULL AND ("
             "  topic LIKE 'session-snapshot%' OR topic LIKE 'auto-compact-%' "
             "  OR topic LIKE 'session:%' OR topic LIKE 'session %') "
             "ORDER BY ts DESC LIMIT 1",
@@ -454,7 +459,7 @@ public:
         // Most-recent wflog (log-saved <goal>): extract Goal/Decisions/Open.
         db.query(
             "SELECT content, COALESCE(last_used, created_at) AS ts "
-            "FROM memory_nodes WHERE deleted_at IS NULL AND topic LIKE 'log-saved %' "
+            "FROM " ICMG_VISIBLE_MEMORY " WHERE deleted_at IS NULL AND topic LIKE 'log-saved %' "
             "ORDER BY ts DESC LIMIT 1",
             {},
             [&](const core::Row& r){
@@ -700,7 +705,7 @@ public:
         // NEVER auto-delete (each hit needs a human/agent decision).
         if (deep && !forgotten_text.empty()) {
             std::vector<imem::ResidueCandidate> cands;
-            db.query("SELECT id, topic, content FROM memory_nodes "
+            db.query("SELECT id, topic, content FROM " ICMG_VISIBLE_MEMORY " "
                      "WHERE deleted_at IS NULL AND id != ?",
                      {std::to_string(id)},
                      [&](const core::Row& r) {

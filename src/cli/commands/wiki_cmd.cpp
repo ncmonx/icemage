@@ -14,6 +14,7 @@
 // Use case: hand wiki/ to teammates, host on github pages, use for onboarding.
 
 #include "../base_command.hpp"
+#include "../../core/memory_visibility.hpp"  // #288
 #include "../../core/registry.hpp"
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
@@ -404,7 +405,7 @@ private:
         // Memoir pages
         int memoir_count = 0;
         if (with_memoirs) {
-            db.query("SELECT id, topic, content FROM memory_nodes "
+            db.query("SELECT id, topic, content FROM " ICMG_VISIBLE_MEMORY " "
                      "WHERE topic LIKE 'memoir:%' AND deleted_at IS NULL", {},
                      [&](const core::Row& r){
                          if (r.size() < 3) return;
