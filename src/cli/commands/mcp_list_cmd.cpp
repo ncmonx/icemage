@@ -27,6 +27,8 @@ public:
         std::cout <<
             "Usage: icmg mcp <action>\n\n"
             "Actions:\n"
+            "  serve [--read-only]  Run the stdio MCP server (same as --mcp-server);\n"
+            "                       --read-only hides+refuses every mutating tool (#292)\n"
             "  list [--json]      Show all registered MCP tools + descriptions\n"
             "  audit [--json] [--top N]  Per-turn token cost of each tool schema (diet)\n";
     }

@@ -9,6 +9,7 @@
 // U+FFFD for invalid sequences, so the emitted JSON is always valid UTF-8.
 #include "../imem/memory_node.hpp"
 #include "../core/json_safe.hpp"
+#include "../core/memory_scope.hpp"   // #292 trust marker
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -27,6 +28,10 @@ inline std::string recallNodesToJson(const std::vector<imem::MemoryNode>& nodes)
             {"frequency",  n.frequency},
             {"score",      n.score},
             {"git_sha",    n.git_sha},
+            // #292: provenance, so JSON consumers can quarantine web/file text.
+            {"namespace",  n.ns},
+            {"trust",      n.trust.empty() ? std::string(icmg::core::kTrustTrusted) : n.trust},
+            {"untrusted",  icmg::core::isUntrusted(n.trust)},
         });
     }
     return icmg::core::safeDump(arr);
@@ -45,6 +50,7 @@ inline std::string cacheNodesToJson(const std::vector<imem::MemoryNode>& nodes) 
             {"created_at", n.created_at}, {"expires_at", n.expires_at},
             {"deleted_at", n.deleted_at}, {"zone", n.zone}, {"pinned", n.pinned},
             {"git_sha", n.git_sha}, {"score", n.score},
+            {"ns", n.ns}, {"trust", n.trust},   // #292
         });
     }
     return icmg::core::safeDump(arr);
@@ -71,6 +77,8 @@ inline std::vector<imem::MemoryNode> cacheNodesFromJson(const std::string& s) {
             n.pinned     = j.value("pinned", 0);
             n.git_sha    = j.value("git_sha", std::string());
             n.score      = j.value("score", 0.0);
+            n.ns         = j.value("ns", std::string());     // #292
+            n.trust      = j.value("trust", std::string());
             out.push_back(std::move(n));
         }
     } catch (...) {}   // parse failure -> empty -> caller treats as miss

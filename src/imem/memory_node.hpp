@@ -30,6 +30,11 @@ struct MemoryNode {
     // #288: 'private' (author only) | 'team'. Empty on write = default from topic.
     std::string visibility;
 
+    // #292: tenant namespace ('' = shared; empty on write = active --ns scope)
+    // and trust ('trusted' | 'untrusted'; empty on write = from source).
+    std::string ns;
+    std::string trust;
+
     // Computed at query time — not stored in DB
     double      score       = 0.0;
     double      bm25_score  = 0.0;

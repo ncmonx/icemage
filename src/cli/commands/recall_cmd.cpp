@@ -1,5 +1,6 @@
 #include "../base_command.hpp"
 #include "../../core/memory_visibility.hpp"  // #288
+#include "../../core/memory_scope.hpp"       // #292 --ns
 #include "../recall_json.hpp"   // v1.70.0 #176
 #include "../recall_index.hpp"  // 2026-06-15 progressive-disclosure
 #include "../../core/registry.hpp"
@@ -96,6 +97,8 @@ public:
             "  --by topic|file Group --index output (default: topic; file=by graph-node ref)\n"
             "  --json          JSON output\n"
             "  --all-authors   Include other OS accounts' private memories (#288)\n"
+            "  --ns a,b        Only these tenant namespaces ('shared' = un-namespaced).\n"
+            "                  Also $ICMG_NS. Untrusted (web/file) hits show [UNTRUSTED] (#292)\n"
             "  --since EPOCH   Only return nodes created at or after EPOCH (unix seconds).\n"
             "                  Accepts relative durations: 7d, 24h, 30m (from now).\n";
     }
@@ -107,6 +110,16 @@ public:
 
         // #288: explicit opt-in to see other OS accounts' private memories.
         core::SeeAllAuthorsScope all_authors(hasFlag(args, "--all-authors"));
+        // #292: tenant scope for every read below (incl. --get / --last-session).
+        std::vector<std::string> ns;
+        {
+            std::string nsErr;
+            if (!core::namespacesFromArgs(args, &ns, &nsErr)) {
+                std::cerr << "icmg recall: " << nsErr << "\n";
+                return 2;
+            }
+        }
+        core::NamespaceScope ns_scope(ns);
 
         // 2026-06-15 progressive disclosure: --get <ids> fetches full detail for
         // the IDs the agent picked from a prior --index view. No query needed.
@@ -225,9 +238,19 @@ public:
             return 0;
         }
 
-        // Need query
+        // Need query: first positional that is not the value of a value flag
+        // (`recall --ns user:12 foo` must search "foo", not "user:12").
+        static const char* kValueFlags[] = {
+            "--ns", "--limit", "--zone", "--topic", "--at-commit", "--alpha",
+            "--by", "--session", "--as-of", "--since", "--rerank", "--get", "--forget-ref"};
+        auto isValueFlag = [](const std::string& a) {
+            for (const char* f : kValueFlags) if (a == f) return true;
+            return false;
+        };
         std::string query;
-        for (auto& a : args) {
+        for (size_t i = 0; i < args.size(); ++i) {
+            const auto& a = args[i];
+            if (isValueFlag(a)) { ++i; continue; }
             if (a.empty() || a[0] == '-') continue;
             query = a; break;
         }
@@ -492,7 +515,7 @@ public:
     void printFull(const std::vector<imem::MemoryNode>& nodes) const {
         if (nodes.empty()) { std::cout << "No results.\n"; return; }
         for (auto& n : nodes) {
-            std::cout << "#" << n.id << " [" << n.topic << "]\n";
+            std::cout << "#" << n.id << " [" << n.topic << "]" << provenanceSuffix(n) << "\n";
             std::cout << n.content << "\n";
             if (!n.keywords.empty()) std::cout << "  Keywords: " << n.keywords << "\n";
             std::cout << "  Used: " << n.frequency << "x, last: " << timeAgo(n.last_used);

@@ -25,13 +25,16 @@ inline constexpr const char* kVisibilityTeam    = "team";
 inline constexpr const char* kVisibilityPrivate = "private";
 
 // WHERE-clause predicate over memory_nodes (unaliased columns).
-inline constexpr const char* kVisibleSql = "icmg_can_see(visibility, author)";
+// #292: the namespace scope rides on the same predicate (memory_scope.hpp).
+inline constexpr const char* kVisibleSql =
+    "(icmg_can_see(visibility, author) AND icmg_in_ns(namespace))";
 
 // Drop-in FROM target for raw SQL reads: `"SELECT ... FROM " ICMG_VISIBLE_MEMORY
 // " WHERE ..."`. The subquery is aliased memory_nodes, so existing column names
 // and WHERE clauses (including unparenthesised ORs) keep working unchanged.
 #define ICMG_VISIBLE_MEMORY \
-    "(SELECT * FROM memory_nodes WHERE icmg_can_see(visibility, author)) AS memory_nodes"
+    "(SELECT * FROM memory_nodes WHERE icmg_can_see(visibility, author) " \
+    "AND icmg_in_ns(namespace)) AS memory_nodes"
 
 // Same predicate for an aliased table, e.g. visibleSqlFor("m").
 std::string visibleSqlFor(const std::string& alias);

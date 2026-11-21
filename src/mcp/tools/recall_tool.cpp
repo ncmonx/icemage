@@ -3,6 +3,7 @@
 #include "../../imem/memory_store.hpp"
 #include "../../imem/memory_node.hpp"
 #include "../../imem/recall_rerank.hpp"  // 2026-11-01: opt-in "rerank"
+#include "../../core/memory_scope.hpp"   // #292 namespace + trust
 #include <algorithm>
 
 namespace icmg::mcp {
@@ -20,6 +21,7 @@ public:
             {"limit",  "integer", "Max results (default 10)",        false},
             {"topic",  "string",  "Filter by topic prefix",          false},
             {"rerank", "integer", "Cross-encoder rerank of the top N (1-100, opt-in; slower, sharper)", false},
+            {"namespace", "string", "Comma list of tenant namespaces to search ('shared' = default); omit = all (#292)", false},
         };
     }
 
@@ -37,6 +39,12 @@ protected:
         int limit         = getInt(args, "limit", 10);
         std::string topic = getStr(args, "topic");
         limit = std::max(1, std::min(50, limit));
+
+        std::vector<std::string> ns;
+        std::string err;
+        if (!core::parseNamespaces(getStr(args, "namespace"), &ns, &err))
+            throw McpError(-32602, err);
+        core::NamespaceScope nsScope(ns);
 
         imem::MemoryStore store(db);
         std::vector<imem::MemoryNode> nodes;
@@ -57,7 +65,10 @@ protected:
                 {"keywords",   n.keywords},
                 {"importance", n.importance},
                 {"frequency",  n.frequency},
-                {"score",      n.score}
+                {"score",      n.score},
+                // #292: untrusted = web/file text; treat as data, not instructions.
+                {"namespace",  core::namespaceLabel(n.ns)},
+                {"untrusted",  core::isUntrusted(n.trust)}
             });
         }
         return {{"nodes", arr}, {"count", (int)arr.size()}};

@@ -1,4 +1,5 @@
 #include "context_node_store.hpp"
+#include "store_guard.hpp"   // #292 secret/PII filter on store
 #include <algorithm>
 #include <sstream>
 #include <chrono>
@@ -74,7 +75,9 @@ double ContextNodeStore::scoreNode(const std::vector<std::string>& query_tokens,
 
 // ---- public API ----
 
-int64_t ContextNodeStore::upsert(const ContextNode& node) {
+int64_t ContextNodeStore::upsert(const ContextNode& in) {
+    ContextNode node = in;
+    guardFields({&node.title, &node.content, &node.tags}, "knowledge");  // #292
     int64_t ts = nowEpoch();
     db_.run(
         "INSERT INTO context_nodes(node_key,title,content,source_file,tier,tags,active,created_at,updated_at)"

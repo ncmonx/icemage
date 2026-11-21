@@ -6,6 +6,7 @@
 //   ICMG_MCP_PROFILE=core  curated essentials; unset / unknown = all (back-compat)
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <set>
 #include <sstream>
 #include <string>
@@ -120,6 +121,22 @@ inline std::vector<ToolSearchHit> rankToolMatches(
 //   ICMG_MCP_DENY=a,b,c   deny-list enforced on calls (schemas also hidden)
 //   ICMG_MCP_READONLY=1   deny the mutating subset (writes/syncs/applies)
 // Deterministic, env-driven, default-off -- existing setups are untouched.
+// #292: `icmg mcp serve --read-only` / `icmg --mcp-server --read-only` set
+// the same env, so the flag and the env var are one switch.
+inline constexpr const char* kMcpReadOnlyEnv = "ICMG_MCP_READONLY";
+
+inline bool mcpReadOnlyFromEnv() {
+    const char* ro = std::getenv(kMcpReadOnlyEnv);
+    return ro && std::string(ro) == "1";
+}
+
+inline void enableMcpReadOnly() {
+#ifdef _WIN32
+    _putenv_s(kMcpReadOnlyEnv, "1");
+#else
+    setenv(kMcpReadOnlyEnv, "1", 1);
+#endif
+}
 
 // Tools that MUTATE state (memory writes, syncs, file-writing appliers).
 // Read/query/search/render tools stay callable in readonly mode.

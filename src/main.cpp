@@ -22,6 +22,8 @@
 #include "core/throw_site.hpp"
 #include "cli/dispatcher.hpp"
 #include "mcp/server.hpp"
+#include "mcp/mcp_toolset.hpp"   // #292 --read-only
+#include <algorithm>
 #include <system_error>
 
 #ifdef _WIN32
@@ -243,9 +245,20 @@ int main(int argc, char* argv[]) {
             if (a == "--verbose" || a == "-v") { verbose = true; continue; }
             if (a == "--version")              { show_version = true; continue; }
             if (a == "--mcp-server")           { mcp_server = true; continue; }
+            // #292: `icmg --mcp-server --read-only` (flag twin of ICMG_MCP_READONLY=1).
+            if (mcp_server && a == "--read-only") { icmg::mcp::enableMcpReadOnly(); continue; }
             if (!a.empty() && a[0] != '-')     seen_subcommand = true;
         }
         args.push_back(a);
+    }
+
+    // #292: `icmg mcp serve [--read-only]` = discoverable alias of --mcp-server.
+    if (!mcp_server && args.size() >= 2 && args[0] == "mcp" && args[1] == "serve" &&
+        std::find(args.begin(), args.end(), std::string("--help")) == args.end()) {
+        mcp_server = true;
+        for (size_t i = 2; i < args.size(); ++i)
+            if (args[i] == "--read-only") icmg::mcp::enableMcpReadOnly();
+        args.clear();
     }
 
     if (show_version) {

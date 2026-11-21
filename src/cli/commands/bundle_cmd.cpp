@@ -14,6 +14,8 @@
 #include "../think_directive.hpp"
 #include "../auto_zone.hpp"
 #include "../../core/file_time.hpp"   // #222: clock_cast-free mtime conversion
+#include "../../core/memory_visibility.hpp"  // #292: pack cache key per author
+#include "../../core/memory_scope.hpp"       // #292: ... and per namespace scope
 #include "../model_pricing.hpp"
 #include "../../core/intent_slice.hpp"
 #include "../../core/read_dedup.hpp"
@@ -1023,6 +1025,15 @@ public:
         std::string cache_args = task + "|zone=" + zone
                                + "|cap=" + std::to_string(cap)
                                + "|mem=" + std::to_string(mem_limit);
+        // #288/#292: the bundle holds recalled memories, which depend on who
+        // asks and which namespaces they may see -> both belong in the key,
+        // or one tenant's cached pack is served to another.
+        cache_args += "|author=" + (core::seeAllAuthors() ? std::string("*") : core::currentAuthor());
+        cache_args += "|ns=";
+        if (core::namespaceFilterOn())
+            for (const auto& n : core::activeNamespaces()) cache_args += core::namespaceLabel(n) + ",";
+        else
+            cache_args += "*";
         core::ToolCallCache tcc(db);
         std::string capped;  // pre-directive raw output
         std::optional<std::string> cached;

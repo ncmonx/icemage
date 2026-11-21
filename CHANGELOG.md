@@ -4,6 +4,31 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.32.0
+
+**#292: one icmg brain can serve many users safely.**
+
+- **Namespaces.** `icmg store --ns user:12` writes into a tenant namespace;
+  `icmg recall --ns user:12,shared` sees only those (also `$ICMG_NS` and the
+  MCP `namespace` argument). No `--ns` keeps the old single-user behaviour.
+  The filter is part of the shared visibility predicate, so every memory read
+  honours it, and the recall/pack caches and store dedup are keyed per
+  namespace (new migration 0048).
+- **Provenance.** Memories record a trust level. Sources `web`, `file`,
+  `fetch`, `ingest`, `import`, `url`, `doc`, `tool` are `untrusted` by default
+  (`--trust` overrides); recall marks them `[UNTRUSTED]` and JSON/MCP output
+  carries `"untrusted": true`, so agents can treat them as data, not
+  instructions. `--ttl` takes units: `30m`, `12h`, `7d`, `2w` (a bare number
+  is still days).
+- **Secret/PII filter on store.** Every memory and knowledge write is scanned
+  (API keys, tokens, passwords, URL credentials, SSN, Luhn-checked card
+  numbers, plus your own regex file). `ICMG_SECRET_FILTER=mask` (default)
+  redacts, `reject` refuses the write (exit 3), `warn` only reports, `off`
+  disables.
+- **MCP.** `icmg mcp serve [--read-only]` (also `icmg --mcp-server
+  --read-only`, same as `ICMG_MCP_READONLY=1`) hides and refuses every
+  mutating tool. New read-only tools `icmg_pack` and `icmg_graph_symbol`.
+
 ## v2.31.1
 
 **#290: a Bash hook answer no longer stands in for a command it cannot

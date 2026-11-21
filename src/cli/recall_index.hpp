@@ -10,6 +10,7 @@
 
 #include "../imem/memory_node.hpp"
 #include "../core/token_budget.hpp"
+#include "../core/memory_scope.hpp"   // #292 untrusted marker + ns label
 
 #include <string>
 #include <vector>
@@ -77,12 +78,22 @@ inline std::string makeTitle(const std::string& content,
     return out;
 }
 
+// #292: trailing provenance tags. Untrusted rows (web/file text) carry the
+// marker so an agent treats them as data, never as instructions; a non-shared
+// namespace is shown so a multi-tenant caller sees which scope answered.
+inline std::string provenanceSuffix(const imem::MemoryNode& n) {
+    std::string s;
+    if (core::isUntrusted(n.trust)) { s += " "; s += core::kUntrustedMarker; }
+    if (!n.ns.empty()) s += " {ns:" + core::namespaceLabel(n.ns) + "}";
+    return s;
+}
+
 // ---- one index row: "#ID  <icon>  <title>  ~<tok>" -------------------------
 inline std::string formatIndexLine(const imem::MemoryNode& n) {
     std::ostringstream os;
     os << "#" << n.id << " " << iconFor(n) << " "
        << makeTitle(n.content)
-       << "  ~" << core::estimateTokens(n.content);
+       << "  ~" << core::estimateTokens(n.content) << provenanceSuffix(n);
     return os.str();
 }
 
@@ -179,7 +190,8 @@ inline std::string formatTimeline(std::vector<imem::MemoryNode> nodes) {
 inline std::string formatCitationHeader(const imem::MemoryNode& n,
                                         const std::string& scoreStr) {
     std::ostringstream os;
-    os << "[" << scoreStr << "] #" << n.id << " " << iconFor(n) << " " << n.topic;
+    os << "[" << scoreStr << "] #" << n.id << " " << iconFor(n) << " " << n.topic
+       << provenanceSuffix(n);
     return os.str();
 }
 
