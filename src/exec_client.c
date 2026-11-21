@@ -382,6 +382,8 @@ static int needs_direct_spawn(int argc, char** argv) {
     if (strcmp(cmd, "chat") == 0)      return 1;  /* interactive TTY */
     if (strcmp(cmd, "serve") == 0)     return 1;  /* long-running HTTP */
     if (strcmp(cmd, "--mcp-server") == 0) return 1;
+    /* #292: `icmg mcp serve` is the same stdio server. */
+    if (strcmp(cmd, "mcp") == 0 && argc > 2 && strcmp(argv[2], "serve") == 0) return 1;
     if (strcmp(cmd, "daemon") == 0)    return 1;
     if (strcmp(cmd, "rule-daemon") == 0) return 1;
     /* Bypass flag. */

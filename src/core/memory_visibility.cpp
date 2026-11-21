@@ -1,6 +1,7 @@
 #include "memory_visibility.hpp"
 #include "db.hpp"
 #include "path_u8.hpp"
+#include "memory_scope.hpp"   // #292 namespace columns + icmg_in_ns()
 
 #include <sqlite3.h>
 
@@ -106,7 +107,8 @@ std::string likePrefix(const std::string& prefix) {
 
 std::string visibleSqlFor(const std::string& alias) {
     if (alias.empty()) return kVisibleSql;
-    return "icmg_can_see(" + alias + ".visibility, " + alias + ".author)";
+    return "(icmg_can_see(" + alias + ".visibility, " + alias + ".author) AND icmg_in_ns(" +
+           alias + ".namespace))";
 }
 
 const std::string& currentAuthor() {
@@ -158,6 +160,7 @@ void ensureVisibilityColumns(Db& db) {
     if (!hasAuthor) db.run("ALTER TABLE memory_nodes ADD COLUMN author TEXT NOT NULL DEFAULT ''");
     if (!hasVis) db.run(std::string("ALTER TABLE memory_nodes ADD COLUMN visibility TEXT NOT NULL DEFAULT '") +
                         kVisibilityTeam + "'");
+    ensureScopeColumns(db);  // #292: the predicate also reads namespace
 }
 
 int retagMemories(Db& db, const std::vector<int64_t>& ids, const std::string& topicPrefix,
@@ -219,6 +222,7 @@ void registerVisibilitySql(sqlite3* db) {
     // Not SQLITE_DETERMINISTIC: the answer depends on the process author.
     sqlite3_create_function_v2(db, "icmg_can_see", 2, SQLITE_UTF8, nullptr,
                                &canSeeSqlFn, nullptr, nullptr, nullptr);
+    registerScopeSql(db);  // #292: icmg_in_ns() is part of the same predicate
 }
 
 }  // namespace icmg::core

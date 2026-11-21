@@ -86,6 +86,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## ✨ What's new
 
+- **v2.32.0** — **#292: multi-user memory.** `--ns` tenant namespaces on store/recall (CLI + MCP), `[UNTRUSTED]` marker for web/file memories, `--ttl 12h/7d/2w`, secret/PII filter on every store (`ICMG_SECRET_FILTER=mask|reject|warn|off`), and `icmg mcp serve --read-only` with new `icmg_pack` / `icmg_graph_symbol` tools.
 - **v2.31.1** — **#290: hook answers never replace compound or mutating commands.** `cd x && sed -i ...`, pipes, redirects and in-place edits run for real; read answers use the exact file (no same-name fallback); plain `ls` runs in the shell. Also: `icmg context --head/--tail` no longer replays a cached full read, and `icmg files --glob '**/*.cpp'` matches files at the root.
 - **v2.31.0** — **#288: private memories in shared project folders.** Each memory records its author and is `private` or `team`; other OS accounts using the same project never see your private notes (`icmg store --private|--team`, `icmg recall --all-authors`, `icmg memory retag`). Existing memories stay shared.
 - **v2.30.4** — **Follow-up #285.** Non-ASCII install dirs and project paths work on Windows (all process/path APIs wide or UTF-8, process code page UTF-8); text saved by older builds in the ANSI code page is re-encoded to UTF-8 once.

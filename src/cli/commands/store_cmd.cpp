@@ -1,6 +1,8 @@
 #include "../base_command.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/memory_visibility.hpp"  // #288
+#include "../../core/memory_scope.hpp"       // #292 --ns / --trust / --ttl units
+#include "../../core/store_guard.hpp"        // #292 SecretRejectedError
 #include "../../core/config.hpp"
 #include "../../core/db.hpp"
 #include "../../imem/memory_store.hpp"
@@ -33,7 +35,13 @@ public:
             "                                  decays, high decays at half rate, low at\n"
             "                                  double rate. (low|med|high|crit also accepted.)\n"
             "  --kw k1,k2,...                  Comma-separated keywords\n"
-            "  --ttl <days>                    Expire after N days\n"
+            "  --ttl <N>[s|m|h|d|w]            Expire after N days (bare number) or the\n"
+            "                                  given unit, e.g. 12h, 2w (#292)\n"
+            "  --ns <name>                     Tenant namespace (user:12, team:x, agent:id;\n"
+            "                                  'shared' = default). Also $ICMG_NS (#292)\n"
+            "  --source <s>                    user|agent|web|file|... ; web/file/fetch/\n"
+            "                                  ingest/import/url/doc/tool -> untrusted\n"
+            "  --trust trusted|untrusted       Override the trust picked from --source\n"
             "  --force                         Store even if duplicate detected\n"
             "  --private | --team              Who sees it when several OS accounts share\n"
             "                                  this project (#288). Default from topic:\n"
@@ -57,7 +65,7 @@ public:
         std::string topic, content;
         if (quick) {
             // frictionless capture, no topic. Auto-topic = quick:<epoch>.
-            content = firstPositional(args, {"--kw","--importance","--ttl","--source"});
+            content = firstPositional(args, storeValueFlags());
             if (content.empty()) { std::cerr << "icmg store --quick: need a <msg>\n"; return 1; }
             long long now = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
@@ -112,13 +120,37 @@ public:
         if (hasFlag(args, "--private")) node.visibility = core::kVisibilityPrivate;
         if (hasFlag(args, "--team"))    node.visibility = core::kVisibilityTeam;
 
+        // #292: namespace (one only on store) + trust override.
+        std::vector<std::string> ns;
+        std::string nsErr;
+        if (!core::namespacesFromArgs(args, &ns, &nsErr)) {
+            std::cerr << "icmg store: " << nsErr << "\n";
+            return 2;
+        }
+        if (ns.size() > 1) {
+            std::cerr << "icmg store: --ns takes ONE namespace on store\n";
+            return 2;
+        }
+        core::NamespaceScope nsScope(ns);
+        const std::string trust_str = flagValue(args, "--trust");
+        if (!trust_str.empty()) {
+            const char* t = core::parseTrust(trust_str);
+            if (!t) { std::cerr << "icmg store: --trust must be trusted|untrusted\n"; return 2; }
+            node.trust = t;
+        }
+
         if (!ttl_str.empty()) {
-            try {
-                int days = std::stoi(ttl_str);
-                int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
-                    std::chrono::system_clock::now().time_since_epoch()).count();
-                node.expires_at = now + (int64_t)days * 86400;
-            } catch (...) {}
+            // Bare number = days (pre-#292 meaning); with a unit = parseTtlSeconds.
+            const bool bare = ttl_str.find_first_not_of("0123456789") == std::string::npos;
+            const int64_t secs = bare ? core::parseTtlSeconds(ttl_str + "d")
+                                      : core::parseTtlSeconds(ttl_str);
+            if (secs <= 0) {
+                std::cerr << "icmg store: bad --ttl '" << ttl_str << "' (use N, Nh, Nd, Nw)\n";
+                return 2;
+            }
+            int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            node.expires_at = now + secs;
         }
 
         auto& cfg = core::Config::instance();
@@ -199,6 +231,10 @@ public:
                 std::cerr << "icmg store: " << e.what() << "\n";
             }
             return 1;
+        } catch (const core::SecretRejectedError& e) {
+            if (json_out) std::cout << "{\"error\":\"secret\",\"message\":\"" << e.what() << "\"}\n";
+            else std::cerr << "icmg store: " << e.what() << "\n";
+            return 3;
         } catch (const std::exception& e) {
             std::cerr << "icmg store: " << e.what() << "\n";
             return 1;

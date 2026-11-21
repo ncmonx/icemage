@@ -35,6 +35,14 @@ inline std::string firstPositional(const std::vector<std::string>& args,
 // AGENTS.md templates taught `store --topic T "<text>"`; under pure positional
 // parsing that stored topic="--topic", content=T and silently DISCARDED the
 // text (real data loss). Honor both forms.
+// Value-taking `icmg store` flags: their trailing value is never topic/content.
+// One list for --quick, positional and --topic parsing (#292 added --ns/--trust).
+inline const std::vector<std::string>& storeValueFlags() {
+    static const std::vector<std::string> v =
+        {"--kw", "--importance", "--ttl", "--source", "--topic", "--ns", "--trust"};
+    return v;
+}
+
 struct StoreArgs {
     std::string topic;
     std::string content;
@@ -43,8 +51,7 @@ struct StoreArgs {
 inline StoreArgs resolveStoreArgs(const std::vector<std::string>& args) {
     StoreArgs r;
     // value-taking flags: their trailing value is never topic/content
-    static const std::vector<std::string> vf =
-        {"--kw", "--importance", "--ttl", "--source", "--topic"};
+    static const std::vector<std::string> vf = storeValueFlags();
     // --topic compat form
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--topic") {

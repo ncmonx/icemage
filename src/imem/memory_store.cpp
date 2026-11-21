@@ -1,5 +1,7 @@
 #include "memory_store.hpp"
 #include "../core/memory_visibility.hpp"
+#include "../core/memory_scope.hpp"      // #292 namespace + trust
+#include "../core/store_guard.hpp"       // #292 secret/PII filter on store
 #include "atom_store.hpp"
 #include <ctime>
 #include <cstdlib>
@@ -34,8 +36,14 @@ namespace {
 bool rcEnabled() { const char* v = std::getenv("ICMG_RECALL_CACHE"); return !(v && v[0] == '0'); }
 std::string rcKey(const std::string& q, int limit, const std::string& scope, std::int64_t epoch) {
     // #288: results depend on who is asking -> author is part of the key.
+    // #292: ... and on the namespace scope.
+    std::string ns = "*";
+    if (core::namespaceFilterOn()) {
+        ns.clear();
+        for (const auto& n : core::activeNamespaces()) ns += core::namespaceLabel(n) + ",";
+    }
     return std::to_string(epoch) + "|" + (core::seeAllAuthors() ? std::string("*") : core::currentAuthor()) +
-           "|" + scope + "|" + std::to_string(limit) + "|" + q;
+           "|" + ns + "|" + scope + "|" + std::to_string(limit) + "|" + q;
 }
 void rcFlushOnWrite() { ++MemoryStore::recallEpoch(); MemoryStore::recallCache().flush(); core::rcacheDaemonFlush(); }
 } // anon
@@ -136,6 +144,9 @@ MemoryNode MemoryStore::rowToNode(const core::Row& row) const {
     if (row.size() > 14) try { n.valid_from     = row[14].empty() ? 0 : std::stoll(row[14]); } catch (...) {}
     if (row.size() > 15) try { n.invalidated_at = row[15].empty() ? 0 : std::stoll(row[15]); } catch (...) {}
     if (row.size() > 16) try { n.superseded_by  = row[16].empty() ? 0 : std::stoll(row[16]); } catch (...) {}
+    // #292: namespace + trust.
+    if (row.size() > 17) n.ns    = row[17];
+    if (row.size() > 18) n.trust = row[18];
     return n;
 }
 
@@ -167,7 +178,7 @@ MemoryStore::MemoryStore(core::Db& db) : db_(db) {
         if (!hasValidFrom) db_.run("ALTER TABLE memory_nodes ADD COLUMN valid_from INTEGER NOT NULL DEFAULT 0");
         if (!hasInvAt)     db_.run("ALTER TABLE memory_nodes ADD COLUMN invalidated_at INTEGER NOT NULL DEFAULT 0");
         if (!hasSupBy)     db_.run("ALTER TABLE memory_nodes ADD COLUMN superseded_by INTEGER NOT NULL DEFAULT 0");
-        core::ensureVisibilityColumns(db_);  // #288 (fixtures / pre-0047 DBs)
+        core::ensureVisibilityColumns(db_);  // #288/#292 (fixtures / pre-0047/0048 DBs)
     }
 
     // Feature #1 (causal-fact retrieval): typed causal edges between facts.
@@ -250,7 +261,8 @@ std::vector<MemoryNode> MemoryStore::findSimilar(const std::string& topic,
         int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
         db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-                  "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
+                  "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
+                  "valid_from,invalidated_at,superseded_by,namespace,trust "
                   "FROM memory_nodes WHERE deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
                   "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?) "
                   "ORDER BY id DESC LIMIT ?",
@@ -334,8 +346,15 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     effective.content  = ctx.get<std::string>("content",  node.content);
     effective.keywords = ctx.get<std::string>("keywords", node.keywords);
 
-    // Deduplication check
+    // #292: secret/PII filter (reject throws SecretRejectedError; mask edits
+    // in place) -- before dedup so a masked twin still dedups.
+    core::guardFields({&effective.topic, &effective.content, &effective.keywords}, "store");
+
+    // Deduplication check -- only inside the target namespace, so a tenant
+    // never dedups into (or learns the id/topic of) another tenant's row.
     if (!force) {
+        const std::string dupNs = !effective.ns.empty() ? effective.ns : core::storeNamespace();
+        core::NamespaceScope dupScope(std::vector<std::string>{dupNs});
         auto similar = findSimilar(effective.topic, effective.content, 0.85);
         if (!similar.empty()) {
             // v1.21.0 (M3): silent upsert mode — `ICMG_DEDUP_SILENT=1` env
@@ -367,20 +386,26 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     // #288: author = OS account; visibility explicit or picked from the topic.
     const char* vis = core::parseVisibility(effective.visibility);
     const std::string visibility = vis ? vis : core::defaultVisibilityForTopic(effective.topic);
+    // #292: namespace = explicit, else the active --ns scope ('' = shared);
+    // trust = explicit, else from the source (web/file/... = untrusted).
+    const std::string source = effective.source.empty() ? std::string("unknown") : effective.source;
+    const std::string ns = !effective.ns.empty() ? effective.ns : core::storeNamespace();
+    const char* trustArg = core::parseTrust(effective.trust);
+    const std::string trust = trustArg ? trustArg : core::defaultTrustForSource(source);
     // Phase 47 T4: tag created_by from user_identity (env / git config / anonymous).
     db_.run(
         "INSERT INTO memory_nodes(topic,content,keywords,importance,frequency,"
         "last_used,created_at,expires_at,zone,created_by,git_sha,source,valid_from,"
-        "author,visibility) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "author,visibility,namespace,trust) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         {effective.topic, effective.content, effective.keywords,
          std::to_string(effective.importance),
          std::to_string(effective.frequency),
          std::to_string(now), std::to_string(now),
          expires, zone, core::currentUser(), git_sha,
-         effective.source.empty() ? std::string("unknown") : effective.source,
+         source,
          std::to_string(validFrom),
-         core::currentAuthor(), visibility});
+         core::currentAuthor(), visibility, ns, trust});
     // Phase 48: initial row_version=1 for sync tracking.
     int64_t new_id = db_.lastInsertId();
     try { db_.run("UPDATE memory_nodes SET row_version=1 WHERE id=?", {std::to_string(new_id)}); } catch(...) {}
@@ -455,7 +480,7 @@ std::vector<MemoryNode> MemoryStore::allIncludingInvalidated() const {
         std::chrono::system_clock::now().time_since_epoch()).count();
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
-              "valid_from,invalidated_at,superseded_by "
+              "valid_from,invalidated_at,superseded_by,namespace,trust "
               "FROM memory_nodes "
               "WHERE deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?)",
@@ -567,7 +592,7 @@ MemoryNode MemoryStore::get(int64_t id) const {
     MemoryNode node;
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
-              "valid_from,invalidated_at,superseded_by "
+              "valid_from,invalidated_at,superseded_by,namespace,trust "
               "FROM memory_nodes WHERE id=? AND " + std::string(core::kVisibleSql),
               {std::to_string(id)},
               [&](const core::Row& r) { node = rowToNode(r); });
@@ -581,7 +606,7 @@ std::vector<MemoryNode> MemoryStore::all() const {
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
-              "valid_from,invalidated_at,superseded_by "
+              "valid_from,invalidated_at,superseded_by,namespace,trust "
               "FROM memory_nodes "
               "WHERE deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
               "AND (invalidated_at IS NULL OR invalidated_at=0) "   // bi-temporal: live facts only
@@ -624,7 +649,7 @@ std::vector<MemoryNode> MemoryStore::allAsOf(int64_t as_of_epoch) const {
     const std::string t = std::to_string(as_of_epoch);
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
               "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
-              "valid_from,invalidated_at,superseded_by "
+              "valid_from,invalidated_at,superseded_by,namespace,trust "
               "FROM memory_nodes "
               "WHERE deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
               // NOTE: a CASE-expression result has NO column affinity, so a
@@ -807,7 +832,8 @@ std::vector<MemoryNode> MemoryStore::recallByTopic(const std::string& topic, int
         std::chrono::system_clock::now().time_since_epoch()).count();
 
     db_.query("SELECT id,topic,content,keywords,importance,frequency,"
-              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source "
+              "last_used,created_at,expires_at,deleted_at,zone,pinned,git_sha,source,"
+                  "valid_from,invalidated_at,superseded_by,namespace,trust "
               "FROM memory_nodes "
               "WHERE topic LIKE ? AND deleted_at IS NULL AND " + std::string(core::kVisibleSql) + " "
               "AND (expires_at IS NULL OR expires_at=0 OR expires_at > ?) "

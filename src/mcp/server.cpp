@@ -120,8 +120,7 @@ json McpServer::buildToolsListResponse(bool lazy) const {
         // callable, so advertising their schemas would only mislead).
         {
             const char* deny = std::getenv("ICMG_MCP_DENY");
-            const char* ro   = std::getenv("ICMG_MCP_READONLY");
-            const bool readonly = ro && std::string(ro) == "1";
+            const bool readonly = mcpReadOnlyFromEnv();
             if ((deny && *deny) || readonly) {
                 std::vector<std::string> kept;
                 for (const auto& k : keys)
@@ -190,12 +189,11 @@ void McpServer::handleCallTool(const json& req) {
     // schemas; this refuses the CALL itself (deny-list / readonly mode).
     {
         const char* deny = std::getenv("ICMG_MCP_DENY");
-        const char* ro   = std::getenv("ICMG_MCP_READONLY");
-        const bool readonly = ro && std::string(ro) == "1";
+        const bool readonly = mcpReadOnlyFromEnv();
         if (isToolCallDenied(toolName, deny ? deny : "", readonly)) {
             sendError(id, -32602, "Tool '" + toolName + "' is denied by policy (" +
                                   std::string(readonly && isMutatingTool(toolName)
-                                                  ? "ICMG_MCP_READONLY" : "ICMG_MCP_DENY") + ")");
+                                                  ? "read-only mode" : "ICMG_MCP_DENY") + ")");
             return;
         }
     }
