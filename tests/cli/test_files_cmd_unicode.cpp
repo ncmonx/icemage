@@ -110,6 +110,33 @@ TEST("files_cmd: --type filter survives unmappable names") {
     fs::remove_all(d, ec);
 }
 
+// #290: `**/` must also match ZERO directories (gitignore/Glob semantics).
+// `icmg files src --glob '**/*.cpp'` printed nothing for src/a.cpp, so the
+// gate's scoped `find src -name '*.cpp'` answer fell back to the shell.
+TEST("files_cmd: **/ glob matches files directly under the root") {
+    auto d = makeScratch("dstar");
+    touch(d / "top.cpp");
+    fs::create_directories(d / "sub");
+    touch(d / "sub" / "deep.cpp");
+    touch(d / "skip.txt");
+
+    auto cmd = Registry<icmg::cli::BaseCommand>::instance().create("files");
+    ASSERT_TRUE(cmd != nullptr);
+    std::streambuf* old_out = std::cout.rdbuf();
+    std::ostringstream sink;
+    std::cout.rdbuf(sink.rdbuf());
+    int rc = cmd->run({"--glob", "**/*.cpp", icmg::core::pathU8(d)});
+    std::cout.rdbuf(old_out);
+
+    ASSERT_EQ(rc, 0);
+    ASSERT_TRUE(sink.str().find("top.cpp") != std::string::npos);
+    ASSERT_TRUE(sink.str().find("deep.cpp") != std::string::npos);
+    ASSERT_TRUE(sink.str().find("skip.txt") == std::string::npos);
+
+    std::error_code ec;
+    fs::remove_all(d, ec);
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

@@ -86,6 +86,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## ✨ What's new
 
+- **v2.31.1** — **#290: hook answers never replace compound or mutating commands.** `cd x && sed -i ...`, pipes, redirects and in-place edits run for real; read answers use the exact file (no same-name fallback); plain `ls` runs in the shell. Also: `icmg context --head/--tail` no longer replays a cached full read, and `icmg files --glob '**/*.cpp'` matches files at the root.
 - **v2.31.0** — **#288: private memories in shared project folders.** Each memory records its author and is `private` or `team`; other OS accounts using the same project never see your private notes (`icmg store --private|--team`, `icmg recall --all-authors`, `icmg memory retag`). Existing memories stay shared.
 - **v2.30.4** — **Follow-up #285.** Non-ASCII install dirs and project paths work on Windows (all process/path APIs wide or UTF-8, process code page UTF-8); text saved by older builds in the ANSI code page is re-encoded to UTF-8 once.
 - **v2.30.3** — **Hotfix #285.** `icmg run` on Windows passes non-ASCII arguments, command text and environment variables to the child unchanged (wide argv + `CreateProcessW`); `│`, `é`, `中` no longer turn into `|` / `?`.

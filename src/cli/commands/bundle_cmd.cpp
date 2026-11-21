@@ -17,6 +17,7 @@
 #include "../model_pricing.hpp"
 #include "../../core/intent_slice.hpp"
 #include "../../core/read_dedup.hpp"
+#include "../context_cache_key.hpp"
 #include "../../core/registry.hpp"
 #include "../../core/tool_call_cache.hpp"
 #include <cstdlib>
@@ -395,17 +396,8 @@ public:
                     ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now());
                 fmt = std::chrono::system_clock::to_time_t(sctp);
             }
-            ctx_cache_args =
-                file + "|mtime=" + std::to_string(fmt)
-              + "|sz=" + std::to_string(fsz)
-              + "|cap=" + std::to_string(cap)
-              + "|nosym=" + (no_symbols ? "1" : "0")
-              + "|nomem=" + (no_memory ? "1" : "0")
-              + "|nocontent=" + (hasFlag(args, "--no-content") ? "1" : "0")
-              + "|sibs=" + (hasFlag(args, "--siblings") ? "1" : "0")
-              + "|lines=" + flagValue(args, "--lines")
-              + "|for=" + flagValue(args, "--for")
-              + "|symbol=" + flagValue(args, "--symbol");
+            // #290: key on the whole argv (see context_cache_key.hpp).
+            ctx_cache_args = contextCacheKey(file, fmt, fsz, args);
             try {
                 core::ToolCallCache tcc(db);
                 auto opt = tcc.lookup("context", ctx_cache_args);
