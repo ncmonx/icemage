@@ -61,7 +61,13 @@ std::string globToRegex(const std::string& g) {
     for (size_t i = 0; i < g.size(); ++i) {
         char c = g[i];
         if (c == '*') {
-            if (i + 1 < g.size() && g[i + 1] == '*') { r += ".*"; ++i; }
+            if (i + 1 < g.size() && g[i + 1] == '*') {
+                // #290: `**/` = zero or more dirs, so `**/*.cpp` also
+                // matches a.cpp directly under the root (gitignore/Glob).
+                if (i + 2 < g.size() && (g[i + 2] == '/' || g[i + 2] == '\\')) {
+                    r += "(?:.*[/\\\\])?"; i += 2;
+                } else { r += ".*"; ++i; }
+            }
             else r += "[^/\\\\]*";
         } else if (c == '?') {
             r += "[^/\\\\]";

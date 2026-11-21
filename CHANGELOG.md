@@ -4,6 +4,27 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.31.1
+
+**#290: a Bash hook answer no longer stands in for a command it cannot
+replace.**
+
+- The icmg-first gate answers only a single read-only command. A command
+  with `&&`, `||`, `;`, `|`, `>`, `<`, a backtick or `$(`, an in-place edit
+  (`sed -i`, `perl -i`, `awk -i inplace`) or a leading `cd`/`pushd` now runs
+  for real. Before, `cd x && sed -i ... f; cat f` came back as
+  `icmg context f`: the `sed` never ran and the `cd` was lost.
+- Read answers need a file that exists at that exact path
+  (`icmg context --exact-path`). A missing file is reported by the shell
+  instead of being matched to another file with the same name. `head`/`tail -n N`
+  are answered with only those N lines.
+- Plain `ls`/`dir` runs in the shell. Only recursive listings (`ls -R`,
+  `Get-ChildItem -Recurse`, `find` with `-name`/`-type f`) are answered, and
+  only for the directory the command named.
+- `icmg context` caches on the full argument list, so `--head`, `--tail` and
+  `--skeleton` no longer replay an earlier full read.
+- `icmg files --glob '**/*.cpp'` also matches files directly under the root.
+
 ## v2.31.0
 
 **#288: memories carry their author, and private ones stay private when
