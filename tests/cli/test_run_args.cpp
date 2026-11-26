@@ -186,6 +186,47 @@ TEST("anti-nest: other icmg subcommands are NOT unwrapped") {
     ASSERT_EQ(r.command, std::string("icmg recall x"));
 }
 
+// ---------------------------------------------------------------------------
+// #295: multi-token `icmg run <shell> -c "<script>"` must reach the child byte
+// for byte. The joined line used "..." quoting that left `$` and backticks
+// live, and hasShellOperators did not know `\"` inside "...", so the line was
+// handed to an OUTER bash that ran `b` / `echo NO` / $HOME from the script.
+// ---------------------------------------------------------------------------
+#include "../../src/tkil/runner.hpp"
+
+namespace {
+// Every token must survive join -> (argv path) parseArgv unchanged, and the
+// joined line must NOT look like it needs a shell.
+void assertRoundTrip(const std::vector<std::string>& argv) {
+    auto r = parseRunArgs(argv);
+    ASSERT_FALSE(icmg::tkil::hasShellOperators(r.command));
+    auto back = icmg::tkil::parseArgv(r.command);
+    ASSERT_EQ(back.size(), argv.size());
+    for (size_t i = 0; i < argv.size() && i < back.size(); ++i) ASSERT_EQ(back[i], argv[i]);
+}
+}  // namespace
+
+TEST("run-args #295: python heredoc with backticks in a \"...\" string survives") {
+    assertRoundTrip({"C:\\Program Files\\Git\\bin\\bash.exe", "-c",
+                     "python - <<'P'\nprint(\"a `b` c\")\nP"});
+}
+TEST("run-args #295: quoted heredoc body keeps `cmd` and $HOME literal") {
+    assertRoundTrip({"bash", "-c",
+                     "x=\"a `echo SUBST` b\"; echo \"$x\"; cat <<'E'\nlit `echo NO` $HOME\nE"});
+}
+TEST("run-args #295: shell metachars in argv tokens stay data") {
+    assertRoundTrip({"echo", "a|b", "c;d", "e>f", "$(id)", "`id`", "x&y", "*.cpp", "it's"});
+    assertRoundTrip({"printf", "%s\\n", "C:\\dir\\f.txt", "\\\\server\\share", "say\\\"hi"});
+}
+TEST("run-args #295: $ and backtick are escaped inside the double quotes") {
+    ASSERT_EQ(runQuoteArg("a $HOME `b`"), std::string("\"a \\$HOME \\`b\\`\""));
+    ASSERT_EQ(runQuoteArg("a|b"), std::string("\"a|b\""));
+}
+TEST("hasShellOperators #295: backslash-escaped quote does not close \"...\"") {
+    ASSERT_FALSE(icmg::tkil::hasShellOperators("echo \"say \\\" `x` | y\""));
+    ASSERT_TRUE(icmg::tkil::hasShellOperators("echo \"a\" | wc"));
+}
+
 // -- v2.26.0: patch-risk scoring + txn state helpers --------------------------
 #include "../../src/cli/test_risk.hpp"
 #include "../../src/cli/txn_guard.hpp"

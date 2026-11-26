@@ -101,7 +101,12 @@ public:
         // content so recall/BM25 gets signal even on terse captures. Derived
         // AFTER <private> redaction so secrets never leak into keywords.
         bool kw_auto = kw.empty();
-        if (kw_auto) kw = autoKeywords(content);
+        // #294: and from the text with secret spans removed (unless the filter
+        // is off), so a masked secret never comes back as a keyword.
+        if (kw_auto) {
+            kw = autoKeywords(core::activeSecretMode() == core::SecretMode::Off
+                                  ? content : core::keywordSourceText(content));
+        }
         std::string imp_str = flagValue(args, "--importance", "med");
         std::string ttl_str = flagValue(args, "--ttl");
         bool force          = hasFlag(args, "--force");

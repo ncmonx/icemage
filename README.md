@@ -86,6 +86,7 @@ The AI keeps its full intelligence. Your wallet keeps more of its money.
 
 ## ✨ What's new
 
+- **v2.32.1** — **#295 + #294.** `icmg run` passes argv to the child byte for byte: quoted heredocs, backticks and `$` are never run by an outer shell, `--stream` shares that path and returns the real exit code, and bare `bash.exe` resolves via `PATH` like your shell (not the WSL shim). Secrets no longer leak into auto keywords/abbreviations; `icmg mcp serve --tools a,b` allowlist and `--no-network`.
 - **v2.32.0** — **#292: multi-user memory.** `--ns` tenant namespaces on store/recall (CLI + MCP), `[UNTRUSTED]` marker for web/file memories, `--ttl 12h/7d/2w`, secret/PII filter on every store (`ICMG_SECRET_FILTER=mask|reject|warn|off`), and `icmg mcp serve --read-only` with new `icmg_pack` / `icmg_graph_symbol` tools.
 - **v2.31.1** — **#290: hook answers never replace compound or mutating commands.** `cd x && sed -i ...`, pipes, redirects and in-place edits run for real; read answers use the exact file (no same-name fallback); plain `ls` runs in the shell. Also: `icmg context --head/--tail` no longer replays a cached full read, and `icmg files --glob '**/*.cpp'` matches files at the root.
 - **v2.31.0** — **#288: private memories in shared project folders.** Each memory records its author and is `private` or `team`; other OS accounts using the same project never see your private notes (`icmg store --private|--team`, `icmg recall --all-authors`, `icmg memory retag`). Existing memories stay shared.

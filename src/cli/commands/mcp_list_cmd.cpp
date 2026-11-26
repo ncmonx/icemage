@@ -27,8 +27,14 @@ public:
         std::cout <<
             "Usage: icmg mcp <action>\n\n"
             "Actions:\n"
-            "  serve [--read-only]  Run the stdio MCP server (same as --mcp-server);\n"
-            "                       --read-only hides+refuses every mutating tool (#292)\n"
+            "  serve [--read-only] [--no-network] [--tools a,b,c]\n"
+            "                     Run the stdio MCP server (same as --mcp-server).\n"
+            "                       --read-only   hides+refuses every mutating tool (#292)\n"
+            "                       --no-network  hides+refuses egress tools: icmg_fetch,\n"
+            "                                     icmg_batch, icmg_sync (#294)\n"
+            "                       --tools a,b,c only these tools are listed AND callable (#294)\n"
+            "                     Env twins: ICMG_MCP_READONLY=1, ICMG_MCP_NO_NETWORK=1,\n"
+            "                     ICMG_MCP_ALLOW=a,b,c (ICMG_MCP_DENY=a,b denies by name)\n"
             "  list [--json]      Show all registered MCP tools + descriptions\n"
             "  audit [--json] [--top N]  Per-turn token cost of each tool schema (diet)\n";
     }

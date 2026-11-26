@@ -332,22 +332,29 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     embed_cache_.clear();
     embed_cache_warmed_ = false;
 
+    // #294: guard BEFORE the PRE_STORE hooks -- they derive side data from
+    // the text (abbreviation auto-learn wrote "password -> <secret>" into
+    // the abbreviations table). Reject throws here, before any side effect.
+    MemoryNode guarded = node;
+    core::guardFields({&guarded.topic, &guarded.content, &guarded.keywords}, "store");
+
     // Fire PRE_STORE hook
     core::HookContext ctx;
-    ctx.set<std::string>("topic",   node.topic);
-    ctx.set<std::string>("content", node.content);
-    ctx.set<std::string>("keywords", node.keywords);
+    ctx.set<std::string>("topic",   guarded.topic);
+    ctx.set<std::string>("content", guarded.content);
+    ctx.set<std::string>("keywords", guarded.keywords);
     core::HookBus::instance().emit(core::HookEvent::PRE_STORE, ctx);
     if (ctx.cancelled) return -1;
 
     // Hooks may modify topic/content/keywords
-    MemoryNode effective = node;
-    effective.topic    = ctx.get<std::string>("topic",    node.topic);
-    effective.content  = ctx.get<std::string>("content",  node.content);
-    effective.keywords = ctx.get<std::string>("keywords", node.keywords);
+    MemoryNode effective = guarded;
+    effective.topic    = ctx.get<std::string>("topic",    guarded.topic);
+    effective.content  = ctx.get<std::string>("content",  guarded.content);
+    effective.keywords = ctx.get<std::string>("keywords", guarded.keywords);
 
-    // #292: secret/PII filter (reject throws SecretRejectedError; mask edits
-    // in place) -- before dedup so a masked twin still dedups.
+    // #292: secret/PII filter again on what the hooks returned (they may add
+    // text) -- before dedup so a masked twin still dedups. Already-masked
+    // placeholders do not match, so this pass is quiet on clean input.
     core::guardFields({&effective.topic, &effective.content, &effective.keywords}, "store");
 
     // Deduplication check -- only inside the target namespace, so a tenant
@@ -430,7 +437,10 @@ int64_t MemoryStore::store(const MemoryNode& node, bool force) {
     return id;
 }
 
-bool MemoryStore::update(int64_t id, const std::string& content, const std::string& keywords) {
+bool MemoryStore::update(int64_t id, const std::string& content_in, const std::string& keywords_in) {
+    // #294: same secret filter as store() (reject throws, mask edits a copy).
+    std::string content = content_in, keywords = keywords_in;
+    core::guardFields({&content, &keywords}, "update");
     int64_t now = nowEpoch();
     db_.run("UPDATE memory_nodes SET content=?, keywords=?, last_used=?, "
             "row_version=COALESCE(row_version,0)+1 WHERE id=?",

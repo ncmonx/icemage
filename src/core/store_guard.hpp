@@ -46,7 +46,10 @@ SecretMode activeSecretMode();
 // All matches in `text`: built-in + store-only + user patterns, by offset.
 std::vector<SecretMatch> scanForStore(const std::string& text);
 
-// Applies `mode` to each field in place. Returns the distinct match types
+// Applies `mode` to each field in place. In Mask mode every field is also
+// scrubbed of tokens taken from a secret found in ANY field (#294: auto
+// keywords split "password=X" into "password,x", losing the pattern context).
+// Returns the distinct match types
 // found (empty = clean). Throws SecretRejectedError in Reject mode when
 // anything matched. `what` names the write in notices ("store", "knowledge").
 std::vector<std::string> guardFields(const std::vector<std::string*>& fields,
@@ -54,6 +57,11 @@ std::vector<std::string> guardFields(const std::vector<std::string*>& fields,
 
 // Same, with activeSecretMode().
 std::vector<std::string> guardFields(const std::vector<std::string*>& fields, const char* what);
+
+// #294: `text` with every secret span blanked out (never the secret, never a
+// placeholder). Feed THIS to derived-field builders (auto keywords, titles) so
+// they can't pick up a secret. Uses scanForStore regardless of mode.
+std::string keywordSourceText(const std::string& text);
 
 // Tests: replace the user pattern list (lines in the file format above);
 // an empty list re-enables loading from disk.

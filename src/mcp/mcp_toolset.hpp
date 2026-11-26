@@ -151,11 +151,8 @@ inline bool isMutatingTool(const std::string& name) {
 
 // Should `name` be refused at tools/call? `deny_csv` = ICMG_MCP_DENY (comma
 // separated, spaces tolerated); `readonly` = ICMG_MCP_READONLY=1.
-inline bool isToolCallDenied(const std::string& name, const std::string& deny_csv,
-                             bool readonly) {
-    if (readonly && isMutatingTool(name)) return true;
-    if (deny_csv.empty()) return false;
-    std::stringstream ss(deny_csv);
+inline bool csvHas(const std::string& csv, const std::string& name) {
+    std::stringstream ss(csv);
     std::string item;
     while (std::getline(ss, item, ',')) {
         const auto b = item.find_first_not_of(" \t");
@@ -164,6 +161,81 @@ inline bool isToolCallDenied(const std::string& name, const std::string& deny_cs
         if (item.substr(b, e - b + 1) == name) return true;
     }
     return false;
+}
+
+inline bool isToolCallDenied(const std::string& name, const std::string& deny_csv,
+                             bool readonly) {
+    if (readonly && isMutatingTool(name)) return true;
+    return !deny_csv.empty() && csvHas(deny_csv, name);
+}
+
+// ---- #294: call-time allowlist + no-egress switch ---------------------------
+//   ICMG_MCP_ALLOW=a,b,c      only these tools are callable (and listed)
+//   ICMG_MCP_NO_NETWORK=1     refuse tools that reach the network / a model
+// Flag twins: `icmg mcp serve --tools a,b,c --no-network` (main.cpp).
+inline constexpr const char* kMcpAllowEnv     = "ICMG_MCP_ALLOW";
+inline constexpr const char* kMcpNoNetworkEnv = "ICMG_MCP_NO_NETWORK";
+inline constexpr const char* kMcpDenyEnv      = "ICMG_MCP_DENY";
+
+// Tools with an egress path: outbound HTTP, a model call, a remote sync peer.
+inline bool isEgressTool(const std::string& name) {
+    static const std::set<std::string> k = {"icmg_fetch", "icmg_batch", "icmg_sync"};
+    return k.count(name) > 0;
+}
+
+struct McpCallPolicy {
+    std::string deny_csv;
+    std::string allow_csv;    // empty = no allowlist
+    bool readonly   = false;
+    bool no_network = false;
+};
+
+inline McpCallPolicy mcpCallPolicyFromEnv() {
+    auto env = [](const char* k) { const char* v = std::getenv(k); return std::string(v ? v : ""); };
+    McpCallPolicy p;
+    p.deny_csv   = env(kMcpDenyEnv);
+    p.allow_csv  = env(kMcpAllowEnv);
+    p.readonly   = mcpReadOnlyFromEnv();
+    p.no_network = env(kMcpNoNetworkEnv) == "1";
+    return p;
+}
+
+// "" = allowed; else the rule that refuses it (shown in the call error).
+inline std::string toolDenyReason(const std::string& name, const McpCallPolicy& p) {
+    if (p.readonly && isMutatingTool(name))   return "read-only mode";
+    if (p.no_network && isEgressTool(name))   return "no-network mode";
+    if (!p.deny_csv.empty() && csvHas(p.deny_csv, name)) return "ICMG_MCP_DENY";
+    if (!p.allow_csv.empty() && !csvHas(p.allow_csv, name)) return "not in ICMG_MCP_ALLOW";
+    return "";
+}
+
+inline void setMcpEnv(const char* key, const std::string& value) {
+#ifdef _WIN32
+    _putenv_s(key, value.c_str());
+#else
+    setenv(key, value.c_str(), 1);
+#endif
+}
+
+// Parse the serve flags (--read-only, --no-network, --tools a,b / --tools=a,b)
+// into env, so flags and env vars are one switch. Returns false + `err` on a
+// --tools with no value.
+inline bool applyMcpServeFlags(const std::vector<std::string>& args, std::string* err) {
+    for (size_t i = 0; i < args.size(); ++i) {
+        const std::string& a = args[i];
+        if (a == "--read-only") enableMcpReadOnly();
+        else if (a == "--no-network") setMcpEnv(kMcpNoNetworkEnv, "1");
+        else if (a == "--tools" || a.rfind("--tools=", 0) == 0) {
+            std::string v = a == "--tools" ? (i + 1 < args.size() ? args[++i] : "")
+                                           : a.substr(8);
+            if (v.empty() || v[0] == '-') {
+                if (err) *err = "--tools needs a comma-separated tool list";
+                return false;
+            }
+            setMcpEnv(kMcpAllowEnv, v);
+        }
+    }
+    return true;
 }
 
 }  // namespace icmg::mcp

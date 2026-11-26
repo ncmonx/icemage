@@ -110,6 +110,54 @@ TEST("call_policy: empty policy denies nothing") {
     ASSERT_TRUE(!icmg::mcp::isToolCallDenied("icmg_forget", "", false));
 }
 
+// #294: locked-down hosts need call-time allowlist + a no-egress switch.
+TEST("call_policy: allowlist refuses every tool not on it") {
+    icmg::mcp::McpCallPolicy p;
+    p.allow_csv = "icmg_recall, icmg_pack,icmg_graph_symbol";
+    ASSERT_TRUE(icmg::mcp::toolDenyReason("icmg_recall", p).empty());
+    ASSERT_TRUE(icmg::mcp::toolDenyReason("icmg_graph_symbol", p).empty());
+    ASSERT_TRUE(!icmg::mcp::toolDenyReason("icmg_fetch", p).empty());
+    ASSERT_TRUE(!icmg::mcp::toolDenyReason("icmg_tool_search", p).empty());
+}
+
+TEST("call_policy: no_network refuses egress tools only") {
+    icmg::mcp::McpCallPolicy p;
+    p.no_network = true;
+    ASSERT_TRUE(!icmg::mcp::toolDenyReason("icmg_fetch", p).empty());
+    ASSERT_TRUE(!icmg::mcp::toolDenyReason("icmg_batch", p).empty());
+    ASSERT_TRUE(!icmg::mcp::toolDenyReason("icmg_sync", p).empty());
+    ASSERT_TRUE(icmg::mcp::toolDenyReason("icmg_recall", p).empty());
+    ASSERT_TRUE(icmg::mcp::toolDenyReason("icmg_store", p).empty());
+}
+
+TEST("call_policy: reasons name the rule; readonly and deny still apply") {
+    icmg::mcp::McpCallPolicy p;
+    p.readonly = true;
+    p.deny_csv = "icmg_savings";
+    ASSERT_EQ(icmg::mcp::toolDenyReason("icmg_store", p), std::string("read-only mode"));
+    ASSERT_EQ(icmg::mcp::toolDenyReason("icmg_savings", p), std::string("ICMG_MCP_DENY"));
+    p = {};
+    p.no_network = true;
+    ASSERT_EQ(icmg::mcp::toolDenyReason("icmg_fetch", p), std::string("no-network mode"));
+    p = {};
+    p.allow_csv = "icmg_recall";
+    ASSERT_EQ(icmg::mcp::toolDenyReason("icmg_store", p), std::string("not in ICMG_MCP_ALLOW"));
+}
+
+TEST("call_policy: serve flags set the env twins") {
+    std::string err;
+    ASSERT_TRUE(icmg::mcp::applyMcpServeFlags({"--no-network", "--tools", "icmg_recall,icmg_pack"}, &err));
+    auto p = icmg::mcp::mcpCallPolicyFromEnv();
+    ASSERT_TRUE(p.no_network);
+    ASSERT_EQ(p.allow_csv, std::string("icmg_recall,icmg_pack"));
+    ASSERT_TRUE(icmg::mcp::applyMcpServeFlags({"--tools=icmg_recall"}, &err));
+    ASSERT_EQ(icmg::mcp::mcpCallPolicyFromEnv().allow_csv, std::string("icmg_recall"));
+    ASSERT_TRUE(!icmg::mcp::applyMcpServeFlags({"--tools"}, &err));
+    ASSERT_TRUE(!err.empty());
+    icmg::mcp::setMcpEnv(icmg::mcp::kMcpNoNetworkEnv, "");
+    icmg::mcp::setMcpEnv(icmg::mcp::kMcpAllowEnv, "");
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif

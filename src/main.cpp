@@ -226,6 +226,7 @@ int main(int argc, char* argv[]) {
     bool verbose = false;
     bool show_version = false;
     bool mcp_server = false;
+    std::vector<std::string> serve_flags;   // #294 args after --mcp-server / mcp serve
 
     // Stop global-flag parsing once we hit the first subcommand. Otherwise
     // commands like `icmg run node --version` would eat --version globally
@@ -245,20 +246,27 @@ int main(int argc, char* argv[]) {
             if (a == "--verbose" || a == "-v") { verbose = true; continue; }
             if (a == "--version")              { show_version = true; continue; }
             if (a == "--mcp-server")           { mcp_server = true; continue; }
-            // #292: `icmg --mcp-server --read-only` (flag twin of ICMG_MCP_READONLY=1).
-            if (mcp_server && a == "--read-only") { icmg::mcp::enableMcpReadOnly(); continue; }
+            // #292/#294: `icmg --mcp-server [--read-only] [--no-network] [--tools a,b]`
+            // -- everything after --mcp-server is a serve flag (see applyMcpServeFlags).
+            if (mcp_server) { serve_flags.push_back(a); continue; }
             if (!a.empty() && a[0] != '-')     seen_subcommand = true;
         }
         args.push_back(a);
     }
 
-    // #292: `icmg mcp serve [--read-only]` = discoverable alias of --mcp-server.
+    // #292: `icmg mcp serve [flags]` = discoverable alias of --mcp-server.
     if (!mcp_server && args.size() >= 2 && args[0] == "mcp" && args[1] == "serve" &&
-        std::find(args.begin(), args.end(), std::string("--help")) == args.end()) {
+            std::find(args.begin(), args.end(), std::string("--help")) == args.end()) {
         mcp_server = true;
-        for (size_t i = 2; i < args.size(); ++i)
-            if (args[i] == "--read-only") icmg::mcp::enableMcpReadOnly();
+        serve_flags.assign(args.begin() + 2, args.end());
         args.clear();
+    }
+    if (mcp_server) {
+        std::string err;
+        if (!icmg::mcp::applyMcpServeFlags(serve_flags, &err)) {
+            std::cerr << "icmg mcp serve: " << err << "\n";
+            return 1;
+        }
     }
 
     if (show_version) {

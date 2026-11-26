@@ -26,11 +26,13 @@ std::vector<std::string> parseArgv(const std::string& command) {
             continue;
         }
 
-        // \\ → literal \ ONLY inside double quotes: inverts cli::runQuoteArg so
-        // the argv path round-trips exactly (wflog #16755). Outside quotes a
-        // backslash run stays literal so bare UNC paths (\\server\share) survive.
-        if (quote == '"' && c == '\\' && i + 1 < command.size() && command[i + 1] == '\\') {
-            token += '\\';
+        // \\ \$ \` -> literal char ONLY inside double quotes: inverts
+        // cli::runQuoteArg so the argv path round-trips exactly (wflog #16755,
+        // #295). Outside quotes a backslash run stays literal so bare UNC paths
+        // (\\server\share) survive.
+        if (quote == '"' && c == '\\' && i + 1 < command.size() &&
+            (command[i + 1] == '\\' || command[i + 1] == '$' || command[i + 1] == '`')) {
+            token += command[i + 1];
             ++i;
             continue;
         }

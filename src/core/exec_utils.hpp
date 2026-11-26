@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cstddef>
+#include <functional>
 
 namespace icmg::core {
 
@@ -10,6 +12,33 @@ struct ExecResult {
     std::string err;
     int         exit_code   = -1;
     int64_t     duration_ms = 0;
+};
+
+// Resolve a bare program name (no `/` or `\\`) the way the user's shell does:
+// walk %PATH% in order (`.exe` appended when there is no extension). Plain
+// CreateProcess(NULL, ...) searches System32 BEFORE PATH, so `bash.exe`
+// became the WSL shim instead of the Git Bash pwsh/cmd would run (#295:
+// different shell, $HOME=/root, and MSYS quoting sent to a native child).
+// Returns the input unchanged when it has a path or is not on PATH.
+// Non-Windows: identity (execvp already walks PATH).
+std::string resolveOnPath(const std::string& program);
+
+// Live output sink (#295: `icmg run --stream` reuses the exact exec path of
+// the buffered run instead of its own popen/cmd.exe quoting). While an
+// ExecChunkScope is alive, every stdout chunk read by safeExec/safeExecShell
+// ON THIS THREAD is also forwarded to fn (the result still collects it).
+// Thread-local, so `icmg parallel` workers never see each other's sink;
+// nests (restores the previous sink on destruction).
+using ExecChunkFn = std::function<void(const char* data, size_t n)>;
+
+class ExecChunkScope {
+public:
+    explicit ExecChunkScope(ExecChunkFn fn);
+    ~ExecChunkScope();
+    ExecChunkScope(const ExecChunkScope&) = delete;
+    ExecChunkScope& operator=(const ExecChunkScope&) = delete;
+private:
+    ExecChunkFn prev_;
 };
 
 // Safe command execution — argv array, NO shell intermediary.
