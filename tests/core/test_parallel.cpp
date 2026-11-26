@@ -4,6 +4,8 @@
 #include "../test_main.hpp"
 #include "../../src/core/parallel.hpp"
 #include <chrono>
+#include <cstdio>
+#include <fstream>
 
 using namespace icmg::core;
 
@@ -108,10 +110,31 @@ TEST("parallel: fail_fast skips later tasks when earlier fails") {
     auto r = parallel(ts, /*max_concurrency=*/1, /*fail_fast=*/true);
     ASSERT_EQ((int)r.size(), (int)ts.size());
     ASSERT_TRUE(r[0].exit_code != 0);   // failure
-    // With cap=1, after fail0 fails, ts[1..4] should all be skipped.
-    int skipped = 0;
-    for (size_t i = 1; i < r.size(); ++i) if (r[i].skipped) ++skipped;
-    ASSERT_TRUE(skipped >= 3);   // at least most are skipped (race with first slot)
+    // Tasks start in submission order, so with cap=1 fail0 always runs first
+    // and every later task must be skipped -- no race allowed.
+    ASSERT_FALSE(r[0].skipped);
+    for (size_t i = 1; i < r.size(); ++i) ASSERT_TRUE(r[i].skipped);
+}
+
+TEST("parallel: cap=1 starts tasks in submission order") {
+    // Each task appends its id to one file; with cap=1 the file must read
+    // "0 1 2 3 4 5 6 7 " in order. Thread-per-task scheduling broke this.
+    const std::string path = "icmg_test_parallel_order.txt";
+    std::remove(path.c_str());
+    std::vector<ParallelTask> ts;
+    for (int i = 0; i < 8; ++i) {
+        ParallelTask t;
+        t.command = "echo " + std::to_string(i) + " >> " + path;
+        ts.push_back(t);
+    }
+    auto r = parallel(ts, /*max_concurrency=*/1, /*fail_fast=*/false);
+    ASSERT_EQ((int)r.size(), 8);
+    std::ifstream in(path);
+    std::string got, tok;
+    while (in >> tok) got += tok + " ";
+    in.close();
+    std::remove(path.c_str());
+    ASSERT_EQ(got, std::string("0 1 2 3 4 5 6 7 "));
 }
 
 TEST("parallel: fail_fast=false runs all tasks despite failures") {

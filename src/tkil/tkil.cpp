@@ -103,49 +103,32 @@ int Tkil::runFiltered(const std::string& command, bool raw, bool json,
     // Phase 82 T5: real-time streaming — print each line as subprocess emits it.
     // Filter summary appended at end so filter context (full output) is preserved.
     if (stream && !json) {
-        // Shell commands (pipes / && / redirects) must reach the shell intact;
-        // re-quoting argv tokens would feed `|` to the first program as a
-        // literal arg (the non-stream path's bug, same fix). Simple commands
-        // keep argv re-quoting so spaces survive.
-        std::string sh_cmd;
-        if (hasShellOperators(command)) {
-            sh_cmd = command;
-        } else {
-            auto argv = parseArgv(command);
-            for (size_t i = 0; i < argv.size(); ++i) {
-                if (i) sh_cmd += ' ';
-                const auto& a = argv[i];
-                bool needs_q = a.empty() ||
-                               a.find_first_of(" \t\"'") != std::string::npos;
-                if (needs_q) { sh_cmd += '"'; sh_cmd += a; sh_cmd += '"'; }
-                else sh_cmd += a;
-            }
-        }
-        sh_cmd += " 2>&1";
-        if (FILE* pipe = popen(sh_cmd.c_str(), "r")) {
-            std::string all_out;
-            char buf[4096];
-            while (fgets(buf, sizeof(buf), pipe)) {
-                std::string line(buf);
-                std::cout << line;
+        // #295: stream through the SAME exec path as the buffered run
+        // (runCommand: argv exec, or the shell only for real operators), with
+        // a live chunk sink. The old popen path re-quoted argv for cmd.exe /
+        // sh by hand: `$`/backticks inside a token ran in the outer shell, a
+        // quoted path with spaces broke under cmd /c, and the exit code was
+        // always 0.
+        auto res = [&] {
+            core::ExecChunkScope live([](const char* d, size_t n) {
+                std::cout.write(d, (std::streamsize)n);
                 std::cout.flush();
-                all_out += line;
+            });
+            return runCommand(command, /*merge_stderr=*/true, kStreamTimeoutMs);
+        }();
+        if (!res.err.empty()) std::cerr << res.err << "\n";  // spawn failure text
+        if (!raw) {
+            auto* f = getFilter(type);
+            if (f) {
+                auto fr2 = f->filter(res.out, command);
+                if (fr2.original_lines != fr2.filtered_lines)
+                    std::cout << "[stream: " << fr2.filtered_lines << "/"
+                              << fr2.original_lines << " lines pass filter]\n";
             }
-            pclose(pipe);
-            if (!raw) {
-                auto* f = getFilter(type);
-                if (f) {
-                    auto fr2 = f->filter(all_out, command);
-                    if (fr2.original_lines != fr2.filtered_lines)
-                        std::cout << "[stream: " << fr2.filtered_lines << "/"
-                                  << fr2.original_lines << " lines pass filter]\n";
-                }
-            }
-            int nlines = (int)splitLines(all_out).size();
-            recordCommand(command, nlines, nlines);
-            return 0;
         }
-        // popen failed — fall through to buffered path
+        int nlines = (int)splitLines(res.out).size();
+        recordCommand(command, nlines, nlines);
+        return res.exit_code;
     }
 
     // Execute (A1: argv-safe via parseArgv + safeExec)

@@ -4,6 +4,46 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.32.1
+
+**#295: `icmg run` never re-parses your arguments as shell code.**
+
+- **Quoted heredocs and scripts stay literal.** `icmg run bash -c "<script>"`
+  re-joined argv with `"..."` quoting that left `$` and backticks live, and
+  the shell-operator check read `\"` as a closing quote, so the joined line
+  went through an OUTER shell. Backticks in a `<<'P'` body ran, `$HOME`
+  expanded, the first line could vanish. Argv tokens are now quoted with
+  `$` / backtick escaped, the check honours `\"`, and the parser is the exact
+  inverse, so every token reaches the child byte for byte.
+- **`--stream` uses the same exec path.** It had its own popen/cmd.exe
+  quoting (same bug, plus paths with spaces broke and the exit code was
+  always 0). It now streams live through the buffered run's exec path and
+  returns the child's exit code.
+- **Bare program names resolve like your shell.** `bash.exe` without a path
+  went to `C:\Windows\System32\bash.exe` (WSL; `HOME=/root`) because
+  `CreateProcess` searches System32 before `PATH`, while pwsh/cmd run the Git
+  Bash on `PATH`. Bare names now walk `PATH` in order.
+
+**#294: follow-up to #292.**
+
+- **Secret filter: no more leaks through derived data.** With the default
+  `mask`, the stored text was redacted but the secret still reached two side
+  paths built from the raw text: the `[auto-kw]` keywords
+  (`password,<secret>,...`) and the abbreviation auto-learner, which saved
+  `password -> <secret>` in the `abbreviations` table. Now the filter runs
+  before every store hook, auto keywords are derived from the text with the
+  secret spans removed, the secret's own tokens are scrubbed from sibling
+  fields (keywords, tags), and `MemoryStore::update` is filtered too.
+- **MCP: allowlist and no-egress switch.** `icmg mcp serve --tools a,b,c`
+  (env `ICMG_MCP_ALLOW`) lists AND allows only those tools; any other call is
+  refused. `--no-network` (env `ICMG_MCP_NO_NETWORK=1`) hides and refuses the
+  egress tools `icmg_fetch`, `icmg_batch` and `icmg_sync`. Both combine with
+  `--read-only` and `ICMG_MCP_DENY`.
+- **`icmg parallel` start order.** Tasks now start in submission order (a
+  fixed worker pool instead of a thread per task), so `--fail-fast` reliably
+  skips the tasks after a failure. This also fixes the flaky
+  `parallel: fail_fast` test.
+
 ## v2.32.0
 
 **#292: one icmg brain can serve many users safely.**

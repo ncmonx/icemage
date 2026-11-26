@@ -5,6 +5,7 @@
 #include "../../src/tkil/filters/filter_utils.hpp"
 #include "../../src/tkil/base_filter.hpp"
 #include "../../src/core/registry.hpp"
+#include "../../src/tkil/runner.hpp"
 
 using namespace icmg::tkil;
 using Reg = icmg::core::Registry<BaseFilter>;
@@ -80,6 +81,38 @@ TEST("stream: splitLines handles empty string") {
     ASSERT_EQ((int)lines.size(), 0);
 }
 
+
+// ---- #295: --stream runs through runCommand + a live chunk sink -----------
+// The sink sees exactly the bytes the result collects, the exit code comes
+// back (old popen path always returned 0), and scopes nest/restore.
+TEST("stream #295: chunk sink mirrors output and keeps exit code") {
+    std::string live;
+    icmg::core::ExecResult r;
+    {
+        icmg::core::ExecChunkScope s([&](const char* d, size_t n) { live.append(d, n); });
+        r = runCommand("echo hi295 && exit 3", true, kStreamTimeoutMs);
+    }
+    ASSERT_TRUE(r.out.find("hi295") != std::string::npos);
+    ASSERT_EQ(live, r.out);
+    ASSERT_EQ(r.exit_code, 3);
+}
+
+TEST("stream #295: nested chunk scopes restore the outer sink") {
+    std::string outer, inner;
+    {
+        icmg::core::ExecChunkScope a([&](const char* d, size_t n) { outer.append(d, n); });
+        {
+            icmg::core::ExecChunkScope b([&](const char* d, size_t n) { inner.append(d, n); });
+            runCommand("echo in295 && exit 0", true);
+        }
+        runCommand("echo out295 && exit 0", true);
+    }
+    runCommand("echo none295 && exit 0", true);  // no sink: must not crash
+    ASSERT_TRUE(inner.find("in295") != std::string::npos);
+    ASSERT_TRUE(outer.find("out295") != std::string::npos);
+    ASSERT_TRUE(outer.find("in295") == std::string::npos);
+    ASSERT_TRUE(outer.find("none295") == std::string::npos);
+}
 
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }

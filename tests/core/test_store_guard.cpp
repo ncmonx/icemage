@@ -5,6 +5,7 @@
 #include "../../src/core/migrator.hpp"
 #include "../../src/imem/memory_store.hpp"
 #include "../../src/imem/memory_node.hpp"
+#include "../../src/core/hook_bus.hpp"
 #include <string>
 #include <vector>
 
@@ -91,6 +92,77 @@ TEST("guard: MemoryStore::store masks by default env") {
     if (core::activeSecretMode() == core::SecretMode::Mask) {
         ASSERT_TRUE(ms.get(id).content.find(kAwsKey) == std::string::npos);
     }
+}
+
+// #294: a secret found in one field must not survive in a sibling field where
+// the pattern context is lost (auto keywords: "password,sup3rrahasia,...").
+// GitHub-token shaped probe, split so repo secret scanners do not flag the test.
+const std::string kGhProbe = std::string("gh") + "p_" + "abcdefghijklmnopqrstuvwxyz0123456789";
+
+TEST("guard: mask scrubs a secret's tokens from sibling fields (keywords)") {
+    std::string content = "tes filter: password=Sup3rRahasia! token " + kGhProbe;
+    std::string kw = "tes,filter,password,sup3rrahasia,token,ghp,abcdefghijklmnopqrstuvwxyz0123456789";
+    core::guardFields({&content, &kw}, core::SecretMode::Mask, "store");
+    ASSERT_TRUE(content.find("Sup3rRahasia") == std::string::npos);
+    ASSERT_TRUE(kw.find("sup3rrahasia") == std::string::npos);
+    ASSERT_TRUE(kw.find("abcdefghijklmnopqrstuvwxyz0123456789") == std::string::npos);
+    ASSERT_TRUE(kw.find("filter") != std::string::npos);   // clean keywords kept
+    ASSERT_TRUE(kw.find("password") != std::string::npos);
+}
+
+TEST("guard: keywordSourceText drops secret spans before keyword derivation") {
+    const std::string raw = "tes filter: password=Sup3rRahasia! token " + kGhProbe;
+    const std::string src = core::keywordSourceText(raw);
+    ASSERT_TRUE(src.find("Sup3rRahasia") == std::string::npos);
+    ASSERT_TRUE(src.find("abcdefghijklmnopqrstuvwxyz") == std::string::npos);
+    ASSERT_TRUE(src.find("filter") != std::string::npos);
+}
+
+TEST("guard: MemoryStore keywords and update() never keep the secret") {
+    core::Db db(":memory:");
+    core::Migrator mig("__nonexistent_migrations_dir__");
+    mig.runAll(db);
+    imem::MemoryStore ms(db);
+    if (core::activeSecretMode() != core::SecretMode::Mask) return;
+    imem::MemoryNode n;
+    n.topic = "probe";
+    n.content = "tes filter: password=Sup3rRahasia! deploy";
+    n.keywords = "tes,filter,password,sup3rrahasia";
+    const int64_t id = ms.store(n, true);
+    auto got = ms.get(id);
+    ASSERT_TRUE(got.keywords.find("sup3rrahasia") == std::string::npos);
+    ms.update(id, "rotated: password=An0therSecret9 ok", "rotated,an0thersecret9");
+    got = ms.get(id);
+    ASSERT_TRUE(got.content.find("An0therSecret9") == std::string::npos);
+    ASSERT_TRUE(got.keywords.find("an0thersecret9") == std::string::npos);
+}
+
+// #294: PRE_STORE hooks derive side data (abbreviation auto-learn wrote
+// "password -> <secret>" into the abbreviations table) -- they must only
+// ever see the masked text.
+TEST("guard: PRE_STORE hooks never see the raw secret") {
+    if (core::activeSecretMode() != core::SecretMode::Mask) return;
+    static bool armed = false;
+    static std::string seen;
+    static bool subscribed = false;
+    if (!subscribed) {
+        core::HookBus::instance().subscribe(core::HookEvent::PRE_STORE,
+            [](core::HookContext& ctx) { if (armed) seen += ctx.get<std::string>("content", ""); }, 1);
+        subscribed = true;
+    }
+    core::Db db(":memory:");
+    core::Migrator mig("__nonexistent_migrations_dir__");
+    mig.runAll(db);
+    imem::MemoryStore ms(db);
+    imem::MemoryNode n;
+    n.topic = "probe-hook";
+    n.content = "hook probe: password=Hk0okSecret77 end";
+    armed = true;
+    seen.clear();
+    ms.store(n, true);
+    armed = false;
+    ASSERT_TRUE(!seen.empty());
+    ASSERT_TRUE(seen.find("Hk0okSecret77") == std::string::npos);
 }
 
 #ifndef ICMG_MONO_TEST

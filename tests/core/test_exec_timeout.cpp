@@ -34,3 +34,43 @@ TEST("resolveWinShell: empty candidates skipped") {
     auto exok = [](const std::string& p){ return p == "ok/pwsh.exe"; };
     ASSERT_EQ(icmg::core::resolveWinShell(cands, "ps5", exok), std::string("ok/pwsh.exe"));
 }
+// ---- #295: bare argv0 resolves via PATH order, not System32-first ----------
+#ifdef _WIN32
+#include <windows.h>
+#include <filesystem>
+#include <fstream>
+namespace {
+struct PathEnvGuard {
+    std::wstring saved; bool had;
+    PathEnvGuard() {
+        DWORD n = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+        had = n != 0;
+        saved.resize(n);
+        if (n) saved.resize(GetEnvironmentVariableW(L"PATH", saved.data(), n));
+    }
+    ~PathEnvGuard() { SetEnvironmentVariableW(L"PATH", had ? saved.c_str() : nullptr); }
+};
+}  // namespace
+
+TEST("resolveOnPath #295: PATH order beats System32 for a bare .exe name") {
+    namespace fs = std::filesystem;
+    fs::path dir = fs::temp_directory_path() / "icmg_t295_path";
+    fs::create_directories(dir);
+    { std::ofstream(dir / "cmd.exe") << "x"; }   // shadows System32\cmd.exe
+    PathEnvGuard g;
+    std::wstring p = dir.wstring() + L";" + g.saved;
+    SetEnvironmentVariableW(L"PATH", p.c_str());
+    std::string r = icmg::core::resolveOnPath("cmd.exe");
+    ASSERT_TRUE(fs::equivalent(fs::path(r), dir / "cmd.exe"));
+    std::string r2 = icmg::core::resolveOnPath("cmd");  // .exe appended
+    ASSERT_TRUE(fs::equivalent(fs::path(r2), dir / "cmd.exe"));
+    fs::remove_all(dir);
+}
+
+TEST("resolveOnPath #295: explicit path and unknown names pass through") {
+    ASSERT_EQ(icmg::core::resolveOnPath("C:/x/y.exe"), std::string("C:/x/y.exe"));
+    ASSERT_EQ(icmg::core::resolveOnPath("sub\\y.exe"), std::string("sub\\y.exe"));
+    ASSERT_EQ(icmg::core::resolveOnPath("no_such_prog_295_zz"),
+              std::string("no_such_prog_295_zz"));
+}
+#endif

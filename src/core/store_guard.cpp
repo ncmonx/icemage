@@ -170,7 +170,62 @@ std::string lower(std::string_view s) {
     return o;
 }
 
+// Shortest alnum token worth scrubbing from a sibling field (shorter ones like
+// "ghp" or "sk" are prefixes, not the secret).
+constexpr size_t kMinSecretToken = 4;
+constexpr const char* kScrubbedToken = "REDACTED";
+
+bool isTokChar(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; }
+
+// Lowercased alnum tokens (>= kMinSecretToken) of every secret value.
+std::set<std::string> secretTokens(const std::vector<std::vector<SecretMatch>>& perField) {
+    std::set<std::string> toks;
+    for (const auto& ms : perField)
+        for (const auto& m : ms) {
+            std::string cur;
+            auto flush = [&] {
+                if (cur.size() >= kMinSecretToken) toks.insert(lower(cur));
+                cur.clear();
+            };
+            for (char c : m.match) { if (isTokChar(c)) cur += c; else flush(); }
+            flush();
+        }
+    return toks;
+}
+
+// Replace every alnum token of `s` that is (case-insensitively) a secret token.
+void scrubTokens(std::string& s, const std::set<std::string>& toks) {
+    if (toks.empty()) return;
+    std::string out;
+    out.reserve(s.size());
+    size_t i = 0;
+    while (i < s.size()) {
+        if (!isTokChar(s[i])) { out += s[i++]; continue; }
+        size_t j = i;
+        while (j < s.size() && isTokChar(s[j])) ++j;
+        const std::string tok = s.substr(i, j - i);
+        out += toks.count(lower(tok)) ? std::string(kScrubbedToken) : tok;
+        i = j;
+    }
+    s = std::move(out);
+}
+
 }  // namespace
+
+std::string keywordSourceText(const std::string& text) {
+    const auto matches = scanForStore(text);
+    if (matches.empty()) return text;
+    std::string out;
+    size_t pos = 0;
+    for (const auto& m : matches) {
+        if (m.offset < pos) continue;
+        out.append(text, pos, m.offset - pos);
+        out += ' ';
+        pos = m.offset + m.match.size();
+    }
+    out.append(text, pos, std::string::npos);
+    return out;
+}
 
 SecretMode parseSecretMode(std::string_view s, bool* ok) {
     const std::string v = lower(s);
@@ -249,6 +304,10 @@ std::vector<std::string> guardFields(const std::vector<std::string*>& fields,
     if (mode == SecretMode::Mask) {
         for (size_t i = 0; i < fields.size(); ++i)
             if (fields[i] && !perField[i].empty()) *fields[i] = redactSecrets(*fields[i], perField[i]);
+        // #294: derived sibling fields (auto keywords, tags) lost the pattern
+        // context, so scrub the secret's own tokens from every field.
+        const auto toks = secretTokens(perField);
+        for (auto* f : fields) if (f) scrubTokens(*f, toks);
         std::cerr << "[icmg " << what << "] masked possible secret(s) before storing: " << list
                   << " (set " << kSecretModeEnv << "=reject|warn|off to change)\n";
     } else {

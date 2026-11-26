@@ -118,16 +118,13 @@ json McpServer::buildToolsListResponse(bool lazy) const {
         }
         // IDE-G: denied tools are hidden from the list too (they are not
         // callable, so advertising their schemas would only mislead).
+        // #294: also allowlist (ICMG_MCP_ALLOW) and no-network mode.
         {
-            const char* deny = std::getenv("ICMG_MCP_DENY");
-            const bool readonly = mcpReadOnlyFromEnv();
-            if ((deny && *deny) || readonly) {
-                std::vector<std::string> kept;
-                for (const auto& k : keys)
-                    if (!isToolCallDenied(k, deny ? deny : "", readonly))
-                        kept.push_back(k);
-                keys = kept;
-            }
+            const McpCallPolicy pol = mcpCallPolicyFromEnv();
+            std::vector<std::string> kept;
+            for (const auto& k : keys)
+                if (toolDenyReason(k, pol).empty()) kept.push_back(k);
+            keys = kept;
         }
     }
 
@@ -188,12 +185,9 @@ void McpServer::handleCallTool(const json& req) {
     // 2026-09-23 IDE-G: per-tool call policy. Exposure filtering only hides
     // schemas; this refuses the CALL itself (deny-list / readonly mode).
     {
-        const char* deny = std::getenv("ICMG_MCP_DENY");
-        const bool readonly = mcpReadOnlyFromEnv();
-        if (isToolCallDenied(toolName, deny ? deny : "", readonly)) {
-            sendError(id, -32602, "Tool '" + toolName + "' is denied by policy (" +
-                                  std::string(readonly && isMutatingTool(toolName)
-                                                  ? "read-only mode" : "ICMG_MCP_DENY") + ")");
+        const std::string why = toolDenyReason(toolName, mcpCallPolicyFromEnv());
+        if (!why.empty()) {
+            sendError(id, -32602, "Tool '" + toolName + "' is denied by policy (" + why + ")");
             return;
         }
     }

@@ -29,9 +29,37 @@ namespace {
             std::chrono::steady_clock::now().time_since_epoch()).count();
     }
 
+    thread_local ExecChunkFn t_chunk_sink;
+
+    // Append a stdout chunk to `out` and forward it to the live sink, if any.
+    void takeChunk(std::string& out, const char* data, size_t n) {
+        out.append(data, n);
+        if (t_chunk_sink) t_chunk_sink(data, n);
+    }
+
 }
 
+ExecChunkScope::ExecChunkScope(ExecChunkFn fn) : prev_(std::move(t_chunk_sink)) {
+    t_chunk_sink = std::move(fn);
+}
+ExecChunkScope::~ExecChunkScope() { t_chunk_sink = std::move(prev_); }
+
 #ifdef _WIN32
+
+std::string resolveOnPath(const std::string& program) {
+    if (program.empty() || program.find_first_of("/\\") != std::string::npos)
+        return program;
+    DWORD need = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    if (need == 0) return program;
+    std::wstring path(need, L'\0');
+    path.resize(GetEnvironmentVariableW(L"PATH", path.data(), need));
+    const std::wstring wname = utf8ToWide(program);
+    wchar_t found[MAX_PATH * 4];
+    DWORD n = SearchPathW(path.c_str(), wname.c_str(), L".exe",
+                          (DWORD)(sizeof(found) / sizeof(found[0])), found, nullptr);
+    if (n == 0 || n >= sizeof(found) / sizeof(found[0])) return program;
+    return wideToUtf8(std::wstring(found, n));
+}
 
 static ExecResult safeExecWin(const std::vector<std::string>& argv,
                                bool merge_stderr, int timeout_ms) {
@@ -81,7 +109,10 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
     // MSYS/Cygwin children (Git Bash usr/bin tools) get MSYS rules, because
     // they re-split `\\` -> `\` / `\"` -> `"` inside quotes and would lose
     // one backslash of every MSVCRT-quoted pair. See core/msys_quote.hpp.
-    std::string cmd = buildChildCmdline(argv);
+    // #295: bare names resolve via PATH (shell order), not System32-first.
+    std::vector<std::string> resolved = argv;
+    resolved[0] = resolveOnPath(argv[0]);
+    std::string cmd = buildChildCmdline(resolved);
 
     SECURITY_ATTRIBUTES sa{};
     sa.nLength = sizeof(sa);
@@ -159,7 +190,7 @@ static ExecResult safeExecWin(const std::vector<std::string>& argv,
     std::array<char, 4096> buf;
     DWORD bytes;
     while (ReadFile(hOutR, buf.data(), (DWORD)buf.size(), &bytes, nullptr) && bytes)
-        result.out.append(buf.data(), bytes);
+        takeChunk(result.out, buf.data(), bytes);
 
     if (!merge_stderr) {
         while (ReadFile(hErrR, buf.data(), (DWORD)buf.size(), &bytes, nullptr) && bytes)
@@ -185,6 +216,8 @@ ExecResult safeExec(const std::vector<std::string>& argv,
 }
 
 #else // Unix
+
+std::string resolveOnPath(const std::string& program) { return program; }
 
 ExecResult safeExec(const std::vector<std::string>& argv,
                     bool merge_stderr, int timeout_ms) {
@@ -248,7 +281,7 @@ ExecResult safeExec(const std::vector<std::string>& argv,
         if (fds[0].revents & (POLLIN | POLLHUP)) {
             ssize_t n = read(out_pipe[0], buf.data(), buf.size());
             if (n <= 0) out_done = true;
-            else result.out.append(buf.data(), n);
+            else takeChunk(result.out, buf.data(), (size_t)n);
         }
         if (!merge_stderr && (fds[1].revents & (POLLIN | POLLHUP))) {
             ssize_t n = read(err_pipe[0], buf.data(), buf.size());
@@ -466,7 +499,7 @@ ExecResult safeExecShell(const std::string& cmd_line, bool merge_stderr, int tim
     std::array<char, 4096> buf;
     DWORD bytes;
     while (ReadFile(hOutR, buf.data(), (DWORD)buf.size(), &bytes, nullptr) && bytes)
-        result.out.append(buf.data(), bytes);
+        takeChunk(result.out, buf.data(), bytes);
     if (!merge_stderr) {
         while (ReadFile(hErrR, buf.data(), (DWORD)buf.size(), &bytes, nullptr) && bytes)
             result.err.append(buf.data(), bytes);

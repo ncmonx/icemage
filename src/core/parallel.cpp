@@ -1,37 +1,10 @@
 #include "parallel.hpp"
 #include "exec_utils.hpp"
 #include <thread>
-#include <mutex>
-#include <condition_variable>
 #include <atomic>
 #include <algorithm>
 
 namespace icmg::core {
-
-namespace {
-
-class Semaphore {
-public:
-    explicit Semaphore(int count) : count_(count) {}
-    void acquire() {
-        std::unique_lock<std::mutex> lk(m_);
-        cv_.wait(lk, [&]{ return count_ > 0; });
-        --count_;
-    }
-    void release() {
-        {
-            std::lock_guard<std::mutex> lk(m_);
-            ++count_;
-        }
-        cv_.notify_one();
-    }
-private:
-    std::mutex m_;
-    std::condition_variable cv_;
-    int count_;
-};
-
-} // namespace
 
 std::vector<ParallelResult>
 parallel(const std::vector<ParallelTask>& tasks,
@@ -48,24 +21,22 @@ parallel(const std::vector<ParallelTask>& tasks,
     if (max_concurrency > 32) max_concurrency = 32;
     if ((int)tasks.size() < max_concurrency) max_concurrency = (int)tasks.size();
 
-    Semaphore slots(max_concurrency);
+    for (size_t i = 0; i < tasks.size(); ++i) results[i].id = tasks[i].id;
+
+    // Fixed pool of max_concurrency workers pulling the next index in
+    // submission order. (A thread per task racing on a semaphore let the OS
+    // scheduler pick the start order, so fail_fast could run later tasks
+    // before the failing earlier one -- flaky test_parallel fail_fast.)
+    std::atomic<size_t> next{0};
     std::atomic<bool> abort_flag{false};
 
-    std::vector<std::thread> workers;
-    workers.reserve(tasks.size());
-
-    for (size_t i = 0; i < tasks.size(); ++i) {
-        const auto& t = tasks[i];
-        results[i].id = t.id;
-
-        workers.emplace_back([&, i]() {
-            slots.acquire();
-            // fail_fast: if a sibling already failed, mark skipped and bail
+    auto worker = [&]() {
+        for (size_t i = next.fetch_add(1); i < tasks.size(); i = next.fetch_add(1)) {
+            // fail_fast: if a sibling already failed, mark skipped
             if (fail_fast && abort_flag.load()) {
                 results[i].skipped = true;
                 results[i].exit_code = -1;
-                slots.release();
-                return;
+                continue;
             }
 
             // Use shell-pass-through so paths-with-spaces and quotes survive.
@@ -81,9 +52,12 @@ parallel(const std::vector<ParallelTask>& tasks,
             if (fail_fast && r.exit_code != 0) {
                 abort_flag.store(true);
             }
-            slots.release();
-        });
-    }
+        }
+    };
+
+    std::vector<std::thread> workers;
+    workers.reserve((size_t)max_concurrency);
+    for (int w = 0; w < max_concurrency; ++w) workers.emplace_back(worker);
 
     for (auto& th : workers) th.join();
     return results;

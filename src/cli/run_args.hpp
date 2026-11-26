@@ -11,6 +11,8 @@
 #include <vector>
 #include <cctype>
 
+#include "../tkil/runner.hpp"
+
 namespace icmg::cli {
 
 struct RunArgs {
@@ -27,17 +29,10 @@ struct RunArgs {
 // through bare, so bash ate one backslash per pair (`a\\b` -> `a\b`,
 // `C:\dir\f` -> `C:dirf`) and a `\"` pair closed the quote early. Same MSYS
 // rule as the companion agent harness quote_arg_msys: escape `\` AND `"`.
-inline std::string runQuoteArg(const std::string& a) {
-    if (a.empty()) return "\"\"";
-    if (a.find_first_of(" \t\"\\") == std::string::npos) return a;
-    std::string out = "\"";
-    for (char c : a) {
-        if (c == '"' || c == '\\') out += '\\';
-        out += c;
-    }
-    out += "\"";
-    return out;
-}
+// #295: also `$` and backtick, and any shell metachar forces quoting, so
+// argv tokens stay data. One implementation: tkil::shellQuoteArg (inverse:
+// tkil::parseArgv, round-trip tested).
+inline std::string runQuoteArg(const std::string& a) { return tkil::shellQuoteArg(a); }
 
 // True when a token is the icmg binary itself (bare name or any path form).
 inline bool isIcmgArgv0(const std::string& t) {
