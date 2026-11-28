@@ -11,6 +11,7 @@
 #include "../../graph/graph_centrality.hpp"
 #include "../find_slices.hpp"
 #include "../find_name.hpp"
+#include "../search_route_hint.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -208,7 +209,8 @@ public:
         }
         if (hits.empty()) {
             std::cout << "icmg find: no relevant lines for \"" << intent
-                      << "\" (scanned " << scanned << " files)\n";
+                      << "\" (scanned " << scanned << " files)\n"
+                      << findMissHint(intent);
             return 0;
         }
 
@@ -340,7 +342,8 @@ private:
         auto hits = rankFilenames(paths, query, max_files);
         if (hits.empty()) {
             std::cout << "icmg find --name: no file matching \"" << query
-                      << "\" (scanned " << scanned << " files)\n";
+                      << "\" (scanned " << scanned << " files)\n"
+                      << nameMissHint(query);
             return 0;
         }
         if (recent) sortByRecency(hits, mtime);

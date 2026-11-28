@@ -1225,7 +1225,8 @@ void GraphStore::resolveAndInsertEdges(
 // Scans ALL nodes in DB; for each file, checks if class names declared in
 // OTHER files appear as word tokens in its content. Always called after scan,
 // independent of whether any imports were collected.
-void GraphStore::buildXRefEdges(const std::set<std::string>* changed) {
+void GraphStore::buildXRefEdges(const std::set<std::string>* changed,
+                                const std::string& root) {
     // 2026-06-14: incremental xref. Reading EVERY node's full content on every
     // `graph update` (even at 0 changed files) was the ~150s bottleneck. When a
     // changed-set is supplied, only re-read+scan those source files; their
@@ -1250,6 +1251,21 @@ void GraphStore::buildXRefEdges(const std::set<std::string>* changed) {
         });
     if (nodes.empty()) return;
 
+    // 2026-11-28: xref is derived + deterministic, so drop the stale word-
+    // presence edges it owns before rebuilding (it used to be upsert-only, so
+    // a once-polluted edge lived forever). Full: all; incremental: only the
+    // outgoing edges of the re-read sources.
+    if (!incremental) {
+        db_.run("DELETE FROM graph_edges WHERE edge_type='uses' AND confidence='AMBIGUOUS'", {});
+    } else {
+        for (auto& ni : nodes)
+            if (xrefIsSourceNode(ni.path, changed_set, true))
+                db_.run("DELETE FROM graph_edges WHERE src=? AND edge_type='uses' "
+                        "AND confidence='AMBIGUOUS'", {std::to_string(ni.id)});
+    }
+    std::unordered_map<int64_t, std::string> id2path;
+    for (auto& ni : nodes) id2path[ni.id] = ni.path;
+
     // Build class_name → [declaring_node_ids] map from symbols JSON
     std::unordered_map<std::string, std::vector<int64_t>> class2nodes;
     db_.query("SELECT id,symbols FROM graph_nodes", {},
@@ -1267,6 +1283,16 @@ void GraphStore::buildXRefEdges(const std::set<std::string>* changed) {
                 }
             } catch (...) {}
         });
+    // Names declared in many files ("Value", "Config") or outside scope tell
+    // nothing about a dependency; keep only specific, in-scope declarations.
+    for (auto it = class2nodes.begin(); it != class2nodes.end();) {
+        auto& ids = it->second;
+        ids.erase(std::remove_if(ids.begin(), ids.end(), [&](int64_t id) {
+            return !xrefInScope(id2path[id], root);
+        }), ids.end());
+        if (!xrefNameUseful(it->first, ids.size())) it = class2nodes.erase(it);
+        else ++it;
+    }
     if (class2nodes.empty()) return;
 
     // Helper: check if word `name` appears as a token in `content`
@@ -1288,6 +1314,7 @@ void GraphStore::buildXRefEdges(const std::set<std::string>* changed) {
     // Incremental: only read source files the scan actually changed.
     for (auto& ni : nodes) {
         if (!xrefIsSourceNode(ni.path, changed_set, incremental)) continue;
+        if (!xrefInScope(ni.path, root)) continue;
         std::ifstream f(ni.path, std::ios::binary);
         if (!f) continue;
         std::ostringstream buf;
@@ -1298,6 +1325,7 @@ void GraphStore::buildXRefEdges(const std::set<std::string>* changed) {
         for (auto& [cls_name, declaring_ids] : class2nodes) {
             for (int64_t dec_id : declaring_ids) {
                 if (dec_id == ni.id) continue;  // no self-edges
+                if (!xrefEdgeAllowed(ni.path, id2path[dec_id], root)) continue;
                 if (isWordPresent(content, cls_name)) {
                     GraphEdge edge;
                     edge.src        = ni.id;

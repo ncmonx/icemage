@@ -4,6 +4,28 @@ All notable changes per release. Latest 5 detailed below; older versions: see
 [GitHub Releases](https://github.com/ncmonx/icemage/releases). Each release ships
 Linux + macOS (CI-built) and Windows binaries with SHA256 sidecars.
 
+## v2.33.0
+
+**Search lands the right file in one call.** Models often needed several
+`find` / `recall` calls to reach one file. Measured on 18 real queries from
+this repo: the right file came first 0/18 times (MRR .204).
+
+- **`icmg find` ranking.** Term counts are BM25-saturated and length-
+  normalised, a term must start a word (`rank` hits `doRank`, not `frank`),
+  the file name and directory count as evidence, the file that DEFINES the
+  exact identifier gets a bonus (comments and strings excluded), matching
+  more of the intent beats repeating one word, and test files rank below
+  their source unless the intent mentions tests. Now 17/18 first, MRR .956.
+- **Cleaner graph.** Word-presence `uses` edges no longer connect project
+  files to `third_party` / vendored or out-of-project files (one header had
+  70 such edges), skip class names declared in more than 3 files, and stale
+  ones are removed on rebuild. Run `icmg graph rebuild` once to clean an
+  existing project. `icmg context` Imports/Used-by and `find`'s PageRank
+  blend get the benefit.
+- **Miss hints.** A `find` or `find --name` miss prints one next command;
+  `recall` on a code name whose results never mention it points to
+  `icmg graph symbol` / `icmg grep --smart` / `icmg find --name`.
+
 ## v2.32.1
 
 **#295: `icmg run` never re-parses your arguments as shell code.**

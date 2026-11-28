@@ -103,7 +103,10 @@ public:
     // files (their outgoing "uses" edges are the only ones whose source content
     // changed). Null = full whole-graph xref (used by `graph scan`). Skipping
     // the 7000-file re-read is the post-mem-sync `graph update` speedup.
-    void buildXRefEdges(const std::set<std::string>* changed = nullptr);
+    // root: scan root (absolute); edges are limited to files under it and never
+    // point into vendored trees (graph_xref_filter.hpp). Empty = no root limit.
+    void buildXRefEdges(const std::set<std::string>* changed = nullptr,
+                        const std::string& root = "");
     // Visual Studio designer file grouping: treats .cs + .Designer.cs + .resx
     // as one logical entity by assigning them the same group_id.
     // Also inserts "companion" edges between the trio.
