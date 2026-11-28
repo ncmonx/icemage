@@ -27,6 +27,7 @@
 #include "../ref_flow.hpp"                   // v2.30.0 Model-AI ref flow
 #include "../../imem/ai_ref_store.hpp"
 #include "../../core/path_utils.hpp"
+#include "../search_route_hint.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <chrono>
@@ -412,6 +413,19 @@ public:
                           << " more (collapsed to save tokens; icmg recall --get <id>):\n";
                 std::cout << formatIndex(tail, "topic");
             }
+        }
+        // 2026-11-28: code-name query whose results never mention it -> the
+        // caller wanted CODE; say which tool finds it (saves a re-guess turn).
+        if (!json && !index) {
+            std::string ql = query;
+            for (auto& c : ql) c = (char)std::tolower((unsigned char)c);
+            bool mentioned = false;
+            for (const auto& n : results) {
+                std::string cl = n.content;
+                for (auto& c : cl) c = (char)std::tolower((unsigned char)c);
+                if (cl.find(ql) != std::string::npos) { mentioned = true; break; }
+            }
+            if (!mentioned) std::cout << recallCodeHint(query);
         }
 
         return 0;

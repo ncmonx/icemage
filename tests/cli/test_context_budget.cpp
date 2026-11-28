@@ -277,6 +277,86 @@ TEST("find_recency: nullptr age map == old behavior (backward compat)") {
     ASSERT_EQ(a[0].file, std::string("a.cpp"));   // denser unchanged
 }
 
+// --- find v2 ranking (2026-11-28): BM25 + word-start + path + definer ------
+// Eval on real queries had hit@1 = 0/18: big doc-heavy files and test files
+// that CALL an identifier many times beat the file that DEFINES it.
+TEST("find_v2: definer beats a test file that calls the identifier 9x") {
+    std::string calls;
+    for (int i = 0; i < 9; ++i) calls += "    auto r = rankFileSlices(files, 1);\n";
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"tests/cli/test_x.cpp", "TEST(\"x\") {\n" + calls + "}\n"},
+        {"src/cli/find_slices.hpp",
+         "inline std::vector<int> rankFileSlices(int files) {\n    return {};\n}\n"}};
+    auto r = icmg::cli::rankFileSlices(files, "rankFileSlices", 1, 5, 3);
+    ASSERT_EQ((int)r.size(), 2);
+    ASSERT_EQ(r[0].file, std::string("src/cli/find_slices.hpp"));
+}
+
+TEST("find_v2: huge keyword-dense file does not drown a focused one") {
+    std::string doc;
+    for (int i = 0; i < 200; ++i)
+        doc += "| `icmg thing " + std::to_string(i) + "` | find a command option here |\n";
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"src/cli/commands/init_cmd.cpp", doc},
+        {"src/cli/commands/find_cmd.cpp",
+         "class FindCommand {\n  // find: rank files for the command\n};\n"}};
+    auto r = icmg::cli::rankFileSlices(files, "find command", 1, 5, 3);
+    ASSERT_EQ(r[0].file, std::string("src/cli/commands/find_cmd.cpp"));
+}
+
+TEST("find_v2: filename match breaks an otherwise equal body") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"src/aaa.cpp", "int migrate = 1;\n"},
+        {"src/migrator.cpp", "int migrate = 1;\n"}};
+    auto r = icmg::cli::rankFileSlices(files, "migrator migrate", 1, 5, 3);
+    ASSERT_EQ(r[0].file, std::string("src/migrator.cpp"));
+}
+
+TEST("find_v2: term must start a word (rank != frank), camelCase counts") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"a.cpp", "frank frank frank\n"},
+        {"b.cpp", "int rankFiles = 0;\n"},
+        {"c.cpp", "void doRank();\n"}};
+    auto r = icmg::cli::rankFileSlices(files, "rank", 1, 5, 3);
+    ASSERT_EQ((int)r.size(), 2);                      // a.cpp: no word-start hit
+    for (auto& h : r) ASSERT_TRUE(h.file != std::string("a.cpp"));
+}
+
+TEST("find_v2: source outranks its test unless the intent asks for tests") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"src/core/visibility.cpp", "bool canSee(int author) { return author; }\n"},
+        {"tests/core/test_visibility.cpp", "bool canSee(int author) { return author; }\n"}};
+    auto r = icmg::cli::rankFileSlices(files, "visibility author", 1, 5, 3);
+    ASSERT_EQ(r[0].file, std::string("src/core/visibility.cpp"));
+    auto t = icmg::cli::rankFileSlices(files, "visibility author test", 1, 5, 3);
+    ASSERT_EQ(t[0].file, std::string("tests/core/test_visibility.cpp"));
+}
+
+TEST("find_v2: matching more of the intent beats repeating one word") {
+    std::vector<std::pair<std::string,std::string>> files = {
+        {"a.cpp", "secret secret secret secret secret\n"},
+        {"b.cpp", "redact secret before store\n"}};
+    auto r = icmg::cli::rankFileSlices(files, "redact secret store", 1, 5, 3);
+    ASSERT_EQ(r[0].file, std::string("b.cpp"));
+}
+
+TEST("find_v2: prose / string / comment 'name(' is not a definition") {
+    using icmg::cli::isDefinitionAt;
+    auto at = [](const std::string& s, const std::string& id) {
+        return isDefinitionAt(s, s.find(id), id.size());
+    };
+    ASSERT_TRUE(!at("    reason: 'icmg find(intent)+graph'", "find"));
+    ASSERT_TRUE(!at("// record any sync command (store/wflog)", "command"));
+    ASSERT_TRUE(!at("# sync command (store)", "command"));
+    ASSERT_TRUE(!at(" * the command (x)", "command"));
+    ASSERT_TRUE(!at("    x = compute(a);", "compute"));
+    ASSERT_TRUE(at("inline std::vector<int> rankFileSlices(int a) {", "rankFileSlices"));
+    ASSERT_TRUE(at("static bool Cls::parseArgv(const std::string& s)", "parseArgv"));
+    ASSERT_TRUE(at("class Migrator {", "Migrator"));
+    ASSERT_TRUE(at("def build_index(self):", "build_index"));
+    ASSERT_TRUE(at("#define ICMG_FOO 1", "ICMG_FOO"));
+}
+
 // --- bench savings: reproducible read-reduction math ----------------------
 TEST("bench_savings: caps large files at cap, sums, computes pct") {
     auto r = icmg::cli::benchReadSavings({10000, 200, 5000}, /*cap*/1024);

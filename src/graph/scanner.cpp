@@ -524,11 +524,15 @@ int Scanner::scan(const std::string& root, const Options& opts) {
     // incremental xref only re-reads the files this scan changed (huge speedup
     // on `graph update`); full scan re-reads every node.
     if (opts.resolve_edges) {
+        // Same form as node.path (canonical(...).string(), see fpath above).
+        std::error_code aec;
+        fs::path abs_root = fs::weakly_canonical(root_path, aec);
+        std::string xroot = aec ? std::string() : abs_root.string();
         if (opts.incremental_xref) {
             std::set<std::string> changed(updated_paths_.begin(), updated_paths_.end());
-            store_.buildXRefEdges(&changed);
+            store_.buildXRefEdges(&changed, xroot);
         } else {
-            store_.buildXRefEdges();
+            store_.buildXRefEdges(nullptr, xroot);
         }
     }
 

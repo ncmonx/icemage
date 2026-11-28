@@ -46,6 +46,33 @@ TEST("graph_xref_filter: incremental reads only changed source nodes") {
     ASSERT_TRUE(xrefIsSourceNode("c.cpp", changed, true) == false);  // unchanged -> skip read
 }
 
+// ---- Scope (2026-11-28): no edges to vendored / out-of-root files ----------
+TEST("graph_xref_filter: in-scope is root-prefix by segment, slash/case blind") {
+    const std::string root = "D:\\Work\\icemage";
+    ASSERT_TRUE(xrefInScope("D:\\Work\\icemage\\src\\a.cpp", root));
+    ASSERT_TRUE(xrefInScope("d:/work/ICEMAGE/src/a.cpp", root));
+    ASSERT_TRUE(!xrefInScope("D:\\Work\\icemage-wt2\\src\\a.cpp", root));   // sibling repo
+    ASSERT_TRUE(!xrefInScope("D:\\Work\\helper code\\x.ts", root));
+    ASSERT_TRUE(xrefInScope("anything", ""));                                // no root -> no limit
+}
+
+TEST("graph_xref_filter: project code never 'uses' vendored code by word") {
+    const std::string r = "/p";
+    ASSERT_TRUE(!xrefEdgeAllowed("/p/src/find.hpp", "/p/third_party/onnx/api.h", r));
+    ASSERT_TRUE(!xrefEdgeAllowed("/p/src/a.ts", "/p/node_modules/x/i.d.ts", r));
+    ASSERT_TRUE(xrefEdgeAllowed("/p/third_party/llama/a.c", "/p/third_party/llama/b.h", r));
+    ASSERT_TRUE(xrefEdgeAllowed("/p/src/a.cpp", "/p/src/b.hpp", r));
+    ASSERT_TRUE(!xrefEdgeAllowed("/p/third_party/lib/api.h", "/p/src/store.hpp", r)); // reverse too
+    ASSERT_TRUE(!xrefEdgeAllowed("/p/src/a.cpp", "/q/src/b.hpp", r));
+}
+
+TEST("graph_xref_filter: names declared in many files carry no signal") {
+    ASSERT_TRUE(xrefNameUseful("GraphStore", 1));
+    ASSERT_TRUE(xrefNameUseful("Config", kXrefMaxDeclarers));
+    ASSERT_TRUE(!xrefNameUseful("Config", kXrefMaxDeclarers + 1));
+    ASSERT_TRUE(!xrefNameUseful("Id", 1));                                   // too short
+}
+
 #ifndef ICMG_MONO_TEST
 int main() { return icmg::test::run_all(); }
 #endif
